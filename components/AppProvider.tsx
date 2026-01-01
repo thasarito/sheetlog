@@ -1,20 +1,44 @@
-'use client';
+"use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { db } from '../lib/db';
-import type { RecentCategories, TransactionInput, TransactionRecord, TransactionType } from '../lib/types';
-import { getRecentCategories, updateRecentCategory } from '../lib/settings';
-import { deleteRow, ensureSheet, getSheetTabId, requestAccessToken } from '../lib/google';
-import { syncPendingTransactions } from '../lib/sync';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { db } from "../lib/db";
+import type {
+  OnboardingState,
+  RecentCategories,
+  TransactionInput,
+  TransactionRecord,
+  TransactionType,
+} from "../lib/types";
+import {
+  getDefaultOnboardingState,
+  getOnboardingState,
+  getRecentCategories,
+  setOnboardingState,
+  updateRecentCategory,
+} from "../lib/settings";
+import {
+  deleteRow,
+  ensureSheet,
+  getSheetTabId,
+  requestAccessToken,
+} from "../lib/google";
+import { syncPendingTransactions } from "../lib/sync";
 
-const ACCESS_TOKEN_KEY = 'sheetlog.accessToken';
-const SHEET_ID_KEY = 'sheetlog.sheetId';
-const SHEET_TAB_ID_KEY = 'sheetlog.sheetTabId';
+const ACCESS_TOKEN_KEY = "sheetlog.accessToken";
+const SHEET_ID_KEY = "sheetlog.sheetId";
+const SHEET_TAB_ID_KEY = "sheetlog.sheetTabId";
 
 const DEFAULT_RECENTS: RecentCategories = {
   expense: [],
   income: [],
-  transfer: []
+  transfer: [],
 };
 
 interface UndoResult {
@@ -31,12 +55,19 @@ interface AppContextValue {
   queueCount: number;
   lastTransaction: TransactionRecord | null;
   recentCategories: RecentCategories;
+  onboarding: OnboardingState;
   connect: () => Promise<void>;
-  refreshSheet: () => Promise<void>;
+  refreshSheet: (folderId?: string | null) => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<void>;
   undoLast: () => Promise<UndoResult>;
   syncNow: () => Promise<void>;
-  markRecentCategory: (type: TransactionType, category: string) => Promise<void>;
+  markRecentCategory: (
+    type: TransactionType,
+    category: string
+  ) => Promise<void>;
+  updateOnboarding: (
+    updates: Partial<OnboardingState>
+  ) => Promise<OnboardingState>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -48,21 +79,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [sheetTabId, setSheetTabId] = useState<number | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
-  const [lastTransaction, setLastTransaction] = useState<TransactionRecord | null>(null);
-  const [recentCategories, setRecentCategoriesState] = useState<RecentCategories>(DEFAULT_RECENTS);
+  const [lastTransaction, setLastTransaction] =
+    useState<TransactionRecord | null>(null);
+  const [recentCategories, setRecentCategoriesState] =
+    useState<RecentCategories>(DEFAULT_RECENTS);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [onboarding, setOnboarding] = useState<OnboardingState>(() =>
+    getDefaultOnboardingState()
+  );
 
   const refreshStats = useCallback(async () => {
     const [pendingCount, last] = await Promise.all([
-      db.transactions.where('status').equals('pending').count(),
-      db.transactions.orderBy('createdAt').last()
+      db.transactions.where("status").equals("pending").count(),
+      db.transactions.orderBy("createdAt").last(),
     ]);
     setQueueCount(pendingCount);
     setLastTransaction(last ?? null);
   }, []);
 
   const loadStored = useCallback(async () => {
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return;
     }
     setIsOnline(window.navigator.onLine);
@@ -70,8 +106,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSheetId(localStorage.getItem(SHEET_ID_KEY));
     const storedTabId = localStorage.getItem(SHEET_TAB_ID_KEY);
     setSheetTabId(storedTabId ? Number.parseInt(storedTabId, 10) : null);
-    const storedRecents = await getRecentCategories();
+    const [storedRecents, storedOnboarding] = await Promise.all([
+      getRecentCategories(),
+      getOnboardingState(),
+    ]);
     setRecentCategoriesState(storedRecents);
+    setOnboarding(storedOnboarding);
     await refreshStats();
   }, [refreshStats]);
 
@@ -86,11 +126,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     function handleOffline() {
       setIsOnline(false);
     }
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
@@ -117,40 +157,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSheetTabId(null);
   }, []);
 
-  const refreshSheet = useCallback(async () => {
-    if (!accessToken) {
-      return;
-    }
-    const id = await ensureSheet(accessToken);
-    const tabId = await getSheetTabId(accessToken, id);
-    storeSheet(id, tabId);
-  }, [accessToken, storeSheet]);
-
-  useEffect(() => {
-    if (accessToken && !sheetId) {
-      refreshSheet().catch(() => undefined);
-    }
-  }, [accessToken, sheetId, refreshSheet]);
+  const refreshSheet = useCallback(
+    async (folderId?: string | null) => {
+      if (!accessToken) {
+        return;
+      }
+      const id = await ensureSheet(
+        accessToken,
+        folderId ?? onboarding.sheetFolderId
+      );
+      const tabId = await getSheetTabId(accessToken, id);
+      storeSheet(id, tabId);
+    },
+    [accessToken, onboarding.sheetFolderId, storeSheet]
+  );
 
   const connect = useCallback(async () => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
-      throw new Error('Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID');
+      throw new Error("Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID");
     }
     setIsConnecting(true);
     try {
       const token = await requestAccessToken(clientId);
       storeToken(token);
-      const id = await ensureSheet(token);
-      const tabId = await getSheetTabId(token, id);
-      storeSheet(id, tabId);
     } catch (error) {
       clearAuth();
       throw error;
     } finally {
       setIsConnecting(false);
     }
-  }, [clearAuth, storeSheet, storeToken]);
+  }, [clearAuth, storeToken]);
 
   const syncNow = useCallback(async () => {
     if (!accessToken || !sheetId || isSyncing) {
@@ -161,7 +198,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await syncPendingTransactions(accessToken, sheetId);
       await refreshStats();
     } catch (error) {
-      if (error instanceof Error && error.message.includes('401')) {
+      if (error instanceof Error && error.message.includes("401")) {
         clearAuth();
       }
     } finally {
@@ -175,21 +212,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isOnline, accessToken, sheetId, syncNow]);
 
-  const markRecentCategory = useCallback(async (type: TransactionType, category: string) => {
-    const updated = await updateRecentCategory(type, category);
-    setRecentCategoriesState(updated);
-  }, []);
+  const markRecentCategory = useCallback(
+    async (type: TransactionType, category: string) => {
+      const updated = await updateRecentCategory(type, category);
+      setRecentCategoriesState(updated);
+    },
+    []
+  );
+
+  const updateOnboarding = useCallback(
+    async (updates: Partial<OnboardingState>) => {
+      let nextState: OnboardingState | null = null;
+      setOnboarding((prev) => {
+        nextState = { ...prev, ...updates };
+        return nextState;
+      });
+      if (nextState) {
+        await setOnboardingState(nextState);
+        return nextState;
+      }
+      return getDefaultOnboardingState();
+    },
+    []
+  );
 
   const addTransaction = useCallback(
     async (input: TransactionInput) => {
       const now = new Date().toISOString();
-      const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}`;
+      const id =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}`;
       const record: TransactionRecord = {
         ...input,
         id,
-        status: 'pending',
+        status: "pending",
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
       await db.transactions.add(record);
       setLastTransaction(record);
@@ -203,25 +262,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const undoLast = useCallback(async (): Promise<UndoResult> => {
-    const last = await db.transactions.orderBy('createdAt').last();
+    const last = await db.transactions.orderBy("createdAt").last();
     if (!last) {
-      return { ok: false, message: 'Nothing to undo' };
+      return { ok: false, message: "Nothing to undo" };
     }
 
-    if (last.status === 'pending') {
+    if (last.status === "pending") {
       await db.transactions.delete(last.id);
       await refreshStats();
-      return { ok: true, message: 'Removed pending entry' };
+      return { ok: true, message: "Removed pending entry" };
     }
 
-    if (last.status === 'synced' && accessToken && sheetId) {
-      const effectiveTabId = sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
+    if (last.status === "synced" && accessToken && sheetId) {
+      const effectiveTabId =
+        sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
       if (effectiveTabId && last.sheetRow) {
         try {
           await deleteRow(accessToken, sheetId, effectiveTabId, last.sheetRow);
           await db.transactions.delete(last.id);
           await refreshStats();
-          return { ok: true, message: 'Removed last synced entry' };
+          return { ok: true, message: "Removed last synced entry" };
         } catch {
           // Fall through to compensating entry
         }
@@ -229,25 +289,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     const now = new Date().toISOString();
-    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-undo`;
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-undo`;
     const compensating: TransactionRecord = {
       ...last,
       id,
       amount: -last.amount,
-      note: last.note ? `UNDO: ${last.note}` : 'UNDO',
-      status: 'pending',
+      note: last.note ? `UNDO: ${last.note}` : "UNDO",
+      status: "pending",
       createdAt: now,
       updatedAt: now,
       sheetRow: undefined,
       sheetId: undefined,
-      error: undefined
+      error: undefined,
     };
     await db.transactions.add(compensating);
     await refreshStats();
     if (isOnline && accessToken && sheetId) {
       await syncNow();
     }
-    return { ok: true, message: 'Undo queued as compensating entry' };
+    return { ok: true, message: "Undo queued as compensating entry" };
   }, [accessToken, sheetId, sheetTabId, isOnline, refreshStats, syncNow]);
 
   const value = useMemo<AppContextValue>(
@@ -260,12 +323,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       queueCount,
       lastTransaction,
       recentCategories,
+      onboarding,
       connect,
       refreshSheet,
       addTransaction,
       undoLast,
       syncNow,
-      markRecentCategory
+      markRecentCategory,
+      updateOnboarding,
     }),
     [
       isOnline,
@@ -276,12 +341,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       queueCount,
       lastTransaction,
       recentCategories,
+      onboarding,
       connect,
       refreshSheet,
       addTransaction,
       undoLast,
       syncNow,
-      markRecentCategory
+      markRecentCategory,
+      updateOnboarding,
     ]
   );
 
@@ -291,7 +358,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useApp must be used within AppProvider');
+    throw new Error("useApp must be used within AppProvider");
   }
   return context;
 }

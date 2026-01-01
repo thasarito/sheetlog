@@ -78,9 +78,10 @@ async function fetchWithAuth<T>(url: string, accessToken: string, options: Reque
   return response.json() as Promise<T>;
 }
 
-export async function findExistingSheet(accessToken: string): Promise<string | null> {
+export async function findExistingSheet(accessToken: string, folderId?: string | null): Promise<string | null> {
+  const folderFilter = folderId ? ` and '${folderId}' in parents` : '';
   const query = encodeURIComponent(
-    `name='${SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`
+    `name='${SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false${folderFilter}`
   );
   const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
   const data = await fetchWithAuth<{ files: Array<{ id: string }> }>(url, accessToken);
@@ -101,6 +102,22 @@ export async function createSheet(accessToken: string): Promise<string> {
   return data.spreadsheetId;
 }
 
+async function moveFileToFolder(accessToken: string, fileId: string, folderId: string): Promise<void> {
+  const metadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`;
+  const metadata = await fetchWithAuth<{ parents?: string[] }>(metadataUrl, accessToken);
+  const parents = metadata.parents ?? [];
+  if (parents.length === 1 && parents[0] === folderId) {
+    return;
+  }
+  const removeParents = parents.filter((parent) => parent !== folderId).join(',');
+  const params = new URLSearchParams({ addParents: folderId, fields: 'id,parents' });
+  if (removeParents) {
+    params.set('removeParents', removeParents);
+  }
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?${params.toString()}`;
+  await fetchWithAuth(url, accessToken, { method: 'PATCH' });
+}
+
 export async function ensureHeaders(accessToken: string, spreadsheetId: string): Promise<void> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:H1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
@@ -109,13 +126,17 @@ export async function ensureHeaders(accessToken: string, spreadsheetId: string):
   });
 }
 
-export async function ensureSheet(accessToken: string): Promise<string> {
-  const existing = await findExistingSheet(accessToken);
+export async function ensureSheet(accessToken: string, folderId?: string | null): Promise<string> {
+  const existing = await findExistingSheet(accessToken, folderId);
   if (existing) {
     await ensureHeaders(accessToken, existing);
     return existing;
   }
-  return createSheet(accessToken);
+  const created = await createSheet(accessToken);
+  if (folderId) {
+    await moveFileToFolder(accessToken, created, folderId);
+  }
+  return created;
 }
 
 export async function getSheetTabId(accessToken: string, spreadsheetId: string): Promise<number | null> {

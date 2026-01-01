@@ -31,3 +31,13 @@ export interface RecentCategories {
   income: string[];
   transfer: string[];
 }
+
+export type CategoryConfig = Record<TransactionType, string[]>;
+
+export interface OnboardingState {
+  sheetFolderId: string | null;
+  accounts: string[];
+  accountsConfirmed: boolean;
+  categories: CategoryConfig;
+  categoriesConfirmed: boolean;
+}
