@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
@@ -49,6 +49,8 @@ export default function HomePage() {
   const [tags, setTags] = useState<string[]>([]);
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("THB");
+  const [account, setAccount] = useState<string | null>(null);
+  const [forValue, setForValue] = useState("");
   const [dateObject, setDateObject] = useState(new Date());
   const [note, setNote] = useState("");
   const [toastOpen, setToastOpen] = useState(false);
@@ -94,6 +96,27 @@ export default function HomePage() {
 
   const formattedAmount = amount ? Number.parseFloat(amount) : 0;
 
+  useEffect(() => {
+    if (!account && onboarding.accounts.length === 1) {
+      setAccount(onboarding.accounts[0]);
+    }
+  }, [account, onboarding.accounts]);
+
+  useEffect(() => {
+    if (type === "transfer" && forValue) {
+      const isAccountValue = onboarding.accounts.includes(forValue);
+      if (!isAccountValue) {
+        setForValue("");
+      }
+    }
+  }, [type, forValue, onboarding.accounts]);
+
+  useEffect(() => {
+    if (type === "transfer" && account && forValue === account) {
+      setForValue("");
+    }
+  }, [type, account, forValue]);
+
   function handleToast(
     message: string,
     action?: { label: string; onClick: () => void }
@@ -111,6 +134,7 @@ export default function HomePage() {
     setCategory(null);
     setTags([]);
     setAmount("");
+    setForValue("");
     setNote("");
     setDateObject(new Date());
   }
@@ -135,13 +159,35 @@ export default function HomePage() {
       handleToast("Enter a valid amount");
       return;
     }
+    if (!account) {
+      handleToast("Select an account");
+      return;
+    }
+    const trimmedFor = forValue.trim();
+    if (type === "transfer") {
+      if (onboarding.accounts.length < 2) {
+        handleToast("Add another account to log transfers");
+        return;
+      }
+      if (!trimmedFor) {
+        handleToast("Select a destination account");
+        return;
+      }
+      if (trimmedFor === account) {
+        handleToast("Pick two different accounts");
+        return;
+      }
+    }
     await addTransaction({
       type,
       amount: formattedAmount,
+      currency,
+      account,
+      for: trimmedFor,
       category,
       tags,
       date: format(dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
-      note: `[${currency}] ${note.trim()}`.trim(),
+      note: note.trim() || undefined,
     });
     handleToast("Saved", { label: "Undo", onClick: () => void handleUndo() });
     resetFlow();
@@ -317,6 +363,87 @@ export default function HomePage() {
 
                   <div className="space-y-3">
                     <p className="text-xs uppercase tracking-widest text-slate-400">
+                      {type === "transfer" ? "From account" : "Account"}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {onboarding.accounts.map((item) => {
+                        const isActive = account === item;
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                              isActive
+                                ? "bg-emerald-400 text-slate-950"
+                                : "bg-white/10 text-slate-200"
+                            }`}
+                            onClick={() => setAccount(item)}
+                            aria-pressed={isActive}
+                          >
+                            {item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {type === "transfer" ? (
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-widest text-slate-400">
+                        To account
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {onboarding.accounts.map((item) => {
+                          const isActive = forValue === item;
+                          const isDisabled = item === account;
+                          return (
+                            <button
+                              key={item}
+                              type="button"
+                              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                isActive
+                                  ? "bg-emerald-400 text-slate-950"
+                                  : "bg-white/10 text-slate-200"
+                              } ${
+                                isDisabled
+                                  ? "cursor-not-allowed opacity-40"
+                                  : ""
+                              }`}
+                              onClick={() => setForValue(item)}
+                              aria-pressed={isActive}
+                              disabled={isDisabled}
+                            >
+                              {item}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {onboarding.accounts.length < 2 ? (
+                        <p className="text-xs text-slate-400">
+                          Add another account in onboarding to log transfers.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div>
+                      <label
+                        htmlFor="forValue"
+                        className="text-xs uppercase tracking-widest text-slate-400"
+                      >
+                        For
+                      </label>
+                      <input
+                        type="text"
+                        className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100"
+                        placeholder="Optional"
+                        value={forValue}
+                        onChange={(event) => setForValue(event.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <p className="text-xs uppercase tracking-widest text-slate-400">
                       Date & Time
                     </p>
                     <DateScroller value={dateObject} onChange={setDateObject} />
@@ -324,7 +451,10 @@ export default function HomePage() {
                   </div>
 
                   <div>
-                    <label className="text-xs uppercase tracking-widest text-slate-400">
+                    <label
+                      htmlFor="note"
+                      className="text-xs uppercase tracking-widest text-slate-400"
+                    >
                       Note
                     </label>
                     <input

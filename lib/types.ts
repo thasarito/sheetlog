@@ -4,6 +4,9 @@ export type TransactionStatus = 'pending' | 'synced' | 'error';
 export interface TransactionInput {
   type: TransactionType;
   amount: number;
+  currency: string;
+  account: string;
+  for: string;
   category: string;
   tags: string[];
   date: string;

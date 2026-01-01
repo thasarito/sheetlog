@@ -4,7 +4,19 @@ const SHEET_NAME = 'SheetLog_DB';
 const TAB_NAME = 'Transactions';
 const ACCOUNT_TAB = 'Account';
 const CATEGORY_TAB = 'Category';
-const HEADER_ROW = ['Date', 'Type', 'Amount', 'Category', 'Tags', 'Note', 'Timestamp', 'Device/Source'];
+const HEADER_ROW = [
+  'Date',
+  'Type',
+  'Amount',
+  'Category',
+  'Tags',
+  'Note',
+  'Timestamp',
+  'Device/Source',
+  'Currency',
+  'Account',
+  'For'
+];
 const ACCOUNT_HEADER_ROW = ['Account'];
 const CATEGORY_HEADER_ROW = ['Type', 'Category'];
 const SCOPES = [
@@ -129,7 +141,7 @@ async function moveFileToFolder(accessToken: string, fileId: string, folderId: s
 }
 
 export async function ensureHeaders(accessToken: string, spreadsheetId: string): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:H1?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:K1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: 'PUT',
     body: JSON.stringify({ values: [HEADER_ROW] })
@@ -214,7 +226,16 @@ export async function appendTransaction(
   spreadsheetId: string,
   transaction: TransactionRecord
 ): Promise<number | null> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:H:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  let note = transaction.note ?? '';
+  let currency = transaction.currency ?? '';
+  if (!currency && note) {
+    const match = note.match(/^\[([A-Z]{3})\]\s*/);
+    if (match) {
+      currency = match[1];
+      note = note.slice(match[0].length);
+    }
+  }
   const values = [
     [
       transaction.date,
@@ -222,9 +243,12 @@ export async function appendTransaction(
       transaction.amount,
       transaction.category,
       transaction.tags.join(', '),
-      transaction.note ?? '',
+      note,
       transaction.createdAt,
-      'PWA'
+      'PWA',
+      currency,
+      transaction.account ?? '',
+      transaction.for ?? ''
     ]
   ];
 
