@@ -12,12 +12,12 @@ import { OnboardingFlow } from "../OnboardingFlow";
 import { ServiceWorker } from "../ServiceWorker";
 import { Toast } from "../Toast";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
+import { CURRENCIES, DEFAULT_CURRENCY } from "../../lib/currencies";
 import type { TransactionType } from "../../lib/types";
-import { FlowHeader } from "./FlowHeader";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
-import { StepType } from "./StepType";
+import { TYPE_OPTIONS } from "./constants";
 
 type ToastAction = { label: string; onClick: () => void };
 
@@ -55,13 +55,29 @@ type FlowAction =
   | { type: "OPEN_TOAST"; message: string; action?: ToastAction }
   | { type: "CLOSE_TOAST" };
 
+const CURRENCY_STORAGE_KEY = "sheetlog:last-currency";
+
+function resolveStoredCurrency() {
+  if (typeof window === "undefined") {
+    return DEFAULT_CURRENCY;
+  }
+  const storedCurrency = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
+  if (
+    storedCurrency &&
+    CURRENCIES.includes(storedCurrency as (typeof CURRENCIES)[number])
+  ) {
+    return storedCurrency;
+  }
+  return DEFAULT_CURRENCY;
+}
+
 const createInitialState = (_?: unknown): FlowState => ({
   step: 0,
-  type: null,
+  type: TYPE_OPTIONS[0],
   category: null,
   tags: [],
   amount: "",
-  currency: "THB",
+  currency: resolveStoredCurrency(),
   account: null,
   forValue: "",
   dateObject: new Date(),
@@ -75,9 +91,13 @@ const createInitialState = (_?: unknown): FlowState => ({
 function flowReducer(state: FlowState, action: FlowAction): FlowState {
   switch (action.type) {
     case "SELECT_TYPE":
-      return { ...state, type: action.value, step: 1 };
+      return {
+        ...state,
+        type: action.value,
+        category: state.type === action.value ? state.category : null,
+      };
     case "SELECT_CATEGORY":
-      return { ...state, category: action.value, step: 2 };
+      return { ...state, category: action.value, step: 1 };
     case "SET_STEP":
       return { ...state, step: action.value };
     case "TOGGLE_TAG":
@@ -100,7 +120,7 @@ function flowReducer(state: FlowState, action: FlowAction): FlowState {
       return {
         ...state,
         step: 0,
-        type: null,
+        type: TYPE_OPTIONS[0],
         category: null,
         tags: [],
         amount: "",
@@ -176,25 +196,20 @@ export function TransactionFlow() {
     accessToken && sheetId && accountsReady && categoriesReady
   );
 
-  const typeCategories = type ? categories[type] ?? [] : [];
-  const frequentCategories = useMemo(() => {
-    if (!type) {
-      return [];
-    }
-    const recent = recentCategories[type] ?? [];
-    const combined = [...recent, ...typeCategories];
-    const unique = combined.filter(
-      (item, index) => combined.indexOf(item) === index
-    );
-    return unique.slice(0, 4);
-  }, [type, typeCategories, recentCategories]);
-
-  const otherCategories = useMemo(() => {
-    if (!type) {
-      return [];
-    }
-    return typeCategories.filter((item) => !frequentCategories.includes(item));
-  }, [type, typeCategories, frequentCategories]);
+  const categoryGroups = useMemo(() => {
+    return TYPE_OPTIONS.reduce((acc, typeOption) => {
+      const typeCategories = categories[typeOption] ?? [];
+      const recent = recentCategories[typeOption] ?? [];
+      const combined = [...recent, ...typeCategories];
+      const unique = combined.filter(
+        (item, index) => combined.indexOf(item) === index
+      );
+      const frequent = unique.slice(0, 4);
+      const others = typeCategories.filter((item) => !frequent.includes(item));
+      acc[typeOption] = { frequent, others };
+      return acc;
+    }, {} as Record<TransactionType, { frequent: string[]; others: string[] }>);
+  }, [categories, recentCategories]);
 
   const formattedAmount = amount ? Number.parseFloat(amount) : 0;
 
@@ -203,6 +218,13 @@ export function TransactionFlow() {
       dispatch({ type: "SET_ACCOUNT", value: onboarding.accounts[0] });
     }
   }, [account, onboarding.accounts]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(CURRENCY_STORAGE_KEY, currency);
+  }, [currency]);
 
   useEffect(() => {
     if (type === "transfer" && forValue) {
@@ -293,26 +315,16 @@ export function TransactionFlow() {
 
   const steps: StepDefinition[] = [
     {
-      key: "step-type",
-      label: "Type",
-      className: "space-y-4",
-      content: (
-        <StepType
-          onSelect={(value) => dispatch({ type: "SELECT_TYPE", value })}
-        />
-      ),
-    },
-    {
-      key: "step-category",
-      label: "Category",
-      className: "space-y-5",
+      key: "step-type-category",
+      label: "Type & category",
+      className: "space-y-6",
       content: (
         <StepCategory
-          frequent={frequentCategories}
-          others={otherCategories}
+          type={type ?? TYPE_OPTIONS[0]}
+          categoryGroups={categoryGroups}
           selected={category}
           tags={tags}
-          onBack={() => dispatch({ type: "SET_STEP", value: 0 })}
+          onSelectType={(value) => dispatch({ type: "SELECT_TYPE", value })}
           onSelectCategory={(value) =>
             dispatch({ type: "SELECT_CATEGORY", value })
           }
@@ -334,14 +346,12 @@ export function TransactionFlow() {
           dateObject={dateObject}
           note={note}
           accounts={onboarding.accounts}
-          onBack={() => dispatch({ type: "SET_STEP", value: 1 })}
+          onBack={() => dispatch({ type: "SET_STEP", value: 0 })}
           onAmountChange={(value) => dispatch({ type: "SET_AMOUNT", value })}
           onCurrencyChange={(value) =>
             dispatch({ type: "SET_CURRENCY", value })
           }
-          onAccountSelect={(value) =>
-            dispatch({ type: "SET_ACCOUNT", value })
-          }
+          onAccountSelect={(value) => dispatch({ type: "SET_ACCOUNT", value })}
           onForChange={(value) => dispatch({ type: "SET_FOR", value })}
           onDateChange={(value) => dispatch({ type: "SET_DATE", value })}
           onNoteChange={(value) => dispatch({ type: "SET_NOTE", value })}
@@ -354,18 +364,10 @@ export function TransactionFlow() {
   const activeStep = steps[step] ?? steps[0];
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-5 pb-20 pt-10">
+    <main className="min-h-screen bg-gradient-to-b from-[#f2f2f7] via-white to-[#f2f2f7] px-5 pb-24 pt-10 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-slate-900 antialiased">
       <ServiceWorker />
       {isOnboarded ? (
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-          <FlowHeader
-            isOnline={isOnline}
-            queueCount={queueCount}
-            sheetId={sheetId}
-            onSync={syncNow}
-            onRefreshSheet={handleRefreshSheet}
-          />
-
           <StepCard
             stepIndex={step}
             totalSteps={steps.length}

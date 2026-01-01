@@ -12,6 +12,7 @@
     "format": "biome format --write ."
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.9",
     "date-fns": "^3.6.0",
     "dexie": "^4.0.8",
     "framer-motion": "^11.3.24",

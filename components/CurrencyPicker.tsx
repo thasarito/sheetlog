@@ -1,39 +1,54 @@
 "use client";
 
-import React from "react";
-import { motion } from "framer-motion";
-
-const CURRENCIES = ["THB", "USD", "EUR", "JPY", "GBP"];
+import { useCallback, useMemo } from "react";
+import { CURRENCIES } from "../lib/currencies";
+import { Picker } from "./Picker";
 
 interface CurrencyPickerProps {
   value: string;
   onChange: (value: string) => void;
 }
 
+type CurrencyPickerValue = {
+  currency: string;
+};
+
 export function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
+  const pickerValue = useMemo<CurrencyPickerValue>(
+    () => ({ currency: value }),
+    [value]
+  );
+
+  const handlePickerChange = useCallback(
+    (nextValue: CurrencyPickerValue) => {
+      onChange(nextValue.currency);
+    },
+    [onChange]
+  );
+
   return (
-    <div className="flex gap-2 p-1 overflow-x-auto no-scrollbar">
-      {CURRENCIES.map((currency) => (
-        <button
-          key={currency}
-          type="button"
-          onClick={() => onChange(currency)}
-          className={`relative px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
-            value === currency
-              ? "text-slate-950 bg-emerald-400"
-              : "text-slate-400 hover:text-slate-200 bg-white/5"
-          }`}
-        >
-          {currency}
-          {value === currency && (
-            <motion.div
-              layoutId="activeCurrency"
-              className="absolute inset-0 bg-emerald-400 rounded-full -z-10"
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            />
-          )}
-        </button>
-      ))}
-    </div>
+    <Picker
+      value={pickerValue}
+      onChange={(nextValue) => handlePickerChange(nextValue)}
+      height={72}
+      itemHeight={24}
+      wheelMode="natural"
+      className="w-20 shrink-0 rounded-xl border border-white/10 bg-white/5"
+      aria-label="Select currency"
+    >
+      <Picker.Column name="currency" className="text-xs font-semibold">
+        {CURRENCIES.map((currency) => (
+          <Picker.Item key={currency} value={currency}>
+            {({ selected }) => (
+              <span
+                className={selected ? "text-emerald-300" : "text-slate-400"}
+              >
+                {currency}
+              </span>
+            )}
+          </Picker.Item>
+        ))}
+      </Picker.Column>
+    </Picker>
   );
 }
