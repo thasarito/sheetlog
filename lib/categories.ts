@@ -1,7 +1,22 @@
-import type { TransactionType } from './types';
+import type { TransactionType } from "./types";
 
 export const DEFAULT_CATEGORIES: Record<TransactionType, string[]> = {
-  expense: ['Food', 'Transport', 'Rent', 'Utilities', 'Health', 'Shopping', 'Entertainment', 'Other'],
-  income: ['Salary', 'Bonus', 'Gift', 'Interest', 'Other'],
-  transfer: ['Savings', 'Invest', 'Credit Card', 'Other']
+  expense: [
+    "Food Delivery",
+    "Dining Out",
+    "Groceries & Home Supplies",
+    "Coffee & Snacks",
+    "Housing",
+    "Utilities & Connectivity",
+    "Transport",
+    "Subscriptions",
+    "Shopping",
+    "Entertainment & Social",
+    "Health",
+    "Gifts & Donations",
+    "Work / Reimbursable",
+    "Travel",
+  ],
+  income: ["Salary", "Bonus", "Gift", "Interest", "Other"],
+  transfer: ["Savings", "Invest", "Credit Card", "Other"],
 };

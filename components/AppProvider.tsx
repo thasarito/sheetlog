@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { db } from "../lib/db";
 import type {
+  CategoryConfig,
   OnboardingState,
   RecentCategories,
   TransactionInput,
@@ -27,7 +28,9 @@ import {
   deleteRow,
   ensureSheet,
   getSheetTabId,
+  readOnboardingConfig,
   requestAccessToken,
+  writeOnboardingConfig,
 } from "../lib/google";
 import { syncPendingTransactions } from "../lib/sync";
 
@@ -40,6 +43,86 @@ const DEFAULT_RECENTS: RecentCategories = {
   income: [],
   transfer: [],
 };
+
+type OnboardingSheetConfig = {
+  accounts?: string[];
+  categories?: CategoryConfig;
+};
+
+function hasAllCategories(categories: CategoryConfig): boolean {
+  return (
+    categories.expense.length > 0 &&
+    categories.income.length > 0 &&
+    categories.transfer.length > 0
+  );
+}
+
+function hasAnyCategories(categories: CategoryConfig): boolean {
+  return (
+    categories.expense.length > 0 ||
+    categories.income.length > 0 ||
+    categories.transfer.length > 0
+  );
+}
+
+function normalizeStringList(values: string[]): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    next.push(trimmed);
+  }
+  return next;
+}
+
+function normalizeCategories(categories: CategoryConfig): CategoryConfig {
+  return {
+    expense: normalizeStringList(categories.expense),
+    income: normalizeStringList(categories.income),
+    transfer: normalizeStringList(categories.transfer),
+  };
+}
+
+function mergeOnboardingState(
+  current: OnboardingState,
+  config: OnboardingSheetConfig
+): { next: OnboardingState; changed: boolean } {
+  let next = current;
+  let changed = false;
+  if (
+    config.accounts &&
+    config.accounts.length > 0 &&
+    !current.accountsConfirmed
+  ) {
+    next = {
+      ...next,
+      accounts: config.accounts,
+      accountsConfirmed: true,
+    };
+    changed = true;
+  }
+  if (
+    config.categories &&
+    hasAnyCategories(config.categories) &&
+    !current.categoriesConfirmed
+  ) {
+    next = {
+      ...next,
+      categories: config.categories,
+      categoriesConfirmed: hasAllCategories(config.categories),
+    };
+    changed = true;
+  }
+  return { next, changed };
+}
 
 interface UndoResult {
   ok: boolean;
@@ -84,6 +167,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [recentCategories, setRecentCategoriesState] =
     useState<RecentCategories>(DEFAULT_RECENTS);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [onboarding, setOnboarding] = useState<OnboardingState>(() =>
     getDefaultOnboardingState()
   );
@@ -101,9 +185,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") {
       return;
     }
-    setIsOnline(window.navigator.onLine);
-    setAccessToken(localStorage.getItem(ACCESS_TOKEN_KEY));
-    setSheetId(localStorage.getItem(SHEET_ID_KEY));
+    const online = window.navigator.onLine;
+    const storedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const storedSheetId = localStorage.getItem(SHEET_ID_KEY);
+    setIsOnline(online);
+    setAccessToken(storedToken);
+    setSheetId(storedSheetId);
     const storedTabId = localStorage.getItem(SHEET_TAB_ID_KEY);
     setSheetTabId(storedTabId ? Number.parseInt(storedTabId, 10) : null);
     const [storedRecents, storedOnboarding] = await Promise.all([
@@ -112,6 +199,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ]);
     setRecentCategoriesState(storedRecents);
     setOnboarding(storedOnboarding);
+    setHasLoaded(true);
     await refreshStats();
   }, [refreshStats]);
 
@@ -172,6 +260,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [accessToken, onboarding.sheetFolderId, storeSheet]
   );
 
+  const hydrateOnboardingFromSheet = useCallback(async () => {
+    if (!accessToken || !sheetId || !isOnline) {
+      return;
+    }
+    try {
+      const sheetConfig = await readOnboardingConfig(accessToken, sheetId);
+      if (!sheetConfig) {
+        return;
+      }
+      let nextState: OnboardingState | null = null;
+      setOnboarding((prev) => {
+        const merged = mergeOnboardingState(prev, sheetConfig);
+        if (!merged.changed) {
+          return prev;
+        }
+        nextState = merged.next;
+        return merged.next;
+      });
+      if (nextState) {
+        await setOnboardingState(nextState);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("401")) {
+        clearAuth();
+      }
+    }
+  }, [accessToken, sheetId, isOnline, clearAuth]);
+
   const connect = useCallback(async () => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
@@ -212,6 +328,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isOnline, accessToken, sheetId, syncNow]);
 
+  useEffect(() => {
+    if (!hasLoaded) {
+      return;
+    }
+    void hydrateOnboardingFromSheet();
+  }, [hasLoaded, hydrateOnboardingFromSheet]);
+
   const markRecentCategory = useCallback(
     async (type: TransactionType, category: string) => {
       const updated = await updateRecentCategory(type, category);
@@ -222,18 +345,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateOnboarding = useCallback(
     async (updates: Partial<OnboardingState>) => {
-      let nextState: OnboardingState | null = null;
-      setOnboarding((prev) => {
-        nextState = { ...prev, ...updates };
-        return nextState;
-      });
-      if (nextState) {
-        await setOnboardingState(nextState);
-        return nextState;
+      const nextState = { ...onboarding, ...updates };
+
+      if (accessToken && sheetId && isOnline) {
+        const shouldPersistAccounts =
+          ("accounts" in updates || "accountsConfirmed" in updates) &&
+          nextState.accountsConfirmed;
+        const shouldPersistCategories =
+          ("categories" in updates || "categoriesConfirmed" in updates) &&
+          nextState.categoriesConfirmed;
+
+        const updatesToSheet: {
+          accounts?: string[];
+          categories?: CategoryConfig;
+        } = {};
+
+        if (shouldPersistAccounts) {
+          const normalizedAccounts = normalizeStringList(nextState.accounts);
+          if (normalizedAccounts.length > 0) {
+            updatesToSheet.accounts = normalizedAccounts;
+          }
+        }
+
+        if (shouldPersistCategories) {
+          const normalizedCategories = normalizeCategories(
+            nextState.categories
+          );
+          if (hasAllCategories(normalizedCategories)) {
+            updatesToSheet.categories = normalizedCategories;
+          }
+        }
+
+        if (updatesToSheet.accounts || updatesToSheet.categories) {
+          try {
+            await writeOnboardingConfig(accessToken, sheetId, updatesToSheet);
+          } catch (error) {
+            if (error instanceof Error && error.message.includes("401")) {
+              clearAuth();
+            }
+            throw error;
+          }
+        }
       }
-      return getDefaultOnboardingState();
+
+      setOnboarding(nextState);
+      await setOnboardingState(nextState);
+      return nextState;
     },
-    []
+    [onboarding, accessToken, sheetId, isOnline, clearAuth]
   );
 
   const addTransaction = useCallback(
