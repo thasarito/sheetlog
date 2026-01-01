@@ -1,122 +1,659 @@
 "use client";
 
-import React from "react";
+import React, {
+  CSSProperties,
+  HTMLProps,
+  MutableRefObject,
+  ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 
 interface TimePickerProps {
-  value: Date; // We extract time from this date
+  value: Date;
   onChange: (newDate: Date) => void;
 }
 
-const MINUTES_IN_DAY = 24 * 60;
-const TICK_COUNT = 24 * 4 + 1; // 15-min ticks
+interface Option {
+  value: string | number;
+  element: MutableRefObject<HTMLElement | null>;
+}
+
+interface PickerValue {
+  [key: string]: string | number;
+}
+
+interface PickerRootProps<TType extends PickerValue>
+  extends Omit<HTMLProps<HTMLDivElement>, "value" | "onChange"> {
+  value: TType;
+  onChange: (value: TType, key: string) => void;
+  height?: number;
+  itemHeight?: number;
+  wheelMode?: "off" | "natural" | "normal";
+}
+
+const DEFAULT_HEIGHT = 168;
+const DEFAULT_ITEM_HEIGHT = 32;
+const DEFAULT_WHEEL_MODE = "off";
+
+const HOURS = Array.from({ length: 24 }, (_, index) =>
+  index.toString().padStart(2, "0")
+);
+const MINUTES = Array.from({ length: 60 }, (_, index) =>
+  index.toString().padStart(2, "0")
+);
+
+const PickerDataContext = createContext<{
+  height: number;
+  itemHeight: number;
+  wheelMode: "off" | "natural" | "normal";
+  value: PickerValue;
+  optionGroups: { [key: string]: Option[] };
+} | null>(null);
+PickerDataContext.displayName = "PickerDataContext";
+
+function usePickerData(componentName: string) {
+  const context = useContext(PickerDataContext);
+  if (context === null) {
+    const error = new Error(
+      `<${componentName} /> is missing a parent <Picker /> component.`
+    );
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(error, usePickerData);
+    }
+    throw error;
+  }
+  return context;
+}
+
+const PickerActionsContext = createContext<{
+  registerOption(key: string, option: Option): () => void;
+  change(key: string, value: string | number): boolean;
+} | null>(null);
+PickerActionsContext.displayName = "PickerActionsContext";
+
+function usePickerActions(componentName: string) {
+  const context = useContext(PickerActionsContext);
+  if (context === null) {
+    const error = new Error(
+      `<${componentName} /> is missing a parent <Picker /> component.`
+    );
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(error, usePickerActions);
+    }
+    throw error;
+  }
+  return context;
+}
+
+function sortByDomNode<T>(
+  nodes: T[],
+  resolveKey: (item: T) => HTMLElement | null = (i) =>
+    i as unknown as HTMLElement | null
+): T[] {
+  return nodes.slice().sort((aItem, zItem) => {
+    const a = resolveKey(aItem);
+    const z = resolveKey(zItem);
+
+    if (a === null || z === null) return 0;
+
+    const position = a.compareDocumentPosition(z);
+
+    if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  });
+}
+
+function pickerReducer(
+  optionGroups: { [key: string]: Option[] },
+  action: {
+    type: "REGISTER_OPTION" | "UNREGISTER_OPTION";
+    key: string;
+    option: Option;
+  }
+) {
+  switch (action.type) {
+    case "REGISTER_OPTION": {
+      const { key, option } = action;
+      let nextOptionsForKey = [...(optionGroups[key] || []), option];
+      nextOptionsForKey = sortByDomNode(
+        nextOptionsForKey,
+        (optionItem) => optionItem.element.current
+      );
+      return {
+        ...optionGroups,
+        [key]: nextOptionsForKey,
+      };
+    }
+    case "UNREGISTER_OPTION": {
+      const { key, option } = action;
+      return {
+        ...optionGroups,
+        [key]: (optionGroups[key] || []).filter(
+          (optionItem) => optionItem !== option
+        ),
+      };
+    }
+    default: {
+      throw Error(`Unknown action: ${action.type as string}`);
+    }
+  }
+}
+
+function PickerRoot<TType extends PickerValue>(props: PickerRootProps<TType>) {
+  const {
+    style,
+    children,
+    value,
+    onChange,
+    height = DEFAULT_HEIGHT,
+    itemHeight = DEFAULT_ITEM_HEIGHT,
+    wheelMode = DEFAULT_WHEEL_MODE,
+    ...restProps
+  } = props;
+
+  const highlightStyle = useMemo<CSSProperties>(
+    () => ({
+      height: itemHeight,
+      marginTop: -(itemHeight / 2),
+      position: "absolute",
+      top: "50%",
+      left: 0,
+      width: "100%",
+      pointerEvents: "none",
+    }),
+    [itemHeight]
+  );
+  const containerStyle = useMemo<CSSProperties>(
+    () => ({
+      height: `${height}px`,
+      position: "relative",
+      display: "flex",
+      justifyContent: "center",
+      overflow: "hidden",
+      maskImage:
+        "linear-gradient(to top, transparent, transparent 5%, white 20%, white 80%, transparent 95%, transparent)",
+      WebkitMaskImage:
+        "linear-gradient(to top, transparent, transparent 5%, white 20%, white 80%, transparent 95%, transparent)",
+    }),
+    [height]
+  );
+
+  const [optionGroups, dispatch] = useReducer(pickerReducer, {});
+
+  const pickerData = useMemo(
+    () => ({ height, itemHeight, wheelMode, value, optionGroups }),
+    [height, itemHeight, value, optionGroups, wheelMode]
+  );
+
+  const triggerChange = useCallback(
+    (key: string, nextValue: string | number) => {
+      if (value[key] === nextValue) return false;
+      const nextPickerValue = { ...value, [key]: nextValue };
+      onChange(nextPickerValue, key);
+      return true;
+    },
+    [onChange, value]
+  );
+  const registerOption = useCallback((key: string, option: Option) => {
+    dispatch({ type: "REGISTER_OPTION", key, option });
+    return () => dispatch({ type: "UNREGISTER_OPTION", key, option });
+  }, []);
+  const pickerActions = useMemo(
+    () => ({ registerOption, change: triggerChange }),
+    [registerOption, triggerChange]
+  );
+
+  return (
+    <div
+      style={{
+        ...containerStyle,
+        ...style,
+      }}
+      {...restProps}
+    >
+      <PickerActionsContext.Provider value={pickerActions}>
+        <PickerDataContext.Provider value={pickerData}>
+          {children}
+        </PickerDataContext.Provider>
+      </PickerActionsContext.Provider>
+      <div style={highlightStyle}>
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: "auto",
+            left: 0,
+            right: "auto",
+            width: "100%",
+            height: "1px",
+            background: "rgba(255, 255, 255, 0.2)",
+            transform: "scaleY(0.5)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: "auto",
+            bottom: 0,
+            left: 0,
+            right: "auto",
+            width: "100%",
+            height: "1px",
+            background: "rgba(255, 255, 255, 0.2)",
+            transform: "scaleY(0.5)",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+interface PickerColumnProps extends HTMLProps<HTMLDivElement> {
+  name: string;
+}
+
+const PickerColumnDataContext = createContext<{
+  key: string;
+} | null>(null);
+PickerColumnDataContext.displayName = "PickerColumnDataContext";
+
+function useColumnData(componentName: string) {
+  const context = useContext(PickerColumnDataContext);
+  if (context === null) {
+    const error = new Error(
+      `<${componentName} /> is missing a parent <Picker.Column /> component.`
+    );
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(error, useColumnData);
+    }
+    throw error;
+  }
+  return context;
+}
+
+function PickerColumn({
+  style,
+  children,
+  name: key,
+  ...restProps
+}: PickerColumnProps) {
+  const {
+    height,
+    itemHeight,
+    wheelMode,
+    value: groupValue,
+    optionGroups,
+  } = usePickerData("Picker.Column");
+
+  const value = useMemo(() => groupValue[key], [groupValue, key]);
+  const options = useMemo(() => optionGroups[key] || [], [key, optionGroups]);
+  const selectedIndex = useMemo(() => {
+    let index = options.findIndex((optionItem) => optionItem.value === value);
+    if (index < 0) {
+      index = 0;
+    }
+    return index;
+  }, [options, value]);
+
+  const minTranslate = useMemo(
+    () => height / 2 - itemHeight * options.length + itemHeight / 2,
+    [height, itemHeight, options]
+  );
+  const maxTranslate = useMemo(
+    () => height / 2 - itemHeight / 2,
+    [height, itemHeight]
+  );
+  const [scrollerTranslate, setScrollerTranslate] = useState<number>(0);
+  useEffect(() => {
+    setScrollerTranslate(
+      height / 2 - itemHeight / 2 - selectedIndex * itemHeight
+    );
+  }, [height, itemHeight, selectedIndex]);
+
+  const pickerActions = usePickerActions("Picker.Column");
+  const translateRef = useRef<number>(scrollerTranslate);
+  translateRef.current = scrollerTranslate;
+  const handleScrollerTranslateSettled = useCallback(() => {
+    if (options.length === 0) {
+      return;
+    }
+
+    let nextActiveIndex = 0;
+    const currentTrans = translateRef.current;
+    if (currentTrans >= maxTranslate) {
+      nextActiveIndex = 0;
+    } else if (currentTrans <= minTranslate) {
+      nextActiveIndex = options.length - 1;
+    } else {
+      nextActiveIndex = -Math.round((currentTrans - maxTranslate) / itemHeight);
+    }
+
+    const changed = pickerActions.change(key, options[nextActiveIndex].value);
+    if (!changed) {
+      setScrollerTranslate(
+        height / 2 - itemHeight / 2 - nextActiveIndex * itemHeight
+      );
+    }
+  }, [
+    pickerActions,
+    height,
+    itemHeight,
+    key,
+    maxTranslate,
+    minTranslate,
+    options,
+  ]);
+
+  const [startScrollerTranslate, setStartScrollerTranslate] =
+    useState<number>(0);
+  const [isMoving, setIsMoving] = useState<boolean>(false);
+  const [startTouchY, setStartTouchY] = useState<number>(0);
+
+  const updateScrollerWhileMoving = useCallback(
+    (nextScrollerTranslate: number) => {
+      if (nextScrollerTranslate < minTranslate) {
+        nextScrollerTranslate =
+          minTranslate - Math.pow(minTranslate - nextScrollerTranslate, 0.8);
+      } else if (nextScrollerTranslate > maxTranslate) {
+        nextScrollerTranslate =
+          maxTranslate + Math.pow(nextScrollerTranslate - maxTranslate, 0.8);
+      }
+      setScrollerTranslate(nextScrollerTranslate);
+    },
+    [maxTranslate, minTranslate]
+  );
+
+  const handleTouchStart = useCallback(
+    (event: React.TouchEvent<HTMLDivElement>) => {
+      setStartTouchY(event.targetTouches[0].pageY);
+      setStartScrollerTranslate(scrollerTranslate);
+    },
+    [scrollerTranslate]
+  );
+
+  const handleTouchMove = useCallback(
+    (event: TouchEvent) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      if (!isMoving) {
+        setIsMoving(true);
+      }
+
+      const nextScrollerTranslate =
+        startScrollerTranslate + event.targetTouches[0].pageY - startTouchY;
+      updateScrollerWhileMoving(nextScrollerTranslate);
+    },
+    [isMoving, startScrollerTranslate, startTouchY, updateScrollerWhileMoving]
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    if (!isMoving) {
+      return;
+    }
+    setIsMoving(false);
+    setStartTouchY(0);
+    setStartScrollerTranslate(0);
+
+    handleScrollerTranslateSettled();
+  }, [handleScrollerTranslateSettled, isMoving]);
+
+  const handleTouchCancel = useCallback(() => {
+    if (!isMoving) {
+      return;
+    }
+    setIsMoving(false);
+    setStartTouchY(0);
+    setScrollerTranslate(startScrollerTranslate);
+    setStartScrollerTranslate(0);
+  }, [isMoving, startScrollerTranslate]);
+
+  const wheelingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleWheeling = useCallback(
+    (event: WheelEvent) => {
+      if (event.deltaY === 0) {
+        return;
+      }
+      let delta = event.deltaY * 0.1;
+      if (Math.abs(delta) < itemHeight) {
+        delta = itemHeight * Math.sign(delta);
+      }
+      if (wheelMode === "normal") {
+        delta = -delta;
+      }
+
+      const nextScrollerTranslate = scrollerTranslate + delta;
+      updateScrollerWhileMoving(nextScrollerTranslate);
+    },
+    [itemHeight, scrollerTranslate, updateScrollerWhileMoving, wheelMode]
+  );
+
+  const handleWheelEnd = useCallback(() => {
+    handleScrollerTranslateSettled();
+  }, [handleScrollerTranslateSettled]);
+
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      if (wheelMode === "off") {
+        return;
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      handleWheeling(event);
+
+      if (wheelingTimer.current) {
+        clearTimeout(wheelingTimer.current);
+      }
+
+      wheelingTimer.current = setTimeout(() => {
+        handleWheelEnd();
+      }, 200);
+    },
+    [handleWheelEnd, handleWheeling, wheelMode]
+  );
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener("touchmove", handleTouchMove, {
+        passive: false,
+      });
+      container.addEventListener("wheel", handleWheel, { passive: false });
+    }
+    return () => {
+      if (container) {
+        container.removeEventListener("touchmove", handleTouchMove);
+        container.removeEventListener("wheel", handleWheel);
+      }
+    };
+  }, [handleTouchMove, handleWheel]);
+
+  const columnStyle = useMemo<CSSProperties>(
+    () => ({
+      flex: "1 1 0%",
+      maxHeight: "100%",
+      transitionProperty: "transform",
+      transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
+      transitionDuration: isMoving ? "0ms" : "300ms",
+      transform: `translate3d(0, ${scrollerTranslate}px, 0)`,
+    }),
+    [scrollerTranslate, isMoving]
+  );
+
+  const columnData = useMemo(() => ({ key }), [key]);
+
+  return (
+    <div
+      style={{
+        ...columnStyle,
+        ...style,
+      }}
+      ref={containerRef}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
+      {...restProps}
+    >
+      <PickerColumnDataContext.Provider value={columnData}>
+        {children}
+      </PickerColumnDataContext.Provider>
+    </div>
+  );
+}
+
+interface PickerItemRenderProps {
+  selected: boolean;
+}
+
+interface PickerItemProps
+  extends Omit<HTMLProps<HTMLDivElement>, "value" | "children"> {
+  children: ReactNode | ((renderProps: PickerItemRenderProps) => ReactNode);
+  value: string | number;
+}
+
+function isFunction(functionToCheck: unknown): functionToCheck is Function {
+  return typeof functionToCheck === "function";
+}
+
+function PickerItem({ style, children, value, ...restProps }: PickerItemProps) {
+  const optionRef = useRef<HTMLDivElement | null>(null);
+  const { itemHeight, value: pickerValue } = usePickerData("Picker.Item");
+  const pickerActions = usePickerActions("Picker.Item");
+  const { key } = useColumnData("Picker.Item");
+
+  useEffect(
+    () => pickerActions.registerOption(key, { value, element: optionRef }),
+    [key, pickerActions, value]
+  );
+
+  const itemStyle = useMemo(
+    () => ({
+      height: `${itemHeight}px`,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+    }),
+    [itemHeight]
+  );
+
+  const handleClick = useCallback(() => {
+    pickerActions.change(key, value);
+  }, [pickerActions, key, value]);
+
+  return (
+    <div
+      style={{
+        ...itemStyle,
+        ...style,
+      }}
+      ref={optionRef}
+      onClick={handleClick}
+      {...restProps}
+    >
+      {isFunction(children)
+        ? children({ selected: pickerValue[key] === value })
+        : children}
+    </div>
+  );
+}
+
+const Picker = PickerRoot as typeof PickerRoot & {
+  Column: typeof PickerColumn;
+  Item: typeof PickerItem;
+};
+Picker.Column = PickerColumn;
+Picker.Item = PickerItem;
+
+type TimePickerValue = {
+  hour: string;
+  minute: string;
+};
 
 export function TimePicker({ value, onChange }: TimePickerProps) {
   const currentHour = value.getHours();
   const currentMinute = value.getMinutes();
-  const totalMinutes = currentHour * 60 + currentMinute;
-  const percent = (totalMinutes / (MINUTES_IN_DAY - 1)) * 100;
 
-  const setTimeFromMinutes = (minutes: number) => {
-    const clamped = Math.max(0, Math.min(MINUTES_IN_DAY - 1, minutes));
-    const newDate = new Date(value);
-    newDate.setHours(Math.floor(clamped / 60));
-    newDate.setMinutes(clamped % 60);
-    newDate.setSeconds(0);
-    newDate.setMilliseconds(0);
-    onChange(newDate);
-  };
+  const pickerValue = useMemo<TimePickerValue>(
+    () => ({
+      hour: HOURS[currentHour],
+      minute: MINUTES[currentMinute],
+    }),
+    [currentHour, currentMinute]
+  );
 
-  const setTimeFromDate = (source: Date) => {
-    const newDate = new Date(value);
-    newDate.setHours(source.getHours());
-    newDate.setMinutes(source.getMinutes());
-    newDate.setSeconds(0);
-    newDate.setMilliseconds(0);
-    onChange(newDate);
-  };
+  const setTime = useCallback(
+    (hour: number, minute: number) => {
+      const newDate = new Date(value);
+      newDate.setHours(hour);
+      newDate.setMinutes(minute);
+      newDate.setSeconds(0);
+      newDate.setMilliseconds(0);
+      onChange(newDate);
+    },
+    [onChange, value]
+  );
 
-  const handleQuickOffset = (offsetMinutes: number) => {
-    const base = new Date();
-    base.setMinutes(base.getMinutes() + offsetMinutes);
-    setTimeFromDate(base);
-  };
-
-  const formattedTime = `${currentHour
-    .toString()
-    .padStart(2, "0")}:${currentMinute.toString().padStart(2, "0")}`;
+  const handlePickerChange = useCallback(
+    (nextValue: TimePickerValue) => {
+      const nextHour = Number(nextValue.hour);
+      const nextMinute = Number(nextValue.minute);
+      setTime(nextHour, nextMinute);
+    },
+    [setTime]
+  );
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="flex items-center justify-between">
-        <div className="text-lg font-semibold text-slate-100">
-          {formattedTime}
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <button
-            type="button"
-            onClick={() => setTimeFromDate(new Date())}
-            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300 hover:border-white/20"
-          >
-            Now
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickOffset(15)}
-            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300 hover:border-white/20"
-          >
-            +15
-          </button>
-          <button
-            type="button"
-            onClick={() => handleQuickOffset(30)}
-            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300 hover:border-white/20"
-          >
-            +30
-          </button>
-        </div>
-      </div>
-
-      <div className="relative mt-4 h-12 w-full overflow-visible">
-        <div className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-white/10" />
-        <div
-          className="absolute left-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-emerald-400/30"
-          style={{ width: `${percent}%` }}
-        />
-        <div className="absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-between px-1">
-          {Array.from({ length: TICK_COUNT }).map((_, i) => {
-            const isHour = i % 4 === 0;
-            return (
+    <Picker
+      value={pickerValue}
+      onChange={(nextValue) => handlePickerChange(nextValue)}
+      height={168}
+      itemHeight={32}
+      wheelMode="natural"
+      className="w-full rounded-2xl border border-white/10 bg-white/5"
+    >
+      <Picker.Column name="hour" className="text-sm font-semibold">
+        {HOURS.map((hour) => (
+          <Picker.Item key={hour} value={hour}>
+            {({ selected }) => (
               <span
-                key={`tick-${i.toString()}`}
-                className={`block w-px ${
-                  isHour ? "h-4 bg-white/30" : "h-2 bg-white/15"
-                }`}
-                aria-hidden="true"
-              />
-            );
-          })}
-        </div>
-        <div
-          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-200 bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.45)]"
-          style={{ left: `${percent}%` }}
-        />
-        <input
-          type="range"
-          min={0}
-          max={MINUTES_IN_DAY - 1}
-          step={1}
-          value={totalMinutes}
-          onChange={(event) => setTimeFromMinutes(Number(event.target.value))}
-          className="absolute inset-0 h-12 w-full cursor-pointer opacity-0"
-          aria-label="Time slider"
-        />
+                className={selected ? "text-emerald-300" : "text-slate-400"}
+              >
+                {hour}
+              </span>
+            )}
+          </Picker.Item>
+        ))}
+      </Picker.Column>
+      <Picker.Column name="minute" className="text-sm font-semibold">
+        {MINUTES.map((minute) => (
+          <Picker.Item key={minute} value={minute}>
+            {({ selected }) => (
+              <span
+                className={selected ? "text-emerald-300" : "text-slate-400"}
+              >
+                {minute}
+              </span>
+            )}
+          </Picker.Item>
+        ))}
+      </Picker.Column>
+      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">
+        :
       </div>
-
-      <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-500">
-        <span>00:00</span>
-        <span>12:00</span>
-        <span>23:59</span>
-      </div>
-    </div>
+    </Picker>
   );
 }

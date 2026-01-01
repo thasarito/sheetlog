@@ -3,7 +3,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Plug } from "lucide-react";
-import { useApp } from "./AppProvider";
+import {
+  useAuthStorage,
+  useConnectivity,
+  useOnboarding,
+} from "./providers";
 import { StatusDot } from "./StatusDot";
 import { DEFAULT_CATEGORIES } from "../lib/categories";
 import type { TransactionType } from "../lib/types";
@@ -19,16 +23,10 @@ interface OnboardingFlowProps {
 }
 
 export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
-  const {
-    isOnline,
-    accessToken,
-    sheetId,
-    isConnecting,
-    onboarding,
-    connect,
-    refreshSheet,
-    updateOnboarding,
-  } = useApp();
+  const { isOnline } = useConnectivity();
+  const { accessToken, sheetId, isConnecting, connect, refreshSheet } =
+    useAuthStorage();
+  const { onboarding, updateOnboarding } = useOnboarding();
   const [locationMode, setLocationMode] = useState<"root" | "folder">(
     onboarding.sheetFolderId ? "folder" : "root"
   );
