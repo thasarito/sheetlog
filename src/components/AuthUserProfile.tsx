@@ -90,10 +90,9 @@ export function AuthUserProfile() {
 
   const { data: profile } = useQuery({
     queryKey: ["userProfile", resolvedToken],
-    queryFn: ({ signal }) =>
-      fetchUserProfile(resolvedToken ?? "", signal),
+    queryFn: ({ signal }) => fetchUserProfile(resolvedToken ?? "", signal),
     enabled: Boolean(resolvedToken),
-    initialData: cachedProfile ?? null,
+    placeholderData: cachedProfile ?? null,
     staleTime: 1000 * 60 * 10,
     retry: false,
   });
