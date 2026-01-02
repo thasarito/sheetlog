@@ -1,5 +1,10 @@
 const CACHE_NAME = 'sheetlog-v1';
-const CORE_ASSETS = ['/', '/manifest.webmanifest', '/icon.svg'];
+const scopeUrl = new URL(self.registration.scope);
+const CORE_ASSETS = [
+  scopeUrl.href,
+  new URL('manifest.webmanifest', scopeUrl).href,
+  new URL('icon.svg', scopeUrl).href,
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -28,7 +33,9 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(request).then((cached) => cached || fetch(request).catch(() => caches.match('/')))
+      caches
+        .match(request)
+        .then((cached) => cached || fetch(request).catch(() => caches.match(scopeUrl.href)))
     );
   }
 });

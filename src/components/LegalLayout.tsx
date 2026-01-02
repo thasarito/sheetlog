@@ -1,19 +1,19 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 
-export default function LegalLayout({ children }: { children: ReactNode }) {
+export function LegalLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
       <header className="flex items-center justify-between border-b border-border bg-surface px-6 py-4">
         <div className="text-sm font-semibold tracking-wide">SheetLog</div>
         <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-          <Link className="transition hover:text-foreground" href="/">
+          <Link className="transition hover:text-foreground" to="/">
             Home
           </Link>
-          <Link className="transition hover:text-foreground" href="/privacy">
+          <Link className="transition hover:text-foreground" to="/privacy">
             Privacy
           </Link>
-          <Link className="transition hover:text-foreground" href="/terms">
+          <Link className="transition hover:text-foreground" to="/terms">
             Terms
           </Link>
         </nav>

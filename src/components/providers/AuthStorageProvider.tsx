@@ -67,15 +67,16 @@ export function AuthStorageProvider({
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(SHEET_ID_KEY);
     localStorage.removeItem(SHEET_TAB_ID_KEY);
+    localStorage.removeItem("sheetlog.userProfile");
     setAccessToken(null);
     setSheetId(null);
     setSheetTabId(null);
   }, []);
 
   const connect = useCallback(async () => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     if (!clientId) {
-      throw new Error("Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID");
+      throw new Error("Missing VITE_GOOGLE_CLIENT_ID");
     }
     setIsConnecting(true);
     try {

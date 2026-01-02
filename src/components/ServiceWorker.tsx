@@ -7,7 +7,8 @@ export function ServiceWorker() {
     if (!('serviceWorker' in navigator)) {
       return;
     }
-    navigator.serviceWorker.register('/sw.js').catch(() => {
+    const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+    navigator.serviceWorker.register(swUrl).catch(() => {
       // Ignore registration errors in static export environments.
     });
   }, []);

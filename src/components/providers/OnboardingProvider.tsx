@@ -10,7 +10,10 @@ import React, {
   useRef,
 } from "react";
 import type { OnboardingState } from "../../lib/types";
-import { getDefaultOnboardingState, getOnboardingState } from "../../lib/settings";
+import {
+  getDefaultOnboardingState,
+  getOnboardingState,
+} from "../../lib/settings";
 import {
   hydrateOnboardingFromSheet,
   updateOnboarding as persistOnboarding,
@@ -101,7 +104,12 @@ export function OnboardingProvider({
           dispatch({ type: "update", onboarding: merged.next });
         }
       } catch (error) {
-        if (isGoogleAuthError(error)) {
+        console.error("Onboarding hydration error:", error);
+        if (
+          isGoogleAuthError(error) ||
+          (error instanceof Error && error.message.includes("401")) ||
+          (error instanceof Error && error.message.includes("Unauthorized"))
+        ) {
           clearAuth();
         }
       }

@@ -5,7 +5,7 @@ A mobile-first PWA for rapid financial logging directly into Google Sheets.
 ## Setup
 
 1. Create a Google OAuth Client ID for a web app.
-2. Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in your environment.
+2. Set `VITE_GOOGLE_CLIENT_ID` in your environment.
 
 ```bash
 cp .env.example .env.local
@@ -24,4 +24,5 @@ npm run dev
 npm run build
 ```
 
-The static export is emitted to `out/` for GitHub Pages deployment.
+The production build is emitted to `dist/`. Set `VITE_BASE_PATH` for
+GitHub Pages-style deployments.

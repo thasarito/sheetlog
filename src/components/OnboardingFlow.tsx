@@ -10,7 +10,6 @@ import React, {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Download, Plug } from "lucide-react";
-import Link from "next/link";
 import { useAuthStorage, useConnectivity, useOnboarding } from "./providers";
 import { StatusDot } from "./StatusDot";
 import { DEFAULT_CATEGORIES } from "../lib/categories";
@@ -421,7 +420,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
                 {isConnecting ? "Connecting..." : "Connect Google Account"}
               </button>
               <p className="text-xs text-muted-foreground">
-                Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your env.
+                Set VITE_GOOGLE_CLIENT_ID in your env.
               </p>
             </motion.div>
           ) : null}

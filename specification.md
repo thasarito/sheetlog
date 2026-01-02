@@ -12,7 +12,7 @@ Based on the Expert Panel decisions:
 - **Categorization**: Smart/Recent sorting.
 - **Tagging**: Toggle Chips for widespread tags (e.g., #Trip, #Business).
 - **Feedback**: Toast with Undo capability.
-- **Stack**: Next.js (Static Export) on GitHub Pages.
+- **Stack**: Vite + React (SPA build) on GitHub Pages.
 - **Offline**: Queue & Sync strategy.
 - **Auth**: Long-term persistence for convenience.
 - **Data Model**: App-managed Sheet structure.
@@ -22,12 +22,15 @@ Based on the Expert Panel decisions:
 
 ### 3.1 Tech Stack
 
-- **Framework**: Next.js 14+ (App Router).
-- **Build Mode**: `output: 'export'` (Static HTML/CSS/JS).
+- **Framework**: Vite + React 18.
+- **Routing**: TanStack Router.
+- **Build Mode**: Vite static SPA build (`dist/`).
 - **Language**: TypeScript.
 - **Styling**: TailwindCSS + Shadcn/UI (Radix Primitives).
 - **Icons**: Lucide React.
 - **State Management**: React Context + Hooks.
+- **Data Fetching**: TanStack Query.
+- **Forms & Validation**: TanStack Form + Zod.
 - **Local Database**: Dexie.js (IndexedDB wrapper) for offline queue and caching settings.
 - **Date Handling**: `date-fns`.
 - **Animations**: `framer-motion` (for smooth transitions).
@@ -35,7 +38,7 @@ Based on the Expert Panel decisions:
 ### 3.2 Deployment Architecture
 
 - **Host**: GitHub Pages.
-- **CI/CD**: GitHub Actions (Next.js Build -> Deploy to gh-pages branch).
+- **CI/CD**: GitHub Actions (Vite Build -> Deploy to gh-pages branch).
 - **Serverless**: None. Pure Client-Side SPA behavior.
 
 ### 3.3 Data Flow

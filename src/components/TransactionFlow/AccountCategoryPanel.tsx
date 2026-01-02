@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
+import { useForm } from "@tanstack/react-form";
 import { RefreshCw, X } from "lucide-react";
+import { z } from "zod";
 import type { TransactionType } from "../../lib/types";
 import { useOnboarding } from "../providers";
 import { TYPE_OPTIONS } from "./constants";
@@ -22,6 +24,11 @@ const CATEGORY_LABELS: Record<TransactionType, string> = {
   transfer: "Transfer",
 };
 
+const accountNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter an account name");
+
 export function AccountCategoryPanel({
   onToast,
   onResync,
@@ -31,7 +38,6 @@ export function AccountCategoryPanel({
   const [activeView, setActiveView] = useState<PanelView>("accounts");
   const [activeCategoryType, setActiveCategoryType] =
     useState<TransactionType>(TYPE_OPTIONS[0]);
-  const [accountInput, setAccountInput] = useState("");
   const [categoryInputs, setCategoryInputs] = useState<CategoryInputs>({
     expense: "",
     income: "",
@@ -43,35 +49,38 @@ export function AccountCategoryPanel({
   const categories = onboarding.categories;
   const activeCategories = categories[activeCategoryType] ?? [];
 
-  async function addAccount() {
-    if (isSaving) {
-      return;
-    }
-    const nextValue = accountInput.trim();
-    if (!nextValue) {
-      onToast("Enter an account name");
-      return;
-    }
-    const exists = accounts.some(
-      (item) => item.toLowerCase() === nextValue.toLowerCase()
-    );
-    if (exists) {
-      onToast("Account already added");
-      return;
-    }
-    setIsSaving(true);
-    try {
-      await updateOnboarding({
-        accounts: [...accounts, nextValue],
-        accountsConfirmed: true,
-      });
-      setAccountInput("");
-    } catch {
-      onToast("Failed to add account");
-    } finally {
-      setIsSaving(false);
-    }
-  }
+  const accountForm = useForm({
+    defaultValues: { accountName: "" },
+    onSubmit: async ({ value }) => {
+      if (isSaving) {
+        return;
+      }
+      const nextValue = value.accountName.trim();
+      if (!nextValue) {
+        onToast("Enter an account name");
+        return;
+      }
+      const exists = accounts.some(
+        (item) => item.toLowerCase() === nextValue.toLowerCase()
+      );
+      if (exists) {
+        onToast("Account already added");
+        return;
+      }
+      setIsSaving(true);
+      try {
+        await updateOnboarding({
+          accounts: [...accounts, nextValue],
+          accountsConfirmed: true,
+        });
+        accountForm.reset();
+      } catch {
+        onToast("Failed to add account");
+      } finally {
+        setIsSaving(false);
+      }
+    },
+  });
 
   async function removeAccount(name: string) {
     if (isSaving) {
@@ -223,26 +232,58 @@ export function AccountCategoryPanel({
               )}
             </div>
           </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              className="flex-1 rounded-2xl border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground"
-              placeholder="Add account"
-              value={accountInput}
-              onChange={(event) => setAccountInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void addAccount();
+          <form
+            className="flex gap-2 items-start"
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void accountForm.handleSubmit();
+            }}
+          >
+            <accountForm.Field
+              name="accountName"
+              validators={{
+                onChange: ({ value }) => {
+                  const parsed = accountNameSchema.safeParse(value);
+                  if (!parsed.success) {
+                    return parsed.error.issues[0]?.message;
+                  }
+                  return undefined;
+                },
               }}
-            />
+            >
+              {(field) => {
+                const error =
+                  field.state.meta.touchedErrors?.[0] ??
+                  field.state.meta.errors?.[0];
+                return (
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      className="w-full rounded-2xl border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground"
+                      placeholder="Add account"
+                      value={field.state.value}
+                      onChange={(event) =>
+                        field.handleChange(event.target.value)
+                      }
+                      onBlur={field.handleBlur}
+                      disabled={isSaving}
+                    />
+                    {error ? (
+                      <p className="mt-1 text-[11px] text-danger">{error}</p>
+                    ) : null}
+                  </div>
+                );
+              }}
+            </accountForm.Field>
             <button
-              type="button"
-              className="rounded-2xl border border-border bg-card px-3 text-xs font-semibold text-foreground transition hover:bg-surface disabled:opacity-50"
-              onClick={() => void addAccount()}
+              type="submit"
+              className="self-start rounded-2xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground transition hover:bg-surface disabled:opacity-50"
               disabled={isSaving}
             >
               Add
             </button>
-          </div>
+          </form>
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">

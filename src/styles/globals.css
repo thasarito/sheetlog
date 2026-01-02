@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../tailwind.config.js";
 
 :root {
   color-scheme: light;
@@ -36,7 +35,7 @@ body {
   @apply antialiased;
 }
 
-input[type='date'] {
+input[type="date"] {
   color-scheme: light;
 }
 
@@ -69,7 +68,7 @@ input[type='date'] {
     --shadow-lift: 0 -18px 50px -30px hsl(220 40% 2% / 0.75);
   }
 
-  input[type='date'] {
+  input[type="date"] {
     color-scheme: dark;
   }
 }

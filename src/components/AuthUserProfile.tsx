@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStorage } from "./providers";
 
 const ACCESS_TOKEN_KEY = "sheetlog.accessToken";
@@ -80,50 +81,34 @@ async function fetchUserProfile(
 
 export function AuthUserProfile() {
   const { accessToken } = useAuthStorage();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const resolvedToken =
+    accessToken ||
+    (typeof window === "undefined"
+      ? null
+      : localStorage.getItem(ACCESS_TOKEN_KEY));
+  const cachedProfile = readStoredProfile();
+
+  const { data: profile } = useQuery({
+    queryKey: ["userProfile", resolvedToken],
+    queryFn: ({ signal }) =>
+      fetchUserProfile(resolvedToken ?? "", signal),
+    enabled: Boolean(resolvedToken),
+    initialData: cachedProfile ?? null,
+    staleTime: 1000 * 60 * 10,
+    retry: false,
+  });
 
   useEffect(() => {
-    if (!accessToken) {
-      const storedToken =
-        typeof window === "undefined"
-          ? null
-          : localStorage.getItem(ACCESS_TOKEN_KEY);
-      if (!storedToken) {
-        setProfile(null);
-        persistProfile(null);
-        return;
-      }
-      const cached = readStoredProfile();
-      if (cached) {
-        setProfile(cached);
-      }
+    if (!resolvedToken) {
+      persistProfile(null);
       return;
     }
-
-    const cached = readStoredProfile();
-    if (cached) {
-      setProfile(cached);
+    if (profile) {
+      persistProfile(profile);
     }
+  }, [profile, resolvedToken]);
 
-    const controller = new AbortController();
-    fetchUserProfile(accessToken, controller.signal)
-      .then((nextProfile) => {
-        if (!nextProfile) {
-          return;
-        }
-        setProfile(nextProfile);
-        persistProfile(nextProfile);
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-      });
-
-    return () => controller.abort();
-  }, [accessToken]);
-
-  if (!accessToken || !profile) {
+  if (!resolvedToken || !profile) {
     return null;
   }
 

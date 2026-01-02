@@ -1,13 +1,14 @@
-import type { Metadata } from "next";
+import { LegalLayout } from "../components/LegalLayout";
+import { useDocumentMeta } from "../hooks/useDocumentMeta";
 
-export const metadata: Metadata = {
-  title: "Terms of Service | SheetLog",
-  description: "Terms of Service for SheetLog.",
-};
+export function TermsPage() {
+  useDocumentMeta({
+    title: "Terms of Service | SheetLog",
+    description: "Terms of Service for SheetLog.",
+  });
 
-export default function TermsPage() {
   return (
-    <>
+    <LegalLayout>
       <section className="space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
           Legal
@@ -84,6 +85,6 @@ export default function TermsPage() {
           <span className="font-medium">support@thasarito.com</span>.
         </p>
       </section>
-    </>
+    </LegalLayout>
   );
 }

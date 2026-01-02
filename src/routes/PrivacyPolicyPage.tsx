@@ -1,13 +1,14 @@
-import type { Metadata } from "next";
+import { LegalLayout } from "../components/LegalLayout";
+import { useDocumentMeta } from "../hooks/useDocumentMeta";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy | SheetLog",
-  description: "Privacy Policy for SheetLog.",
-};
+export function PrivacyPolicyPage() {
+  useDocumentMeta({
+    title: "Privacy Policy | SheetLog",
+    description: "Privacy Policy for SheetLog.",
+  });
 
-export default function PrivacyPolicyPage() {
   return (
-    <>
+    <LegalLayout>
       <section className="space-y-2">
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
           Legal
@@ -81,8 +82,8 @@ export default function PrivacyPolicyPage() {
         <p>
           Transaction data is stored in your Google Sheet and in your browser
           for offline access. You can delete local data at any time by clearing
-          site data in your browser. You can revoke the app&apos;s access via
-          your Google Account security settings.
+          site data in your browser. You can revoke the app&apos;s access via your
+          Google Account security settings.
         </p>
       </section>
 
@@ -93,6 +94,6 @@ export default function PrivacyPolicyPage() {
           <span className="font-medium">support@thasarito.com</span>.
         </p>
       </section>
-    </>
+    </LegalLayout>
   );
 }
