@@ -692,14 +692,6 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-      <div className="space-y-3 rounded-3xl border border-border bg-card/70 px-4 py-4 text-sm text-muted-foreground">
-        <Link
-          href="/privacy"
-          className="text-xs font-semibold text-primary hover:underline"
-        >
-          Privacy policy
-        </Link>
-      </div>
     </div>
   );
 }
