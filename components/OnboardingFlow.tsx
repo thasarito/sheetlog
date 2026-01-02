@@ -1,22 +1,37 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import "@khmyznikov/pwa-install";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Plug } from "lucide-react";
-import {
-  useAuthStorage,
-  useConnectivity,
-  useOnboarding,
-} from "./providers";
+import { Check, Download, Plug } from "lucide-react";
+import { useAuthStorage, useConnectivity, useOnboarding } from "./providers";
 import { StatusDot } from "./StatusDot";
 import { DEFAULT_CATEGORIES } from "../lib/categories";
 import type { TransactionType } from "../lib/types";
+
+type PWAInstallElement = HTMLElement & {
+  showDialog: (open?: boolean) => void;
+  hideDialog: () => void;
+  install: () => void;
+  isInstallAvailable?: boolean;
+  isAppleMobilePlatform?: boolean;
+  isAppleDesktopPlatform?: boolean;
+  isUnderStandaloneMode?: boolean;
+};
 
 const CATEGORY_LABELS: Record<TransactionType, string> = {
   expense: "Expense categories",
   income: "Income categories",
   transfer: "Transfer categories",
 };
+
+const PWA_DISMISS_KEY = "sheetlog:pwa-install-dismissed";
 
 interface OnboardingFlowProps {
   onToast: (message: string) => void;
@@ -43,14 +58,11 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   });
   const [isSettingUpSheet, setIsSettingUpSheet] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (onboarding.sheetFolderId) {
-      setLocationMode("folder");
-      setFolderIdInput(onboarding.sheetFolderId);
-    }
-  }, [onboarding.sheetFolderId]);
-
+  const pwaInstallRef = useRef<PWAInstallElement | null>(null);
+  const [isPwaInstallAvailable, setIsPwaInstallAvailable] = useState(false);
+  const [isPwaPromptOpen, setIsPwaPromptOpen] = useState(false);
+  const [hasDismissedPwaPrompt, setHasDismissedPwaPrompt] = useState(false);
+  const [isStandaloneMode, setIsStandaloneMode] = useState(false);
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
   const hasCategories =
     categories.expense.length > 0 &&
@@ -59,7 +71,6 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   const accountsReady =
     onboarding.accountsConfirmed && onboarding.accounts.length > 0;
   const categoriesReady = onboarding.categoriesConfirmed && hasCategories;
-
   const stepIndex = !accessToken
     ? 0
     : !sheetId
@@ -69,6 +80,123 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     : !categoriesReady
     ? 3
     : 4;
+
+  useEffect(() => {
+    if (onboarding.sheetFolderId) {
+      setLocationMode("folder");
+      setFolderIdInput(onboarding.sheetFolderId);
+    }
+  }, [onboarding.sheetFolderId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem(PWA_DISMISS_KEY);
+    if (stored === "true") {
+      setHasDismissedPwaPrompt(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const mediaQuery = window.matchMedia("(display-mode: standalone)");
+    const updateStandalone = () => {
+      const isStandalone =
+        mediaQuery.matches ||
+        (window.navigator as Navigator & { standalone?: boolean })
+          .standalone === true;
+      setIsStandaloneMode(isStandalone);
+    };
+    updateStandalone();
+    mediaQuery.addEventListener("change", updateStandalone);
+    return () => mediaQuery.removeEventListener("change", updateStandalone);
+  }, []);
+
+  const updatePwaAvailability = useCallback(() => {
+    const element = pwaInstallRef.current;
+    if (!element) {
+      return;
+    }
+    const available =
+      Boolean(element.isInstallAvailable) ||
+      Boolean(element.isAppleMobilePlatform) ||
+      Boolean(element.isAppleDesktopPlatform);
+    if (element.isUnderStandaloneMode) {
+      setIsStandaloneMode(true);
+    }
+    setIsPwaInstallAvailable(available);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const element = document.getElementById(
+      "pwa-install"
+    ) as PWAInstallElement | null;
+    if (!element) {
+      return;
+    }
+    pwaInstallRef.current = element;
+    const handleAvailable = () => updatePwaAvailability();
+    const handleInstalled = () => {
+      setIsPwaPromptOpen(false);
+      setHasDismissedPwaPrompt(true);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(PWA_DISMISS_KEY, "true");
+      }
+    };
+    const frame = window.requestAnimationFrame(updatePwaAvailability);
+    element.addEventListener("pwa-install-available-event", handleAvailable);
+    element.addEventListener("pwa-install-success-event", handleInstalled);
+    element.addEventListener("pwa-user-choice-result-event", handleInstalled);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      element.removeEventListener(
+        "pwa-install-available-event",
+        handleAvailable
+      );
+      element.removeEventListener("pwa-install-success-event", handleInstalled);
+      element.removeEventListener(
+        "pwa-user-choice-result-event",
+        handleInstalled
+      );
+    };
+  }, [updatePwaAvailability]);
+
+  useEffect(() => {
+    if (
+      stepIndex !== 4 ||
+      isStandaloneMode ||
+      hasDismissedPwaPrompt ||
+      !isPwaInstallAvailable
+    ) {
+      setIsPwaPromptOpen(false);
+      return;
+    }
+    setIsPwaPromptOpen(true);
+  }, [
+    stepIndex,
+    hasDismissedPwaPrompt,
+    isPwaInstallAvailable,
+    isStandaloneMode,
+  ]);
+
+  const dismissPwaPrompt = useCallback(() => {
+    setIsPwaPromptOpen(false);
+    setHasDismissedPwaPrompt(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PWA_DISMISS_KEY, "true");
+    }
+  }, []);
+
+  const handlePwaInstall = useCallback(() => {
+    dismissPwaPrompt();
+    pwaInstallRef.current?.showDialog(true);
+  }, [dismissPwaPrompt]);
 
   const steps = useMemo(
     () => [
@@ -209,6 +337,12 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6">
+      <pwa-install
+        id="pwa-install"
+        manifest-url="/manifest.webmanifest"
+        manual-apple="true"
+        manual-chrome="true"
+      />
       <header className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -508,6 +642,54 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
           ) : null}
         </AnimatePresence>
       </section>
+
+      <AnimatePresence>
+        {isPwaPromptOpen ? (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-background/70 p-4 backdrop-blur sm:items-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-sm space-y-4 rounded-3xl border border-border bg-card px-6 py-5 shadow-soft"
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl bg-primary/15 p-3 text-primary">
+                  <Download className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-semibold">Install SheetLog</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Save it to your home screen for faster access and offline
+                    logging.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  className="flex-1 rounded-2xl bg-primary py-2 text-sm font-semibold text-primary-foreground"
+                  onClick={handlePwaInstall}
+                >
+                  Install app
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 rounded-2xl border border-border bg-card py-2 text-sm font-semibold text-foreground"
+                  onClick={dismissPwaPrompt}
+                >
+                  Maybe later
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
