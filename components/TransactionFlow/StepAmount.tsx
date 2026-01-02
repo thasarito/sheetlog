@@ -1,21 +1,12 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, { useMemo } from "react";
 import { Check } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
-import { Picker } from "../Picker";
+import { InlinePicker } from "../ui/inline-picker";
 import { FOR_OPTIONS } from "./constants";
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "../ui/drawer";
 
 type StepAmountProps = {
   type: TransactionType | null;
@@ -34,119 +25,6 @@ type StepAmountProps = {
   onSubmit: () => void;
 };
 
-type DrawerPickerValue = {
-  selection: string;
-};
-
-type DrawerPickerProps = {
-  label: string;
-  title: string;
-  value: string | null;
-  options: string[];
-  onChange: (value: string) => void;
-  placeholder: string;
-  disabled?: boolean;
-};
-
-function DrawerPicker({
-  label,
-  title,
-  value,
-  options,
-  onChange,
-  placeholder,
-  disabled = false,
-}: DrawerPickerProps) {
-  const hasOptions = options.length > 0;
-  const hasValue = Boolean(value);
-  const pickerValue = useMemo<DrawerPickerValue>(
-    () => ({ selection: value ?? "" }),
-    [value]
-  );
-
-  const handlePickerChange = useCallback(
-    (nextValue: DrawerPickerValue) => {
-      onChange(nextValue.selection);
-    },
-    [onChange]
-  );
-
-  return (
-    <Drawer>
-      <DrawerTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={disabled || !hasOptions}
-        >
-          <span className="shrink-0 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            {label}
-          </span>
-          <span
-            className={`min-w-0 flex-1 truncate text-sm ${
-              hasValue
-                ? "font-semibold text-foreground"
-                : "text-muted-foreground"
-            }`}
-          >
-            {hasValue ? value : placeholder}
-          </span>
-        </button>
-      </DrawerTrigger>
-      <DrawerContent className="shadow-none">
-        <DrawerHeader className="text-left">
-          <DrawerTitle>{title}</DrawerTitle>
-        </DrawerHeader>
-        <div className="px-4 pb-2">
-          {hasOptions ? (
-            <Picker
-              value={pickerValue}
-              onChange={(nextValue) =>
-                handlePickerChange(nextValue as DrawerPickerValue)
-              }
-              height={168}
-              itemHeight={32}
-              wheelMode="natural"
-              className="w-full rounded-2xl border border-border bg-card"
-              aria-label={title}
-            >
-              <Picker.Column name="selection" className="text-sm font-semibold">
-                {options.map((item) => (
-                  <Picker.Item key={item} value={item}>
-                    {({ selected }) => (
-                      <span
-                        className={
-                          selected ? "text-primary" : "text-muted-foreground"
-                        }
-                      >
-                        {item}
-                      </span>
-                    )}
-                  </Picker.Item>
-                ))}
-              </Picker.Column>
-            </Picker>
-          ) : (
-            <div className="rounded-2xl border border-border bg-surface-2 px-4 py-6 text-center text-sm text-muted-foreground">
-              No options available yet.
-            </div>
-          )}
-        </div>
-        <DrawerFooter className="px-4 pb-6">
-          <DrawerClose asChild>
-            <button
-              type="button"
-              className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground"
-            >
-              Done
-            </button>
-          </DrawerClose>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
-  );
-}
-
 export function StepAmount({
   type,
   amount,
@@ -164,7 +42,6 @@ export function StepAmount({
   onSubmit,
 }: StepAmountProps) {
   const isTransfer = type === "transfer";
-  const accountTitle = isTransfer ? "From account" : "Account";
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
@@ -180,41 +57,35 @@ export function StepAmount({
 
   return (
     <div className="flex min-h-[100dvh] flex-col gap-5">
-      <div className="overflow-hidden flex-1 flex rounded-2xl">
-        <div className="space-y-px w-full flex justify-between flex-col">
+      <div className="flex-1 flex flex-col">
+        <div className="flex flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
+          <span>{amount ? amount : "0"}</span>
+          <CurrencyPicker value={currency} onChange={onCurrencyChange} />
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
           {isTransfer ? (
-            <DrawerPicker
+            <InlinePicker
               label="To"
-              title="To account"
               value={selectedFor}
               options={toAccountOptions}
               onChange={onForChange}
-              placeholder="Select account"
               disabled={!hasTransferAccounts}
             />
           ) : (
-            <DrawerPicker
+            <InlinePicker
               label="For"
-              title="For"
               value={selectedFor}
               options={FOR_OPTIONS}
               onChange={onForChange}
-              placeholder="Select"
             />
           )}
 
-          <div className="flex items-center justify-between px-4 py-3 text-2xl font-semibold text-foreground">
-            <span>{amount ? amount : "0"}</span>
-            <CurrencyPicker value={currency} onChange={onCurrencyChange} />
-          </div>
-
-          <DrawerPicker
+          <InlinePicker
             label={accountLabel}
-            title={accountTitle}
             value={account}
             options={accounts}
             onChange={onAccountSelect}
-            placeholder="Select account"
           />
         </div>
       </div>
