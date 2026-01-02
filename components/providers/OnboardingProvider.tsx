@@ -46,6 +46,7 @@ interface OnboardingContextValue {
   updateOnboarding: (
     updates: Partial<OnboardingState>
   ) => Promise<OnboardingState>;
+  refreshOnboarding: () => Promise<boolean>;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -132,12 +133,39 @@ export function OnboardingProvider({
     [accessToken, sheetId, isOnline, clearAuth]
   );
 
+  const refreshOnboarding = useCallback(async (): Promise<boolean> => {
+    if (!accessToken || !sheetId) {
+      throw new Error("Connect to sync accounts and categories");
+    }
+    if (!isOnline) {
+      throw new Error("Go online to sync accounts and categories");
+    }
+    try {
+      const merged = await hydrateOnboardingFromSheet(
+        accessToken,
+        sheetId,
+        onboardingRef.current,
+        { force: true }
+      );
+      if (merged.changed) {
+        dispatch({ type: "update", onboarding: merged.next });
+      }
+      return merged.changed;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("401")) {
+        clearAuth();
+      }
+      throw error;
+    }
+  }, [accessToken, sheetId, isOnline, clearAuth]);
+
   const value = useMemo<OnboardingContextValue>(
     () => ({
       onboarding: store.onboarding,
       updateOnboarding,
+      refreshOnboarding,
     }),
-    [store.onboarding, updateOnboarding]
+    [store.onboarding, updateOnboarding, refreshOnboarding]
   );
 
   return (

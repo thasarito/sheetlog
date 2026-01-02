@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { X } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
 import { useOnboarding } from "../providers";
 import { TYPE_OPTIONS } from "./constants";
 
 type AccountCategoryPanelProps = {
   onToast: (message: string) => void;
+  onResync: () => void;
+  isResyncing: boolean;
 };
 
 type PanelView = "accounts" | "categories";
@@ -22,6 +24,8 @@ const CATEGORY_LABELS: Record<TransactionType, string> = {
 
 export function AccountCategoryPanel({
   onToast,
+  onResync,
+  isResyncing,
 }: AccountCategoryPanelProps) {
   const { onboarding, updateOnboarding } = useOnboarding();
   const [activeView, setActiveView] = useState<PanelView>("accounts");
@@ -149,31 +153,44 @@ export function AccountCategoryPanel({
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Manage
         </p>
-        <div className="flex rounded-full bg-card/70 p-1 text-[11px] font-semibold">
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            className={[
-              "rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-              activeView === "accounts"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            ].join(" ")}
-            onClick={() => setActiveView("accounts")}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-foreground transition hover:bg-surface disabled:opacity-60"
+            onClick={onResync}
+            disabled={isResyncing}
+            aria-label="Re-sync accounts and categories"
           >
-            Accounts
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isResyncing ? "animate-spin" : ""}`}
+            />
           </button>
-          <button
-            type="button"
-            className={[
-              "rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-              activeView === "categories"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            ].join(" ")}
-            onClick={() => setActiveView("categories")}
-          >
-            Categories
-          </button>
+          <div className="flex rounded-full bg-card/70 p-1 text-[11px] font-semibold">
+            <button
+              type="button"
+              className={[
+                "rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                activeView === "accounts"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+              onClick={() => setActiveView("accounts")}
+            >
+              Accounts
+            </button>
+            <button
+              type="button"
+              className={[
+                "rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                activeView === "categories"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+              onClick={() => setActiveView("categories")}
+            >
+              Categories
+            </button>
+          </div>
         </div>
       </div>
 

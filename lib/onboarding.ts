@@ -49,16 +49,21 @@ function normalizeCategories(categories: CategoryConfig): CategoryConfig {
   };
 }
 
+type MergeOptions = {
+  force?: boolean;
+};
+
 function mergeOnboardingState(
   current: OnboardingState,
-  config: OnboardingSheetConfig
+  config: OnboardingSheetConfig,
+  options: MergeOptions = {}
 ): { next: OnboardingState; changed: boolean } {
   let next = current;
   let changed = false;
   if (
     config.accounts &&
     config.accounts.length > 0 &&
-    !current.accountsConfirmed
+    (options.force || !current.accountsConfirmed)
   ) {
     next = {
       ...next,
@@ -70,7 +75,7 @@ function mergeOnboardingState(
   if (
     config.categories &&
     hasAnyCategories(config.categories) &&
-    !current.categoriesConfirmed
+    (options.force || !current.categoriesConfirmed)
   ) {
     next = {
       ...next,
@@ -85,13 +90,14 @@ function mergeOnboardingState(
 export async function hydrateOnboardingFromSheet(
   accessToken: string,
   sheetId: string,
-  current: OnboardingState
+  current: OnboardingState,
+  options: MergeOptions = {}
 ): Promise<{ next: OnboardingState; changed: boolean }> {
   const sheetConfig = await readOnboardingConfig(accessToken, sheetId);
   if (!sheetConfig) {
     return { next: current, changed: false };
   }
-  const merged = mergeOnboardingState(current, sheetConfig);
+  const merged = mergeOnboardingState(current, sheetConfig, options);
   if (merged.changed) {
     await setOnboardingState(merged.next);
   }

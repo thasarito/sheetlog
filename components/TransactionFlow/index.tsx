@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useReducer } from "react";
+import React, { useEffect, useMemo, useReducer, useState } from "react";
 import { format } from "date-fns";
-import { useAuthStorage, useOnboarding, useTransactions } from "../providers";
+import {
+  useAuthStorage,
+  useConnectivity,
+  useOnboarding,
+  useTransactions,
+} from "../providers";
 import { OnboardingFlow } from "../OnboardingFlow";
 import { ServiceWorker } from "../ServiceWorker";
 import { Toast } from "../Toast";
@@ -149,7 +154,9 @@ type StepDefinition = {
 export function TransactionFlow() {
   const { accessToken, sheetId } = useAuthStorage();
   const { recentCategories, addTransaction, undoLast } = useTransactions();
-  const { onboarding } = useOnboarding();
+  const { onboarding, refreshOnboarding } = useOnboarding();
+  const { isOnline } = useConnectivity();
+  const [isResyncing, setIsResyncing] = useState(false);
 
   const [state, dispatch] = useReducer(
     flowReducer,
@@ -238,6 +245,33 @@ export function TransactionFlow() {
   function handleToast(message: string, action?: ToastAction) {
     dispatch({ type: "OPEN_TOAST", message, action });
     window.setTimeout(() => dispatch({ type: "CLOSE_TOAST" }), 4000);
+  }
+
+  async function handleResync() {
+    if (isResyncing) {
+      return;
+    }
+    if (!isOnline) {
+      handleToast("Go online to sync accounts and categories");
+      return;
+    }
+    setIsResyncing(true);
+    try {
+      const changed = await refreshOnboarding();
+      handleToast(
+        changed
+          ? "Accounts and categories refreshed"
+          : "Accounts and categories are up to date"
+      );
+    } catch (error) {
+      handleToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to sync accounts and categories"
+      );
+    } finally {
+      setIsResyncing(false);
+    }
   }
 
   function resetFlow() {
@@ -349,7 +383,11 @@ export function TransactionFlow() {
           {isCategoryStep ? (
             <div className="grid min-h-[100dvh] grid-rows-[1fr_3fr] gap-4">
               <div className="min-h-0">
-                <AccountCategoryPanel onToast={handleToast} />
+                <AccountCategoryPanel
+                  onToast={handleToast}
+                  onResync={() => void handleResync()}
+                  isResyncing={isResyncing}
+                />
               </div>
               <div className="min-h-0">
                 <StepCard
