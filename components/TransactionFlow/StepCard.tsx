@@ -6,12 +6,20 @@ import { AnimatePresence, motion } from "framer-motion";
 type StepCardProps = {
   animationKey: string;
   className: string;
+  containerClassName?: string;
   children: React.ReactNode;
 };
 
-export function StepCard({ animationKey, className, children }: StepCardProps) {
+export function StepCard({
+  animationKey,
+  className,
+  containerClassName,
+  children,
+}: StepCardProps) {
   return (
-    <section className="rounded-[28px]">
+    <section
+      className={["rounded-[28px]", containerClassName].filter(Boolean).join(" ")}
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={animationKey}

@@ -205,6 +205,7 @@ function PickerRoot<TType extends PickerValue>(props: PickerRootProps<TType>) {
         ...containerStyle,
         ...style,
       }}
+      data-vaul-no-drag
       {...restProps}
     >
       <PickerActionsContext.Provider value={pickerActions}>

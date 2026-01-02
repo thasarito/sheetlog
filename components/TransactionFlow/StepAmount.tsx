@@ -237,32 +237,34 @@ export function StepAmount({
         </p>
       ) : null}
 
-      <Keypad value={amount} onChange={onAmountChange} />
+      <div className="flex flex-1 flex-col gap-5">
+        <Keypad value={amount} onChange={onAmountChange} />
 
-      <div>
-        <label
-          htmlFor="note"
-          className="text-xs uppercase tracking-widest text-muted-foreground"
+        <div>
+          <label
+            htmlFor="note"
+            className="text-xs uppercase tracking-widest text-muted-foreground"
+          >
+            Note
+          </label>
+          <input
+            type="text"
+            className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
+            placeholder="Optional"
+            value={note}
+            onChange={(event) => onNoteChange(event.target.value)}
+          />
+        </div>
+
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground"
+          onClick={onSubmit}
         >
-          Note
-        </label>
-        <input
-          type="text"
-          className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
-          placeholder="Optional"
-          value={note}
-          onChange={(event) => onNoteChange(event.target.value)}
-        />
+          <Check className="h-4 w-4" />
+          Submit
+        </button>
       </div>
-
-      <button
-        type="button"
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground"
-        onClick={onSubmit}
-      >
-        <Check className="h-4 w-4" />
-        Submit
-      </button>
     </div>
   );
 }

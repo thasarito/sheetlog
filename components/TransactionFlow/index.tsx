@@ -9,6 +9,7 @@ import { Toast } from "../Toast";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { CURRENCIES, DEFAULT_CURRENCY } from "../../lib/currencies";
 import type { TransactionType } from "../../lib/types";
+import { AccountCategoryPanel } from "./AccountCategoryPanel";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
@@ -285,7 +286,7 @@ export function TransactionFlow() {
     {
       key: "step-type-category",
       label: "Type & category",
-      className: "space-y-6",
+      className: "h-full min-h-0",
       content: (
         <StepCategory
           type={type ?? TYPE_OPTIONS[0]}
@@ -329,18 +330,36 @@ export function TransactionFlow() {
   ];
 
   const activeStep = steps[step] ?? steps[0];
+  const isCategoryStep = activeStep.key === "step-type-category";
 
   return (
     <main className="min-h-screen from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
       <ServiceWorker />
       {isOnboarded ? (
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-          <StepCard
-            animationKey={activeStep.key}
-            className={activeStep.className}
-          >
-            {activeStep.content}
-          </StepCard>
+          {isCategoryStep ? (
+            <div className="grid min-h-[100dvh] grid-rows-[1fr_3fr] gap-4">
+              <div className="min-h-0">
+                <AccountCategoryPanel onToast={handleToast} />
+              </div>
+              <div className="min-h-0">
+                <StepCard
+                  animationKey={activeStep.key}
+                  className={activeStep.className}
+                  containerClassName="h-full"
+                >
+                  {activeStep.content}
+                </StepCard>
+              </div>
+            </div>
+          ) : (
+            <StepCard
+              animationKey={activeStep.key}
+              className={activeStep.className}
+            >
+              {activeStep.content}
+            </StepCard>
+          )}
         </div>
       ) : (
         <OnboardingFlow onToast={handleToast} />

@@ -58,11 +58,11 @@ export function StepCategory({
   };
 
   return (
-    <div className="flex h-full flex-col gap-6">
+    <div className="flex h-full min-h-0 flex-col gap-6">
       <Tab.Group
         selectedIndex={selectedIndex}
         onChange={(index) => onSelectType(TYPE_OPTIONS[index])}
-        className="flex flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
         <Tab.List
           aria-label="Transaction type"
@@ -106,7 +106,7 @@ export function StepCategory({
           })}
         </Tab.List>
 
-        <Tab.Panels className="relative flex-1 pt-4">
+        <Tab.Panels className="relative flex-1 min-h-0 pt-4">
           {TYPE_OPTIONS.map((item) => {
             const group = categoryGroups[item] ?? {
               frequent: [],
@@ -116,7 +116,7 @@ export function StepCategory({
               <Tab.Panel
                 key={item}
                 static
-                className={`absolute inset-0 h-full transition duration-300 ease-out focus-visible:outline-none opacity-0 translate-y-2 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:translate-y-0 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10`}
+                className={`absolute inset-0 h-full overflow-y-auto pb-2 transition duration-300 ease-out focus-visible:outline-none opacity-0 translate-y-2 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:translate-y-0 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10`}
               >
                 <CategoryGrid
                   frequent={group.frequent}
