@@ -435,7 +435,6 @@ export function TransactionFlow() {
         note: trimmedNote || undefined,
       });
       dispatch({ type: "SET_RECEIPT_STATUS", status: "success" });
-      handleToast("Saved", { label: "Undo", onClick: () => void handleUndo() });
       scheduleReceiptTransition(() => resetFlow(), 2000);
     } catch (error) {
       const message =
