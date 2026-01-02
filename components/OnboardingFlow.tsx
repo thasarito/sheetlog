@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Download, Plug } from "lucide-react";
+import Link from "next/link";
 import { useAuthStorage, useConnectivity, useOnboarding } from "./providers";
 import { StatusDot } from "./StatusDot";
 import { DEFAULT_CATEGORIES } from "../lib/categories";
@@ -358,6 +359,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             </span>
           </div>
         </div>
+
         <div className="rounded-3xl border border-border bg-card/70 px-4 py-4">
           <div className="space-y-3 text-sm">
             {steps.map((step, index) => (
@@ -690,6 +692,14 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
           </motion.div>
         ) : null}
       </AnimatePresence>
+      <div className="space-y-3 rounded-3xl border border-border bg-card/70 px-4 py-4 text-sm text-muted-foreground">
+        <Link
+          href="/privacy"
+          className="text-xs font-semibold text-primary hover:underline"
+        >
+          Privacy policy
+        </Link>
+      </div>
     </div>
   );
 }
