@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Folder, ChevronRight, Check, ArrowLeft } from "lucide-react";
 import { OnboardingLayout } from "./OnboardingLayout";
 import {
@@ -9,6 +10,7 @@ import {
   DrawerDescription,
   DrawerTrigger,
 } from "../ui/drawer";
+import { Skeleton } from "../ui/skeleton";
 import { useAuthStorage } from "../providers";
 import { listFolders } from "../../lib/google";
 import type { LocationMode, ScreenMeta } from "./types";
@@ -35,35 +37,34 @@ export function SheetLocationScreen({
 }: SheetLocationScreenProps) {
   const { accessToken } = useAuthStorage();
   const [isOpen, setIsOpen] = useState(false);
-  const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [currentParent, setCurrentParent] = useState("root");
+  const [folderStack, setFolderStack] = useState<
+    { id: string; name: string }[]
+  >([{ id: "root", name: "My Drive" }]);
+  const currentFolder = folderStack[folderStack.length - 1];
+
   const [selectedFolder, setSelectedFolder] = useState<{
     id: string;
     name: string;
   } | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      if (!accessToken) return;
-      setLoading(true);
+  const { data: folders = [], isLoading } = useQuery({
+    queryKey: ["folders", accessToken, currentFolder.id],
+    queryFn: async () => {
+      if (!accessToken) {
+        return [];
+      }
       try {
-        const result = await listFolders(accessToken, currentParent);
-        setFolders(result);
+        return await listFolders(accessToken, currentFolder.id);
       } catch (error) {
         console.error("Failed to list folders", error);
-      } finally {
-        setLoading(false);
+        return [];
       }
-    }
-
-    if (isOpen) {
-      void load();
-    }
-  }, [isOpen, currentParent, accessToken]);
+    },
+    enabled: Boolean(accessToken) && isOpen,
+  });
 
   function handleFolderClick(folder: { id: string; name: string }) {
-    setCurrentParent(folder.id);
+    setFolderStack((prev) => [...prev, folder]);
   }
 
   function handleSelectFolder(folder: { id: string; name: string }) {
@@ -74,9 +75,10 @@ export function SheetLocationScreen({
   }
 
   function handleBack() {
-    if (currentParent !== "root") {
-      setCurrentParent("root");
-    }
+    setFolderStack((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.slice(0, -1);
+    });
   }
 
   return (
@@ -161,20 +163,38 @@ export function SheetLocationScreen({
           <DrawerContent>
             <DrawerHeader>
               <DrawerTitle>Select Folder</DrawerTitle>
-              <DrawerDescription>Browse your Google Drive</DrawerDescription>
+              <DrawerDescription>
+                {currentFolder.id === "root"
+                  ? "Browse your Google Drive"
+                  : currentFolder.name}
+              </DrawerDescription>
             </DrawerHeader>
             <div className="p-4 h-[60vh] overflow-y-auto">
-              {currentParent !== "root" && (
+              {folderStack.length > 1 && (
                 <button
                   type="button"
                   onClick={handleBack}
                   className="flex items-center gap-2 mb-4 text-sm text-muted-foreground hover:text-foreground"
                 >
-                  <ArrowLeft className="w-4 h-4" /> Back to root
+                  <ArrowLeft className="w-4 h-4" /> Back to{" "}
+                  {folderStack[folderStack.length - 2]?.name ?? "Drive"}
                 </button>
               )}
-              {loading ? (
-                <div className="flex justify-center p-8">Loading...</div>
+              {isLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <div
+                      key={`folder-skeleton-${index}`}
+                      className="flex items-center justify-between rounded-xl p-3"
+                    >
+                      <div className="flex flex-1 items-center gap-3">
+                        <Skeleton className="h-5 w-5 rounded-full" />
+                        <Skeleton className="h-4 w-40" />
+                      </div>
+                      <Skeleton className="h-8 w-16 rounded-full" />
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <div className="space-y-1">
                   {folders.map((folder) => (

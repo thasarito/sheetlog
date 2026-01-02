@@ -52,8 +52,8 @@ function usePickerData(componentName: string) {
     const error = new Error(
       `<${componentName} /> is missing a parent <Picker /> component.`
     );
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(error, usePickerData);
+    if ((Error as any).captureStackTrace) {
+      (Error as any).captureStackTrace(error, usePickerData);
     }
     throw error;
   }
@@ -72,8 +72,8 @@ function usePickerActions(componentName: string) {
     const error = new Error(
       `<${componentName} /> is missing a parent <Picker /> component.`
     );
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(error, usePickerActions);
+    if ((Error as any).captureStackTrace) {
+      (Error as any).captureStackTrace(error, usePickerActions);
     }
     throw error;
   }
@@ -260,8 +260,8 @@ function useColumnData(componentName: string) {
     const error = new Error(
       `<${componentName} /> is missing a parent <Picker.Column /> component.`
     );
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(error, useColumnData);
+    if ((Error as any).captureStackTrace) {
+      (Error as any).captureStackTrace(error, useColumnData);
     }
     throw error;
   }
@@ -429,7 +429,10 @@ function PickerColumn({
       updateScrollerWhileMoving(nextScrollerTranslate);
 
       let nextVelocity = velocity * Math.pow(decay, dt / 16);
-      if (nextScrollerTranslate < minTranslate || nextScrollerTranslate > maxTranslate) {
+      if (
+        nextScrollerTranslate < minTranslate ||
+        nextScrollerTranslate > maxTranslate
+      ) {
         nextVelocity *= 0.6;
       }
       velocityRef.current = nextVelocity;

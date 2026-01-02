@@ -24,10 +24,7 @@ const CATEGORY_LABELS: Record<TransactionType, string> = {
   transfer: "Transfer",
 };
 
-const accountNameSchema = z
-  .string()
-  .trim()
-  .min(1, "Enter an account name");
+const accountNameSchema = z.string().trim().min(1, "Enter an account name");
 
 export function AccountCategoryPanel({
   onToast,
@@ -36,8 +33,9 @@ export function AccountCategoryPanel({
 }: AccountCategoryPanelProps) {
   const { onboarding, updateOnboarding } = useOnboarding();
   const [activeView, setActiveView] = useState<PanelView>("accounts");
-  const [activeCategoryType, setActiveCategoryType] =
-    useState<TransactionType>(TYPE_OPTIONS[0]);
+  const [activeCategoryType, setActiveCategoryType] = useState<TransactionType>(
+    TYPE_OPTIONS[0]
+  );
   const [categoryInputs, setCategoryInputs] = useState<CategoryInputs>({
     expense: "",
     income: "",
@@ -253,9 +251,7 @@ export function AccountCategoryPanel({
               }}
             >
               {(field) => {
-                const error =
-                  field.state.meta.touchedErrors?.[0] ??
-                  field.state.meta.errors?.[0];
+                const error = field.state.meta.errors?.[0];
                 return (
                   <div className="flex-1">
                     <input
@@ -344,8 +340,7 @@ export function AccountCategoryPanel({
                 }))
               }
               onKeyDown={(event) => {
-                if (event.key === "Enter")
-                  void addCategory(activeCategoryType);
+                if (event.key === "Enter") void addCategory(activeCategoryType);
               }}
             />
             <button
