@@ -467,6 +467,7 @@ export function TransactionFlow() {
       content: (
         <StepAmount
           type={type}
+          category={category}
           amount={amount}
           currency={currency}
           account={account}
