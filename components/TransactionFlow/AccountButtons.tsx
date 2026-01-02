@@ -26,8 +26,8 @@ export function AccountButtons({
             type="button"
             className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
               isActive
-                ? "bg-emerald-400 text-slate-950"
-                : "bg-white/10 text-slate-200"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-surface-2 text-muted-foreground"
             } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
             onClick={() => onSelect(item)}
             aria-pressed={isActive}

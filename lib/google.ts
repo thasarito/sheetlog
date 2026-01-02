@@ -9,7 +9,6 @@ const HEADER_ROW = [
   'Type',
   'Amount',
   'Category',
-  'Tags',
   'Note',
   'Timestamp',
   'Device/Source',
@@ -141,7 +140,7 @@ async function moveFileToFolder(accessToken: string, fileId: string, folderId: s
 }
 
 export async function ensureHeaders(accessToken: string, spreadsheetId: string): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:K1?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:J1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: 'PUT',
     body: JSON.stringify({ values: [HEADER_ROW] })
@@ -226,7 +225,7 @@ export async function appendTransaction(
   spreadsheetId: string,
   transaction: TransactionRecord
 ): Promise<number | null> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:J:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
   let note = transaction.note ?? '';
   let currency = transaction.currency ?? '';
   if (!currency && note) {
@@ -242,7 +241,6 @@ export async function appendTransaction(
       transaction.type,
       transaction.amount,
       transaction.category,
-      transaction.tags.join(', '),
       note,
       transaction.createdAt,
       'PWA',

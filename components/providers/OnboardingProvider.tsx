@@ -85,12 +85,14 @@ export function OnboardingProvider({
     if (!store.hasLoaded || !accessToken || !sheetId || !isOnline) {
       return;
     }
+    const token = accessToken;
+    const sheet = sheetId;
     let cancelled = false;
     async function hydrate() {
       try {
         const merged = await hydrateOnboardingFromSheet(
-          accessToken,
-          sheetId,
+          token,
+          sheet,
           onboardingRef.current
         );
         if (!cancelled && merged.changed) {

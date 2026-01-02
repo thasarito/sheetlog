@@ -2,12 +2,7 @@
 
 import React, { useEffect, useMemo, useReducer } from "react";
 import { format } from "date-fns";
-import {
-  useAuthStorage,
-  useConnectivity,
-  useOnboarding,
-  useTransactions,
-} from "../providers";
+import { useAuthStorage, useOnboarding, useTransactions } from "../providers";
 import { OnboardingFlow } from "../OnboardingFlow";
 import { ServiceWorker } from "../ServiceWorker";
 import { Toast } from "../Toast";
@@ -25,7 +20,6 @@ type FlowState = {
   step: number;
   type: TransactionType | null;
   category: string | null;
-  tags: string[];
   amount: string;
   currency: string;
   account: string | null;
@@ -44,7 +38,6 @@ type FlowAction =
   | { type: "SELECT_TYPE"; value: TransactionType }
   | { type: "SELECT_CATEGORY"; value: string }
   | { type: "SET_STEP"; value: number }
-  | { type: "TOGGLE_TAG"; value: string }
   | { type: "SET_AMOUNT"; value: string }
   | { type: "SET_CURRENCY"; value: string }
   | { type: "SET_ACCOUNT"; value: string | null }
@@ -75,7 +68,6 @@ const createInitialState = (_?: unknown): FlowState => ({
   step: 0,
   type: TYPE_OPTIONS[0],
   category: null,
-  tags: [],
   amount: "",
   currency: resolveStoredCurrency(),
   account: null,
@@ -97,13 +89,9 @@ function flowReducer(state: FlowState, action: FlowAction): FlowState {
         category: state.type === action.value ? state.category : null,
       };
     case "SELECT_CATEGORY":
-      return { ...state, category: action.value, step: 1 };
+      return { ...state, category: action.value };
     case "SET_STEP":
       return { ...state, step: action.value };
-    case "TOGGLE_TAG":
-      return state.tags.includes(action.value)
-        ? { ...state, tags: state.tags.filter((tag) => tag !== action.value) }
-        : { ...state, tags: [...state.tags, action.value] };
     case "SET_AMOUNT":
       return { ...state, amount: action.value };
     case "SET_CURRENCY":
@@ -122,7 +110,6 @@ function flowReducer(state: FlowState, action: FlowAction): FlowState {
         step: 0,
         type: TYPE_OPTIONS[0],
         category: null,
-        tags: [],
         amount: "",
         forValue: "",
         note: "",
@@ -159,10 +146,8 @@ type StepDefinition = {
 };
 
 export function TransactionFlow() {
-  const { isOnline } = useConnectivity();
-  const { accessToken, sheetId, refreshSheet } = useAuthStorage();
-  const { queueCount, recentCategories, addTransaction, undoLast, syncNow } =
-    useTransactions();
+  const { accessToken, sheetId } = useAuthStorage();
+  const { recentCategories, addTransaction, undoLast } = useTransactions();
   const { onboarding } = useOnboarding();
 
   const [state, dispatch] = useReducer(
@@ -174,7 +159,6 @@ export function TransactionFlow() {
     step,
     type,
     category,
-    tags,
     amount,
     currency,
     account,
@@ -250,17 +234,6 @@ export function TransactionFlow() {
     dispatch({ type: "RESET_FLOW" });
   }
 
-  async function handleRefreshSheet() {
-    try {
-      await refreshSheet(onboarding.sheetFolderId);
-      handleToast("Sheet ready");
-    } catch (error) {
-      handleToast(
-        error instanceof Error ? error.message : "Failed to refresh sheet"
-      );
-    }
-  }
-
   async function handleUndo() {
     const result = await undoLast();
     handleToast(result.message);
@@ -301,16 +274,11 @@ export function TransactionFlow() {
       account,
       for: trimmedFor,
       category,
-      tags,
       date: format(dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
       note: note.trim() || undefined,
     });
     handleToast("Saved", { label: "Undo", onClick: () => void handleUndo() });
     resetFlow();
-  }
-
-  function toggleTag(tag: string) {
-    dispatch({ type: "TOGGLE_TAG", value: tag });
   }
 
   const steps: StepDefinition[] = [
@@ -323,12 +291,13 @@ export function TransactionFlow() {
           type={type ?? TYPE_OPTIONS[0]}
           categoryGroups={categoryGroups}
           selected={category}
-          tags={tags}
+          dateObject={dateObject}
           onSelectType={(value) => dispatch({ type: "SELECT_TYPE", value })}
           onSelectCategory={(value) =>
             dispatch({ type: "SELECT_CATEGORY", value })
           }
-          onToggleTag={toggleTag}
+          onDateChange={(value) => dispatch({ type: "SET_DATE", value })}
+          onConfirm={() => dispatch({ type: "SET_STEP", value: 1 })}
         />
       ),
     },
@@ -343,7 +312,6 @@ export function TransactionFlow() {
           currency={currency}
           account={account}
           forValue={forValue}
-          dateObject={dateObject}
           note={note}
           accounts={onboarding.accounts}
           onBack={() => dispatch({ type: "SET_STEP", value: 0 })}
@@ -353,7 +321,6 @@ export function TransactionFlow() {
           }
           onAccountSelect={(value) => dispatch({ type: "SET_ACCOUNT", value })}
           onForChange={(value) => dispatch({ type: "SET_FOR", value })}
-          onDateChange={(value) => dispatch({ type: "SET_DATE", value })}
           onNoteChange={(value) => dispatch({ type: "SET_NOTE", value })}
           onSubmit={handleSubmit}
         />
@@ -364,7 +331,7 @@ export function TransactionFlow() {
   const activeStep = steps[step] ?? steps[0];
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f2f2f7] via-white to-[#f2f2f7] px-5 pb-24 pt-10 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-slate-900 antialiased">
+    <main className="min-h-screen bg-gradient-to-b from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
       <ServiceWorker />
       {isOnboarded ? (
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">

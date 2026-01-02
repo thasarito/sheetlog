@@ -21,8 +21,8 @@ export function StepCard({
   children,
 }: StepCardProps) {
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
-      <div className="mb-4 flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+    <section className="rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-soft backdrop-blur-xl">
+      <div className="mb-4 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         <span>
           Step {stepIndex + 1} of {totalSteps}
         </span>

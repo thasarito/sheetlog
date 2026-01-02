@@ -18,8 +18,10 @@ export function TagChips({ tags, selected, onToggle }: TagChipsProps) {
             key={tag}
             type="button"
             onClick={() => onToggle(tag)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-              isActive ? 'bg-emerald-400 text-slate-950' : 'bg-white/10 text-slate-200'
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
+              isActive
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-surface-2 text-muted-foreground'
             }`}
           >
             #{tag}

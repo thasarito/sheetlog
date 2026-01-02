@@ -33,7 +33,7 @@ export function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
       height={72}
       itemHeight={24}
       wheelMode="natural"
-      className="w-20 shrink-0 rounded-xl border border-white/10 bg-white/5"
+      className="w-20 shrink-0 rounded-xl border border-border bg-card shadow-sm"
       aria-label="Select currency"
     >
       <Picker.Column name="currency" className="text-xs font-semibold">
@@ -41,7 +41,7 @@ export function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
           <Picker.Item key={currency} value={currency}>
             {({ selected }) => (
               <span
-                className={selected ? "text-emerald-300" : "text-slate-400"}
+                className={selected ? "text-primary" : "text-muted-foreground"}
               >
                 {currency}
               </span>

@@ -212,19 +212,19 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
       <header className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
               SheetLog
             </p>
             <h1 className="text-2xl font-semibold">Get set up</h1>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <StatusDot online={isOnline} />
-            <span className="text-slate-300">
+            <span className="text-muted-foreground">
               {isOnline ? "Online" : "Offline"}
             </span>
           </div>
         </div>
-        <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-4">
+        <div className="rounded-3xl border border-border bg-card/70 px-4 py-4">
           <div className="space-y-3 text-sm">
             {steps.map((step, index) => (
               <div
@@ -235,18 +235,18 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
                   <span
                     className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold ${
                       step.done
-                        ? "border-emerald-400 bg-emerald-400 text-slate-950"
-                        : "border-white/10 text-slate-300"
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border text-muted-foreground"
                     }`}
                   >
                     {index + 1}
                   </span>
-                  <span className="text-slate-100">{step.label}</span>
+                  <span className="text-foreground">{step.label}</span>
                 </div>
                 {step.done ? (
-                  <Check className="h-4 w-4 text-emerald-300" />
+                  <Check className="h-4 w-4 text-primary" />
                 ) : (
-                  <span className="text-xs text-slate-400">Pending</span>
+                  <span className="text-xs text-muted-foreground">Pending</span>
                 )}
               </div>
             ))}
@@ -254,7 +254,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
         </div>
       </header>
 
-      <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+      <section className="rounded-3xl border border-border bg-card/70 p-6">
         <AnimatePresence mode="wait">
           {stepIndex === 0 ? (
             <motion.div
@@ -266,25 +266,25 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               className="space-y-5"
             >
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-emerald-400/20 p-3 text-emerald-300">
+                <div className="rounded-2xl bg-primary/15 p-3 text-primary">
                   <Plug className="h-5 w-5" />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold">Connect Google</h2>
-                  <p className="text-sm text-slate-300">
+                  <p className="text-sm text-muted-foreground">
                     Sign in to authorize SheetLog_DB.
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                className="w-full rounded-2xl bg-emerald-400 py-3 text-sm font-semibold text-slate-950"
+                className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
                 onClick={handleConnect}
                 disabled={isConnecting}
               >
                 {isConnecting ? "Connecting..." : "Connect Google Account"}
               </button>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 Set NEXT_PUBLIC_GOOGLE_CLIENT_ID in your env.
               </p>
             </motion.div>
@@ -301,11 +301,11 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             >
               <div>
                 <h2 className="text-lg font-semibold">Pick sheet location</h2>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Choose where SheetLog_DB should live in Drive.
                 </p>
               </div>
-              <div className="space-y-2 text-sm text-slate-200">
+              <div className="space-y-2 text-sm text-muted-foreground">
                 <label className="flex items-center gap-2">
                   <input
                     type="radio"
@@ -330,7 +330,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               {locationMode === "folder" ? (
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100"
+                  className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
                   placeholder="Drive folder ID"
                   value={folderIdInput}
                   onChange={(event) => setFolderIdInput(event.target.value)}
@@ -338,7 +338,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               ) : null}
               <button
                 type="button"
-                className="w-full rounded-2xl bg-emerald-400 py-3 text-sm font-semibold text-slate-950"
+                className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
                 onClick={handleSheetSetup}
                 disabled={
                   isSettingUpSheet ||
@@ -347,7 +347,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               >
                 {isSettingUpSheet ? "Setting up..." : "Create or Locate Sheet"}
               </button>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 We will create or reuse SheetLog_DB and add the headers.
               </p>
             </motion.div>
@@ -364,14 +364,14 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             >
               <div>
                 <h2 className="text-lg font-semibold">Set up accounts</h2>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Add your bank accounts, cards, or wallets.
                 </p>
               </div>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100"
+                  className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
                   placeholder="e.g. Chase Checking"
                   value={accountInput}
                   onChange={(event) => setAccountInput(event.target.value)}
@@ -381,7 +381,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
                 />
                 <button
                   type="button"
-                  className="rounded-2xl border border-white/10 px-4 text-sm font-semibold text-slate-100"
+                  className="rounded-2xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:bg-surface"
                   onClick={addAccount}
                 >
                   Add
@@ -391,12 +391,12 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
                 {onboarding.accounts.map((account) => (
                   <div
                     key={account}
-                    className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
+                    className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-foreground"
                   >
                     <span>{account}</span>
                     <button
                       type="button"
-                      className="text-slate-400"
+                      className="text-muted-foreground"
                       onClick={() => removeAccount(account)}
                     >
                       Remove
@@ -406,7 +406,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               </div>
               <button
                 type="button"
-                className="w-full rounded-2xl bg-emerald-400 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
+                className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
                 onClick={confirmAccounts}
                 disabled={isSaving}
               >
@@ -426,26 +426,26 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             >
               <div>
                 <h2 className="text-lg font-semibold">Set up categories</h2>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Customize the categories used in logging.
                 </p>
               </div>
               {(["expense", "income", "transfer"] as TransactionType[]).map(
                 (type) => (
                   <div key={type} className="space-y-2">
-                    <p className="text-xs uppercase tracking-widest text-slate-400">
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
                       {CATEGORY_LABELS[type]}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {(categories[type] ?? []).map((item) => (
                         <div
                           key={item}
-                          className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-100"
+                          className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-foreground"
                         >
                           <span>{item}</span>
                           <button
                             type="button"
-                            className="text-slate-400"
+                            className="text-muted-foreground"
                             onClick={() => removeCategory(type, item)}
                           >
                             Remove
@@ -456,7 +456,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        className="flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100"
+                        className="flex-1 rounded-2xl border border-border bg-card px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                         placeholder="Add a category"
                         value={categoryInputs[type]}
                         onChange={(event) =>
@@ -471,7 +471,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
                       />
                       <button
                         type="button"
-                        className="rounded-2xl border border-white/10 px-4 text-sm font-semibold text-slate-100"
+                        className="rounded-2xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:bg-surface"
                         onClick={() => addCategory(type)}
                       >
                         Add
@@ -482,7 +482,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               )}
               <button
                 type="button"
-                className="w-full rounded-2xl bg-emerald-400 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
+                className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
                 onClick={confirmCategories}
                 disabled={isSaving}
               >
@@ -501,7 +501,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               className="space-y-2 text-center"
             >
               <h2 className="text-lg font-semibold">All set</h2>
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-muted-foreground">
                 You can start logging now.
               </p>
             </motion.div>

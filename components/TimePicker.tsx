@@ -60,14 +60,14 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       height={168}
       itemHeight={32}
       wheelMode="natural"
-      className="w-full rounded-2xl border border-white/10 bg-white/5"
+      className="w-full rounded-2xl border border-border bg-card shadow-sm"
     >
       <Picker.Column name="hour" className="text-sm font-semibold">
         {HOURS.map((hour) => (
           <Picker.Item key={hour} value={hour}>
             {({ selected }) => (
               <span
-                className={selected ? "text-emerald-300" : "text-slate-400"}
+                className={selected ? "text-primary" : "text-muted-foreground"}
               >
                 {hour}
               </span>
@@ -80,7 +80,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
           <Picker.Item key={minute} value={minute}>
             {({ selected }) => (
               <span
-                className={selected ? "text-emerald-300" : "text-slate-400"}
+                className={selected ? "text-primary" : "text-muted-foreground"}
               >
                 {minute}
               </span>
@@ -88,7 +88,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
           </Picker.Item>
         ))}
       </Picker.Column>
-      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">
         :
       </div>
     </Picker>

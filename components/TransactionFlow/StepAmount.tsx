@@ -4,9 +4,7 @@ import React from "react";
 import { Check } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
 import { CurrencyPicker } from "../CurrencyPicker";
-import { DateScroller } from "../DateScroller";
 import { Keypad } from "../Keypad";
-import { TimePicker } from "../TimePicker";
 import { AccountButtons } from "./AccountButtons";
 
 type StepAmountProps = {
@@ -15,7 +13,6 @@ type StepAmountProps = {
   currency: string;
   account: string | null;
   forValue: string;
-  dateObject: Date;
   note: string;
   accounts: string[];
   onBack: () => void;
@@ -23,7 +20,6 @@ type StepAmountProps = {
   onCurrencyChange: (value: string) => void;
   onAccountSelect: (value: string) => void;
   onForChange: (value: string) => void;
-  onDateChange: (value: Date) => void;
   onNoteChange: (value: string) => void;
   onSubmit: () => void;
 };
@@ -34,7 +30,6 @@ export function StepAmount({
   currency,
   account,
   forValue,
-  dateObject,
   note,
   accounts,
   onBack,
@@ -42,7 +37,6 @@ export function StepAmount({
   onCurrencyChange,
   onAccountSelect,
   onForChange,
-  onDateChange,
   onNoteChange,
   onSubmit,
 }: StepAmountProps) {
@@ -52,7 +46,7 @@ export function StepAmount({
         <h2 className="text-lg font-semibold">Amount & details</h2>
         <button
           type="button"
-          className="text-xs text-slate-400"
+          className="text-xs font-semibold text-muted-foreground"
           onClick={onBack}
         >
           Back
@@ -60,7 +54,7 @@ export function StepAmount({
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="flex flex-1 items-center justify-between rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-2xl font-semibold">
+        <div className="flex flex-1 items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-2xl font-semibold text-foreground shadow-sm">
           <span>{amount ? amount : "0"}</span>
           <CurrencyPicker value={currency} onChange={onCurrencyChange} />
         </div>
@@ -69,7 +63,7 @@ export function StepAmount({
       <Keypad value={amount} onChange={onAmountChange} />
 
       <div className="space-y-3">
-        <p className="text-xs uppercase tracking-widest text-slate-400">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">
           {type === "transfer" ? "From account" : "Account"}
         </p>
         <AccountButtons
@@ -81,7 +75,7 @@ export function StepAmount({
 
       {type === "transfer" ? (
         <div className="space-y-3">
-          <p className="text-xs uppercase tracking-widest text-slate-400">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">
             To account
           </p>
           <AccountButtons
@@ -91,7 +85,7 @@ export function StepAmount({
             isDisabled={(item) => item === account}
           />
           {accounts.length < 2 ? (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted-foreground">
               Add another account in onboarding to log transfers.
             </p>
           ) : null}
@@ -100,13 +94,13 @@ export function StepAmount({
         <div>
           <label
             htmlFor="forValue"
-            className="text-xs uppercase tracking-widest text-slate-400"
+            className="text-xs uppercase tracking-widest text-muted-foreground"
           >
             For
           </label>
           <input
             type="text"
-            className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100"
+            className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground shadow-sm"
             placeholder="Optional"
             value={forValue}
             onChange={(event) => onForChange(event.target.value)}
@@ -114,24 +108,16 @@ export function StepAmount({
         </div>
       )}
 
-      <div className="space-y-3">
-        <p className="text-xs uppercase tracking-widest text-slate-400">
-          Date & Time
-        </p>
-        <DateScroller value={dateObject} onChange={onDateChange} />
-        <TimePicker value={dateObject} onChange={onDateChange} />
-      </div>
-
       <div>
         <label
           htmlFor="note"
-          className="text-xs uppercase tracking-widest text-slate-400"
+          className="text-xs uppercase tracking-widest text-muted-foreground"
         >
           Note
         </label>
         <input
           type="text"
-          className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100"
+          className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground shadow-sm"
           placeholder="Optional"
           value={note}
           onChange={(event) => onNoteChange(event.target.value)}
@@ -140,7 +126,7 @@ export function StepAmount({
 
       <button
         type="button"
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 py-3 text-sm font-semibold text-slate-950"
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm"
         onClick={onSubmit}
       >
         <Check className="h-4 w-4" />

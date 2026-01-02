@@ -94,13 +94,13 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           type="button"
           onClick={() => handleMonthChange(-1)}
           aria-label="Previous month"
-          className="cursor-pointer rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-300 hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+          className="cursor-pointer rounded-lg border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           whileTap={{ scale: 0.95 }}
         >
           ←
         </motion.button>
         <div className="flex items-center justify-center gap-2">
-          <div className="text-sm font-semibold text-slate-100" aria-live="polite">
+          <div className="text-sm font-semibold text-foreground" aria-live="polite">
             {format(value, "MMMM yyyy")}
           </div>
           <motion.button
@@ -109,8 +109,8 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
             disabled={isTodaySelected}
             className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-60 ${
               isTodaySelected
-                ? "border-white/10 text-slate-500"
-                : "border-emerald-200/40 text-emerald-200 hover:border-emerald-200/70"
+                ? "border-border text-muted-foreground"
+                : "border-primary/30 text-primary hover:border-primary/50"
             }`}
             whileTap={{ scale: 0.96 }}
           >
@@ -121,7 +121,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           type="button"
           onClick={() => handleMonthChange(1)}
           aria-label="Next month"
-          className="cursor-pointer rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-300 hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+          className="cursor-pointer rounded-lg border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           whileTap={{ scale: 0.95 }}
         >
           →
@@ -129,7 +129,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
       </div>
 
       <div
-        className="overflow-hidden rounded-2xl p-0.5"
+        className="overflow-hidden rounded-2xl border border-border bg-card p-1 shadow-sm"
         onKeyDown={handleKeyDown}
       >
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
@@ -160,10 +160,10 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
                   key={dateKey}
                   type="button"
                   onClick={() => onChange(date)}
-                  className={`relative flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 cursor-pointer ${
+                  className={`relative flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer ${
                     isSelected
-                      ? "border-emerald-400 text-slate-950"
-                      : "bg-white/5 border-white/10 text-slate-300 hover:border-white/20"
+                      ? "border-primary/60 text-primary-foreground"
+                      : "bg-card border-border text-muted-foreground hover:border-border/70"
                   }`}
                   whileTap={{ scale: 0.96 }}
                   aria-pressed={isSelected}
@@ -173,7 +173,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
                   {isSelected ? (
                     <motion.div
                       layoutId="activeDate"
-                      className="absolute inset-0 rounded-xl bg-emerald-400"
+                      className="absolute inset-0 rounded-xl bg-primary"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   ) : null}
@@ -187,8 +187,8 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
                     className={`relative z-10 mt-1 h-1 w-1 rounded-full ${
                       isToday
                         ? isSelected
-                          ? "bg-emerald-900"
-                          : "bg-emerald-200"
+                          ? "bg-primary-foreground"
+                          : "bg-primary"
                         : "bg-transparent"
                     }`}
                     aria-hidden="true"

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Tab } from "@headlessui/react";
 import {
   ArrowDownRight,
@@ -9,17 +9,18 @@ import {
 } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
 import { CategoryGrid } from "../CategoryGrid";
-import { TagChips } from "../TagChips";
-import { TAGS, TYPE_OPTIONS } from "./constants";
+import { DateTimeDrawer } from "../DateTimeDrawer";
+import { TYPE_OPTIONS } from "./constants";
 
 type StepCategoryProps = {
   type: TransactionType;
   categoryGroups: Record<TransactionType, { frequent: string[]; others: string[] }>;
   selected: string | null;
-  tags: string[];
+  dateObject: Date;
   onSelectType: (value: TransactionType) => void;
   onSelectCategory: (value: string) => void;
-  onToggleTag: (value: string) => void;
+  onDateChange: (value: Date) => void;
+  onConfirm: () => void;
 };
 
 const TYPE_META: Record<
@@ -38,13 +39,24 @@ export function StepCategory({
   type,
   categoryGroups,
   selected,
-  tags,
+  dateObject,
   onSelectType,
   onSelectCategory,
-  onToggleTag,
+  onDateChange,
+  onConfirm,
 }: StepCategoryProps) {
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const handleCategorySelect = (value: string) => {
+    onSelectCategory(value);
+    setIsDrawerOpen(true);
+  };
+
+  const handleConfirm = () => {
+    onConfirm();
+  };
 
   return (
     <div className="space-y-6">
@@ -54,7 +66,7 @@ export function StepCategory({
       >
         <Tab.List
           aria-label="Transaction type"
-          className="grid grid-cols-3 gap-2 rounded-3xl border border-white/10 bg-white/5 p-2"
+          className="grid grid-cols-3 gap-2 rounded-3xl border border-border/70 bg-surface-2/80 p-2 shadow-inner"
         >
           {TYPE_OPTIONS.map((item) => {
             const meta = TYPE_META[item];
@@ -64,10 +76,10 @@ export function StepCategory({
                 key={item}
                 className={({ selected: isSelected }) =>
                   [
-                    "flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60",
+                    "flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
                     isSelected
-                      ? "bg-white text-slate-950 shadow-sm"
-                      : "text-slate-200 hover:bg-white/10",
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
                   ].join(" ")
                 }
               >
@@ -76,13 +88,13 @@ export function StepCategory({
                     <span
                       className={[
                         "flex h-9 w-9 items-center justify-center rounded-2xl transition",
-                        isSelected ? "bg-slate-100" : "bg-white/10",
+                        isSelected ? "bg-accent" : "bg-card/70",
                       ].join(" ")}
                     >
                       <Icon
                         className={[
                           "h-4 w-4",
-                          isSelected ? "text-slate-900" : "text-slate-200",
+                          isSelected ? "text-primary" : "text-muted-foreground",
                         ].join(" ")}
                       />
                     </span>
@@ -106,7 +118,7 @@ export function StepCategory({
                   frequent={group.frequent}
                   others={group.others}
                   selected={selected}
-                  onSelect={onSelectCategory}
+                  onSelect={handleCategorySelect}
                 />
               </Tab.Panel>
             );
@@ -114,12 +126,14 @@ export function StepCategory({
         </Tab.Panels>
       </Tab.Group>
 
-      <div className="pt-1">
-        <p className="mb-2 text-xs uppercase tracking-widest text-slate-400">
-          Tags
-        </p>
-        <TagChips tags={TAGS} selected={tags} onToggle={onToggleTag} />
-      </div>
+      <DateTimeDrawer
+        value={dateObject}
+        onChange={onDateChange}
+        open={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+        showTrigger={false}
+        onConfirm={handleConfirm}
+      />
     </div>
   );
 }

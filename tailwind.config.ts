@@ -1,16 +1,53 @@
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
+  darkMode: 'media',
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        slate: {
-          950: '#0f172a'
-        }
+        background: 'hsl(var(--background) / <alpha-value>)',
+        foreground: 'hsl(var(--foreground) / <alpha-value>)',
+        surface: {
+          DEFAULT: 'hsl(var(--surface) / <alpha-value>)',
+          2: 'hsl(var(--surface-2) / <alpha-value>)',
+          3: 'hsl(var(--surface-3) / <alpha-value>)'
+        },
+        card: {
+          DEFAULT: 'hsl(var(--card) / <alpha-value>)',
+          foreground: 'hsl(var(--card-foreground) / <alpha-value>)'
+        },
+        muted: {
+          DEFAULT: 'hsl(var(--muted) / <alpha-value>)',
+          foreground: 'hsl(var(--muted-foreground) / <alpha-value>)'
+        },
+        primary: {
+          DEFAULT: 'hsl(var(--primary) / <alpha-value>)',
+          foreground: 'hsl(var(--primary-foreground) / <alpha-value>)'
+        },
+        accent: {
+          DEFAULT: 'hsl(var(--accent) / <alpha-value>)',
+          foreground: 'hsl(var(--accent-foreground) / <alpha-value>)'
+        },
+        success: {
+          DEFAULT: 'hsl(var(--success) / <alpha-value>)',
+          foreground: 'hsl(var(--success-foreground) / <alpha-value>)'
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning) / <alpha-value>)',
+          foreground: 'hsl(var(--warning-foreground) / <alpha-value>)'
+        },
+        danger: {
+          DEFAULT: 'hsl(var(--danger) / <alpha-value>)',
+          foreground: 'hsl(var(--danger-foreground) / <alpha-value>)'
+        },
+        overlay: 'hsl(var(--overlay) / <alpha-value>)',
+        border: 'hsl(var(--border) / <alpha-value>)',
+        ring: 'hsl(var(--ring) / <alpha-value>)'
       },
       boxShadow: {
-        soft: '0 12px 30px -16px rgba(15, 23, 42, 0.5)'
+        soft: 'var(--shadow-soft)',
+        lift: 'var(--shadow-lift)'
       }
     }
   },

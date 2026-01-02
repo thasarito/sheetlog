@@ -4,14 +4,74 @@
 
 :root {
   color-scheme: light;
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --surface: 210 40% 98%;
+  --surface-2: 210 40% 96%;
+  --surface-3: 210 34% 90%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --primary: 160 84% 39%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 162 61% 88%;
+  --accent-foreground: 164 86% 16%;
+  --success: 160 84% 39%;
+  --success-foreground: 0 0% 100%;
+  --warning: 45 93% 47%;
+  --warning-foreground: 26 83% 14%;
+  --danger: 0 84% 60%;
+  --danger-foreground: 0 0% 100%;
+  --overlay: 222 47% 11%;
+  --border: 214 32% 91%;
+  --ring: 160 84% 39%;
+  --shadow-soft: 0 12px 30px -16px hsl(222 47% 11% / 0.35);
+  --shadow-lift: 0 -18px 50px -30px hsl(222 47% 11% / 0.35);
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  @apply antialiased;
 }
 
 input[type='date'] {
   color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --surface: 222 47% 15%;
+    --surface-2: 223 37% 20%;
+    --surface-3: 223 32% 24%;
+    --card: 222 47% 13%;
+    --card-foreground: 210 40% 98%;
+    --muted: 223 32% 20%;
+    --muted-foreground: 215 20% 65%;
+    --primary: 160 84% 45%;
+    --primary-foreground: 222 47% 11%;
+    --accent: 164 60% 28%;
+    --accent-foreground: 210 40% 98%;
+    --success: 160 84% 45%;
+    --success-foreground: 222 47% 11%;
+    --warning: 45 93% 55%;
+    --warning-foreground: 222 47% 11%;
+    --danger: 0 84% 60%;
+    --danger-foreground: 210 40% 98%;
+    --overlay: 220 40% 2%;
+    --border: 215 27% 30%;
+    --ring: 160 84% 45%;
+    --shadow-soft: 0 12px 30px -16px hsl(220 40% 2% / 0.6);
+    --shadow-lift: 0 -18px 50px -30px hsl(220 40% 2% / 0.75);
+  }
+
+  input[type='date'] {
+    color-scheme: dark;
+  }
 }
 
 .no-tap-highlight {

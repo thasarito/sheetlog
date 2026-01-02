@@ -8,7 +8,6 @@ export interface TransactionInput {
   account: string;
   for: string;
   category: string;
-  tags: string[];
   date: string;
   note?: string;
 }
