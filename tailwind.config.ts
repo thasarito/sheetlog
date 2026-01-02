@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import safeArea from 'tailwindcss-safe-area';
 
 const config: Config = {
   darkMode: 'media',
@@ -51,7 +52,7 @@ const config: Config = {
       }
     }
   },
-  plugins: []
+  plugins: [safeArea]
 };
 
 export default config;

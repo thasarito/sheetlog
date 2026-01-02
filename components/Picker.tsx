@@ -344,6 +344,7 @@ function PickerColumn({
   const [startScrollerTranslate, setStartScrollerTranslate] =
     useState<number>(0);
   const [isMoving, setIsMoving] = useState<boolean>(false);
+  const [isMomentum, setIsMomentum] = useState<boolean>(false);
   const [startTouchY, setStartTouchY] = useState<number>(0);
   const lastTouchYRef = useRef<number>(0);
   const lastTouchTimeRef = useRef<number>(0);
@@ -355,6 +356,7 @@ function PickerColumn({
       cancelAnimationFrame(momentumRafRef.current);
       momentumRafRef.current = null;
     }
+    setIsMomentum(false);
   }, []);
 
   const updateScrollerWhileMoving = useCallback(
@@ -413,6 +415,7 @@ function PickerColumn({
 
   const startMomentum = useCallback(() => {
     stopMomentum();
+    setIsMomentum(true);
     let lastTime = performance.now();
     const decay = 0.95;
     const minVelocity = 0.02;
@@ -553,10 +556,10 @@ function PickerColumn({
       maxHeight: "100%",
       transitionProperty: "transform",
       transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
-      transitionDuration: isMoving ? "0ms" : "300ms",
+      transitionDuration: isMoving || isMomentum ? "0ms" : "300ms",
       transform: `translate3d(0, ${scrollerTranslate}px, 0)`,
     }),
-    [scrollerTranslate, isMoving]
+    [scrollerTranslate, isMomentum, isMoving]
   );
 
   const columnData = useMemo(() => ({ key }), [key]);

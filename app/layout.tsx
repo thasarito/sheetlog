@@ -19,6 +19,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 
@@ -29,7 +31,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full bg-background">
-      <body className="no-tap-highlight min-h-screen min-h-[100dvh] w-full bg-background text-foreground overscroll-none touch-manipulation [padding-top:env(safe-area-inset-top)] [padding-bottom:env(safe-area-inset-bottom)] [padding-left:env(safe-area-inset-left)] [padding-right:env(safe-area-inset-right)]">
+      <body className="no-tap-highlight min-h-screen min-h-[100dvh] w-full bg-background text-foreground overscroll-none touch-manipulation pt-safe pb-safe pl-safe pr-safe">
         <AppProvider>
           <div className="flex min-h-[100dvh] w-full flex-col">
             {children}
