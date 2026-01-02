@@ -56,7 +56,7 @@ export function StepAmount({
   }, [account, accounts, hasTransferAccounts, isTransfer]);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col gap-5">
+    <div className="flex min-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] flex-col gap-5">
       <div className="flex-1 flex flex-col">
         <div className="flex flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
           <span>{amount ? amount : "0"}</span>
