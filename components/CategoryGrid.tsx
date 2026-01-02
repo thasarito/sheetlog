@@ -25,8 +25,7 @@ import {
 } from 'lucide-react';
 
 interface CategoryGridProps {
-  frequent: string[];
-  others: string[];
+  categories: string[];
   selected: string | null;
   onSelect: (category: string) => void;
 }
@@ -161,15 +160,13 @@ function resolveCategoryMeta(category: string): CategoryMeta {
 }
 
 export function CategoryGrid({
-  frequent,
-  others,
+  categories,
   selected,
   onSelect,
 }: CategoryGridProps) {
-  const items = [...frequent, ...others];
   return (
     <div className="grid grid-cols-4 gap-3">
-      {items.map((category) => {
+      {categories.map((category) => {
         const isSelected = selected === category;
         const meta = resolveCategoryMeta(category);
         const Icon = meta.icon;

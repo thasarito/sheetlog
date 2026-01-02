@@ -203,7 +203,7 @@ type StepDefinition = {
 
 export function TransactionFlow() {
   const { accessToken, sheetId } = useAuthStorage();
-  const { recentCategories, addTransaction, undoLast } = useTransactions();
+  const { addTransaction, undoLast } = useTransactions();
   const { onboarding, refreshOnboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
   const [isResyncing, setIsResyncing] = useState(false);
@@ -243,17 +243,10 @@ export function TransactionFlow() {
   const categoryGroups = useMemo(() => {
     return TYPE_OPTIONS.reduce((acc, typeOption) => {
       const typeCategories = categories[typeOption] ?? [];
-      const recent = recentCategories[typeOption] ?? [];
-      const combined = [...recent, ...typeCategories];
-      const unique = combined.filter(
-        (item, index) => combined.indexOf(item) === index
-      );
-      const frequent = unique.slice(0, 4);
-      const others = typeCategories.filter((item) => !frequent.includes(item));
-      acc[typeOption] = { frequent, others };
+      acc[typeOption] = typeCategories;
       return acc;
-    }, {} as Record<TransactionType, { frequent: string[]; others: string[] }>);
-  }, [categories, recentCategories]);
+    }, {} as Record<TransactionType, string[]>);
+  }, [categories]);
 
   const formattedAmount = amount ? Number.parseFloat(amount) : 0;
 
@@ -314,6 +307,13 @@ export function TransactionFlow() {
     receiptTimeoutRef.current = window.setTimeout(callback, delay);
   }
 
+  function clearReceiptTransition() {
+    if (receiptTimeoutRef.current) {
+      window.clearTimeout(receiptTimeoutRef.current);
+      receiptTimeoutRef.current = null;
+    }
+  }
+
   async function handleResync() {
     if (isResyncing) {
       return;
@@ -343,6 +343,17 @@ export function TransactionFlow() {
 
   function resetFlow() {
     dispatch({ type: "RESET_FLOW" });
+  }
+
+  function handleReceiptDone() {
+    clearReceiptTransition();
+    resetFlow();
+  }
+
+  async function handleReceiptUndo() {
+    clearReceiptTransition();
+    await handleUndo();
+    resetFlow();
   }
 
   async function handleUndo() {
@@ -405,7 +416,7 @@ export function TransactionFlow() {
       });
       dispatch({ type: "SET_RECEIPT_STATUS", status: "success" });
       handleToast("Saved", { label: "Undo", onClick: () => void handleUndo() });
-      scheduleReceiptTransition(() => resetFlow(), 1400);
+      scheduleReceiptTransition(() => resetFlow(), 2000);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to save transaction";
@@ -483,6 +494,8 @@ export function TransactionFlow() {
           {...receiptSnapshot}
           status={receipt.status}
           message={receipt.message}
+          onDone={handleReceiptDone}
+          onUndo={handleReceiptUndo}
         />
       ),
     },

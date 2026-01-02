@@ -1,9 +1,14 @@
 "use client";
 
-import React from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { format } from "date-fns";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { motion } from "framer-motion";
+import { Loader2, XCircle } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
+import {
+  CircleCheckIcon,
+  type CircleCheckIconHandle,
+} from "../icons/CircleCheckIcon";
 
 export type ReceiptStatus = "idle" | "loading" | "success" | "error";
 
@@ -21,6 +26,8 @@ export type ReceiptData = {
 type StepReceiptProps = ReceiptData & {
   status: ReceiptStatus;
   message?: string;
+  onDone?: () => void;
+  onUndo?: () => void;
 };
 
 const TYPE_LABELS: Record<TransactionType, string> = {
@@ -40,14 +47,19 @@ export function StepReceipt({
   note,
   status,
   message,
+  onDone,
+  onUndo,
 }: StepReceiptProps) {
   const normalizedStatus = status === "idle" ? "loading" : status;
   const amountLabel = amount ? amount : "0";
+  const amountDisplay = `${currency} ${amountLabel}`;
+  const isSuccess = normalizedStatus === "success";
+  const isError = normalizedStatus === "error";
   const statusTitle =
     normalizedStatus === "loading"
       ? "Saving transaction"
       : normalizedStatus === "success"
-        ? "Saved"
+        ? "Payment Successful"
         : "Save failed";
   const statusDescription =
     normalizedStatus === "loading"
@@ -55,92 +67,140 @@ export function StepReceipt({
       : normalizedStatus === "success"
         ? "Transaction added to your ledger."
         : message || "Check your connection and try again.";
-  const Icon =
-    normalizedStatus === "success"
-      ? CheckCircle2
-      : normalizedStatus === "error"
-        ? XCircle
-        : Loader2;
-  const iconClassName =
-    normalizedStatus === "loading"
-      ? "h-4 w-4 animate-spin text-muted-foreground"
-      : normalizedStatus === "success"
-        ? "h-4 w-4 text-success"
-        : "h-4 w-4 text-danger";
   const accountLabel = type === "transfer" ? "From" : "Account";
   const forLabel = type === "transfer" ? "To" : "For";
+  const checkIconRef = useRef<CircleCheckIconHandle | null>(null);
+
+  useEffect(() => {
+    if (isSuccess) {
+      checkIconRef.current?.startAnimation();
+    }
+  }, [isSuccess]);
+
+  const summaryRows = useMemo(
+    () => [
+      {
+        label: "Date & Time",
+        value: format(dateObject, "dd MMM yyyy · hh:mm a"),
+        muted: false,
+      },
+      { label: "Category", value: category || "—", muted: !category },
+      { label: accountLabel, value: account || "—", muted: !account },
+      { label: forLabel, value: forValue || "—", muted: !forValue },
+      { label: "Type", value: TYPE_LABELS[type], muted: false },
+      { label: "Note", value: note || "—", muted: !note },
+    ],
+    [account, accountLabel, category, dateObject, forLabel, forValue, note, type]
+  );
 
   return (
-    <div className="flex min-h-[100dvh] flex-col gap-6">
-      <div className="rounded-3xl border border-border/70 bg-surface-2/80 p-4 shadow-inner">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-card">
-            <Icon className={iconClassName} />
-          </span>
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-foreground">
-              {statusTitle}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {statusDescription}
-            </p>
+    <div className="flex min-h-[100dvh] flex-col justify-between gap-6 pb-6">
+      <div className="space-y-6">
+        <div
+          className={
+            isSuccess
+              ? "rounded-[28px] border border-success/20 bg-gradient-to-b from-success/15 via-background to-background p-5 shadow-soft"
+              : isError
+                ? "rounded-[28px] border border-danger/20 bg-card p-5 shadow-soft"
+                : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5 shadow-inner"
+          }
+        >
+          <div className="flex items-start gap-4">
+            <span
+              className={
+                isSuccess
+                  ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-success/15 text-success"
+                  : isError
+                    ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-danger/10 text-danger"
+                    : "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-card text-muted-foreground"
+              }
+            >
+              {isSuccess ? (
+                <CircleCheckIcon
+                  ref={checkIconRef}
+                  size={22}
+                  className="text-success"
+                />
+              ) : isError ? (
+                <XCircle className="h-5 w-5 text-danger" />
+              ) : (
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              )}
+            </span>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground">
+                {statusTitle}
+              </p>
+              <p
+                className={
+                  isSuccess
+                    ? "text-2xl font-semibold text-success"
+                    : "text-xl font-semibold text-foreground"
+                }
+              >
+                {amountDisplay}
+              </p>
+              {isSuccess ? null : (
+                <p className="text-xs text-muted-foreground">
+                  {statusDescription}
+                </p>
+              )}
+            </div>
           </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-muted-foreground">
+            Transaction Summary
+          </p>
+          <dl className="divide-y divide-border/60 rounded-2xl border border-border/70 bg-card px-4 py-1 text-sm shadow-soft">
+            {summaryRows.map((row) => (
+              <div
+                key={row.label}
+                className="flex items-start justify-between gap-4 py-3"
+              >
+                <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  {row.label}
+                </dt>
+                <dd
+                  className={[
+                    "max-w-[60%] text-right text-sm font-medium break-words",
+                    row.muted ? "text-muted-foreground" : "text-foreground",
+                  ].join(" ")}
+                >
+                  {row.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </div>
 
-      <div className="rounded-3xl border border-border bg-card p-4 shadow-sm">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">
-          Summary
-        </p>
-        <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-              Amount
-            </dt>
-            <dd className="text-base font-semibold text-foreground">
-              {amountLabel} {currency}
-            </dd>
-          </div>
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-              Type
-            </dt>
-            <dd className="text-foreground">{TYPE_LABELS[type]}</dd>
-          </div>
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-              Category
-            </dt>
-            <dd className="text-foreground">{category}</dd>
-          </div>
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-              {accountLabel}
-            </dt>
-            <dd className="text-foreground">{account}</dd>
-          </div>
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-              {forLabel}
-            </dt>
-            <dd className="text-foreground">{forValue || "—"}</dd>
-          </div>
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-              Date
-            </dt>
-            <dd className="text-foreground">
-              {format(dateObject, "MMM d, yyyy h:mm a")}
-            </dd>
-          </div>
-          <div className="col-span-2 space-y-1">
-            <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-              Note
-            </dt>
-            <dd className="text-muted-foreground">{note || "—"}</dd>
-          </div>
-        </dl>
-      </div>
+      {isSuccess ? (
+        <div className="space-y-3">
+          <button
+            type="button"
+            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground shadow-soft"
+            onClick={onDone}
+          >
+            <span className="relative z-10">Done</span>
+            <motion.span
+              aria-hidden="true"
+              className="absolute bottom-0 left-0 h-1 w-full origin-left bg-success-foreground/35"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 2, ease: "linear" }}
+            />
+          </button>
+          <button
+            type="button"
+            className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground shadow-soft"
+            onClick={onUndo}
+          >
+            Undo
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

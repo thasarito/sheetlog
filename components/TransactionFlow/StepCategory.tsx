@@ -10,10 +10,7 @@ import { TYPE_OPTIONS } from "./constants";
 
 type StepCategoryProps = {
   type: TransactionType;
-  categoryGroups: Record<
-    TransactionType,
-    { frequent: string[]; others: string[] }
-  >;
+  categoryGroups: Record<TransactionType, string[]>;
   selected: string | null;
   dateObject: Date;
   onSelectType: (value: TransactionType) => void;
@@ -108,10 +105,7 @@ export function StepCategory({
 
         <Tab.Panels className="relative flex-1 min-h-0 pt-4">
           {TYPE_OPTIONS.map((item) => {
-            const group = categoryGroups[item] ?? {
-              frequent: [],
-              others: [],
-            };
+            const group = categoryGroups[item] ?? [];
             return (
               <Tab.Panel
                 key={item}
@@ -119,8 +113,7 @@ export function StepCategory({
                 className={`absolute inset-0 h-full overflow-y-auto pb-2 transition duration-300 ease-out focus-visible:outline-none opacity-0 translate-y-2 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:translate-y-0 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10`}
               >
                 <CategoryGrid
-                  frequent={group.frequent}
-                  others={group.others}
+                  categories={group}
                   selected={selected}
                   onSelect={handleCategorySelect}
                 />
