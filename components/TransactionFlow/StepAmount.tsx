@@ -192,8 +192,8 @@ export function StepAmount({
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-border/40">
-        <div className="space-y-px">
+      <div className="overflow-hidden flex-1 flex rounded-2xl">
+        <div className="space-y-px w-full flex justify-between flex-col">
           {isTransfer ? (
             <DrawerPicker
               label="To"
@@ -237,7 +237,7 @@ export function StepAmount({
         </p>
       ) : null}
 
-      <div className="flex flex-1 flex-col gap-5">
+      <div className="flex flex-col gap-5 pb-6">
         <Keypad value={amount} onChange={onAmountChange} />
 
         <div>
