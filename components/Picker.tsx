@@ -345,6 +345,17 @@ function PickerColumn({
     useState<number>(0);
   const [isMoving, setIsMoving] = useState<boolean>(false);
   const [startTouchY, setStartTouchY] = useState<number>(0);
+  const lastTouchYRef = useRef<number>(0);
+  const lastTouchTimeRef = useRef<number>(0);
+  const velocityRef = useRef<number>(0);
+  const momentumRafRef = useRef<number | null>(null);
+
+  const stopMomentum = useCallback(() => {
+    if (momentumRafRef.current !== null) {
+      cancelAnimationFrame(momentumRafRef.current);
+      momentumRafRef.current = null;
+    }
+  }, []);
 
   const updateScrollerWhileMoving = useCallback(
     (nextScrollerTranslate: number) => {
@@ -362,10 +373,14 @@ function PickerColumn({
 
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
+      stopMomentum();
       setStartTouchY(event.targetTouches[0].pageY);
       setStartScrollerTranslate(scrollerTranslate);
+      lastTouchYRef.current = event.targetTouches[0].pageY;
+      lastTouchTimeRef.current = performance.now();
+      velocityRef.current = 0;
     },
-    [scrollerTranslate]
+    [scrollerTranslate, stopMomentum]
   );
 
   const handleTouchMove = useCallback(
@@ -378,12 +393,61 @@ function PickerColumn({
         setIsMoving(true);
       }
 
+      const currentY = event.targetTouches[0].pageY;
+      const now = performance.now();
+      const dt = now - lastTouchTimeRef.current;
+      if (dt > 0) {
+        const delta = currentY - lastTouchYRef.current;
+        const instantVelocity = delta / dt;
+        velocityRef.current = velocityRef.current * 0.8 + instantVelocity * 0.2;
+        lastTouchYRef.current = currentY;
+        lastTouchTimeRef.current = now;
+      }
+
       const nextScrollerTranslate =
-        startScrollerTranslate + event.targetTouches[0].pageY - startTouchY;
+        startScrollerTranslate + currentY - startTouchY;
       updateScrollerWhileMoving(nextScrollerTranslate);
     },
     [isMoving, startScrollerTranslate, startTouchY, updateScrollerWhileMoving]
   );
+
+  const startMomentum = useCallback(() => {
+    stopMomentum();
+    let lastTime = performance.now();
+    const decay = 0.95;
+    const minVelocity = 0.02;
+
+    const step = (time: number) => {
+      const dt = time - lastTime;
+      lastTime = time;
+
+      const velocity = velocityRef.current;
+      const nextScrollerTranslate = translateRef.current + velocity * dt;
+      updateScrollerWhileMoving(nextScrollerTranslate);
+
+      let nextVelocity = velocity * Math.pow(decay, dt / 16);
+      if (nextScrollerTranslate < minTranslate || nextScrollerTranslate > maxTranslate) {
+        nextVelocity *= 0.6;
+      }
+      velocityRef.current = nextVelocity;
+
+      if (Math.abs(nextVelocity) < minVelocity) {
+        stopMomentum();
+        handleScrollerTranslateSettled();
+        return;
+      }
+
+      momentumRafRef.current = requestAnimationFrame(step);
+    };
+
+    momentumRafRef.current = requestAnimationFrame(step);
+  }, [
+    handleScrollerTranslateSettled,
+    maxTranslate,
+    minTranslate,
+    stopMomentum,
+    updateScrollerWhileMoving,
+  ]);
 
   const handleTouchEnd = useCallback(() => {
     if (!isMoving) {
@@ -393,18 +457,24 @@ function PickerColumn({
     setStartTouchY(0);
     setStartScrollerTranslate(0);
 
+    if (Math.abs(velocityRef.current) > 0.02) {
+      startMomentum();
+      return;
+    }
+
     handleScrollerTranslateSettled();
-  }, [handleScrollerTranslateSettled, isMoving]);
+  }, [handleScrollerTranslateSettled, isMoving, startMomentum]);
 
   const handleTouchCancel = useCallback(() => {
     if (!isMoving) {
       return;
     }
+    stopMomentum();
     setIsMoving(false);
     setStartTouchY(0);
     setScrollerTranslate(startScrollerTranslate);
     setStartScrollerTranslate(0);
-  }, [isMoving, startScrollerTranslate]);
+  }, [isMoving, startScrollerTranslate, stopMomentum]);
 
   const wheelingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -470,6 +540,12 @@ function PickerColumn({
       }
     };
   }, [handleTouchMove, handleWheel]);
+
+  useEffect(() => {
+    return () => {
+      stopMomentum();
+    };
+  }, [stopMomentum]);
 
   const columnStyle = useMemo<CSSProperties>(
     () => ({
