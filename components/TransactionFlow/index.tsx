@@ -494,7 +494,7 @@ export function TransactionFlow() {
   return (
     <main className="h-full from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
       <ServiceWorker />
-      {true || isOnboarded ? (
+      {isOnboarded ? (
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-6">
           {isCategoryStep ? (
             <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
