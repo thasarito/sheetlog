@@ -5,3 +5,5 @@ export const TYPE_OPTIONS: TransactionType[] = [
   "income",
   "transfer",
 ];
+
+export const FOR_OPTIONS = ["Me", "Partner", "Family", "Work", "Gift"];

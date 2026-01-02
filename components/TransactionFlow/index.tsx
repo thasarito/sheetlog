@@ -13,7 +13,7 @@ import { AccountCategoryPanel } from "./AccountCategoryPanel";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
-import { TYPE_OPTIONS } from "./constants";
+import { FOR_OPTIONS, TYPE_OPTIONS } from "./constants";
 
 type ToastAction = { label: string; onClick: () => void };
 
@@ -65,17 +65,17 @@ function resolveStoredCurrency() {
   return DEFAULT_CURRENCY;
 }
 
-const createInitialState = (_?: unknown): FlowState => ({
-  step: 0,
-  type: TYPE_OPTIONS[0],
-  category: null,
-  amount: "",
-  currency: resolveStoredCurrency(),
-  account: null,
-  forValue: "",
-  dateObject: new Date(),
-  note: "",
-  toast: {
+  const createInitialState = (_?: unknown): FlowState => ({
+    step: 0,
+    type: TYPE_OPTIONS[0],
+    category: null,
+    amount: "",
+    currency: resolveStoredCurrency(),
+    account: null,
+    forValue: "Me",
+    dateObject: new Date(),
+    note: "",
+    toast: {
     open: false,
     message: "",
   },
@@ -112,7 +112,7 @@ function flowReducer(state: FlowState, action: FlowAction): FlowState {
         type: TYPE_OPTIONS[0],
         category: null,
         amount: "",
-        forValue: "",
+        forValue: "Me",
         note: "",
         dateObject: new Date(),
       };
@@ -225,6 +225,15 @@ export function TransactionFlow() {
       dispatch({ type: "SET_FOR", value: "" });
     }
   }, [type, account, forValue]);
+
+  useEffect(() => {
+    if (type === "transfer") {
+      return;
+    }
+    if (!forValue || !FOR_OPTIONS.includes(forValue)) {
+      dispatch({ type: "SET_FOR", value: "Me" });
+    }
+  }, [type, forValue]);
 
   function handleToast(message: string, action?: ToastAction) {
     dispatch({ type: "OPEN_TOAST", message, action });

@@ -6,6 +6,7 @@ import type { TransactionType } from "../../lib/types";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { Picker } from "../Picker";
+import { FOR_OPTIONS } from "./constants";
 import {
   Drawer,
   DrawerClose,
@@ -46,8 +47,6 @@ type DrawerPickerProps = {
   placeholder: string;
   disabled?: boolean;
 };
-
-const FOR_OPTIONS = ["Me", "Partner", "Family", "Work", "Gift"];
 
 function DrawerPicker({
   label,
@@ -181,17 +180,6 @@ export function StepAmount({
 
   return (
     <div className="flex min-h-[100dvh] flex-col gap-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Amount & details</h2>
-        <button
-          type="button"
-          className="text-xs font-semibold text-muted-foreground"
-          onClick={onBack}
-        >
-          Back
-        </button>
-      </div>
-
       <div className="overflow-hidden flex-1 flex rounded-2xl">
         <div className="space-y-px w-full flex justify-between flex-col">
           {isTransfer ? (
@@ -215,7 +203,7 @@ export function StepAmount({
             />
           )}
 
-          <div className="flex items-center justify-between bg-card px-4 py-3 text-2xl font-semibold text-foreground">
+          <div className="flex items-center justify-between px-4 py-3 text-2xl font-semibold text-foreground">
             <span>{amount ? amount : "0"}</span>
             <CurrencyPicker value={currency} onChange={onCurrencyChange} />
           </div>
