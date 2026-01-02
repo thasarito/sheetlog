@@ -32,7 +32,7 @@
     "eslint-config-next": "^14.2.11",
     "postcss": "^8.4.41",
     "tailwindcss": "^3.4.10",
-    "tailwindcss-safe-area": "^0.5.1",
+    "tailwindcss-safe-area": "^0.8.0",
     "typescript": "^5.5.4"
   }
 }
