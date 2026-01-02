@@ -20,8 +20,33 @@ const ACCOUNT_HEADER_ROW = ['Account'];
 const CATEGORY_HEADER_ROW = ['Type', 'Category'];
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/drive.file'
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/userinfo.profile'
 ];
+
+export class GoogleApiError extends Error {
+  status: number;
+  code?: string;
+  detail?: string;
+
+  constructor({
+    status,
+    message,
+    code,
+    detail
+  }: {
+    status: number;
+    message: string;
+    code?: string;
+    detail?: string;
+  }) {
+    super(message);
+    this.name = 'GoogleApiError';
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+  }
+}
 
 let scriptPromise: Promise<void> | null = null;
 
@@ -74,6 +99,24 @@ export async function requestAccessToken(clientId: string): Promise<string> {
   });
 }
 
+function parseGoogleErrorBody(body: string): { message?: string; code?: string; detail?: string } {
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: { message?: string; status?: string } };
+    const error = parsed?.error;
+    return {
+      message: typeof error?.message === 'string' ? error.message : undefined,
+      code: typeof error?.status === 'string' ? error.status : undefined,
+      detail: trimmed
+    };
+  } catch {
+    return { detail: trimmed };
+  }
+}
+
 async function fetchWithAuth<T>(url: string, accessToken: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, {
     ...options,
@@ -86,8 +129,14 @@ async function fetchWithAuth<T>(url: string, accessToken: string, options: Reque
 
   if (!response.ok) {
     const errorText = await response.text();
-    const detail = errorText ? ` ${errorText}` : '';
-    throw new Error(`HTTP ${response.status}:${detail}`);
+    const parsed = parseGoogleErrorBody(errorText);
+    const message = parsed.message ?? `HTTP ${response.status}`;
+    throw new GoogleApiError({
+      status: response.status,
+      message,
+      code: parsed.code,
+      detail: parsed.detail
+    });
   }
 
   return response.json() as Promise<T>;

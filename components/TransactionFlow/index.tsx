@@ -1,6 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { format } from "date-fns";
 import {
   useAuthStorage,
@@ -203,7 +210,8 @@ type StepDefinition = {
 
 export function TransactionFlow() {
   const { accessToken, sheetId } = useAuthStorage();
-  const { addTransaction, undoLast } = useTransactions();
+  const { addTransaction, undoLast, lastSyncError, lastSyncErrorAt } =
+    useTransactions();
   const { onboarding, refreshOnboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
   const [isResyncing, setIsResyncing] = useState(false);
@@ -227,6 +235,7 @@ export function TransactionFlow() {
     toast,
   } = state;
   const receiptTimeoutRef = useRef<number | null>(null);
+  const lastSyncErrorRef = useRef<string | null>(null);
 
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
   const hasCategories =
@@ -295,10 +304,21 @@ export function TransactionFlow() {
     }
   }, [type, forValue]);
 
-  function handleToast(message: string, action?: ToastAction) {
+  const handleToast = useCallback((message: string, action?: ToastAction) => {
     dispatch({ type: "OPEN_TOAST", message, action });
     window.setTimeout(() => dispatch({ type: "CLOSE_TOAST" }), 4000);
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!lastSyncError || !lastSyncErrorAt) {
+      return;
+    }
+    if (lastSyncErrorAt === lastSyncErrorRef.current) {
+      return;
+    }
+    lastSyncErrorRef.current = lastSyncErrorAt;
+    handleToast(lastSyncError);
+  }, [handleToast, lastSyncError, lastSyncErrorAt]);
 
   function scheduleReceiptTransition(callback: () => void, delay: number) {
     if (receiptTimeoutRef.current) {

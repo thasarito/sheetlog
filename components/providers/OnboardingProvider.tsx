@@ -15,6 +15,7 @@ import {
   hydrateOnboardingFromSheet,
   updateOnboarding as persistOnboarding,
 } from "../../lib/onboarding";
+import { isGoogleAuthError } from "../../lib/googleErrors";
 import { useAuthStorage } from "./AuthStorageProvider";
 import { useConnectivity } from "./ConnectivityProvider";
 
@@ -100,7 +101,7 @@ export function OnboardingProvider({
           dispatch({ type: "update", onboarding: merged.next });
         }
       } catch (error) {
-        if (error instanceof Error && error.message.includes("401")) {
+        if (isGoogleAuthError(error)) {
           clearAuth();
         }
       }
@@ -124,7 +125,7 @@ export function OnboardingProvider({
         dispatch({ type: "update", onboarding: nextState });
         return nextState;
       } catch (error) {
-        if (error instanceof Error && error.message.includes("401")) {
+        if (isGoogleAuthError(error)) {
           clearAuth();
         }
         throw error;
@@ -152,7 +153,7 @@ export function OnboardingProvider({
       }
       return merged.changed;
     } catch (error) {
-      if (error instanceof Error && error.message.includes("401")) {
+      if (isGoogleAuthError(error)) {
         clearAuth();
       }
       throw error;

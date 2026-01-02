@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { db } from "../../lib/db";
 import { deleteRow, getSheetTabId } from "../../lib/google";
+import { mapGoogleSyncError } from "../../lib/googleErrors";
 import { getRecentCategories, updateRecentCategory } from "../../lib/settings";
 import { syncPendingTransactions } from "../../lib/sync";
 import type {
@@ -37,6 +38,9 @@ type TransactionsState = {
   queueCount: number;
   recentCategories: RecentCategories;
   isSyncing: boolean;
+  lastSyncError: string | null;
+  lastSyncErrorAt: string | null;
+  lastSyncAt: string | null;
 };
 
 type TransactionsAction =
@@ -46,7 +50,9 @@ type TransactionsAction =
     }
   | { type: "set_recent"; recentCategories: RecentCategories }
   | { type: "sync_start" }
-  | { type: "sync_end" };
+  | { type: "sync_end" }
+  | { type: "sync_error"; message: string; at: string }
+  | { type: "sync_success"; at: string };
 
 function transactionsReducer(
   state: TransactionsState,
@@ -64,6 +70,19 @@ function transactionsReducer(
       return { ...state, isSyncing: true };
     case "sync_end":
       return { ...state, isSyncing: false };
+    case "sync_error":
+      return {
+        ...state,
+        lastSyncError: action.message,
+        lastSyncErrorAt: action.at,
+      };
+    case "sync_success":
+      return {
+        ...state,
+        lastSyncError: null,
+        lastSyncErrorAt: null,
+        lastSyncAt: action.at,
+      };
     default:
       return state;
   }
@@ -72,6 +91,9 @@ function transactionsReducer(
 interface TransactionsContextValue {
   queueCount: number;
   recentCategories: RecentCategories;
+  lastSyncError: string | null;
+  lastSyncErrorAt: string | null;
+  lastSyncAt: string | null;
   addTransaction: (input: TransactionInput) => Promise<void>;
   undoLast: () => Promise<UndoResult>;
   syncNow: () => Promise<void>;
@@ -94,6 +116,9 @@ export function TransactionsProvider({
     queueCount: 0,
     recentCategories: DEFAULT_RECENTS,
     isSyncing: false,
+    lastSyncError: null,
+    lastSyncErrorAt: null,
+    lastSyncAt: null,
   });
   const syncingRef = useRef(state.isSyncing);
 
@@ -137,12 +162,19 @@ export function TransactionsProvider({
     dispatch({ type: "sync_start" });
     try {
       await syncPendingTransactions(accessToken, sheetId);
-      await refreshStats();
+      dispatch({ type: "sync_success", at: new Date().toISOString() });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("401")) {
+      const info = mapGoogleSyncError(error);
+      if (info.shouldClearAuth) {
         clearAuth();
       }
+      dispatch({
+        type: "sync_error",
+        message: info.message,
+        at: new Date().toISOString(),
+      });
     } finally {
+      await refreshStats();
       dispatch({ type: "sync_end" });
     }
   }, [accessToken, sheetId, refreshStats, clearAuth]);
@@ -213,8 +245,16 @@ export function TransactionsProvider({
           await db.transactions.delete(last.id);
           await refreshStats();
           return { ok: true, message: "Removed last synced entry" };
-        } catch {
-          // Fall through to compensating entry
+        } catch (error) {
+          const info = mapGoogleSyncError(error);
+          if (info.shouldClearAuth) {
+            clearAuth();
+          }
+          dispatch({
+            type: "sync_error",
+            message: info.message,
+            at: new Date().toISOString(),
+          });
         }
       }
     }
@@ -242,12 +282,23 @@ export function TransactionsProvider({
       await syncNow();
     }
     return { ok: true, message: "Undo queued as compensating entry" };
-  }, [accessToken, sheetId, sheetTabId, isOnline, refreshStats, syncNow]);
+  }, [
+    accessToken,
+    sheetId,
+    sheetTabId,
+    isOnline,
+    refreshStats,
+    syncNow,
+    clearAuth,
+  ]);
 
   const value = useMemo<TransactionsContextValue>(
     () => ({
       queueCount: state.queueCount,
       recentCategories: state.recentCategories,
+      lastSyncError: state.lastSyncError,
+      lastSyncErrorAt: state.lastSyncErrorAt,
+      lastSyncAt: state.lastSyncAt,
       addTransaction,
       undoLast,
       syncNow,
@@ -256,6 +307,9 @@ export function TransactionsProvider({
     [
       state.queueCount,
       state.recentCategories,
+      state.lastSyncError,
+      state.lastSyncErrorAt,
+      state.lastSyncAt,
       addTransaction,
       undoLast,
       syncNow,

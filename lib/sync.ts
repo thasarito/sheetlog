@@ -1,9 +1,11 @@
 import { db } from './db';
 import { appendTransaction } from './google';
+import { mapGoogleSyncError } from './googleErrors';
 
 export async function syncPendingTransactions(accessToken: string, sheetId: string): Promise<number> {
   const pending = await db.transactions.where('status').equals('pending').sortBy('createdAt');
   let syncedCount = 0;
+  let syncFailure: unknown = null;
 
   for (const item of pending) {
     try {
@@ -17,11 +19,21 @@ export async function syncPendingTransactions(accessToken: string, sheetId: stri
       });
       syncedCount += 1;
     } catch (error) {
+      const info = mapGoogleSyncError(error);
       await db.transactions.update(item.id, {
-        error: error instanceof Error ? error.message : 'Sync failed',
+        status: info.retryable ? 'pending' : 'error',
+        error: info.message,
         updatedAt: new Date().toISOString()
       });
+      if (info.shouldClearAuth || info.retryable) {
+        syncFailure = error;
+        break;
+      }
     }
+  }
+
+  if (syncFailure) {
+    throw syncFailure;
   }
 
   return syncedCount;
