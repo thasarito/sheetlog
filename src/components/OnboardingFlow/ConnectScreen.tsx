@@ -1,4 +1,4 @@
-import React from "react";
+import { Link } from "@tanstack/react-router";
 import { Plug } from "lucide-react";
 import { ScreenFrame } from "./ScreenFrame";
 import type { ScreenMeta } from "./types";
@@ -38,6 +38,16 @@ export function ConnectScreen({
         <p className="text-xs text-muted-foreground">
           Set VITE_GOOGLE_CLIENT_ID in your env.
         </p>
+        <div className="text-center">
+          <Link
+            to="/privacy"
+            className="text-xs text-muted-foreground underline decoration-muted-foreground/50 underline-offset-4 transition hover:text-foreground hover:decoration-foreground"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Privacy Policy
+          </Link>
+        </div>
       </div>
     </ScreenFrame>
   );

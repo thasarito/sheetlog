@@ -1,5 +1,3 @@
-"use client";
-
 import "@khmyznikov/pwa-install";
 import React, {
   useCallback,
