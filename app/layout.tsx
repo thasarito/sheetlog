@@ -252,10 +252,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full bg-background">
-      <body className="no-tap-highlight min-h-screen min-h-[100dvh] w-full bg-background text-foreground overscroll-none touch-manipulation pt-safe pb-safe pl-safe pr-safe">
+    <html lang="en" className="h-full w-full overflow-hidden bg-background">
+      <body className="no-tap-highlight fixed inset-0 h-[100dvh] w-full overflow-hidden bg-background text-foreground overscroll-none touch-manipulation pt-safe pb-safe pl-safe pr-safe">
         <AppProvider>
-          <div className="flex min-h-[100dvh] w-full flex-col">
+          <div className="flex w-full overflow-hidden h-full flex-col">
             {children}
           </div>
         </AppProvider>
