@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
@@ -10,6 +10,7 @@ import { FOR_OPTIONS } from "./constants";
 
 type StepAmountProps = {
   type: TransactionType | null;
+  category: string | null;
   amount: string;
   currency: string;
   account: string | null;
@@ -27,6 +28,7 @@ type StepAmountProps = {
 
 export function StepAmount({
   type,
+  category,
   amount,
   currency,
   account,
@@ -58,6 +60,22 @@ export function StepAmount({
   return (
     <div className="flex min-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] flex-col gap-5">
       <div className="flex-1 flex flex-col">
+        {category ? (
+          <div className="px-4 pt-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground shadow-soft backdrop-blur">
+              <span className="max-w-[240px] truncate">{category}</span>
+              <button
+                type="button"
+                aria-label="Change category"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                onClick={onBack}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
           <span>{amount ? amount : "0"}</span>
           <CurrencyPicker value={currency} onChange={onCurrencyChange} />
