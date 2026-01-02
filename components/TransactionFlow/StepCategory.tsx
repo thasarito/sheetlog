@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Tab } from "@headlessui/react";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
@@ -43,7 +43,25 @@ export function StepCategory({
 }: StepCategoryProps) {
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
+  const [panelDirection, setPanelDirection] = useState<"left" | "right">("right");
+  const lastIndexRef = useRef(selectedIndex);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const updateDirection = (nextIndex: number) => {
+    const previousIndex = lastIndexRef.current;
+    if (nextIndex > previousIndex) {
+      setPanelDirection("right");
+    } else if (nextIndex < previousIndex) {
+      setPanelDirection("left");
+    }
+    lastIndexRef.current = nextIndex;
+  };
+
+  useEffect(() => {
+    if (selectedIndex !== lastIndexRef.current) {
+      updateDirection(selectedIndex);
+    }
+  }, [selectedIndex]);
 
   const handleCategorySelect = (value: string) => {
     onSelectCategory(value);
@@ -54,11 +72,16 @@ export function StepCategory({
     onConfirm();
   };
 
+  const handleTypeChange = (index: number) => {
+    updateDirection(index);
+    onSelectType(TYPE_OPTIONS[index]);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <Tab.Group
         selectedIndex={selectedIndex}
-        onChange={(index) => onSelectType(TYPE_OPTIONS[index])}
+        onChange={handleTypeChange}
         className="flex min-h-0 flex-1 flex-col"
       >
         <Tab.List
@@ -110,7 +133,7 @@ export function StepCategory({
               <Tab.Panel
                 key={item}
                 static
-                className={`absolute inset-0 h-full overflow-y-auto pb-2 transition duration-300 ease-out focus-visible:outline-none opacity-0 translate-y-2 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:translate-y-0 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10`}
+                className={`absolute inset-0 h-full overflow-y-auto pb-2 transition duration-300 ease-out focus-visible:outline-none opacity-0 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10 ${panelDirection === "right" ? "translate-x-4 data-[headlessui-state~='selected']:translate-x-0" : "-translate-x-4 data-[headlessui-state~='selected']:translate-x-0"}`}
               >
                 <CategoryGrid
                   categories={group}
