@@ -331,14 +331,11 @@ export function TransactionFlow() {
   const activeStep = steps[step] ?? steps[0];
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
+    <main className="min-h-screen from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
       <ServiceWorker />
       {isOnboarded ? (
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
           <StepCard
-            stepIndex={step}
-            totalSteps={steps.length}
-            label={activeStep.label}
             animationKey={activeStep.key}
             className={activeStep.className}
           >

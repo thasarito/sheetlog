@@ -33,7 +33,7 @@ export function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
       height={72}
       itemHeight={24}
       wheelMode="natural"
-      className="w-20 shrink-0 rounded-xl border border-border bg-card shadow-sm"
+      className="w-20 shrink-0 rounded-xl bg-surface-2"
       aria-label="Select currency"
     >
       <Picker.Column name="currency" className="text-xs font-semibold">

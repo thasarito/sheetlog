@@ -4,31 +4,14 @@ import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 type StepCardProps = {
-  stepIndex: number;
-  totalSteps: number;
-  label: string;
   animationKey: string;
   className: string;
   children: React.ReactNode;
 };
 
-export function StepCard({
-  stepIndex,
-  totalSteps,
-  label,
-  animationKey,
-  className,
-  children,
-}: StepCardProps) {
+export function StepCard({ animationKey, className, children }: StepCardProps) {
   return (
-    <section className="rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-soft backdrop-blur-xl">
-      <div className="mb-4 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-        <span>
-          Step {stepIndex + 1} of {totalSteps}
-        </span>
-        <span>{label}</span>
-      </div>
-
+    <section className="rounded-[28px]">
       <AnimatePresence mode="wait">
         <motion.div
           key={animationKey}

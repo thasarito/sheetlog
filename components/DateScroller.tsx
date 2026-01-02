@@ -20,7 +20,11 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
   const valueTime = value.getTime();
   const previousValueTime = previousValueRef.current.getTime();
   const direction =
-    valueTime === previousValueTime ? 0 : valueTime > previousValueTime ? 1 : -1;
+    valueTime === previousValueTime
+      ? 0
+      : valueTime > previousValueTime
+      ? 1
+      : -1;
   const isTodaySelected = isSameDay(value, today);
 
   useEffect(() => {
@@ -49,7 +53,11 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
   const handleToday = () => {
     if (isTodaySelected) return;
     const nextDate = new Date(value);
-    nextDate.setFullYear(today.getFullYear(), today.getMonth(), today.getDate());
+    nextDate.setFullYear(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
     onChange(nextDate);
   };
 
@@ -67,22 +75,12 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
 
   const weekVariants = {
     enter: (directionValue: number) => ({
-      x:
-        directionValue === 0
-          ? 0
-          : directionValue > 0
-          ? 36
-          : -36,
+      x: directionValue === 0 ? 0 : directionValue > 0 ? 36 : -36,
       opacity: 0,
     }),
     center: { x: 0, opacity: 1 },
     exit: (directionValue: number) => ({
-      x:
-        directionValue === 0
-          ? 0
-          : directionValue > 0
-          ? -36
-          : 36,
+      x: directionValue === 0 ? 0 : directionValue > 0 ? -36 : 36,
       opacity: 0,
     }),
   };
@@ -100,7 +98,10 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           ←
         </motion.button>
         <div className="flex items-center justify-center gap-2">
-          <div className="text-sm font-semibold text-foreground" aria-live="polite">
+          <div
+            className="text-sm font-semibold text-foreground"
+            aria-live="polite"
+          >
             {format(value, "MMMM yyyy")}
           </div>
           <motion.button
@@ -129,7 +130,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
       </div>
 
       <div
-        className="overflow-hidden rounded-2xl border border-border bg-card p-1 shadow-sm"
+        className="overflow-hidden rounded-2xl bg-card p-1"
         onKeyDown={handleKeyDown}
       >
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
@@ -174,7 +175,11 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
                     <motion.div
                       layoutId="activeDate"
                       className="absolute inset-0 rounded-xl bg-primary"
-                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 380,
+                        damping: 30,
+                      }}
                     />
                   ) : null}
                   <span className="relative z-10 text-[10px] uppercase tracking-wide opacity-70">

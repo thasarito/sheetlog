@@ -2,11 +2,7 @@
 
 import React, { useState } from "react";
 import { Tab } from "@headlessui/react";
-import {
-  ArrowDownRight,
-  ArrowLeftRight,
-  ArrowUpRight,
-} from "lucide-react";
+import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
 import type { TransactionType } from "../../lib/types";
 import { CategoryGrid } from "../CategoryGrid";
 import { DateTimeDrawer } from "../DateTimeDrawer";
@@ -14,7 +10,10 @@ import { TYPE_OPTIONS } from "./constants";
 
 type StepCategoryProps = {
   type: TransactionType;
-  categoryGroups: Record<TransactionType, { frequent: string[]; others: string[] }>;
+  categoryGroups: Record<
+    TransactionType,
+    { frequent: string[]; others: string[] }
+  >;
   selected: string | null;
   dateObject: Date;
   onSelectType: (value: TransactionType) => void;
@@ -59,10 +58,11 @@ export function StepCategory({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex h-full flex-col gap-6">
       <Tab.Group
         selectedIndex={selectedIndex}
         onChange={(index) => onSelectType(TYPE_OPTIONS[index])}
+        className="flex flex-1 flex-col"
       >
         <Tab.List
           aria-label="Transaction type"
@@ -106,14 +106,18 @@ export function StepCategory({
           })}
         </Tab.List>
 
-        <Tab.Panels className="pt-4">
+        <Tab.Panels className="relative flex-1 pt-4">
           {TYPE_OPTIONS.map((item) => {
             const group = categoryGroups[item] ?? {
               frequent: [],
               others: [],
             };
             return (
-              <Tab.Panel key={item} className="focus-visible:outline-none">
+              <Tab.Panel
+                key={item}
+                static
+                className={`absolute inset-0 h-full transition duration-300 ease-out focus-visible:outline-none opacity-0 translate-y-2 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:translate-y-0 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10`}
+              >
                 <CategoryGrid
                   frequent={group.frequent}
                   others={group.others}

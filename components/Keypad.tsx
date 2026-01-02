@@ -31,19 +31,12 @@ export function Keypad({ value, onChange }: KeypadProps) {
         <button
           key={key}
           type="button"
-          className="h-14 rounded-2xl border border-border bg-card text-lg font-semibold text-foreground shadow-sm transition hover:bg-surface"
+          className="h-14 rounded-2xl border border-border bg-card text-lg font-semibold text-foreground transition hover:bg-surface"
           onClick={() => handleKey(key)}
         >
           {key}
         </button>
       ))}
-      <button
-        type="button"
-        className="col-span-3 h-12 rounded-2xl border border-border bg-surface-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground transition hover:bg-surface-3/80"
-        onClick={() => onChange('')}
-      >
-        Clear
-      </button>
     </div>
   );
 }
