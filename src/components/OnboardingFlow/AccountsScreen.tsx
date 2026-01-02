@@ -1,7 +1,8 @@
 import React from "react";
-import { Wallet, X } from "lucide-react";
-import { ScreenFrame } from "./ScreenFrame";
+import { Wallet, X, Plus } from "lucide-react";
+import { OnboardingLayout } from "./OnboardingLayout";
 import type { ScreenMeta } from "./types";
+import { cn } from "../../lib/utils";
 
 type AccountsScreenProps = {
   meta: ScreenMeta;
@@ -25,70 +26,77 @@ export function AccountsScreen({
   onContinue,
 }: AccountsScreenProps) {
   return (
-    <ScreenFrame
-      {...meta}
+    <OnboardingLayout
       title="Set up accounts"
-      subtitle="Add your bank accounts, cards, or wallets."
-      icon={<Wallet className="h-5 w-5" />}
-      footer={
-        <button
-          type="button"
-          className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary/90 disabled:opacity-50"
-          onClick={onContinue}
-          disabled={isSaving}
-        >
-          {isSaving ? "Saving..." : "Continue"}
-        </button>
-      }
+      subtitle="Add your bank accounts, credit cards, or cash wallets."
+      stepCurrent={meta.stepNumber}
+      stepTotal={meta.totalSteps}
     >
-      <div className="space-y-4">
-        <div className="rounded-2xl border border-border/70 bg-surface-2/80 p-2">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
-              placeholder="e.g. Chase Checking"
-              value={accountInput}
-              onChange={(event) => onAccountInputChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void onAddAccount();
-              }}
-            />
-            <button
-              type="button"
-              className="rounded-2xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:bg-surface disabled:opacity-60"
-              onClick={onAddAccount}
-              disabled={!accountInput.trim()}
-            >
-              Add
-            </button>
-          </div>
+      <div className="space-y-6 pt-2">
+        <div className="flex gap-3">
+          <input
+            type="text"
+            className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+            placeholder="e.g. Chase Sapphire"
+            value={accountInput}
+            onChange={(event) => onAccountInputChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void onAddAccount();
+            }}
+          />
+          <button
+            type="button"
+            className="flex items-center justify-center rounded-2xl bg-primary px-5 font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={onAddAccount}
+            disabled={!accountInput.trim()}
+          >
+            <Plus className="w-6 h-6" />
+          </button>
         </div>
+
         {accounts.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            No accounts yet. Add at least one to continue.
-          </p>
+          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground bg-muted/30 rounded-3xl border border-dashed border-border/60">
+            <Wallet className="w-12 h-12 mb-3 opacity-20" />
+            <p className="text-sm">No accounts added yet.</p>
+            <p className="text-xs opacity-70">Add at least one to continue.</p>
+          </div>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="space-y-3">
             {accounts.map((account) => (
               <div
                 key={account}
-                className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-3 py-1.5 text-xs text-foreground shadow-sm"
+                className="flex items-center justify-between p-4 rounded-2xl bg-card border border-border/60 shadow-sm transition hover:border-primary/30 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
               >
-                <span>{account}</span>
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-full">
+                    <Wallet className="w-5 h-5" />
+                  </div>
+                  <span className="font-semibold text-base">{account}</span>
+                </div>
                 <button
                   type="button"
-                  className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:text-foreground"
+                  className="p-2 -mr-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors"
                   onClick={() => onRemoveAccount(account)}
                   aria-label={`Remove ${account}`}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             ))}
           </div>
         )}
       </div>
-    </ScreenFrame>
+
+      <div className="mt-auto pt-6">
+        <button
+          type="button"
+          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground shadow-lg shadow-blue-200 transition hover:bg-primary/90 disabled:opacity-60"
+          onClick={onContinue}
+          disabled={isSaving || accounts.length === 0}
+        >
+          {isSaving ? "Saving..." : "Continue"}
+        </button>
+      </div>
+    </OnboardingLayout>
   );
 }

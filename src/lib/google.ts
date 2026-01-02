@@ -21,6 +21,7 @@ const CATEGORY_HEADER_ROW = ["Type", "Category"];
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
@@ -581,4 +582,18 @@ export async function writeOnboardingConfig(
       );
     }
   }
+}
+
+export async function listFolders(
+  accessToken: string,
+  parentId: string = "root"
+): Promise<{ id: string; name: string }[]> {
+  const query = encodeURIComponent(
+    `mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+  );
+  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&orderBy=name`;
+  const data = await fetchWithAuth<{
+    files: Array<{ id: string; name: string }>;
+  }>(url, accessToken);
+  return data.files ?? [];
 }

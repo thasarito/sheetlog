@@ -8,8 +8,7 @@ import React, {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Download } from "lucide-react";
-import { useAuthStorage, useConnectivity, useOnboarding } from "../providers";
-import { StatusDot } from "../StatusDot";
+import { useAuthStorage, useOnboarding } from "../providers";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import type { TransactionType } from "../../lib/types";
 import { AccountsScreen } from "./AccountsScreen";
@@ -36,7 +35,6 @@ interface OnboardingFlowProps {
 }
 
 export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
-  const { isOnline } = useConnectivity();
   const { accessToken, sheetId, isConnecting, connect, refreshSheet } =
     useAuthStorage();
   const { onboarding, updateOnboarding } = useOnboarding();
@@ -294,42 +292,6 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     }
   }
 
-  async function addCategory(type: TransactionType) {
-    const nextValue = categoryInputs[type].trim();
-    if (!nextValue) {
-      onToast("Enter a category");
-      return;
-    }
-    const current = categories[type] ?? [];
-    const exists = current.some(
-      (item) => item.toLowerCase() === nextValue.toLowerCase()
-    );
-    if (exists) {
-      onToast("Category already added");
-      return;
-    }
-    const next = { ...categories, [type]: [...current, nextValue] };
-    try {
-      await updateOnboarding({ categories: next });
-      setCategoryInputs((prev) => ({ ...prev, [type]: "" }));
-    } catch {
-      onToast("Failed to add category");
-    }
-  }
-
-  async function removeCategory(type: TransactionType, name: string) {
-    const current = categories[type] ?? [];
-    const next = {
-      ...categories,
-      [type]: current.filter((item) => item !== name),
-    };
-    try {
-      await updateOnboarding({ categories: next });
-    } catch {
-      onToast("Failed to remove category");
-    }
-  }
-
   async function confirmCategories() {
     if (!hasCategories) {
       onToast("Add at least one category per type");
@@ -346,149 +308,111 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   }
 
   return (
-    <div className="relative mx-auto flex w-full max-w-md flex-col gap-6 pb-8 pt-6">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-20 left-6 h-40 w-40 rounded-full bg-accent/40 blur-3xl"
+    <div className="relative h-full w-full bg-background">
+      <AnimatePresence mode="wait">
+        {stepIndex === 0 ? (
+          <motion.div
+            key="step-auth"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="h-full w-full"
+          >
+            <ConnectScreen
+              meta={screenMeta}
+              isConnecting={isConnecting}
+              onConnect={handleConnect}
+            />
+          </motion.div>
+        ) : null}
+
+        {stepIndex === 1 ? (
+          <motion.div
+            key="step-sheet"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="h-full w-full"
+          >
+            <SheetLocationScreen
+              meta={screenMeta}
+              locationMode={locationMode}
+              folderIdInput={folderIdInput}
+              isSettingUpSheet={isSettingUpSheet}
+              onLocationModeChange={setLocationMode}
+              onFolderIdChange={setFolderIdInput}
+              onSubmit={handleSheetSetup}
+            />
+          </motion.div>
+        ) : null}
+
+        {stepIndex === 2 ? (
+          <motion.div
+            key="step-accounts"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="h-full w-full"
+          >
+            <AccountsScreen
+              meta={screenMeta}
+              accountInput={accountInput}
+              accounts={onboarding.accounts}
+              isSaving={isSaving}
+              onAccountInputChange={setAccountInput}
+              onAddAccount={addAccount}
+              onRemoveAccount={removeAccount}
+              onContinue={confirmAccounts}
+            />
+          </motion.div>
+        ) : null}
+
+        {stepIndex === 3 ? (
+          <motion.div
+            key="step-categories"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="h-full w-full"
+          >
+            <CategoriesScreen
+              meta={screenMeta}
+              categories={categories}
+              isSaving={isSaving}
+              onChange={(nextCategories) => {
+                updateOnboarding({ categories: nextCategories }).catch(() =>
+                  onToast("Failed to update categories")
+                );
+              }}
+              onContinue={confirmCategories}
+            />
+          </motion.div>
+        ) : null}
+
+        {stepIndex === 4 ? (
+          <motion.div
+            key="step-done"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="h-full w-full"
+          >
+            <DoneScreen meta={screenMeta} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <pwa-install
+        id="pwa-install"
+        manifest-url="/manifest.webmanifest"
+        manual-apple="true"
+        manual-chrome="true"
       />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -bottom-24 right-6 h-48 w-48 rounded-full bg-primary/15 blur-3xl"
-      />
-      <div className="relative z-10 flex flex-col gap-6">
-        <pwa-install
-          id="pwa-install"
-          manifest-url="/manifest.webmanifest"
-          manual-apple="true"
-          manual-chrome="true"
-        />
-        <header className="space-y-4">
-          <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:items-start sm:justify-between sm:text-left">
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                SheetLog
-              </p>
-              <h1 className="text-2xl font-semibold">Getting started</h1>
-              <p className="text-sm text-muted-foreground">
-                Connect Google, choose a sheet home, then personalize accounts
-                and categories.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-[11px] font-semibold text-muted-foreground shadow-soft">
-              <StatusDot online={isOnline} />
-              <span>{isOnline ? "Online" : "Offline"}</span>
-            </div>
-          </div>
-        </header>
-
-        <section className="relative">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 hidden rounded-[32px] border border-border/40 bg-card/50 shadow-soft sm:block sm:translate-x-2 sm:translate-y-2"
-          />
-          <AnimatePresence mode="wait">
-            {stepIndex === 0 ? (
-              <motion.div
-                key="step-auth"
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.2 }}
-                className="relative z-10 w-full"
-              >
-                <ConnectScreen
-                  meta={screenMeta}
-                  isConnecting={isConnecting}
-                  onConnect={handleConnect}
-                />
-              </motion.div>
-            ) : null}
-
-            {stepIndex === 1 ? (
-              <motion.div
-                key="step-sheet"
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.2 }}
-                className="relative z-10 w-full"
-              >
-                <SheetLocationScreen
-                  meta={screenMeta}
-                  locationMode={locationMode}
-                  folderIdInput={folderIdInput}
-                  isSettingUpSheet={isSettingUpSheet}
-                  onLocationModeChange={setLocationMode}
-                  onFolderIdChange={setFolderIdInput}
-                  onSubmit={handleSheetSetup}
-                />
-              </motion.div>
-            ) : null}
-
-            {stepIndex === 2 ? (
-              <motion.div
-                key="step-accounts"
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.2 }}
-                className="relative z-10 w-full"
-              >
-                <AccountsScreen
-                  meta={screenMeta}
-                  accountInput={accountInput}
-                  accounts={onboarding.accounts}
-                  isSaving={isSaving}
-                  onAccountInputChange={setAccountInput}
-                  onAddAccount={addAccount}
-                  onRemoveAccount={removeAccount}
-                  onContinue={confirmAccounts}
-                />
-              </motion.div>
-            ) : null}
-
-            {stepIndex === 3 ? (
-              <motion.div
-                key="step-categories"
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.2 }}
-                className="relative z-10 w-full"
-              >
-                <CategoriesScreen
-                  meta={screenMeta}
-                  categories={categories}
-                  categoryInputs={categoryInputs}
-                  isSaving={isSaving}
-                  onCategoryInputChange={(type, value) =>
-                    setCategoryInputs((prev) => ({
-                      ...prev,
-                      [type]: value,
-                    }))
-                  }
-                  onAddCategory={addCategory}
-                  onRemoveCategory={removeCategory}
-                  onFinish={confirmCategories}
-                />
-              </motion.div>
-            ) : null}
-
-            {stepIndex === 4 ? (
-              <motion.div
-                key="step-done"
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.2 }}
-                className="relative z-10 w-full"
-              >
-                <DoneScreen meta={screenMeta} />
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-        </section>
-      </div>
 
       <AnimatePresence>
         {isPwaPromptOpen ? (

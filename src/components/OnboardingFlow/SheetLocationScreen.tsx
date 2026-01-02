@@ -1,7 +1,18 @@
-import React from "react";
-import { Folder } from "lucide-react";
-import { ScreenFrame } from "./ScreenFrame";
+import React, { useEffect, useState } from "react";
+import { Folder, ChevronRight, Check, ArrowLeft } from "lucide-react";
+import { OnboardingLayout } from "./OnboardingLayout";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerTrigger,
+} from "../ui/drawer";
+import { useAuthStorage } from "../providers";
+import { listFolders } from "../../lib/google";
 import type { LocationMode, ScreenMeta } from "./types";
+import { cn } from "../../lib/utils";
 
 type SheetLocationScreenProps = {
   meta: ScreenMeta;
@@ -22,84 +33,202 @@ export function SheetLocationScreen({
   onFolderIdChange,
   onSubmit,
 }: SheetLocationScreenProps) {
+  const { accessToken } = useAuthStorage();
+  const [isOpen, setIsOpen] = useState(false);
+  const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [currentParent, setCurrentParent] = useState("root");
+  const [selectedFolder, setSelectedFolder] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      if (!accessToken) return;
+      setLoading(true);
+      try {
+        const result = await listFolders(accessToken, currentParent);
+        setFolders(result);
+      } catch (error) {
+        console.error("Failed to list folders", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (isOpen) {
+      void load();
+    }
+  }, [isOpen, currentParent, accessToken]);
+
+  function handleFolderClick(folder: { id: string; name: string }) {
+    setCurrentParent(folder.id);
+  }
+
+  function handleSelectFolder(folder: { id: string; name: string }) {
+    setSelectedFolder(folder);
+    onFolderIdChange(folder.id);
+    onLocationModeChange("folder");
+    setIsOpen(false);
+  }
+
+  function handleBack() {
+    if (currentParent !== "root") {
+      setCurrentParent("root");
+    }
+  }
+
   return (
-    <ScreenFrame
-      {...meta}
-      title="Pick sheet location"
-      subtitle="Choose where SheetLog_DB should live in Drive."
-      icon={<Folder className="h-5 w-5" />}
-      footer={
+    <OnboardingLayout
+      title="Where to save?"
+      subtitle="Choose where your SheetLog_DB will be stored."
+      stepCurrent={meta.stepNumber}
+      stepTotal={meta.totalSteps}
+    >
+      <div className="space-y-4 pt-4 flex-1 w-full">
+        <label
+          className={cn(
+            "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer",
+            locationMode === "root"
+              ? "border-primary bg-primary/5 shadow-md"
+              : "border-border bg-card hover:border-primary/50"
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-full">
+              <Folder className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-semibold">My Drive</div>
+              <div className="text-xs text-muted-foreground">
+                Store in main folder
+              </div>
+            </div>
+          </div>
+          <div className="relative flex items-center">
+            <input
+              type="radio"
+              name="location"
+              checked={locationMode === "root"}
+              onChange={() => onLocationModeChange("root")}
+              className="peer sr-only"
+            />
+            {locationMode === "root" && (
+              <Check className="w-5 h-5 text-primary" />
+            )}
+          </div>
+        </label>
+
+        <Drawer open={isOpen} onOpenChange={setIsOpen}>
+          <DrawerTrigger asChild>
+            <div
+              className={cn(
+                "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer",
+                locationMode === "folder"
+                  ? "border-primary bg-primary/5 shadow-md"
+                  : "border-border bg-card hover:border-primary/50"
+              )}
+              onClick={() => {
+                onLocationModeChange("folder");
+              }}
+              onKeyUp={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  onLocationModeChange("folder");
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 text-orange-600 rounded-full">
+                  <Folder className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold">Specific Folder</div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {selectedFolder
+                      ? selectedFolder.name
+                      : folderIdInput
+                      ? "Folder Selected"
+                      : "Choose a folder"}
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </DrawerTrigger>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>Select Folder</DrawerTitle>
+              <DrawerDescription>Browse your Google Drive</DrawerDescription>
+            </DrawerHeader>
+            <div className="p-4 h-[60vh] overflow-y-auto">
+              {currentParent !== "root" && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="flex items-center gap-2 mb-4 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Back to root
+                </button>
+              )}
+              {loading ? (
+                <div className="flex justify-center p-8">Loading...</div>
+              ) : (
+                <div className="space-y-1">
+                  {folders.map((folder) => (
+                    <div
+                      key={folder.id}
+                      className="flex items-center justify-between p-3 hover:bg-muted/50 rounded-xl group"
+                    >
+                      <button
+                        type="button"
+                        className="flex items-center gap-3 flex-1 text-left"
+                        onClick={() => handleFolderClick(folder)}
+                      >
+                        <Folder className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
+                        <span className="text-sm font-medium">
+                          {folder.name}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectFolder(folder);
+                        }}
+                        className="px-4 py-2 text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 rounded-full transition-colors"
+                      >
+                        Select
+                      </button>
+                    </div>
+                  ))}
+                  {folders.length === 0 && (
+                    <div className="text-center text-muted-foreground py-8">
+                      No folders found
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </DrawerContent>
+        </Drawer>
+      </div>
+
+      <div className="mt-auto pt-6">
         <button
           type="button"
-          className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary/90 disabled:opacity-60"
+          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground shadow-lg shadow-blue-200 transition hover:bg-primary/90 disabled:opacity-60"
           onClick={onSubmit}
           disabled={
             isSettingUpSheet ||
             (locationMode === "folder" && !folderIdInput.trim())
           }
         >
-          {isSettingUpSheet ? "Setting up..." : "Create or Locate Sheet"}
+          {isSettingUpSheet ? "Setting up..." : "Continue"}
         </button>
-      }
-    >
-      <div className="space-y-4">
-        <div className="flex rounded-2xl border border-border/70 bg-surface-2/80 p-1 text-xs font-semibold">
-          <label
-            className={[
-              "flex flex-1 cursor-pointer items-center justify-center rounded-2xl px-3 py-2 transition",
-              locationMode === "root"
-                ? "bg-primary text-primary-foreground shadow-soft"
-                : "text-muted-foreground hover:text-foreground",
-            ].join(" ")}
-          >
-            <input
-              type="radio"
-              name="sheet-location"
-              checked={locationMode === "root"}
-              onChange={() => onLocationModeChange("root")}
-              className="sr-only"
-            />
-            <span>My Drive</span>
-          </label>
-          <label
-            className={[
-              "flex flex-1 cursor-pointer items-center justify-center rounded-2xl px-3 py-2 transition",
-              locationMode === "folder"
-                ? "bg-primary text-primary-foreground shadow-soft"
-                : "text-muted-foreground hover:text-foreground",
-            ].join(" ")}
-          >
-            <input
-              type="radio"
-              name="sheet-location"
-              checked={locationMode === "folder"}
-              onChange={() => onLocationModeChange("folder")}
-              className="sr-only"
-            />
-            <span>Specific folder</span>
-          </label>
-        </div>
-        {locationMode === "folder" ? (
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-widest text-muted-foreground">
-              Drive folder ID
-            </label>
-            <input
-              type="text"
-              className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
-              placeholder="Drive folder ID"
-              value={folderIdInput}
-              onChange={(event) => onFolderIdChange(event.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Find it in the folder URL after /folders/.
-            </p>
-          </div>
-        ) : null}
-        <div className="rounded-2xl border border-border/70 bg-surface-2/80 px-4 py-3 text-xs text-muted-foreground">
-          We will create or reuse SheetLog_DB and add the headers.
-        </div>
       </div>
-    </ScreenFrame>
+    </OnboardingLayout>
   );
 }

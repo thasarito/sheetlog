@@ -1,6 +1,6 @@
 import React from "react";
 import { Check } from "lucide-react";
-import { ScreenFrame } from "./ScreenFrame";
+import { OnboardingLayout } from "./OnboardingLayout";
 import type { ScreenMeta } from "./types";
 
 type DoneScreenProps = {
@@ -8,21 +8,31 @@ type DoneScreenProps = {
 };
 
 export function DoneScreen({ meta }: DoneScreenProps) {
+  // In a real app we might have a final 'Finish' action, but here we just show success.
+  // The parent OnboardingFlow might handle the redirection or completion state.
   return (
-    <ScreenFrame
-      {...meta}
-      title="All set"
-      subtitle="You're ready to log your first transaction."
-      icon={<Check className="h-5 w-5" />}
+    <OnboardingLayout
+      title="All set!"
+      subtitle="You're ready to start logging."
+      stepCurrent={meta.stepNumber}
+      stepTotal={meta.totalSteps}
     >
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-primary">
-          <Check className="h-7 w-7" />
+      <div className="flex flex-col items-center justify-center h-full pb-20 space-y-6 text-center animate-in fade-in zoom-in-95 duration-500">
+        <div className="relative">
+          <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
+          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-blue-400 text-primary-foreground shadow-xl ring-4 ring-background">
+            <Check className="h-12 w-12" strokeWidth={3} />
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground">
-          You can start logging now.
-        </p>
+
+        <div className="space-y-2 max-w-xs">
+          <h3 className="text-xl font-bold tracking-tight">Setup Complete</h3>
+          <p className="text-muted-foreground">
+            Your Google Sheet is connected and configured.
+          </p>
+        </div>
       </div>
-    </ScreenFrame>
+      {/* No footer button needed really, or maybe a "Go to Dashboard" if handled here */}
+    </OnboardingLayout>
   );
 }

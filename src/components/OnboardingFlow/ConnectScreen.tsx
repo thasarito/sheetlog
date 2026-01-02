@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { Plug } from "lucide-react";
-import { ScreenFrame } from "./ScreenFrame";
+
+import { OnboardingLayout } from "./OnboardingLayout";
 import type { ScreenMeta } from "./types";
 
 type ConnectScreenProps = {
@@ -15,40 +15,44 @@ export function ConnectScreen({
   onConnect,
 }: ConnectScreenProps) {
   return (
-    <ScreenFrame
-      {...meta}
-      title="Connect Google"
-      subtitle="Securely sign in to authorize SheetLog_DB in Drive."
-      icon={<Plug className="h-5 w-5" />}
-      footer={
-        <button
-          type="button"
-          className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary/90 disabled:opacity-60"
-          onClick={onConnect}
-          disabled={isConnecting}
-        >
-          {isConnecting ? "Connecting..." : "Connect Google Account"}
-        </button>
-      }
+    <OnboardingLayout
+      title="Let's get started"
+      subtitle="Never a better time than now to start thinking about how you manage your finances with ease."
+      stepCurrent={meta.stepNumber}
+      stepTotal={meta.totalSteps}
     >
-      <div className="space-y-4">
-        <div className="rounded-2xl border border-border/70 bg-surface-2/80 px-4 py-3 text-sm text-muted-foreground">
-          We only access the SheetLog_DB file and its folder.
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Set VITE_GOOGLE_CLIENT_ID in your env.
-        </p>
-        <div className="text-center">
-          <Link
-            to="/privacy"
-            className="text-xs text-muted-foreground underline decoration-muted-foreground/50 underline-offset-4 transition hover:text-foreground hover:decoration-foreground"
-            target="_blank"
-            rel="noreferrer"
+      <div className="flex flex-col items-center justify-center flex-1 gap-8 mt-12">
+        <div className="relative"></div>
+
+        <div className="w-full space-y-4 mt-auto">
+          <button
+            type="button"
+            className="w-full flex items-center justify-center gap-3 rounded-md bg-white border border-slate-200 py-3 px-4 text-base font-medium text-slate-700 hover:bg-slate-50 transition active:scale-95 disabled:opacity-60 shadow-sm"
+            onClick={onConnect}
+            disabled={isConnecting}
           >
-            Privacy Policy
-          </Link>
+            {isConnecting ? (
+              "Connecting..."
+            ) : (
+              <>
+                <img src="/google-logo.svg" alt="Google" className="w-5 h-5" />
+                <span>Sign in with Google</span>
+              </>
+            )}
+          </button>
+
+          <div className="text-center">
+            <Link
+              to="/privacy"
+              className="text-xs text-muted-foreground hover:underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Privacy Policy
+            </Link>
+          </div>
         </div>
       </div>
-    </ScreenFrame>
+    </OnboardingLayout>
   );
 }
