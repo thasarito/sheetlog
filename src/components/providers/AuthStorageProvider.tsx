@@ -138,7 +138,7 @@ export function AuthStorageProvider({
         void refreshToken("scheduled-refresh");
       }, delay);
     },
-    [isOnline]
+    [isOnline, refreshToken]
   );
 
   const refreshToken = useCallback(
