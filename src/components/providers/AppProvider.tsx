@@ -18,7 +18,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export { useAuthStorage } from "./AuthStorageProvider";
+export { useAuthStorage } from "./auth.hooks";
 export { useConnectivity } from "./ConnectivityProvider";
 export { useOnboarding } from "./OnboardingProvider";
 export { useTransactions } from "./TransactionsProvider";

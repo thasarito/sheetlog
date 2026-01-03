@@ -19,7 +19,7 @@ import {
   updateOnboarding as persistOnboarding,
 } from "../../lib/onboarding";
 import { isGoogleAuthError } from "../../lib/googleErrors";
-import { useAuthStorage } from "./AuthStorageProvider";
+import { useAuthStorage } from "./auth.hooks";
 import { useConnectivity } from "./ConnectivityProvider";
 
 type OnboardingStore = {

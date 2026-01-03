@@ -20,7 +20,7 @@ import type {
   TransactionRecord,
   TransactionType,
 } from "../../lib/types";
-import { useAuthStorage } from "./AuthStorageProvider";
+import { useAuthStorage } from "./auth.hooks";
 import { useConnectivity } from "./ConnectivityProvider";
 
 const DEFAULT_RECENTS: RecentCategories = {
@@ -103,7 +103,9 @@ interface TransactionsContextValue {
   ) => Promise<void>;
 }
 
-const TransactionsContext = createContext<TransactionsContextValue | null>(null);
+const TransactionsContext = createContext<TransactionsContextValue | null>(
+  null
+);
 
 export function TransactionsProvider({
   children,
@@ -216,14 +218,7 @@ export function TransactionsProvider({
         await syncNow();
       }
     },
-    [
-      accessToken,
-      isOnline,
-      sheetId,
-      refreshStats,
-      markRecentCategory,
-      syncNow,
-    ]
+    [accessToken, isOnline, sheetId, refreshStats, markRecentCategory, syncNow]
   );
 
   const undoLast = useCallback(async (): Promise<UndoResult> => {
@@ -329,9 +324,7 @@ export function TransactionsProvider({
 export function useTransactions() {
   const context = useContext(TransactionsContext);
   if (!context) {
-    throw new Error(
-      "useTransactions must be used within TransactionsProvider"
-    );
+    throw new Error("useTransactions must be used within TransactionsProvider");
   }
   return context;
 }
