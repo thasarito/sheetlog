@@ -14,12 +14,21 @@ import { STORAGE_KEYS } from "../../lib/constants";
 import { GoogleTokenClient, isUnauthorizedError } from "../../lib/google";
 import { ensureSheetReady } from "../../lib/sheets";
 
+export type AuthStatus =
+  | "initializing"
+  | "unauthenticated"
+  | "authenticating"
+  | "authenticated"
+  | "error";
+
 interface AuthStorageContextValue {
   accessToken: string | null;
   sheetId: string | null;
   sheetTabId: number | null;
   isConnecting: boolean;
   isInitialized: boolean;
+  authStatus: AuthStatus;
+  authError: Error | null;
   connect: () => Promise<void>;
   refreshSheet: (folderId?: string | null) => Promise<void>;
   clearAuth: () => void;
@@ -221,6 +230,29 @@ export function AuthStorageProvider({
     }
   }, [refreshError, clearAuth]);
 
+  // Compute authStatus for user-friendly status messaging
+  const authStatus: AuthStatus = useMemo(() => {
+    if (!isInitialized) return "initializing";
+    if (refreshError || connectMutation.error) return "error";
+    if (connectMutation.isPending || (isFetching && !tokenData))
+      return "authenticating";
+    if (!tokenData?.access_token) return "unauthenticated";
+    return "authenticated";
+  }, [
+    isInitialized,
+    refreshError,
+    connectMutation.error,
+    connectMutation.isPending,
+    isFetching,
+    tokenData,
+  ]);
+
+  const authError: Error | null = useMemo(() => {
+    if (refreshError) return refreshError;
+    if (connectMutation.error) return connectMutation.error;
+    return null;
+  }, [refreshError, connectMutation.error]);
+
   const value = useMemo<AuthStorageContextValue>(
     () => ({
       accessToken: tokenData?.access_token ?? null,
@@ -240,6 +272,8 @@ export function AuthStorageProvider({
       // 2. OR we have a token (tokenData available)
       // 3. OR the refresh failed (refreshError) -> will likely trigger logout
 
+      authStatus,
+      authError,
       connect,
       refreshSheet,
       clearAuth,
@@ -252,6 +286,8 @@ export function AuthStorageProvider({
       isFetching,
       isInitialized,
       refreshError,
+      authStatus,
+      authError,
       connect,
       refreshSheet,
       clearAuth,
@@ -271,4 +307,45 @@ export function useAuthStorage() {
     throw new Error("useAuthStorage must be used within AuthStorageProvider");
   }
   return context;
+}
+
+/** User-friendly status messages for each auth state */
+const AUTH_STATUS_MESSAGES: Record<AuthStatus, string> = {
+  initializing: "Checking authentication...",
+  unauthenticated: "Please sign in with Google to continue",
+  authenticating: "Connecting to Google...",
+  authenticated: "Connected",
+  error: "Authentication failed. Please try signing in again.",
+};
+
+/**
+ * Enhanced hook that provides user-friendly status messages alongside auth state.
+ * Useful for components that need to display feedback to users.
+ */
+export function useAuthStorageWithStatus() {
+  const auth = useAuthStorage();
+
+  const statusMessage = AUTH_STATUS_MESSAGES[auth.authStatus];
+
+  // Compute more granular status for sheet connection
+  const sheetStatus = auth.accessToken
+    ? auth.sheetId
+      ? "ready"
+      : "no-sheet"
+    : "no-auth";
+
+  const sheetStatusMessage =
+    sheetStatus === "ready"
+      ? "Google Sheet connected"
+      : sheetStatus === "no-sheet"
+      ? "Please connect a Google Sheet"
+      : null;
+
+  return {
+    ...auth,
+    statusMessage,
+    sheetStatus,
+    sheetStatusMessage,
+    isReady: auth.authStatus === "authenticated" && !!auth.sheetId,
+  };
 }
