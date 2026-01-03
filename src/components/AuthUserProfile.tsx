@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { STORAGE_KEYS } from "../lib/constants";
-import { useAuthStorage } from "./providers";
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { STORAGE_KEYS } from '../lib/constants';
+import { useAuthStorage } from './providers';
 
-const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
+const USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v3/userinfo';
 
 type UserProfile = {
   name: string;
@@ -20,7 +20,7 @@ type UserInfoResponse = {
 };
 
 function readStoredProfile(): UserProfile | null {
-  if (typeof window === "undefined") {
+  if (typeof window === 'undefined') {
     return null;
   }
   const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
@@ -35,7 +35,7 @@ function readStoredProfile(): UserProfile | null {
 }
 
 function persistProfile(profile: UserProfile | null) {
-  if (typeof window === "undefined") {
+  if (typeof window === 'undefined') {
     return;
   }
   if (!profile) {
@@ -50,16 +50,13 @@ function resolveProfileName(info: UserInfoResponse) {
   if (direct) {
     return direct;
   }
-  const combined = [info.given_name, info.family_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  return combined || "Google account";
+  const combined = [info.given_name, info.family_name].filter(Boolean).join(' ').trim();
+  return combined || 'Google account';
 }
 
 async function fetchUserProfile(
   accessToken: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<UserProfile | null> {
   const response = await fetch(USERINFO_ENDPOINT, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -84,14 +81,19 @@ type AuthUserProfileProps = {
 };
 
 export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
-  const { accessToken, isInitialized } = useAuthStorage();
-  const cachedProfile = readStoredProfile();
+  const { accessToken, authStatus, isInitialized } = useAuthStorage();
+  const [cachedProfile, setCachedProfile] = useState<UserProfile | null>(() => readStoredProfile());
 
-  const { data: profile } = useQuery({
-    queryKey: ["userProfile", accessToken],
-    queryFn: ({ signal }) => fetchUserProfile(accessToken ?? "", signal),
-    enabled: Boolean(accessToken) && isInitialized,
-    placeholderData: cachedProfile ?? null,
+  const { data: profile } = useQuery<UserProfile | null>({
+    queryKey: ['userProfile', accessToken],
+    queryFn: ({ signal }) => {
+      if (!accessToken) {
+        throw new Error('Missing access token for profile lookup');
+      }
+      return fetchUserProfile(accessToken, signal);
+    },
+    enabled: Boolean(accessToken) && isInitialized && authStatus === 'authenticated',
+    initialData: cachedProfile ?? undefined,
     staleTime: 1000 * 60 * 10,
     retry: false,
   });
@@ -102,32 +104,38 @@ export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
     }
     if (!accessToken) {
       persistProfile(null);
+      setCachedProfile(null);
       return;
     }
-    if (profile) {
+    if (profile !== undefined) {
       persistProfile(profile);
+      setCachedProfile(profile);
     }
   }, [profile, accessToken, isInitialized]);
 
-  if (!isInitialized || !accessToken || !profile) {
+  const profileToShow = profile ?? cachedProfile;
+  const shouldShowProfile =
+    isInitialized &&
+    profileToShow &&
+    (authStatus === 'authenticated' || authStatus === 'authenticating');
+
+  if (!shouldShowProfile) {
     return null;
   }
 
-  const fallbackInitial = profile.name.trim().charAt(0).toUpperCase() || "U";
+  const fallbackInitial = profileToShow.name.trim().charAt(0).toUpperCase() || 'U';
 
   if (compact) {
     return (
       <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-2">
-        {profile.picture ? (
+        {profileToShow.picture ? (
           <img
-            alt={`${profile.name} profile`}
+            alt={`${profileToShow.name} profile`}
             className="h-full w-full object-cover"
-            src={profile.picture}
+            src={profileToShow.picture}
           />
         ) : (
-          <span className="text-[11px] text-muted-foreground">
-            {fallbackInitial}
-          </span>
+          <span className="text-[11px] text-muted-foreground">{fallbackInitial}</span>
         )}
       </div>
     );
@@ -136,19 +144,17 @@ export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
   return (
     <div className="flex max-w-md mx-auto items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
       <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-2">
-        {profile.picture ? (
+        {profileToShow.picture ? (
           <img
-            alt={`${profile.name} profile`}
+            alt={`${profileToShow.name} profile`}
             className="h-full w-full object-cover"
-            src={profile.picture}
+            src={profileToShow.picture}
           />
         ) : (
-          <span className="text-[11px] text-muted-foreground">
-            {fallbackInitial}
-          </span>
+          <span className="text-[11px] text-muted-foreground">{fallbackInitial}</span>
         )}
       </div>
-      <span className="max-w-[140px] truncate">{profile.name}</span>
+      <span className="max-w-[140px] truncate">{profileToShow.name}</span>
     </div>
   );
 }
