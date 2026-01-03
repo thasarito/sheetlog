@@ -49,6 +49,10 @@ export class GoogleApiError extends Error {
   }
 }
 
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof GoogleApiError && error.status === 401;
+}
+
 let scriptPromise: Promise<void> | null = null;
 
 function loadScriptOnce(): Promise<void> {

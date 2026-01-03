@@ -2,10 +2,9 @@
 
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { STORAGE_KEYS } from "../lib/constants";
 import { useAuthStorage } from "./providers";
 
-const ACCESS_TOKEN_KEY = "sheetlog.accessToken";
-const USER_PROFILE_KEY = "sheetlog.userProfile";
 const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
 
 type UserProfile = {
@@ -24,7 +23,7 @@ function readStoredProfile(): UserProfile | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const raw = localStorage.getItem(USER_PROFILE_KEY);
+  const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
   if (!raw) {
     return null;
   }
@@ -40,10 +39,10 @@ function persistProfile(profile: UserProfile | null) {
     return;
   }
   if (!profile) {
-    localStorage.removeItem(USER_PROFILE_KEY);
+    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
     return;
   }
-  localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+  localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
 }
 
 function resolveProfileName(info: UserInfoResponse) {
@@ -80,34 +79,32 @@ async function fetchUserProfile(
 }
 
 export function AuthUserProfile() {
-  const { accessToken } = useAuthStorage();
-  const resolvedToken =
-    accessToken ||
-    (typeof window === "undefined"
-      ? null
-      : localStorage.getItem(ACCESS_TOKEN_KEY));
+  const { accessToken, isInitialized } = useAuthStorage();
   const cachedProfile = readStoredProfile();
 
   const { data: profile } = useQuery({
-    queryKey: ["userProfile", resolvedToken],
-    queryFn: ({ signal }) => fetchUserProfile(resolvedToken ?? "", signal),
-    enabled: Boolean(resolvedToken),
+    queryKey: ["userProfile", accessToken],
+    queryFn: ({ signal }) => fetchUserProfile(accessToken ?? "", signal),
+    enabled: Boolean(accessToken) && isInitialized,
     placeholderData: cachedProfile ?? null,
     staleTime: 1000 * 60 * 10,
     retry: false,
   });
 
   useEffect(() => {
-    if (!resolvedToken) {
+    if (!isInitialized) {
+      return;
+    }
+    if (!accessToken) {
       persistProfile(null);
       return;
     }
     if (profile) {
       persistProfile(profile);
     }
-  }, [profile, resolvedToken]);
+  }, [profile, accessToken, isInitialized]);
 
-  if (!resolvedToken || !profile) {
+  if (!isInitialized || !accessToken || !profile) {
     return null;
   }
 

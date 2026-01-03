@@ -8,18 +8,16 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { requestAccessToken } from "../../lib/google";
+import { STORAGE_KEYS } from "../../lib/constants";
+import { requestAccessToken, isUnauthorizedError } from "../../lib/google";
 import { ensureSheetReady } from "../../lib/sheets";
-
-const ACCESS_TOKEN_KEY = "sheetlog.accessToken";
-const SHEET_ID_KEY = "sheetlog.sheetId";
-const SHEET_TAB_ID_KEY = "sheetlog.sheetTabId";
 
 interface AuthStorageContextValue {
   accessToken: string | null;
   sheetId: string | null;
   sheetTabId: number | null;
   isConnecting: boolean;
+  isInitialized: boolean;
   connect: () => Promise<void>;
   refreshSheet: (folderId?: string | null) => Promise<void>;
   clearAuth: () => void;
@@ -36,38 +34,40 @@ export function AuthStorageProvider({
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sheetTabId, setSheetTabId] = useState<number | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
-    const storedToken = localStorage.getItem(ACCESS_TOKEN_KEY);
-    const storedSheetId = localStorage.getItem(SHEET_ID_KEY);
-    const storedTabId = localStorage.getItem(SHEET_TAB_ID_KEY);
+    const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const storedSheetId = localStorage.getItem(STORAGE_KEYS.SHEET_ID);
+    const storedTabId = localStorage.getItem(STORAGE_KEYS.SHEET_TAB_ID);
     setAccessToken(storedToken);
     setSheetId(storedSheetId);
     setSheetTabId(storedTabId ? Number.parseInt(storedTabId, 10) : null);
+    setIsInitialized(true);
   }, []);
 
   const storeToken = useCallback((token: string) => {
-    localStorage.setItem(ACCESS_TOKEN_KEY, token);
+    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
     setAccessToken(token);
   }, []);
 
   const storeSheet = useCallback((id: string, tabId: number | null) => {
-    localStorage.setItem(SHEET_ID_KEY, id);
+    localStorage.setItem(STORAGE_KEYS.SHEET_ID, id);
     setSheetId(id);
     if (tabId !== null) {
-      localStorage.setItem(SHEET_TAB_ID_KEY, tabId.toString());
+      localStorage.setItem(STORAGE_KEYS.SHEET_TAB_ID, tabId.toString());
       setSheetTabId(tabId);
     }
   }, []);
 
   const clearAuth = useCallback(() => {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(SHEET_ID_KEY);
-    localStorage.removeItem(SHEET_TAB_ID_KEY);
-    localStorage.removeItem("sheetlog.userProfile");
+    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.SHEET_ID);
+    localStorage.removeItem(STORAGE_KEYS.SHEET_TAB_ID);
+    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
     setAccessToken(null);
     setSheetId(null);
     setSheetTabId(null);
@@ -95,11 +95,18 @@ export function AuthStorageProvider({
       if (!accessToken) {
         return;
       }
-      const { sheetId: nextSheetId, sheetTabId: nextTabId } =
-        await ensureSheetReady(accessToken, folderId);
-      storeSheet(nextSheetId, nextTabId);
+      try {
+        const { sheetId: nextSheetId, sheetTabId: nextTabId } =
+          await ensureSheetReady(accessToken, folderId);
+        storeSheet(nextSheetId, nextTabId);
+      } catch (error) {
+        if (isUnauthorizedError(error)) {
+          clearAuth();
+        }
+        throw error;
+      }
     },
-    [accessToken, storeSheet]
+    [accessToken, storeSheet, clearAuth]
   );
 
   const value = useMemo<AuthStorageContextValue>(
@@ -108,6 +115,7 @@ export function AuthStorageProvider({
       sheetId,
       sheetTabId,
       isConnecting,
+      isInitialized,
       connect,
       refreshSheet,
       clearAuth,
@@ -117,6 +125,7 @@ export function AuthStorageProvider({
       sheetId,
       sheetTabId,
       isConnecting,
+      isInitialized,
       connect,
       refreshSheet,
       clearAuth,
