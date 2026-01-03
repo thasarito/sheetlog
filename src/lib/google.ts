@@ -78,18 +78,37 @@ function loadScriptOnce(): Promise<void> {
   return scriptPromise;
 }
 
-export async function requestAccessToken(clientId: string): Promise<string> {
-  await loadScriptOnce();
-  return new Promise((resolve, reject) => {
+export interface TokenResponse {
+  access_token: string;
+  expires_in: number;
+  error?: string;
+}
+
+export class GoogleTokenClient {
+  private client: any = null;
+  private scriptLoaded = false;
+
+  constructor(private clientId: string) {}
+
+  private async loadScript(): Promise<void> {
+    if (this.scriptLoaded) return;
+    await loadScriptOnce();
+    this.scriptLoaded = true;
+  }
+
+  private initClient(
+    resolve: (value: TokenResponse) => void,
+    reject: (reason?: any) => void
+  ) {
     const google = window.google as any;
     if (!google?.accounts?.oauth2) {
-      reject(new Error("Google Identity not available"));
-      return;
+      throw new Error("Google Identity not available");
     }
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
+
+    this.client = google.accounts.oauth2.initTokenClient({
+      client_id: this.clientId,
       scope: SCOPES.join(" "),
-      callback: (response: { access_token?: string; error?: string }) => {
+      callback: (response: any) => {
         if (response.error) {
           reject(new Error(response.error));
           return;
@@ -98,11 +117,49 @@ export async function requestAccessToken(clientId: string): Promise<string> {
           reject(new Error("No access token received"));
           return;
         }
-        resolve(response.access_token);
+        resolve({
+          access_token: response.access_token,
+          expires_in: Number.parseInt(response.expires_in, 10),
+        });
       },
     });
-    tokenClient.requestAccessToken({ prompt: "" });
-  });
+  }
+
+  async requestToken({
+    prompt,
+  }: { prompt?: string } = {}): Promise<TokenResponse> {
+    await this.loadScript();
+
+    return new Promise((resolve, reject) => {
+      try {
+        if (!this.client) {
+          this.initClient(resolve, reject);
+        }
+        // If we need to change the callback (e.g. for different flows), we might need to re-init
+        // But for this simple case, the same callback logic applies.
+        // Actually, initTokenClient returns a NEW client instance each time.
+        // For safety and to ensure we capture the specific promise resolve/reject for THIS request,
+        // we should probably re-init or have a way to swap the callback.
+        // The google library allows `requestAccessToken` to be called multiple times on the same client,
+        // but the callback is fixed at init time.
+        // To handle promises correctly per-request, it's safer to re-create the client or use a queue.
+        // Re-creating is cheap enough for user-interaction speeds.
+
+        this.initClient(resolve, reject);
+
+        this.client.requestAccessToken({ prompt });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+}
+
+// Kept for backward compatibility if needed, but ideally we switch to the class
+export async function requestAccessToken(clientId: string): Promise<string> {
+  const client = new GoogleTokenClient(clientId);
+  const response = await client.requestToken();
+  return response.access_token;
 }
 
 function parseGoogleErrorBody(body: string): {
