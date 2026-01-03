@@ -1,5 +1,8 @@
 # AGENTS
 
+## Product
+- Native-feel PWA focused on lightning-fast financial transaction logging to Google Sheets.
+
 ## Lint
 - `npm run lint`
 
