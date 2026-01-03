@@ -15,6 +15,7 @@ const HEADER_ROW = [
   "Currency",
   "Account",
   "For",
+  "Id",
 ];
 const ACCOUNT_HEADER_ROW = ["Account"];
 const CATEGORY_HEADER_ROW = ["Type", "Category"];
@@ -292,7 +293,7 @@ export async function ensureHeaders(
   accessToken: string,
   spreadsheetId: string
 ): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:J1?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:K1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
     body: JSON.stringify({ values: [HEADER_ROW] }),
@@ -395,7 +396,7 @@ export async function appendTransaction(
   spreadsheetId: string,
   transaction: TransactionRecord
 ): Promise<number | null> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:J:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
   let note = transaction.note ?? "";
   let currency = transaction.currency ?? "";
   if (!currency && note) {
@@ -417,6 +418,7 @@ export async function appendTransaction(
       currency,
       transaction.account ?? "",
       transaction.for ?? "",
+      transaction.id,
     ],
   ];
 
@@ -434,6 +436,29 @@ export async function appendTransaction(
     return null;
   }
   return parseRowFromRange(updatedRange);
+}
+
+export async function readTransactionIdMap(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<Map<string, number>> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!K2:K`;
+  const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
+  const map = new Map<string, number>();
+  const values = data.values ?? [];
+  for (let index = 0; index < values.length; index += 1) {
+    const row = values[index] ?? [];
+    const rawValue = row[0];
+    if (!rawValue) {
+      continue;
+    }
+    const id = String(rawValue).trim();
+    if (!id || map.has(id)) {
+      continue;
+    }
+    map.set(id, index + 2);
+  }
+  return map;
 }
 
 export async function deleteRow(

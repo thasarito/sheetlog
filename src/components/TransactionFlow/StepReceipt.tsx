@@ -10,8 +10,6 @@ import {
   type CircleCheckIconHandle,
 } from "../icons/CircleCheckIcon";
 
-export type ReceiptStatus = "idle" | "loading" | "success" | "error";
-
 export type ReceiptData = {
   type: TransactionType;
   category: string;
@@ -24,8 +22,10 @@ export type ReceiptData = {
 };
 
 type StepReceiptProps = ReceiptData & {
-  status: ReceiptStatus;
-  message?: string;
+  isPending: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+  errorMessage?: string;
   onDone?: () => void;
   onUndo?: () => void;
 };
@@ -45,16 +45,22 @@ export function StepReceipt({
   forValue,
   dateObject,
   note,
-  status,
-  message,
+  isPending,
+  isSuccess,
+  isError,
+  errorMessage,
   onDone,
   onUndo,
 }: StepReceiptProps) {
-  const normalizedStatus = status === "idle" ? "loading" : status;
   const amountLabel = amount ? amount : "0";
   const amountDisplay = `${currency} ${amountLabel}`;
-  const isSuccess = normalizedStatus === "success";
-  const isError = normalizedStatus === "error";
+  const normalizedStatus = isPending
+    ? "loading"
+    : isSuccess
+      ? "success"
+      : isError
+        ? "error"
+        : "loading";
   const statusTitle =
     normalizedStatus === "loading"
       ? "Saving transaction"
@@ -66,7 +72,7 @@ export function StepReceipt({
       ? "Hang tight while we log this entry."
       : normalizedStatus === "success"
         ? "Transaction added to your ledger."
-        : message || "Check your connection and try again.";
+        : errorMessage || "Check your connection and try again.";
   const accountLabel = type === "transfer" ? "From" : "Account";
   const forLabel = type === "transfer" ? "To" : "For";
   const checkIconRef = useRef<CircleCheckIconHandle | null>(null);

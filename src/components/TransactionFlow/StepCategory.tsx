@@ -7,15 +7,11 @@ import type { TransactionType } from "../../lib/types";
 import { CategoryGrid } from "../CategoryGrid";
 import { DateTimeDrawer } from "../DateTimeDrawer";
 import { TYPE_OPTIONS } from "./constants";
+import type { TransactionFormApi } from "./useTransactionForm";
 
 type StepCategoryProps = {
-  type: TransactionType;
+  form: TransactionFormApi;
   categoryGroups: Record<TransactionType, string[]>;
-  selected: string | null;
-  dateObject: Date;
-  onSelectType: (value: TransactionType) => void;
-  onSelectCategory: (value: string) => void;
-  onDateChange: (value: Date) => void;
   onConfirm: () => void;
 };
 
@@ -32,15 +28,11 @@ const TYPE_META: Record<
 };
 
 export function StepCategory({
-  type,
+  form,
   categoryGroups,
-  selected,
-  dateObject,
-  onSelectType,
-  onSelectCategory,
-  onDateChange,
   onConfirm,
 }: StepCategoryProps) {
+  const { type, category, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
   const [panelDirection, setPanelDirection] = useState<"left" | "right">("right");
@@ -64,7 +56,7 @@ export function StepCategory({
   }, [selectedIndex]);
 
   const handleCategorySelect = (value: string) => {
-    onSelectCategory(value);
+    form.setFieldValue("category", value);
     setIsDrawerOpen(true);
   };
 
@@ -74,7 +66,11 @@ export function StepCategory({
 
   const handleTypeChange = (index: number) => {
     updateDirection(index);
-    onSelectType(TYPE_OPTIONS[index]);
+    const nextType = TYPE_OPTIONS[index];
+    form.setFieldValue("type", nextType);
+    if (nextType !== type) {
+      form.setFieldValue("category", "");
+    }
   };
 
   return (
@@ -137,7 +133,7 @@ export function StepCategory({
               >
                 <CategoryGrid
                   categories={group}
-                  selected={selected}
+                  selected={category || null}
                   onSelect={handleCategorySelect}
                 />
               </Tab.Panel>
@@ -148,7 +144,7 @@ export function StepCategory({
 
       <DateTimeDrawer
         value={dateObject}
-        onChange={onDateChange}
+        onChange={(value) => form.setFieldValue("dateObject", value)}
         open={isDrawerOpen}
         onOpenChange={setIsDrawerOpen}
         showTrigger={false}

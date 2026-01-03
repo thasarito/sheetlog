@@ -159,6 +159,7 @@ export function TransactionsProvider({
     if (!accessToken || !sheetId || syncingRef.current) {
       return;
     }
+    syncingRef.current = true;
     dispatch({ type: "sync_start" });
     try {
       await syncPendingTransactions(accessToken, sheetId);
@@ -176,6 +177,7 @@ export function TransactionsProvider({
     } finally {
       await refreshStats();
       dispatch({ type: "sync_end" });
+      syncingRef.current = false;
     }
   }, [accessToken, sheetId, refreshStats, clearAuth]);
 

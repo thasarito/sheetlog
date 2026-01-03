@@ -2,47 +2,29 @@
 
 import React, { useMemo } from "react";
 import { Check, X } from "lucide-react";
-import type { TransactionType } from "../../lib/types";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
 import { FOR_OPTIONS } from "./constants";
+import type { TransactionFormApi } from "./useTransactionForm";
 
 type StepAmountProps = {
-  type: TransactionType | null;
-  category: string | null;
-  amount: string;
-  currency: string;
-  account: string | null;
-  forValue: string;
-  note: string;
+  form: TransactionFormApi;
   accounts: string[];
   onBack: () => void;
-  onAmountChange: (value: string) => void;
-  onCurrencyChange: (value: string) => void;
-  onAccountSelect: (value: string) => void;
-  onForChange: (value: string) => void;
-  onNoteChange: (value: string) => void;
   onSubmit: () => void;
+  isSubmitting?: boolean;
 };
 
 export function StepAmount({
-  type,
-  category,
-  amount,
-  currency,
-  account,
-  forValue,
-  note,
+  form,
   accounts,
   onBack,
-  onAmountChange,
-  onCurrencyChange,
-  onAccountSelect,
-  onForChange,
-  onNoteChange,
   onSubmit,
+  isSubmitting = false,
 }: StepAmountProps) {
+  const { type, category, amount, currency, account, forValue, note } =
+    form.useStore((state) => state.values);
   const isTransfer = type === "transfer";
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
@@ -62,10 +44,10 @@ export function StepAmount({
       <div className="flex-1 flex flex-col">
         {category ? (
           <div className="px-4 pt-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground shadow-soft backdrop-blur">
-              <span className="max-w-[240px] truncate">{category}</span>
-              <button
-                type="button"
+          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground shadow-soft backdrop-blur">
+            <span className="max-w-[240px] truncate">{category}</span>
+            <button
+              type="button"
                 aria-label="Change category"
                 className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 onClick={onBack}
@@ -78,7 +60,10 @@ export function StepAmount({
 
         <div className="flex flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
           <span>{amount ? amount : "0"}</span>
-          <CurrencyPicker value={currency} onChange={onCurrencyChange} />
+          <CurrencyPicker
+            value={currency}
+            onChange={(value) => form.setFieldValue("currency", value)}
+          />
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -87,7 +72,7 @@ export function StepAmount({
               label="To"
               value={selectedFor}
               options={toAccountOptions}
-              onChange={onForChange}
+              onChange={(value) => form.setFieldValue("forValue", value)}
               disabled={!hasTransferAccounts}
             />
           ) : (
@@ -95,15 +80,15 @@ export function StepAmount({
               label="For"
               value={selectedFor}
               options={FOR_OPTIONS}
-              onChange={onForChange}
+              onChange={(value) => form.setFieldValue("forValue", value)}
             />
           )}
 
           <InlinePicker
             label={accountLabel}
-            value={account}
+            value={account || null}
             options={accounts}
-            onChange={onAccountSelect}
+            onChange={(value) => form.setFieldValue("account", value)}
           />
         </div>
       </div>
@@ -115,7 +100,10 @@ export function StepAmount({
       ) : null}
 
       <div className="flex flex-col gap-5 pb-6">
-        <Keypad value={amount} onChange={onAmountChange} />
+        <Keypad
+          value={amount}
+          onChange={(value) => form.setFieldValue("amount", value)}
+        />
 
         <div>
           <label
@@ -129,17 +117,20 @@ export function StepAmount({
             className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
             placeholder="Optional"
             value={note}
-            onChange={(event) => onNoteChange(event.target.value)}
+            onChange={(event) =>
+              form.setFieldValue("note", event.target.value)
+            }
           />
         </div>
 
         <button
           type="button"
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
           onClick={onSubmit}
+          disabled={isSubmitting}
         >
           <Check className="h-4 w-4" />
-          Submit
+          {isSubmitting ? "Submitting" : "Submit"}
         </button>
       </div>
     </div>

@@ -4,11 +4,9 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
 } from "react";
-import { format } from "date-fns";
 import {
   useAuthStorage,
   useConnectivity,
@@ -17,190 +15,26 @@ import {
 } from "../providers";
 import { OnboardingFlow } from "../OnboardingFlow";
 import { ServiceWorker } from "../ServiceWorker";
-import { Toast } from "../Toast";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
-import { CURRENCIES, DEFAULT_CURRENCY } from "../../lib/currencies";
 import type { TransactionType } from "../../lib/types";
 import { AccountCategoryPanel } from "./AccountCategoryPanel";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
-import {
-  StepReceipt,
-  type ReceiptData,
-  type ReceiptStatus,
-} from "./StepReceipt";
+import { StepReceipt, type ReceiptData } from "./StepReceipt";
 import { FOR_OPTIONS, TYPE_OPTIONS } from "./constants";
+import { toast } from "sonner";
+import {
+  CURRENCY_STORAGE_KEY,
+  useTransactionForm,
+} from "./useTransactionForm";
+import { useAddTransactionMutation } from "./useAddTransactionMutation";
+import {
+  transactionSchema,
+  type TransactionFormValues,
+} from "./transactionSchema";
 
 type ToastAction = { label: string; onClick: () => void };
-
-type FlowState = {
-  step: number;
-  type: TransactionType | null;
-  category: string | null;
-  amount: string;
-  currency: string;
-  account: string | null;
-  forValue: string;
-  dateObject: Date;
-  note: string;
-  receipt: {
-    status: ReceiptStatus;
-    message: string;
-    data: ReceiptData | null;
-  };
-  toast: {
-    open: boolean;
-    message: string;
-    actionLabel?: string;
-    action?: () => void;
-  };
-};
-
-type FlowAction =
-  | { type: "SELECT_TYPE"; value: TransactionType }
-  | { type: "SELECT_CATEGORY"; value: string }
-  | { type: "SET_STEP"; value: number }
-  | { type: "SET_AMOUNT"; value: string }
-  | { type: "SET_CURRENCY"; value: string }
-  | { type: "SET_ACCOUNT"; value: string | null }
-  | { type: "SET_FOR"; value: string }
-  | { type: "SET_DATE"; value: Date }
-  | { type: "SET_NOTE"; value: string }
-  | { type: "BEGIN_RECEIPT"; data: ReceiptData }
-  | { type: "SET_RECEIPT_STATUS"; status: ReceiptStatus; message?: string }
-  | { type: "CLEAR_RECEIPT" }
-  | { type: "RESET_FLOW" }
-  | { type: "OPEN_TOAST"; message: string; action?: ToastAction }
-  | { type: "CLOSE_TOAST" };
-
-const CURRENCY_STORAGE_KEY = "sheetlog:last-currency";
-
-function resolveStoredCurrency() {
-  if (typeof window === "undefined") {
-    return DEFAULT_CURRENCY;
-  }
-  const storedCurrency = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
-  if (
-    storedCurrency &&
-    CURRENCIES.includes(storedCurrency as (typeof CURRENCIES)[number])
-  ) {
-    return storedCurrency;
-  }
-  return DEFAULT_CURRENCY;
-}
-
-const createInitialState = (_?: unknown): FlowState => ({
-  step: 0,
-  type: TYPE_OPTIONS[0],
-  category: null,
-  amount: "",
-  currency: resolveStoredCurrency(),
-  account: null,
-  forValue: "Me",
-  dateObject: new Date(),
-  note: "",
-  receipt: {
-    status: "idle",
-    message: "",
-    data: null,
-  },
-  toast: {
-    open: false,
-    message: "",
-  },
-});
-
-function flowReducer(state: FlowState, action: FlowAction): FlowState {
-  switch (action.type) {
-    case "SELECT_TYPE":
-      return {
-        ...state,
-        type: action.value,
-        category: state.type === action.value ? state.category : null,
-      };
-    case "SELECT_CATEGORY":
-      return { ...state, category: action.value };
-    case "SET_STEP":
-      return { ...state, step: action.value };
-    case "SET_AMOUNT":
-      return { ...state, amount: action.value };
-    case "SET_CURRENCY":
-      return { ...state, currency: action.value };
-    case "SET_ACCOUNT":
-      return { ...state, account: action.value };
-    case "SET_FOR":
-      return { ...state, forValue: action.value };
-    case "SET_DATE":
-      return { ...state, dateObject: action.value };
-    case "SET_NOTE":
-      return { ...state, note: action.value };
-    case "BEGIN_RECEIPT":
-      return {
-        ...state,
-        receipt: {
-          status: "loading",
-          message: "",
-          data: action.data,
-        },
-      };
-    case "SET_RECEIPT_STATUS":
-      return {
-        ...state,
-        receipt: {
-          ...state.receipt,
-          status: action.status,
-          message: action.message ?? "",
-        },
-      };
-    case "CLEAR_RECEIPT":
-      return {
-        ...state,
-        receipt: {
-          status: "idle",
-          message: "",
-          data: null,
-        },
-      };
-    case "RESET_FLOW":
-      return {
-        ...state,
-        step: 0,
-        type: TYPE_OPTIONS[0],
-        category: null,
-        amount: "",
-        forValue: "Me",
-        note: "",
-        dateObject: new Date(),
-        receipt: {
-          status: "idle",
-          message: "",
-          data: null,
-        },
-      };
-    case "OPEN_TOAST":
-      return {
-        ...state,
-        toast: {
-          open: true,
-          message: action.message,
-          actionLabel: action.action?.label,
-          action: action.action?.onClick,
-        },
-      };
-    case "CLOSE_TOAST":
-      return {
-        ...state,
-        toast: {
-          ...state.toast,
-          open: false,
-        },
-      };
-    default:
-      return state;
-  }
-}
-
 type StepDefinition = {
   key: string;
   label: string;
@@ -210,30 +44,20 @@ type StepDefinition = {
 
 export function TransactionFlow() {
   const { accessToken, sheetId } = useAuthStorage();
-  const { addTransaction, undoLast, lastSyncError, lastSyncErrorAt } =
-    useTransactions();
+  const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { onboarding, refreshOnboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
   const [isResyncing, setIsResyncing] = useState(false);
-
-  const [state, dispatch] = useReducer(
-    flowReducer,
-    undefined,
-    createInitialState
-  );
-  const {
-    step,
-    type,
-    category,
-    amount,
-    currency,
-    account,
-    forValue,
-    dateObject,
-    note,
-    receipt,
-    toast,
-  } = state;
+  const [step, setStep] = useState(0);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const mutation = useAddTransactionMutation();
+  const form = useTransactionForm({
+    onSubmit: async (values) => {
+      await handleSubmit(values);
+    },
+  });
+  const { type, category, amount, currency, account, forValue, dateObject, note } =
+    form.useStore((state) => state.values);
   const receiptTimeoutRef = useRef<number | null>(null);
   const lastSyncErrorRef = useRef<string | null>(null);
 
@@ -257,8 +81,6 @@ export function TransactionFlow() {
     }, {} as Record<TransactionType, string[]>);
   }, [categories]);
 
-  const formattedAmount = amount ? Number.parseFloat(amount) : 0;
-
   useEffect(() => {
     return () => {
       if (receiptTimeoutRef.current) {
@@ -269,9 +91,9 @@ export function TransactionFlow() {
 
   useEffect(() => {
     if (!account && onboarding.accounts.length === 1) {
-      dispatch({ type: "SET_ACCOUNT", value: onboarding.accounts[0] });
+      form.setFieldValue("account", onboarding.accounts[0]);
     }
-  }, [account, onboarding.accounts]);
+  }, [account, form, onboarding.accounts]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -284,30 +106,56 @@ export function TransactionFlow() {
     if (type === "transfer" && forValue) {
       const isAccountValue = onboarding.accounts.includes(forValue);
       if (!isAccountValue) {
-        dispatch({ type: "SET_FOR", value: "" });
+        form.setFieldValue("forValue", "");
       }
     }
-  }, [type, forValue, onboarding.accounts]);
+  }, [type, forValue, form, onboarding.accounts]);
 
   useEffect(() => {
     if (type === "transfer" && account && forValue === account) {
-      dispatch({ type: "SET_FOR", value: "" });
+      form.setFieldValue("forValue", "");
     }
-  }, [type, account, forValue]);
+  }, [type, account, forValue, form]);
 
   useEffect(() => {
     if (type === "transfer") {
       return;
     }
     if (!forValue || !FOR_OPTIONS.includes(forValue)) {
-      dispatch({ type: "SET_FOR", value: "Me" });
+      form.setFieldValue("forValue", "Me");
     }
-  }, [type, forValue]);
+  }, [type, forValue, form]);
 
   const handleToast = useCallback((message: string, action?: ToastAction) => {
-    dispatch({ type: "OPEN_TOAST", message, action });
-    window.setTimeout(() => dispatch({ type: "CLOSE_TOAST" }), 4000);
+    if (action) {
+      toast(message, {
+        action: {
+          label: action.label,
+          onClick: action.onClick,
+        },
+      });
+      return;
+    }
+    toast(message);
   }, []);
+
+  function handleFormSubmit() {
+    const result = transactionSchema.safeParse({
+      type,
+      category,
+      amount,
+      currency,
+      account,
+      forValue,
+      dateObject,
+      note,
+    });
+    if (!result.success) {
+      handleToast(result.error.issues[0]?.message ?? "Complete all fields");
+      return;
+    }
+    void form.handleSubmit();
+  }
 
   useEffect(() => {
     if (!lastSyncError || !lastSyncErrorAt) {
@@ -362,7 +210,21 @@ export function TransactionFlow() {
   }
 
   function resetFlow() {
-    dispatch({ type: "RESET_FLOW" });
+    setStep(0);
+    setReceiptData(null);
+    mutation.reset();
+    form.setFieldValue("type", TYPE_OPTIONS[0]);
+    form.setFieldValue("category", "");
+    form.setFieldValue("amount", "");
+    form.setFieldValue("forValue", "Me");
+    form.setFieldValue("note", "");
+    form.setFieldValue("dateObject", new Date());
+  }
+
+  function clearReceiptStep() {
+    setStep(0);
+    setReceiptData(null);
+    mutation.reset();
   }
 
   function handleReceiptDone() {
@@ -381,22 +243,26 @@ export function TransactionFlow() {
     handleToast(result.message);
   }
 
-  async function handleSubmit() {
-    if (!type || !category || !amount) {
+  async function handleSubmit(values: TransactionFormValues) {
+    if (mutation.isPending) {
+      return;
+    }
+    if (!values.type || !values.category || !values.amount) {
       handleToast("Complete all fields");
       return;
     }
-    if (Number.isNaN(formattedAmount) || formattedAmount <= 0) {
+    const parsedAmount = Number.parseFloat(values.amount);
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       handleToast("Enter a valid amount");
       return;
     }
-    if (!account) {
+    if (!values.account) {
       handleToast("Select an account");
       return;
     }
-    const trimmedFor = forValue.trim();
-    const trimmedNote = note.trim();
-    if (type === "transfer") {
+    const trimmedFor = values.forValue.trim();
+    const trimmedNote = values.note.trim();
+    if (values.type === "transfer") {
       if (onboarding.accounts.length < 2) {
         handleToast("Add another account to log transfers");
         return;
@@ -405,50 +271,42 @@ export function TransactionFlow() {
         handleToast("Select a destination account");
         return;
       }
-      if (trimmedFor === account) {
+      if (trimmedFor === values.account) {
         handleToast("Pick two different accounts");
         return;
       }
     }
-    const resolvedFor = trimmedFor || forValue;
-    const receiptData: ReceiptData = {
-      type,
-      category,
-      amount,
-      currency,
-      account,
+    const resolvedFor = trimmedFor || values.forValue;
+    const nextReceipt: ReceiptData = {
+      type: values.type,
+      category: values.category,
+      amount: values.amount,
+      currency: values.currency,
+      account: values.account,
       forValue: resolvedFor,
-      dateObject,
+      dateObject: values.dateObject,
       note: trimmedNote,
     };
-    dispatch({ type: "BEGIN_RECEIPT", data: receiptData });
-    dispatch({ type: "SET_STEP", value: 2 });
+    setReceiptData(nextReceipt);
+    setStep(2);
     try {
-      await addTransaction({
-        type,
-        amount: formattedAmount,
-        currency,
-        account,
-        for: resolvedFor,
-        category,
-        date: format(dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
-        note: trimmedNote || undefined,
+      await mutation.mutateAsync({
+        ...values,
+        forValue: resolvedFor,
+        note: trimmedNote,
       });
-      dispatch({ type: "SET_RECEIPT_STATUS", status: "success" });
       scheduleReceiptTransition(() => resetFlow(), 2000);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to save transaction";
-      dispatch({ type: "SET_RECEIPT_STATUS", status: "error", message });
       handleToast(message);
       scheduleReceiptTransition(() => {
-        dispatch({ type: "SET_STEP", value: 0 });
-        dispatch({ type: "CLEAR_RECEIPT" });
+        clearReceiptStep();
       }, 2000);
     }
   }
 
-  const receiptSnapshot: ReceiptData = receipt.data ?? {
+  const receiptSnapshot: ReceiptData = receiptData ?? {
     type: type ?? TYPE_OPTIONS[0],
     category: category ?? "",
     amount,
@@ -466,16 +324,9 @@ export function TransactionFlow() {
       className: "h-full min-h-0",
       content: (
         <StepCategory
-          type={type ?? TYPE_OPTIONS[0]}
+          form={form}
           categoryGroups={categoryGroups}
-          selected={category}
-          dateObject={dateObject}
-          onSelectType={(value) => dispatch({ type: "SELECT_TYPE", value })}
-          onSelectCategory={(value) =>
-            dispatch({ type: "SELECT_CATEGORY", value })
-          }
-          onDateChange={(value) => dispatch({ type: "SET_DATE", value })}
-          onConfirm={() => dispatch({ type: "SET_STEP", value: 1 })}
+          onConfirm={() => setStep(1)}
         />
       ),
     },
@@ -485,23 +336,11 @@ export function TransactionFlow() {
       className: "space-y-5",
       content: (
         <StepAmount
-          type={type}
-          category={category}
-          amount={amount}
-          currency={currency}
-          account={account}
-          forValue={forValue}
-          note={note}
+          form={form}
           accounts={onboarding.accounts}
-          onBack={() => dispatch({ type: "SET_STEP", value: 0 })}
-          onAmountChange={(value) => dispatch({ type: "SET_AMOUNT", value })}
-          onCurrencyChange={(value) =>
-            dispatch({ type: "SET_CURRENCY", value })
-          }
-          onAccountSelect={(value) => dispatch({ type: "SET_ACCOUNT", value })}
-          onForChange={(value) => dispatch({ type: "SET_FOR", value })}
-          onNoteChange={(value) => dispatch({ type: "SET_NOTE", value })}
-          onSubmit={handleSubmit}
+          onBack={() => setStep(0)}
+          onSubmit={handleFormSubmit}
+          isSubmitting={mutation.isPending}
         />
       ),
     },
@@ -512,8 +351,16 @@ export function TransactionFlow() {
       content: (
         <StepReceipt
           {...receiptSnapshot}
-          status={receipt.status}
-          message={receipt.message}
+          isPending={mutation.isPending}
+          isSuccess={mutation.isSuccess}
+          isError={mutation.isError}
+          errorMessage={
+            mutation.error instanceof Error
+              ? mutation.error.message
+              : mutation.isError
+                ? "Failed to save transaction"
+                : undefined
+          }
           onDone={handleReceiptDone}
           onUndo={handleReceiptUndo}
         />
@@ -561,13 +408,6 @@ export function TransactionFlow() {
         <OnboardingFlow onToast={handleToast} />
       )}
 
-      <Toast
-        open={toast.open}
-        message={toast.message}
-        actionLabel={toast.actionLabel}
-        onAction={toast.action}
-        onClose={() => dispatch({ type: "CLOSE_TOAST" })}
-      />
     </main>
   );
 }
