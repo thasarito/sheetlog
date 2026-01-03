@@ -74,31 +74,75 @@ function loadScriptOnce(): Promise<void> {
   return scriptPromise;
 }
 
-export async function requestAccessToken(clientId: string): Promise<string> {
+type AccessTokenResponse = {
+  access_token?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+};
+
+type TokenClient = {
+  callback: (response: AccessTokenResponse) => void;
+  requestAccessToken: (options: { prompt: string }) => void;
+};
+
+let tokenClient: TokenClient | null = null;
+
+function ensureTokenClient(clientId: string): TokenClient {
+  const google = window.google as any;
+  if (!google?.accounts?.oauth2) {
+    throw new Error("Google Identity not available");
+  }
+  if (tokenClient) {
+    return tokenClient;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: SCOPES.join(" "),
+    callback: () => {
+      /* callback set per request */
+    },
+  });
+  return tokenClient;
+}
+
+export async function requestAccessToken(
+  clientId: string,
+  { prompt = "" }: { prompt?: "" | "consent" | "select_account" } = {}
+): Promise<{ accessToken: string; expiresIn?: number }> {
   await loadScriptOnce();
   return new Promise((resolve, reject) => {
-    const google = window.google as any;
-    if (!google?.accounts?.oauth2) {
-      reject(new Error("Google Identity not available"));
+    let client: TokenClient;
+    try {
+      client = ensureTokenClient(clientId);
+    } catch (error) {
+      reject(error);
       return;
     }
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: SCOPES.join(" "),
-      callback: (response: { access_token?: string; error?: string }) => {
-        if (response.error) {
-          reject(new Error(response.error));
-          return;
-        }
-        if (!response.access_token) {
-          reject(new Error("No access token received"));
-          return;
-        }
-        resolve(response.access_token);
-      },
-    });
-    tokenClient.requestAccessToken({ prompt: "" });
+
+    client.callback = (response: AccessTokenResponse) => {
+      if (response.error) {
+        reject(new Error(response.error_description || response.error));
+        return;
+      }
+      if (!response.access_token) {
+        reject(new Error("No access token received"));
+        return;
+      }
+      resolve({
+        accessToken: response.access_token,
+        expiresIn: response.expires_in,
+      });
+    };
+
+    client.requestAccessToken({ prompt });
   });
+}
+
+export function refreshAccessToken(
+  clientId: string
+): Promise<{ accessToken: string; expiresIn?: number }> {
+  return requestAccessToken(clientId, { prompt: "" });
 }
 
 function parseGoogleErrorBody(body: string): {
