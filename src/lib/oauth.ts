@@ -90,12 +90,13 @@ function getOAuthConfig() {
 
 /**
  * Get the OAuth callback URL based on current location
+ * Uses root URL to work with GitHub Pages (no SPA routing support)
  */
 export function getRedirectUri(): string {
   const baseUrl = window.location.origin;
   const basePath = import.meta.env.BASE_URL || "/";
-  const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
-  return `${baseUrl}${normalizedBase}callback`;
+  // Return root URL - OAuth params will be handled at the root
+  return `${baseUrl}${basePath.endsWith("/") ? basePath : `${basePath}/`}`;
 }
 
 /**
