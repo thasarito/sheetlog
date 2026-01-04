@@ -90,7 +90,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           type="button"
           onClick={() => handleMonthChange(-1)}
           aria-label="Previous month"
-          className="cursor-pointer rounded-lg border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="cursor-pointer rounded-lg border border-border bg-card px-2 py-1 text-xs text-muted-foreground transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           whileTap={{ scale: 0.95 }}
         >
           ←
@@ -120,7 +120,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           type="button"
           onClick={() => handleMonthChange(1)}
           aria-label="Next month"
-          className="cursor-pointer rounded-lg border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="cursor-pointer rounded-lg border border-border bg-card px-2 py-1 text-xs text-muted-foreground transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           whileTap={{ scale: 0.95 }}
         >
           →

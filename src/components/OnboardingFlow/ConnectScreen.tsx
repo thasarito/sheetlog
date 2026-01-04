@@ -27,7 +27,7 @@ export function ConnectScreen({
         <div className="w-full space-y-4 mt-auto">
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-3 rounded-md bg-white border border-slate-200 py-3 px-4 text-base font-medium text-slate-700 hover:bg-slate-50 transition active:scale-95 disabled:opacity-60 shadow-sm"
+            className="w-full flex items-center justify-center gap-3 rounded-md bg-white border border-slate-200 py-3 px-4 text-base font-medium text-slate-700 hover:bg-slate-50 transition active:scale-95 disabled:opacity-60"
             onClick={onConnect}
             disabled={isConnecting}
           >

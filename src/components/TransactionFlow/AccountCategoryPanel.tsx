@@ -154,7 +154,7 @@ export function AccountCategoryPanel({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-3 rounded-3xl border border-border/70 bg-surface-2/80 p-4 shadow-inner">
+    <section className="flex h-full min-h-0 flex-col gap-3 rounded-3xl border border-border/70 bg-surface-2/80 p-4">
       <div className="-mx-2 -mt-1 mb-2">
         <Header />
       </div>

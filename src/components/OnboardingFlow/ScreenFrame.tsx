@@ -21,7 +21,7 @@ export function ScreenFrame({
   footer,
 }: ScreenFrameProps) {
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-[32px] border border-border/70 bg-card/90 shadow-lift backdrop-blur sm:min-h-[620px]">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-[32px] border border-border/70 bg-card/90 backdrop-blur sm:min-h-[620px]">
       <div className="border-b border-border/70 bg-card/80 px-5 pb-4 pt-5">
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
           <span>

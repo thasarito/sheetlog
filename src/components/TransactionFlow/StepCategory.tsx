@@ -82,7 +82,7 @@ export function StepCategory({
       >
         <Tab.List
           aria-label="Transaction type"
-          className="grid grid-cols-3 gap-2 rounded-3xl border border-border/70 bg-surface-2/80 p-2 shadow-inner"
+          className="grid grid-cols-3 gap-2 rounded-3xl border border-border/70 bg-surface-2/80 p-2"
         >
           {TYPE_OPTIONS.map((item) => {
             const meta = TYPE_META[item];
@@ -94,7 +94,7 @@ export function StepCategory({
                   [
                     "flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
                     isSelected
-                      ? "bg-card text-foreground shadow-sm"
+                      ? "bg-card text-foreground"
                       : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
                   ].join(" ")
                 }

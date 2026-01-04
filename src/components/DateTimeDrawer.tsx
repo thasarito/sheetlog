@@ -40,7 +40,7 @@ export function DateTimeDrawer({
         <DrawerTrigger asChild>
           <button
             type="button"
-            className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-left shadow-sm transition hover:border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-left transition hover:border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <div>
               <div className="text-sm font-semibold text-foreground">
@@ -69,7 +69,7 @@ export function DateTimeDrawer({
           <DrawerClose asChild>
             <button
               type="button"
-              className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground shadow-sm"
+              className="w-full rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground"
               onClick={onConfirm}
             >
               Done

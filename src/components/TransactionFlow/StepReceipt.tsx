@@ -112,10 +112,10 @@ export function StepReceipt({
         <div
           className={
             isSuccess
-              ? "rounded-[28px] border border-success/20 bg-gradient-to-b from-success/15 via-background to-background p-5 shadow-soft"
+              ? "rounded-[28px] border border-success/20 bg-gradient-to-b from-success/15 via-background to-background p-5"
               : isError
-              ? "rounded-[28px] border border-danger/20 bg-card p-5 shadow-soft"
-              : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5 shadow-inner"
+              ? "rounded-[28px] border border-danger/20 bg-card p-5"
+              : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5"
           }
         >
           <div className="flex items-start gap-4">
@@ -166,7 +166,7 @@ export function StepReceipt({
           <p className="text-sm font-semibold text-muted-foreground">
             Transaction Summary
           </p>
-          <dl className="divide-y divide-border/60 rounded-2xl border border-border/70 bg-card px-4 py-1 text-sm shadow-soft">
+          <dl className="divide-y divide-border/60 rounded-2xl border border-border/70 bg-card px-4 py-1 text-sm">
             {summaryRows.map((row) => (
               <div
                 key={row.label}
@@ -193,7 +193,7 @@ export function StepReceipt({
         <div className="space-y-3">
           <button
             type="button"
-            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground shadow-soft"
+            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground"
             onClick={onDone}
           >
             <span className="relative z-10">Done</span>
@@ -207,7 +207,7 @@ export function StepReceipt({
           </button>
           <button
             type="button"
-            className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground shadow-soft"
+            className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground"
             onClick={onUndo}
           >
             Undo

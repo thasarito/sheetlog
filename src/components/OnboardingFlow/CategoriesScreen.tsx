@@ -71,7 +71,7 @@ export function CategoriesScreen({
               className={cn(
                 "flex-1 py-2 text-sm font-semibold rounded-lg transition-all",
                 activeTab === tab.id
-                  ? "bg-card text-foreground shadow-sm"
+                  ? "bg-card text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               )}
               onClick={() => setActiveTab(tab.id)}
@@ -85,7 +85,7 @@ export function CategoriesScreen({
         <div className="flex gap-2">
           <input
             type="text"
-            className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+            className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
             placeholder={`Add ${activeTab} category...`}
             value={newInputs[activeTab]}
             onChange={(e) =>
@@ -97,7 +97,7 @@ export function CategoriesScreen({
           />
           <button
             type="button"
-            className="flex items-center justify-center rounded-2xl bg-secondary px-4 font-semibold text-secondary-foreground shadow-sm hover:bg-secondary/80 disabled:opacity-50"
+            className="flex items-center justify-center rounded-2xl bg-secondary px-4 font-semibold text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
             onClick={() => handleAdd(activeTab)}
             disabled={!newInputs[activeTab].trim()}
           >
@@ -115,7 +115,7 @@ export function CategoriesScreen({
               >
                 <span
                   className={cn(
-                    "inline-flex items-center pl-3 pr-2 py-1.5 rounded-full text-sm font-medium border shadow-sm transition-all",
+                    "inline-flex items-center pl-3 pr-2 py-1.5 rounded-full text-sm font-medium border transition-all",
                     "bg-card border-border/50",
                     activeTab === "expense" &&
                       "hover:border-red-200 hover:bg-red-50/50",
@@ -148,7 +148,7 @@ export function CategoriesScreen({
       <div className="mt-auto pt-6">
         <button
           type="button"
-          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground shadow-lg shadow-blue-200 transition hover:bg-primary/90 disabled:opacity-60"
+          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
           onClick={onContinue}
           disabled={isSaving}
         >

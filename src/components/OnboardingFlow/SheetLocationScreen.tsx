@@ -93,7 +93,7 @@ export function SheetLocationScreen({
           className={cn(
             "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer",
             locationMode === "root"
-              ? "border-primary bg-primary/5 shadow-md"
+              ? "border-primary bg-primary/5"
               : "border-border bg-card hover:border-primary/50"
           )}
         >
@@ -128,7 +128,7 @@ export function SheetLocationScreen({
               className={cn(
                 "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer",
                 locationMode === "folder"
-                  ? "border-primary bg-primary/5 shadow-md"
+                  ? "border-primary bg-primary/5"
                   : "border-border bg-card hover:border-primary/50"
               )}
               onClick={() => {

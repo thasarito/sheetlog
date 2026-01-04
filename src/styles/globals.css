@@ -25,8 +25,7 @@
   --overlay: 222 47% 11%;
   --border: 214 32% 91%;
   --ring: 160 84% 39%;
-  --shadow-soft: 0 12px 30px -16px hsl(222 47% 11% / 0.35);
-  --shadow-lift: 0 -18px 50px -30px hsl(222 47% 11% / 0.35);
+  --ring: 160 84% 39%;
 }
 
 body {
@@ -64,8 +63,7 @@ input[type="date"] {
     --overlay: 220 40% 2%;
     --border: 215 27% 30%;
     --ring: 160 84% 45%;
-    --shadow-soft: 0 12px 30px -16px hsl(220 40% 2% / 0.6);
-    --shadow-lift: 0 -18px 50px -30px hsl(220 40% 2% / 0.75);
+    --ring: 160 84% 45%;
   }
 
   input[type="date"] {

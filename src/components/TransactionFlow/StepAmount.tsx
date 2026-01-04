@@ -42,7 +42,7 @@ export function StepAmount({
       <div className="flex-1 flex flex-col">
         {category ? (
           <div className="px-4 pt-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground shadow-soft backdrop-blur">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground backdrop-blur">
               <span className="max-w-[240px] truncate">{category}</span>
               <button
                 type="button"

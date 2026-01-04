@@ -427,7 +427,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.2 }}
-              className="w-full max-w-sm space-y-4 rounded-[28px] border border-border/70 bg-card/90 px-6 py-5 shadow-lift backdrop-blur pb-safe"
+              className="w-full max-w-sm space-y-4 rounded-[28px] border border-border/70 bg-card/90 px-6 py-5 backdrop-blur pb-safe"
             >
               <div className="flex items-start gap-3">
                 <div className="rounded-2xl bg-primary/15 p-3 text-primary">
@@ -444,7 +444,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
-                  className="flex-1 rounded-2xl bg-primary py-2 text-sm font-semibold text-primary-foreground shadow-soft transition hover:bg-primary/90"
+                  className="flex-1 rounded-2xl bg-primary py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
                   onClick={handlePwaInstall}
                 >
                   Install app

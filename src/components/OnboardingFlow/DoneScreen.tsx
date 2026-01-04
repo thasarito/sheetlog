@@ -20,7 +20,7 @@ export function DoneScreen({ meta }: DoneScreenProps) {
       <div className="flex flex-col items-center justify-center h-full pb-20 space-y-6 text-center animate-in fade-in zoom-in-95 duration-500">
         <div className="relative">
           <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
-          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-blue-400 text-primary-foreground shadow-xl ring-4 ring-background">
+          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-blue-400 text-primary-foreground ring-4 ring-background">
             <Check className="h-12 w-12" strokeWidth={3} />
           </div>
         </div>

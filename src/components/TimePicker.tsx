@@ -58,7 +58,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       height={168}
       itemHeight={32}
       wheelMode="natural"
-      className="w-full rounded-2xl border border-border bg-card shadow-sm"
+      className="w-full rounded-2xl border border-border bg-card"
     >
       <Picker.Column name="hour" className="text-sm font-semibold">
         {HOURS.map((hour) => (

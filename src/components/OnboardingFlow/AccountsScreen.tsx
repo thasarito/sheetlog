@@ -36,7 +36,7 @@ export function AccountsScreen({
         <div className="flex gap-3">
           <input
             type="text"
-            className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground shadow-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+            className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
             placeholder="e.g. Chase Sapphire"
             value={accountInput}
             onChange={(event) => onAccountInputChange(event.target.value)}
@@ -46,7 +46,7 @@ export function AccountsScreen({
           />
           <button
             type="button"
-            className="flex items-center justify-center rounded-2xl bg-primary px-5 font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center justify-center rounded-2xl bg-primary px-5 font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
             onClick={onAddAccount}
             disabled={!accountInput.trim()}
           >
@@ -65,7 +65,7 @@ export function AccountsScreen({
             {accounts.map((account) => (
               <div
                 key={account}
-                className="flex items-center justify-between p-4 rounded-2xl bg-card border border-border/60 shadow-sm transition hover:border-primary/30 hover:shadow-md animate-in fade-in slide-in-from-bottom-2"
+                className="flex items-center justify-between p-4 rounded-2xl bg-card border border-border/60 transition hover:border-primary/30 animate-in fade-in slide-in-from-bottom-2"
               >
                 <div className="flex items-center gap-4">
                   <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-full">
@@ -90,7 +90,7 @@ export function AccountsScreen({
       <div className="mt-auto pt-6">
         <button
           type="button"
-          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground shadow-lg shadow-blue-200 transition hover:bg-primary/90 disabled:opacity-60"
+          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
           onClick={onContinue}
           disabled={isSaving || accounts.length === 0}
         >

@@ -24,7 +24,7 @@ export function AccountButtons({
             type="button"
             className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
               isActive
-                ? "bg-primary text-primary-foreground shadow-sm"
+                ? "bg-primary text-primary-foreground"
                 : "bg-surface-2 text-muted-foreground"
             } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
             onClick={() => onSelect(item)}
