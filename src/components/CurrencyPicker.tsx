@@ -1,5 +1,3 @@
-"use client";
-
 import { CURRENCIES } from "../lib/currencies";
 import { InlinePicker } from "./ui/inline-picker";
 

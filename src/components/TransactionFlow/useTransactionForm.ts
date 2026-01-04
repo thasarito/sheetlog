@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 import { useForm } from "@tanstack/react-form";
 import { zodValidator, type ZodValidator } from "@tanstack/zod-form-adapter";

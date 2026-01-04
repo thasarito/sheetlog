@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useMemo } from "react";
 import { Check, X } from "lucide-react";
 import { CurrencyPicker } from "../CurrencyPicker";
@@ -44,10 +42,10 @@ export function StepAmount({
       <div className="flex-1 flex flex-col">
         {category ? (
           <div className="px-4 pt-4">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground shadow-soft backdrop-blur">
-            <span className="max-w-[240px] truncate">{category}</span>
-            <button
-              type="button"
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground shadow-soft backdrop-blur">
+              <span className="max-w-[240px] truncate">{category}</span>
+              <button
+                type="button"
                 aria-label="Change category"
                 className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 onClick={onBack}
@@ -117,9 +115,7 @@ export function StepAmount({
             className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
             placeholder="Optional"
             value={note}
-            onChange={(event) =>
-              form.setFieldValue("note", event.target.value)
-            }
+            onChange={(event) => form.setFieldValue("note", event.target.value)}
           />
         </div>
 

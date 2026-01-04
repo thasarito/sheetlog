@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useRef } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
@@ -57,22 +55,22 @@ export function StepReceipt({
   const normalizedStatus = isPending
     ? "loading"
     : isSuccess
-      ? "success"
-      : isError
-        ? "error"
-        : "loading";
+    ? "success"
+    : isError
+    ? "error"
+    : "loading";
   const statusTitle =
     normalizedStatus === "loading"
       ? "Saving transaction"
       : normalizedStatus === "success"
-        ? "Payment Successful"
-        : "Save failed";
+      ? "Payment Successful"
+      : "Save failed";
   const statusDescription =
     normalizedStatus === "loading"
       ? "Hang tight while we log this entry."
       : normalizedStatus === "success"
-        ? "Transaction added to your ledger."
-        : errorMessage || "Check your connection and try again.";
+      ? "Transaction added to your ledger."
+      : errorMessage || "Check your connection and try again.";
   const accountLabel = type === "transfer" ? "From" : "Account";
   const forLabel = type === "transfer" ? "To" : "For";
   const checkIconRef = useRef<CircleCheckIconHandle | null>(null);
@@ -96,7 +94,16 @@ export function StepReceipt({
       { label: "Type", value: TYPE_LABELS[type], muted: false },
       { label: "Note", value: note || "—", muted: !note },
     ],
-    [account, accountLabel, category, dateObject, forLabel, forValue, note, type]
+    [
+      account,
+      accountLabel,
+      category,
+      dateObject,
+      forLabel,
+      forValue,
+      note,
+      type,
+    ]
   );
 
   return (
@@ -107,8 +114,8 @@ export function StepReceipt({
             isSuccess
               ? "rounded-[28px] border border-success/20 bg-gradient-to-b from-success/15 via-background to-background p-5 shadow-soft"
               : isError
-                ? "rounded-[28px] border border-danger/20 bg-card p-5 shadow-soft"
-                : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5 shadow-inner"
+              ? "rounded-[28px] border border-danger/20 bg-card p-5 shadow-soft"
+              : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5 shadow-inner"
           }
         >
           <div className="flex items-start gap-4">
@@ -117,8 +124,8 @@ export function StepReceipt({
                 isSuccess
                   ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-success/15 text-success"
                   : isError
-                    ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-danger/10 text-danger"
-                    : "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-card text-muted-foreground"
+                  ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-danger/10 text-danger"
+                  : "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-card text-muted-foreground"
               }
             >
               {isSuccess ? (

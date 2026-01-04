@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useEffect, useRef, useState } from "react";
 import { Tab } from "@headlessui/react";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
@@ -35,7 +33,9 @@ export function StepCategory({
   const { type, category, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
-  const [panelDirection, setPanelDirection] = useState<"left" | "right">("right");
+  const [panelDirection, setPanelDirection] = useState<"left" | "right">(
+    "right"
+  );
   const lastIndexRef = useRef(selectedIndex);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -129,7 +129,11 @@ export function StepCategory({
               <Tab.Panel
                 key={item}
                 static
-                className={`absolute inset-0 h-full overflow-y-auto pb-2 transition duration-300 ease-out focus-visible:outline-none opacity-0 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10 ${panelDirection === "right" ? "translate-x-4 data-[headlessui-state~='selected']:translate-x-0" : "-translate-x-4 data-[headlessui-state~='selected']:translate-x-0"}`}
+                className={`absolute inset-0 h-full overflow-y-auto pb-2 transition duration-300 ease-out focus-visible:outline-none opacity-0 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10 ${
+                  panelDirection === "right"
+                    ? "translate-x-4 data-[headlessui-state~='selected']:translate-x-0"
+                    : "-translate-x-4 data-[headlessui-state~='selected']:translate-x-0"
+                }`}
               >
                 <CategoryGrid
                   categories={group}

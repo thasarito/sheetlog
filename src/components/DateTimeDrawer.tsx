@@ -1,5 +1,3 @@
-"use client";
-
 import { format } from "date-fns";
 import { DateScroller } from "./DateScroller";
 import { TimePicker } from "./TimePicker";

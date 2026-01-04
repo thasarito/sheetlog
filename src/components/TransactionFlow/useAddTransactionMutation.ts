@@ -1,5 +1,3 @@
-"use client";
-
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useTransactions } from "../providers";

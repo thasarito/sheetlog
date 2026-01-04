@@ -1,5 +1,3 @@
-"use client";
-
 import React, {
   createContext,
   useContext,
@@ -12,7 +10,9 @@ interface ConnectivityContextValue {
   isOnline: boolean;
 }
 
-const ConnectivityContext = createContext<ConnectivityContextValue | null>(null);
+const ConnectivityContext = createContext<ConnectivityContextValue | null>(
+  null
+);
 
 export function ConnectivityProvider({
   children,
@@ -60,9 +60,7 @@ export function ConnectivityProvider({
 export function useConnectivity() {
   const context = useContext(ConnectivityContext);
   if (!context) {
-    throw new Error(
-      "useConnectivity must be used within ConnectivityProvider"
-    );
+    throw new Error("useConnectivity must be used within ConnectivityProvider");
   }
   return context;
 }

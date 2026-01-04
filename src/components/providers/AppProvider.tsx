@@ -1,5 +1,3 @@
-"use client";
-
 import type React from "react";
 import { AuthProvider } from "./auth";
 import { ConnectivityProvider } from "./ConnectivityProvider";

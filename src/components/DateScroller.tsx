@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { format, addDays, isSameDay, addMonths, subMonths } from "date-fns";

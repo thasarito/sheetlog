@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Authentication module exports
  *

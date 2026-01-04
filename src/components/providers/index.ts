@@ -1,5 +1,3 @@
-"use client";
-
 export { AppProvider, AppProvider as default } from "./AppProvider";
 export {
   useAuth,

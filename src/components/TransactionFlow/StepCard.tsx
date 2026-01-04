@@ -1,5 +1,3 @@
-"use client";
-
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -18,7 +16,9 @@ export function StepCard({
 }: StepCardProps) {
   return (
     <section
-      className={["rounded-[28px]", containerClassName].filter(Boolean).join(" ")}
+      className={["rounded-[28px]", containerClassName]
+        .filter(Boolean)
+        .join(" ")}
     >
       <AnimatePresence mode="wait">
         <motion.div

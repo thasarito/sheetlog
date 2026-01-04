@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 import { cn } from "../../lib/utils";
@@ -50,7 +48,10 @@ const DrawerHeader = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("grid gap-1.5 px-4 pb-2 pt-4 text-center sm:text-left", className)}
+    className={cn(
+      "grid gap-1.5 px-4 pb-2 pt-4 text-center sm:text-left",
+      className
+    )}
     {...props}
   />
 );
