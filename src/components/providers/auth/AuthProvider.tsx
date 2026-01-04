@@ -125,10 +125,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setHasStoredToken(true);
       } else {
-        // Token is expired, clear it
-        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-        localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
-        setHasStoredToken(false);
+        // Token is expired.
+        // We do NOT hydrate the cache, so the app sees no token initially.
+        // But we DO set hasStoredToken=true to trigger the silent refresh query.
+        setHasStoredToken(true);
       }
     } else if (storedToken && !storedExpiresAt) {
       // Invalid state: token exists but no expiry. Clear it to prevent
