@@ -1,9 +1,10 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { Check, X } from "lucide-react";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
 import { FOR_OPTIONS } from "./constants";
+import { STORAGE_KEYS } from "../../lib/constants";
 import type { TransactionFormApi } from "./useTransactionForm";
 
 type StepAmountProps = {
@@ -27,6 +28,28 @@ export function StepAmount({
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
+  const handleAccountChange = useCallback(
+    (value: string) => {
+      form.setFieldValue("account", value);
+      if (typeof window === "undefined") {
+        return;
+      }
+      const accountCurrency = window.localStorage.getItem(
+        `${STORAGE_KEYS.LAST_CURRENCY}_${value}`
+      );
+      if (accountCurrency) {
+        form.setFieldValue("currency", accountCurrency);
+        return;
+      }
+      const fallbackCurrency = window.localStorage.getItem(
+        STORAGE_KEYS.LAST_CURRENCY
+      );
+      if (fallbackCurrency) {
+        form.setFieldValue("currency", fallbackCurrency);
+      }
+    },
+    [form]
+  );
   const toAccountOptions = useMemo(() => {
     if (!isTransfer || !hasTransferAccounts) {
       return [];
@@ -69,7 +92,7 @@ export function StepAmount({
             label={accountLabel}
             value={account || null}
             options={accounts}
-            onChange={(value) => form.setFieldValue("account", value)}
+            onChange={handleAccountChange}
           />
 
           {isTransfer ? (
