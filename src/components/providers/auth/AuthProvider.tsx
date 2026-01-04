@@ -113,17 +113,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Hydrate React Query cache if we have a token
     if (storedToken && storedExpiresAt) {
       const expiresAt = Number.parseInt(storedExpiresAt, 10);
-      const expiresIn = Math.max(
-        0,
-        Math.floor((expiresAt - Date.now()) / 1000)
-      );
+      const now = Date.now();
 
-      queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, {
-        access_token: storedToken,
-        expires_in: expiresIn,
-        expires_at: expiresAt,
-      });
-      setHasStoredToken(true);
+      if (expiresAt > now) {
+        const expiresIn = Math.max(0, Math.floor((expiresAt - now) / 1000));
+
+        queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, {
+          access_token: storedToken,
+          expires_in: expiresIn,
+          expires_at: expiresAt,
+        });
+        setHasStoredToken(true);
+      } else {
+        // Token is expired, clear it
+        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
+        setHasStoredToken(false);
+      }
     } else if (storedToken && !storedExpiresAt) {
       // Invalid state: token exists but no expiry. Clear it to prevent
       // auto-refresh loop (which causes popup blocks).
@@ -326,9 +332,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, [refreshError, connectMutation.error]);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      accessToken: tokenData?.access_token ?? null,
+  const value = useMemo<AuthContextValue>(() => {
+    // additional check to ensure we don't return an expired token
+    // this handles the case where the token expires while the app is running
+    // and for some reason the refresh didn't happen or failed.
+    const isExpired = tokenData?.expires_at
+      ? tokenData.expires_at <= Date.now()
+      : true;
+
+    return {
+      accessToken: !isExpired ? tokenData?.access_token ?? null : null,
       sheetId,
       sheetTabId,
       userProfile: userProfile ?? null,
@@ -340,24 +353,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       connect,
       refreshSheet,
       clearAuth,
-    }),
-    [
-      tokenData,
-      sheetId,
-      sheetTabId,
-      userProfile,
-      connectMutation.isPending,
-      isFetching,
-      isInitialized,
-      refreshError,
-      authStatus,
-      authError,
-      connect,
-      refreshSheet,
-      clearAuth,
-      hasStoredToken,
-    ]
-  );
+    };
+  }, [
+    tokenData,
+    sheetId,
+    sheetTabId,
+    userProfile,
+    connectMutation.isPending,
+    isFetching,
+    isInitialized,
+    refreshError,
+    authStatus,
+    authError,
+    connect,
+    refreshSheet,
+    clearAuth,
+    hasStoredToken,
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
