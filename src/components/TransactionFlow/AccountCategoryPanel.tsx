@@ -6,6 +6,7 @@ import { RefreshCw, X } from "lucide-react";
 import { z } from "zod";
 import type { TransactionType } from "../../lib/types";
 import { useOnboarding } from "../providers";
+import { Header } from "../Header";
 import { TYPE_OPTIONS } from "./constants";
 
 type AccountCategoryPanelProps = {
@@ -156,6 +157,9 @@ export function AccountCategoryPanel({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 rounded-3xl border border-border/70 bg-surface-2/80 p-4 shadow-inner">
+      <div className="-mx-2 -mt-1 mb-2">
+        <Header />
+      </div>
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Manage

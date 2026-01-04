@@ -1,5 +1,5 @@
 import { TransactionFlow } from "../components/TransactionFlow";
-import { Header } from "../components/Header";
+
 import { useDocumentMeta } from "../hooks/useDocumentMeta";
 
 export function HomePage() {
@@ -10,7 +10,6 @@ export function HomePage() {
 
   return (
     <div className="relative h-full w-full flex flex-col">
-      <Header />
       <div className="flex-1">
         <TransactionFlow />
       </div>
