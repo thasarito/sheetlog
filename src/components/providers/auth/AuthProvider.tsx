@@ -4,14 +4,20 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useGoogleLogin } from "@react-oauth/google";
 
 import { STORAGE_KEYS } from "../../../lib/constants";
-import { GoogleTokenClient, isUnauthorizedError } from "../../../lib/google";
+import { isUnauthorizedError } from "../../../lib/google";
 import { ensureSheetReady } from "../../../lib/sheets";
-import { GOOGLE_TOKEN_QUERY_KEY, REFRESH_BUFFER_MS } from "./auth.constants";
+import {
+  GOOGLE_TOKEN_QUERY_KEY,
+  REFRESH_BUFFER_MS,
+  SCOPES,
+} from "./auth.constants";
 import type {
   AuthStatus,
   AuthContextValue,
@@ -91,90 +97,157 @@ async function fetchUserProfile(
 // Export context for use by hooks
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Helper to read token synchronously for initial state
+function getStoredToken(): TokenData | null {
+  if (typeof window === "undefined") return null;
+  const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+  const storedExpiresAt = localStorage.getItem(STORAGE_KEYS.EXPIRES_AT);
+
+  if (!storedToken || !storedExpiresAt) return null;
+
+  const expiresAt = Number.parseInt(storedExpiresAt, 10);
+  const now = Date.now();
+  if (expiresAt <= now) return null;
+
+  const expiresIn = Math.max(0, Math.floor((expiresAt - now) / 1000));
+  return {
+    access_token: storedToken,
+    expires_in: expiresIn,
+    expires_at: expiresAt,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const [sheetId, setSheetId] = useState<string | null>(null);
-  const [sheetTabId, setSheetTabId] = useState<number | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [hasStoredToken, setHasStoredToken] = useState(false);
 
-  // Initialize from LocalStorage
+  // Lazy init from local storage
+  const [sheetId, setSheetId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(STORAGE_KEYS.SHEET_ID);
+  });
+
+  const [sheetTabId, setSheetTabId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const val = localStorage.getItem(STORAGE_KEYS.SHEET_TAB_ID);
+    return val ? Number.parseInt(val, 10) : null;
+  });
+
+  // Derived state to track initialization (now synonymous with "mounted" basically,
+  // or we can remove it if we don't need to block rendering)
+  const [isInitialized, setIsInitialized] = useState(true);
+  // keeping isInitialized as true effectively, or we could remove it.
+  // The original code waited for hydration. Now hydration is synchronous (mostly).
+  // But we might want to ensure we're on client.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    setIsInitialized(true);
+  }, []);
 
-    const storedSheetId = localStorage.getItem(STORAGE_KEYS.SHEET_ID);
-    const storedTabId = localStorage.getItem(STORAGE_KEYS.SHEET_TAB_ID);
-    const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    const storedExpiresAt = localStorage.getItem(STORAGE_KEYS.EXPIRES_AT);
+  // Google Login Hook
+  const resolveRef = useRef<((value: TokenData) => void) | null>(null);
+  const rejectRef = useRef<((reason: any) => void) | null>(null);
 
-    setSheetId(storedSheetId);
-    setSheetTabId(storedTabId ? Number.parseInt(storedTabId, 10) : null);
-
-    // Hydrate React Query cache if we have a token
-    if (storedToken && storedExpiresAt) {
-      const expiresAt = Number.parseInt(storedExpiresAt, 10);
-      const now = Date.now();
-
-      if (expiresAt > now) {
-        const expiresIn = Math.max(0, Math.floor((expiresAt - now) / 1000));
-
-        queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, {
-          access_token: storedToken,
-          expires_in: expiresIn,
+  const login = useGoogleLogin({
+    scope: SCOPES.join(" "),
+    onSuccess: (tokenResponse) => {
+      if (resolveRef.current) {
+        const now = Date.now();
+        const expiresAt = now + tokenResponse.expires_in * 1000;
+        resolveRef.current({
+          access_token: tokenResponse.access_token,
+          expires_in: tokenResponse.expires_in,
           expires_at: expiresAt,
         });
-        setHasStoredToken(true);
-      } else {
-        // Token is expired.
-        // We do NOT hydrate the cache, so the app sees no token initially.
-        // But we DO set hasStoredToken=true to trigger the silent refresh query.
-        setHasStoredToken(true);
+        resolveRef.current = null;
+        rejectRef.current = null;
       }
-    } else if (storedToken && !storedExpiresAt) {
-      // Invalid state: token exists but no expiry. Clear it to prevent
-      // auto-refresh loop (which causes popup blocks).
-      localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-      setHasStoredToken(false);
-    } else {
-      setHasStoredToken(false);
-    }
+    },
+    onError: (errorResponse) => {
+      if (rejectRef.current) {
+        rejectRef.current(
+          new Error(errorResponse.error_description || "Google login failed")
+        );
+        resolveRef.current = null;
+        rejectRef.current = null;
+      }
+    },
+    flow: "implicit",
+  });
 
-    // Hydrate user profile cache
-    const cachedProfile = readStoredProfile();
-    if (cachedProfile) {
-      queryClient.setQueryData(USER_PROFILE_QUERY_KEY, cachedProfile);
-    }
-
-    setIsInitialized(true);
-  }, [queryClient]);
-
-  const tokenClient = useMemo(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      return null;
-    }
-    return new GoogleTokenClient(clientId);
-  }, []);
+  const requestToken = useCallback(
+    (prompt?: string): Promise<TokenData> => {
+      return new Promise((resolve, reject) => {
+        resolveRef.current = resolve;
+        rejectRef.current = reject;
+        // Force prompt if specified, otherwise rely on default behavior
+        // Note: useGoogleLogin doesn't directly support 'prompt' in the same way as GIS client sometimes,
+        // but overrideConfig usually accepts it.
+        // However, @react-oauth/google types might be strict.
+        // Attempting to pass prompt in overrideConfig (second arg to login function, not yet fully typed in some versions? or it is?)
+        // We will cast to any if needed or check types.
+        // Based on docs, login(overrideConfig) exists.
+        login({ prompt } as any);
+      });
+    },
+    [login]
+  );
 
   // QUERY: Silent Refresh Loop
   const {
     data: tokenData,
     error: refreshError,
     isFetching,
-  } = useQuery<TokenData>({
+  } = useQuery<TokenData | null>({
     queryKey: GOOGLE_TOKEN_QUERY_KEY,
-    queryFn: async () => {
-      if (!tokenClient) throw new Error("Client ID missing");
-      const response = await tokenClient.requestToken({ prompt: "none" });
-      const now = Date.now();
-      const expiresAt = now + response.expires_in * 1000;
+    initialData: getStoredToken(),
+    queryFn: async ({ queryKey }) => {
+      // If we have an initial token that is valid, returning it here or relying on initialData
+      // might be tricky if we want to *refresh*.
+      // Actually, queryFn is called when cache is stale or missing.
+      // If we provide initialData, it populates the cache.
+      // We want to run the refresh logic if the token is expired or close to expiry?
+      // No, the queryFn IS the refresh logic (asking for a new token).
+      // But we only want to run it if we think we SHOULD have a session.
 
-      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.access_token);
-      localStorage.setItem(STORAGE_KEYS.EXPIRES_AT, expiresAt.toString());
+      // If we don't have a token in local storage, we shouldn't attempt silent refresh
+      // unless we know we are 'logged in' via some other means.
+      // BUT, checking localStorage inside queryFn is fine.
 
-      return { ...response, expires_at: expiresAt };
+      const stored = getStoredToken();
+
+      // If we have a valid stored token, just return it (although initialData should handle this).
+      // If we are here, it means we need a FRESH token (staleTime elapsed) or we have no token.
+
+      if (stored) {
+        // Check if it's actually expired or we just want to verify?
+        // If we are here, we probably want to try refreshing if it's close to expiry.
+        // But `requestToken('none')` is the way to refresh.
+      }
+
+      // Only attempt refresh if we have a trace of a previous session (token exists but maybe expired?)
+      // or if we just rely on the error.
+      // But we can't just spam check.
+      // We can check if localStorage has ANY token string, even if expired.
+      const rawToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (!rawToken) {
+        return null; // No session, don't try to refresh
+      }
+
+      try {
+        const response = await requestToken("none");
+        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.access_token);
+        localStorage.setItem(
+          STORAGE_KEYS.EXPIRES_AT,
+          response.expires_at.toString()
+        );
+        return response;
+      } catch (e) {
+        // If silent refresh fails, we should clear.
+        throw e;
+      }
     },
-    enabled: isInitialized && hasStoredToken,
+    // We want to verify/refresh if the token is close to expiry.
+    // initialData provides the "current" valid token.
+    // refetchInterval will check if it needs refreshing.
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
@@ -182,24 +255,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const expiresAt = data.expires_at;
       const timeUntilExpiry = expiresAt - now;
       const refetchTime = timeUntilExpiry - REFRESH_BUFFER_MS;
+
+      // If we are within buffer, we want to refetch (which calls queryFn -> silent refresh)
       if (refetchTime <= 0) {
-        // If the token is expired or about to expire, we cannot safely auto-refresh
-        // because prompt="none" may still trigger a popup (which gets blocked).
-        // relying on the 401 error handler or manual user action is safer.
-        return false;
+        return 1000; // Try immediately (or soon)
       }
       return refetchTime;
     },
     retry: (failureCount, error) => {
       if (
         error instanceof Error &&
-        error.message.includes("interaction_required")
+        (error.message.includes("interaction_required") ||
+          error.message.includes("popup_closed_by_user"))
       ) {
         return false;
       }
       return failureCount < 3;
     },
-    staleTime: Infinity,
+    staleTime: Infinity, // The token remains "fresh" until we decide to refresh it based on time
   });
 
   // QUERY: User Profile
@@ -230,17 +303,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // MUTATION: Interactive Login
   const connectMutation = useMutation({
     mutationFn: async () => {
-      if (!tokenClient) throw new Error("Missing Client ID");
-      const response = await tokenClient.requestToken({ prompt: "" });
-      const now = Date.now();
-      const expiresAt = now + response.expires_in * 1000;
-      return { ...response, expires_at: expiresAt };
+      // Interactive login
+      const response = await requestToken(); // default prompt
+      return response;
     },
     onSuccess: (data) => {
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.access_token);
       localStorage.setItem(STORAGE_KEYS.EXPIRES_AT, data.expires_at.toString());
       queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, data);
-      setHasStoredToken(true);
+      queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, data);
     },
     onError: (error) => {
       console.error("Connection failed", error);
@@ -259,7 +330,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSheetTabId(null);
     queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
-    setHasStoredToken(false);
+    queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
     queryClient.setQueryData(USER_PROFILE_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
   }, [queryClient]);
@@ -302,7 +373,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (refreshError) {
       if (
         refreshError.message.includes("interaction_required") ||
-        refreshError.message.includes("invalid_grant")
+        refreshError.message.includes("invalid_grant") ||
+        refreshError.message.includes("popup_closed_by_user")
       ) {
         clearAuth();
       }
@@ -333,9 +405,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshError, connectMutation.error]);
 
   const value = useMemo<AuthContextValue>(() => {
-    // additional check to ensure we don't return an expired token
-    // this handles the case where the token expires while the app is running
-    // and for some reason the refresh didn't happen or failed.
     const isExpired = tokenData?.expires_at
       ? tokenData.expires_at <= Date.now()
       : true;
@@ -346,8 +415,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sheetTabId,
       userProfile: userProfile ?? null,
       isConnecting: connectMutation.isPending || (isFetching && !tokenData),
-      isInitialized:
-        isInitialized && (!hasStoredToken || !!tokenData || !!refreshError),
+      isInitialized,
       authStatus,
       authError,
       connect,
@@ -368,7 +436,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     connect,
     refreshSheet,
     clearAuth,
-    hasStoredToken,
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

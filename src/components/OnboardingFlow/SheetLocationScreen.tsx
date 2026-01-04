@@ -239,7 +239,7 @@ export function SheetLocationScreen({
       <div className="mt-auto pt-6">
         <button
           type="button"
-          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground shadow-lg shadow-blue-200 transition hover:bg-primary/90 disabled:opacity-60"
+          className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
           onClick={onSubmit}
           disabled={
             isSettingUpSheet ||

@@ -21,3 +21,10 @@ export const AUTH_STATUS_MESSAGES: Record<AuthStatus, string> = {
   authenticated: "Connected",
   error: "Authentication failed. Please try signing in again.",
 };
+
+export const SCOPES = [
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+  "https://www.googleapis.com/auth/userinfo.profile",
+];

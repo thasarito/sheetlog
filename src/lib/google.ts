@@ -19,12 +19,6 @@ const HEADER_ROW = [
 ];
 const ACCOUNT_HEADER_ROW = ["Account"];
 const CATEGORY_HEADER_ROW = ["Type", "Category"];
-const SCOPES = [
-  "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/drive.file",
-  "https://www.googleapis.com/auth/drive.metadata.readonly",
-  "https://www.googleapis.com/auth/userinfo.profile",
-];
 
 export class GoogleApiError extends Error {
   status: number;
@@ -54,114 +48,7 @@ export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof GoogleApiError && error.status === 401;
 }
 
-let scriptPromise: Promise<void> | null = null;
-
-function loadScriptOnce(): Promise<void> {
-  if (scriptPromise) {
-    return scriptPromise;
-  }
-  scriptPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector("script[data-google-identity]");
-    if (existing) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.dataset.googleIdentity = "true";
-    script.onload = () => resolve();
-    script.onerror = () =>
-      reject(new Error("Failed to load Google Identity script"));
-    document.head.appendChild(script);
-  });
-  return scriptPromise;
-}
-
-export interface TokenResponse {
-  access_token: string;
-  expires_in: number;
-  error?: string;
-}
-
-export class GoogleTokenClient {
-  private client: any = null;
-  private scriptLoaded = false;
-
-  constructor(private clientId: string) {}
-
-  private async loadScript(): Promise<void> {
-    if (this.scriptLoaded) return;
-    await loadScriptOnce();
-    this.scriptLoaded = true;
-  }
-
-  private initClient(
-    resolve: (value: TokenResponse) => void,
-    reject: (reason?: any) => void
-  ) {
-    const google = window.google as any;
-    if (!google?.accounts?.oauth2) {
-      throw new Error("Google Identity not available");
-    }
-
-    this.client = google.accounts.oauth2.initTokenClient({
-      client_id: this.clientId,
-      scope: SCOPES.join(" "),
-      callback: (response: any) => {
-        if (response.error) {
-          reject(new Error(response.error));
-          return;
-        }
-        if (!response.access_token) {
-          reject(new Error("No access token received"));
-          return;
-        }
-        resolve({
-          access_token: response.access_token,
-          expires_in: Number.parseInt(response.expires_in, 10),
-        });
-      },
-    });
-  }
-
-  async requestToken({
-    prompt,
-  }: { prompt?: string } = {}): Promise<TokenResponse> {
-    await this.loadScript();
-
-    return new Promise((resolve, reject) => {
-      try {
-        if (!this.client) {
-          this.initClient(resolve, reject);
-        }
-        // If we need to change the callback (e.g. for different flows), we might need to re-init
-        // But for this simple case, the same callback logic applies.
-        // Actually, initTokenClient returns a NEW client instance each time.
-        // For safety and to ensure we capture the specific promise resolve/reject for THIS request,
-        // we should probably re-init or have a way to swap the callback.
-        // The google library allows `requestAccessToken` to be called multiple times on the same client,
-        // but the callback is fixed at init time.
-        // To handle promises correctly per-request, it's safer to re-create the client or use a queue.
-        // Re-creating is cheap enough for user-interaction speeds.
-
-        this.initClient(resolve, reject);
-
-        this.client.requestAccessToken({ prompt });
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-}
-
-// Kept for backward compatibility if needed, but ideally we switch to the class
-export async function requestAccessToken(clientId: string): Promise<string> {
-  const client = new GoogleTokenClient(clientId);
-  const response = await client.requestToken();
-  return response.access_token;
-}
+// Google Identity Services (GIS) client code removed in favor of @react-oauth/google
 
 function parseGoogleErrorBody(body: string): {
   message?: string;
