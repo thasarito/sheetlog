@@ -14,6 +14,7 @@ import {
 import { OnboardingFlow } from "../OnboardingFlow";
 import { ServiceWorker } from "../ServiceWorker";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
+import { STORAGE_KEYS } from "../../lib/constants";
 import type { TransactionType } from "../../lib/types";
 import { AccountCategoryPanel } from "./AccountCategoryPanel";
 import { StepCard } from "./StepCard";
@@ -22,7 +23,7 @@ import { StepCategory } from "./StepCategory";
 import { StepReceipt, type ReceiptData } from "./StepReceipt";
 import { FOR_OPTIONS, TYPE_OPTIONS } from "./constants";
 import { toast } from "sonner";
-import { CURRENCY_STORAGE_KEY, useTransactionForm } from "./useTransactionForm";
+import { useTransactionForm } from "./useTransactionForm";
 import { useAddTransactionMutation } from "./useAddTransactionMutation";
 import {
   transactionSchema,
@@ -102,7 +103,7 @@ export function TransactionFlow() {
     if (typeof window === "undefined") {
       return;
     }
-    window.localStorage.setItem(CURRENCY_STORAGE_KEY, currency);
+    window.localStorage.setItem(STORAGE_KEYS.LAST_CURRENCY, currency);
   }, [currency]);
 
   useEffect(() => {

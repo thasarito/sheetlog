@@ -2,18 +2,19 @@ import { useMemo } from "react";
 import { useForm } from "@tanstack/react-form";
 import { zodValidator, type ZodValidator } from "@tanstack/zod-form-adapter";
 import { CURRENCIES, DEFAULT_CURRENCY } from "../../lib/currencies";
+import { STORAGE_KEYS } from "../../lib/constants";
 import {
   transactionSchema,
   type TransactionFormValues,
 } from "./transactionSchema";
 
-export const CURRENCY_STORAGE_KEY = "sheetlog:last-currency";
-
 function resolveStoredCurrency() {
   if (typeof window === "undefined") {
     return DEFAULT_CURRENCY;
   }
-  const storedCurrency = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
+  const storedCurrency = window.localStorage.getItem(
+    STORAGE_KEYS.LAST_CURRENCY
+  );
   if (
     storedCurrency &&
     CURRENCIES.includes(storedCurrency as (typeof CURRENCIES)[number])
