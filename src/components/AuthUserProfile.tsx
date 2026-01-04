@@ -1,82 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { STORAGE_KEYS } from "../lib/constants";
-import { useAuthStorage } from "./providers";
-
-const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
-
-type UserProfile = {
-  name: string;
-  picture: string | null;
-};
-
-type UserInfoResponse = {
-  name?: string;
-  given_name?: string;
-  family_name?: string;
-  picture?: string;
-};
-
-function readStoredProfile(): UserProfile | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as UserProfile;
-  } catch {
-    return null;
-  }
-}
-
-function persistProfile(profile: UserProfile | null) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  if (!profile) {
-    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-    return;
-  }
-  localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
-}
-
-function resolveProfileName(info: UserInfoResponse) {
-  const direct = info.name?.trim();
-  if (direct) {
-    return direct;
-  }
-  const combined = [info.given_name, info.family_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  return combined || "Google account";
-}
-
-async function fetchUserProfile(
-  accessToken: string,
-  signal: AbortSignal
-): Promise<UserProfile | null> {
-  const response = await fetch(USERINFO_ENDPOINT, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to load user profile: ${response.status}`);
-  }
-  const data = (await response.json()) as UserInfoResponse;
-  if (!data.name && !data.given_name && !data.family_name && !data.picture) {
-    return null;
-  }
-  return {
-    name: resolveProfileName(data),
-    picture: data.picture ?? null,
-  };
-}
+import { useAuth } from "./providers";
 
 type AuthUserProfileProps = {
   /** Show only the avatar, hide name */
@@ -84,45 +8,23 @@ type AuthUserProfileProps = {
 };
 
 export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
-  const { accessToken, isInitialized } = useAuthStorage();
-  const cachedProfile = readStoredProfile();
+  const { userProfile, isInitialized, accessToken } = useAuth();
 
-  const { data: profile } = useQuery({
-    queryKey: ["userProfile", accessToken],
-    queryFn: ({ signal }) => fetchUserProfile(accessToken ?? "", signal),
-    enabled: Boolean(accessToken) && isInitialized,
-    placeholderData: cachedProfile ?? null,
-    staleTime: 1000 * 60 * 10,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (!isInitialized) {
-      return;
-    }
-    if (!accessToken) {
-      persistProfile(null);
-      return;
-    }
-    if (profile) {
-      persistProfile(profile);
-    }
-  }, [profile, accessToken, isInitialized]);
-
-  if (!isInitialized || !accessToken || !profile) {
+  if (!isInitialized || !accessToken || !userProfile) {
     return null;
   }
 
-  const fallbackInitial = profile.name.trim().charAt(0).toUpperCase() || "U";
+  const fallbackInitial =
+    userProfile.name.trim().charAt(0).toUpperCase() || "U";
 
   if (compact) {
     return (
       <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-2">
-        {profile.picture ? (
+        {userProfile.picture ? (
           <img
-            alt={`${profile.name} profile`}
+            alt={`${userProfile.name} profile`}
             className="h-full w-full object-cover"
-            src={profile.picture}
+            src={userProfile.picture}
           />
         ) : (
           <span className="text-[11px] text-muted-foreground">
@@ -136,11 +38,11 @@ export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
   return (
     <div className="flex max-w-md mx-auto items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground">
       <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-2">
-        {profile.picture ? (
+        {userProfile.picture ? (
           <img
-            alt={`${profile.name} profile`}
+            alt={`${userProfile.name} profile`}
             className="h-full w-full object-cover"
-            src={profile.picture}
+            src={userProfile.picture}
           />
         ) : (
           <span className="text-[11px] text-muted-foreground">
@@ -148,7 +50,7 @@ export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
           </span>
         )}
       </div>
-      <span className="max-w-[140px] truncate">{profile.name}</span>
+      <span className="max-w-[140px] truncate">{userProfile.name}</span>
     </div>
   );
 }

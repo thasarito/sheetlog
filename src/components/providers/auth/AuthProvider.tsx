@@ -1,11 +1,3 @@
-"use client";
-
-/**
- * Core authentication storage provider.
- * Manages Google OAuth tokens and sheet connection state.
- */
-
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import {
   createContext,
@@ -14,9 +6,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { STORAGE_KEYS } from "../../lib/constants";
-import { GoogleTokenClient, isUnauthorizedError } from "../../lib/google";
-import { ensureSheetReady } from "../../lib/sheets";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { STORAGE_KEYS } from "../../../lib/constants";
+import { GoogleTokenClient, isUnauthorizedError } from "../../../lib/google";
+import { ensureSheetReady } from "../../../lib/sheets";
 import {
   GOOGLE_TOKEN_QUERY_KEY,
   MIN_REFETCH_INTERVAL_MS,
@@ -24,20 +18,84 @@ import {
 } from "./auth.constants";
 import type {
   AuthStatus,
-  AuthStorageContextValue,
+  AuthContextValue,
   TokenData,
+  UserProfile,
 } from "./auth.types";
 
-// Export context for use by hooks
-export const AuthStorageContext = createContext<AuthStorageContextValue | null>(
-  null
-);
+const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
+const USER_PROFILE_QUERY_KEY = ["userProfile"];
 
-export function AuthStorageProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+type UserInfoResponse = {
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+};
+
+function readStoredProfile(): UserProfile | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+function persistProfile(profile: UserProfile | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (!profile) {
+    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+    return;
+  }
+  localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
+}
+
+function resolveProfileName(info: UserInfoResponse) {
+  const direct = info.name?.trim();
+  if (direct) {
+    return direct;
+  }
+  const combined = [info.given_name, info.family_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return combined || "Google account";
+}
+
+async function fetchUserProfile(
+  accessToken: string,
+  signal: AbortSignal
+): Promise<UserProfile | null> {
+  const response = await fetch(USERINFO_ENDPOINT, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load user profile: ${response.status}`);
+  }
+  const data = (await response.json()) as UserInfoResponse;
+  if (!data.name && !data.given_name && !data.family_name && !data.picture) {
+    return null;
+  }
+  return {
+    name: resolveProfileName(data),
+    picture: data.picture ?? null,
+  };
+}
+
+// Export context for use by hooks
+export const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sheetTabId, setSheetTabId] = useState<number | null>(null);
@@ -68,6 +126,12 @@ export function AuthStorageProvider({
         expires_in: expiresIn,
         expires_at: expiresAt,
       });
+    }
+
+    // Hydrate user profile cache
+    const cachedProfile = readStoredProfile();
+    if (cachedProfile) {
+      queryClient.setQueryData(USER_PROFILE_QUERY_KEY, cachedProfile);
     }
 
     setIsInitialized(true);
@@ -127,6 +191,31 @@ export function AuthStorageProvider({
     staleTime: Infinity,
   });
 
+  // QUERY: User Profile
+  const { data: userProfile } = useQuery({
+    queryKey: USER_PROFILE_QUERY_KEY,
+    queryFn: ({ signal }) =>
+      fetchUserProfile(tokenData?.access_token ?? "", signal),
+    enabled: Boolean(tokenData?.access_token) && isInitialized,
+    placeholderData: readStoredProfile(),
+    staleTime: 1000 * 60 * 10, // 10 minutes
+    retry: false,
+  });
+
+  // Persist user profile when it changes
+  useEffect(() => {
+    if (!isInitialized) {
+      return;
+    }
+    if (!tokenData?.access_token) {
+      persistProfile(null);
+      return;
+    }
+    if (userProfile) {
+      persistProfile(userProfile);
+    }
+  }, [userProfile, tokenData?.access_token, isInitialized]);
+
   // MUTATION: Interactive Login
   const connectMutation = useMutation({
     mutationFn: async () => {
@@ -158,6 +247,8 @@ export function AuthStorageProvider({
     setSheetTabId(null);
     queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
+    queryClient.setQueryData(USER_PROFILE_QUERY_KEY, null);
+    queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
   }, [queryClient]);
 
   const connect = useCallback(async () => {
@@ -228,11 +319,12 @@ export function AuthStorageProvider({
     return null;
   }, [refreshError, connectMutation.error]);
 
-  const value = useMemo<AuthStorageContextValue>(
+  const value = useMemo<AuthContextValue>(
     () => ({
       accessToken: tokenData?.access_token ?? null,
       sheetId,
       sheetTabId,
+      userProfile: userProfile ?? null,
       isConnecting: connectMutation.isPending || (isFetching && !tokenData),
       isInitialized:
         isInitialized &&
@@ -249,6 +341,7 @@ export function AuthStorageProvider({
       tokenData,
       sheetId,
       sheetTabId,
+      userProfile,
       connectMutation.isPending,
       isFetching,
       isInitialized,
@@ -261,9 +354,5 @@ export function AuthStorageProvider({
     ]
   );
 
-  return (
-    <AuthStorageContext.Provider value={value}>
-      {children}
-    </AuthStorageContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

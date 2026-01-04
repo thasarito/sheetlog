@@ -20,7 +20,7 @@ import type {
   TransactionRecord,
   TransactionType,
 } from "../../lib/types";
-import { useAuthStorage } from "./auth.hooks";
+import { useAuth } from "./auth";
 import { useConnectivity } from "./ConnectivityProvider";
 
 const DEFAULT_RECENTS: RecentCategories = {
@@ -112,7 +112,7 @@ export function TransactionsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { accessToken, sheetId, sheetTabId, clearAuth } = useAuthStorage();
+  const { accessToken, sheetId, sheetTabId, clearAuth } = useAuth();
   const { isOnline } = useConnectivity();
   const [state, dispatch] = useReducer(transactionsReducer, {
     queueCount: 0,

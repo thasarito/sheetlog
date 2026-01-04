@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react";
 import {
-  useAuthStorage,
+  useAuth,
   useConnectivity,
   useOnboarding,
   useTransactions,
@@ -24,10 +24,7 @@ import { StepCategory } from "./StepCategory";
 import { StepReceipt, type ReceiptData } from "./StepReceipt";
 import { FOR_OPTIONS, TYPE_OPTIONS } from "./constants";
 import { toast } from "sonner";
-import {
-  CURRENCY_STORAGE_KEY,
-  useTransactionForm,
-} from "./useTransactionForm";
+import { CURRENCY_STORAGE_KEY, useTransactionForm } from "./useTransactionForm";
 import { useAddTransactionMutation } from "./useAddTransactionMutation";
 import {
   transactionSchema,
@@ -43,7 +40,7 @@ type StepDefinition = {
 };
 
 export function TransactionFlow() {
-  const { accessToken, sheetId } = useAuthStorage();
+  const { accessToken, sheetId } = useAuth();
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { onboarding, refreshOnboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
@@ -56,8 +53,16 @@ export function TransactionFlow() {
       await handleSubmit(values);
     },
   });
-  const { type, category, amount, currency, account, forValue, dateObject, note } =
-    form.useStore((state) => state.values);
+  const {
+    type,
+    category,
+    amount,
+    currency,
+    account,
+    forValue,
+    dateObject,
+    note,
+  } = form.useStore((state) => state.values);
   const receiptTimeoutRef = useRef<number | null>(null);
   const lastSyncErrorRef = useRef<string | null>(null);
 
@@ -358,8 +363,8 @@ export function TransactionFlow() {
             mutation.error instanceof Error
               ? mutation.error.message
               : mutation.isError
-                ? "Failed to save transaction"
-                : undefined
+              ? "Failed to save transaction"
+              : undefined
           }
           onDone={handleReceiptDone}
           onUndo={handleReceiptUndo}
@@ -407,7 +412,6 @@ export function TransactionFlow() {
       ) : (
         <OnboardingFlow onToast={handleToast} />
       )}
-
     </main>
   );
 }

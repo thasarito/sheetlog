@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { AuthStorageProvider } from "./AuthStorageProvider";
+import type React from "react";
+import { AuthProvider } from "./auth";
 import { ConnectivityProvider } from "./ConnectivityProvider";
 import { OnboardingProvider } from "./OnboardingProvider";
 import { TransactionsProvider } from "./TransactionsProvider";
@@ -9,16 +9,16 @@ import { TransactionsProvider } from "./TransactionsProvider";
 export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConnectivityProvider>
-      <AuthStorageProvider>
+      <AuthProvider>
         <OnboardingProvider>
           <TransactionsProvider>{children}</TransactionsProvider>
         </OnboardingProvider>
-      </AuthStorageProvider>
+      </AuthProvider>
     </ConnectivityProvider>
   );
 }
 
-export { useAuthStorage } from "./auth.hooks";
+export { useAuth } from "./auth";
 export { useConnectivity } from "./ConnectivityProvider";
 export { useOnboarding } from "./OnboardingProvider";
 export { useTransactions } from "./TransactionsProvider";

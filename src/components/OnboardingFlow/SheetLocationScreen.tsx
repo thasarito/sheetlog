@@ -11,7 +11,7 @@ import {
   DrawerTrigger,
 } from "../ui/drawer";
 import { Skeleton } from "../ui/skeleton";
-import { useAuthStorage } from "../providers";
+import { useAuth } from "../providers";
 import { listFolders } from "../../lib/google";
 import type { LocationMode, ScreenMeta } from "./types";
 import { cn } from "../../lib/utils";
@@ -35,7 +35,7 @@ export function SheetLocationScreen({
   onFolderIdChange,
   onSubmit,
 }: SheetLocationScreenProps) {
-  const { accessToken } = useAuthStorage();
+  const { accessToken } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [folderStack, setFolderStack] = useState<
     { id: string; name: string }[]

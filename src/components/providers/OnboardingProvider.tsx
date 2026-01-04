@@ -19,7 +19,7 @@ import {
   updateOnboarding as persistOnboarding,
 } from "../../lib/onboarding";
 import { isGoogleAuthError } from "../../lib/googleErrors";
-import { useAuthStorage } from "./auth.hooks";
+import { useAuth } from "./auth";
 import { useConnectivity } from "./ConnectivityProvider";
 
 type OnboardingStore = {
@@ -60,7 +60,7 @@ export function OnboardingProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { accessToken, sheetId, clearAuth } = useAuthStorage();
+  const { accessToken, sheetId, clearAuth } = useAuth();
   const { isOnline } = useConnectivity();
   const [store, dispatch] = useReducer(onboardingReducer, undefined, () => ({
     onboarding: getDefaultOnboardingState(),

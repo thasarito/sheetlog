@@ -4,17 +4,17 @@
 
 import { useContext } from "react";
 import { AUTH_STATUS_MESSAGES } from "./auth.constants";
-import { AuthStorageContext } from "./AuthStorageProvider";
-import type { AuthStorageContextValue, SheetStatus } from "./auth.types";
+import { AuthContext } from "./AuthProvider";
+import type { AuthContextValue, SheetStatus } from "./auth.types";
 
 /**
- * Core hook to access auth storage context.
- * Must be used within AuthStorageProvider.
+ * Core hook to access auth context.
+ * Must be used within AuthProvider.
  */
-export function useAuthStorage(): AuthStorageContextValue {
-  const context = useContext(AuthStorageContext);
+export function useAuth(): AuthContextValue {
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuthStorage must be used within AuthStorageProvider");
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 }
@@ -23,8 +23,8 @@ export function useAuthStorage(): AuthStorageContextValue {
  * Enhanced hook that provides user-friendly status messages alongside auth state.
  * Useful for components that need to display feedback to users.
  */
-export function useAuthStorageWithStatus() {
-  const auth = useAuthStorage();
+export function useAuthWithStatus() {
+  const auth = useAuth();
 
   const statusMessage = AUTH_STATUS_MESSAGES[auth.authStatus];
 

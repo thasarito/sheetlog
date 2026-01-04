@@ -9,12 +9,18 @@ export type AuthStatus =
   | "authenticated"
   | "error";
 
+export type UserProfile = {
+  name: string;
+  picture: string | null;
+};
+
 export type SheetStatus = "ready" | "no-sheet" | "no-auth";
 
-export interface AuthStorageContextValue {
+export interface AuthContextValue {
   accessToken: string | null;
   sheetId: string | null;
   sheetTabId: number | null;
+  userProfile: UserProfile | null;
   isConnecting: boolean;
   isInitialized: boolean;
   authStatus: AuthStatus;

@@ -2,7 +2,7 @@
 
 export { AppProvider, AppProvider as default } from "./AppProvider";
 export {
-  useAuthStorage,
+  useAuth,
   useConnectivity,
   useOnboarding,
   useTransactions,
