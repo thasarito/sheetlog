@@ -6,4 +6,5 @@ export const STORAGE_KEYS = {
   EXPIRES_AT: "sheetlog.tokenExpiresAt",
   LAST_CURRENCY: "sheetlog.lastCurrency",
   LAST_ACCOUNT: "sheetlog.lastAccount",
+  REFRESH_TOKEN: "sheetlog.oauth.refreshToken",
 } as const;

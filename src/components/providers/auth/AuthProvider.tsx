@@ -4,20 +4,20 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useGoogleLogin } from "@react-oauth/google";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { STORAGE_KEYS } from "../../../lib/constants";
 import { isUnauthorizedError } from "../../../lib/google";
-import { ensureSheetReady } from "../../../lib/sheets";
 import {
-  GOOGLE_TOKEN_QUERY_KEY,
-  REFRESH_BUFFER_MS,
-  SCOPES,
-} from "./auth.constants";
+  clearOAuthStorage,
+  hasRefreshToken,
+  initiateLogin,
+  refreshAccessToken,
+} from "../../../lib/oauth";
+import { ensureSheetReady } from "../../../lib/sheets";
+import { GOOGLE_TOKEN_QUERY_KEY, REFRESH_BUFFER_MS } from "./auth.constants";
 import type {
   AuthStatus,
   AuthContextValue,
@@ -132,66 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return val ? Number.parseInt(val, 10) : null;
   });
 
-  // Derived state to track initialization (now synonymous with "mounted" basically,
-  // or we can remove it if we don't need to block rendering)
   const [isInitialized, setIsInitialized] = useState(true);
-  // keeping isInitialized as true effectively, or we could remove it.
-  // The original code waited for hydration. Now hydration is synchronous (mostly).
-  // But we might want to ensure we're on client.
+  const [isConnecting, setIsConnecting] = useState(false);
+
   useEffect(() => {
     setIsInitialized(true);
   }, []);
 
-  // Google Login Hook
-  const resolveRef = useRef<((value: TokenData) => void) | null>(null);
-  const rejectRef = useRef<((reason: any) => void) | null>(null);
-
-  const login = useGoogleLogin({
-    scope: SCOPES.join(" "),
-    onSuccess: (tokenResponse) => {
-      if (resolveRef.current) {
-        const now = Date.now();
-        const expiresAt = now + tokenResponse.expires_in * 1000;
-        resolveRef.current({
-          access_token: tokenResponse.access_token,
-          expires_in: tokenResponse.expires_in,
-          expires_at: expiresAt,
-        });
-        resolveRef.current = null;
-        rejectRef.current = null;
-      }
-    },
-    onError: (errorResponse) => {
-      if (rejectRef.current) {
-        rejectRef.current(
-          new Error(errorResponse.error_description || "Google login failed")
-        );
-        resolveRef.current = null;
-        rejectRef.current = null;
-      }
-    },
-    flow: "implicit",
-  });
-
-  const requestToken = useCallback(
-    (prompt?: string): Promise<TokenData> => {
-      return new Promise((resolve, reject) => {
-        resolveRef.current = resolve;
-        rejectRef.current = reject;
-        // Force prompt if specified, otherwise rely on default behavior
-        // Note: useGoogleLogin doesn't directly support 'prompt' in the same way as GIS client sometimes,
-        // but overrideConfig usually accepts it.
-        // However, @react-oauth/google types might be strict.
-        // Attempting to pass prompt in overrideConfig (second arg to login function, not yet fully typed in some versions? or it is?)
-        // We will cast to any if needed or check types.
-        // Based on docs, login(overrideConfig) exists.
-        login({ prompt } as any);
-      });
-    },
-    [login]
-  );
-
-  // QUERY: Silent Refresh Loop
+  // QUERY: Silent Refresh Loop using refresh tokens
   const {
     data: tokenData,
     error: refreshError,
@@ -199,80 +147,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   } = useQuery<TokenData | null>({
     queryKey: GOOGLE_TOKEN_QUERY_KEY,
     initialData: getStoredToken(),
-    queryFn: async ({ queryKey }) => {
-      // If we have an initial token that is valid, returning it here or relying on initialData
-      // might be tricky if we want to *refresh*.
-      // Actually, queryFn is called when cache is stale or missing.
-      // If we provide initialData, it populates the cache.
-      // We want to run the refresh logic if the token is expired or close to expiry?
-      // No, the queryFn IS the refresh logic (asking for a new token).
-      // But we only want to run it if we think we SHOULD have a session.
-
-      // If we don't have a token in local storage, we shouldn't attempt silent refresh
-      // unless we know we are 'logged in' via some other means.
-      // BUT, checking localStorage inside queryFn is fine.
-
-      const stored = getStoredToken();
-
-      // If we have a valid stored token, just return it (although initialData should handle this).
-      // If we are here, it means we need a FRESH token (staleTime elapsed) or we have no token.
-
-      if (stored) {
-        // Check if it's actually expired or we just want to verify?
-        // If we are here, we probably want to try refreshing if it's close to expiry.
-        // But `requestToken('none')` is the way to refresh.
-      }
-
-      // Only attempt refresh if we have a trace of a previous session (token exists but maybe expired?)
-      // or if we just rely on the error.
-      // But we can't just spam check.
-      // We can check if localStorage has ANY token string, even if expired.
-      const rawToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      if (!rawToken) {
-        return null; // No session, don't try to refresh
+    queryFn: async () => {
+      // Only attempt refresh if we have a refresh token
+      if (!hasRefreshToken()) {
+        return null;
       }
 
       try {
-        const response = await requestToken("none");
-        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, response.access_token);
+        // Use the refresh token to get a new access token
+        const tokenResult = await refreshAccessToken();
+
+        // Store the new access token
+        localStorage.setItem(
+          STORAGE_KEYS.ACCESS_TOKEN,
+          tokenResult.access_token
+        );
         localStorage.setItem(
           STORAGE_KEYS.EXPIRES_AT,
-          response.expires_at.toString()
+          tokenResult.expires_at.toString()
         );
-        return response;
-      } catch (e) {
-        // If silent refresh fails, we should clear.
-        throw e;
+
+        return tokenResult;
+      } catch (error) {
+        // If refresh fails, clear auth state
+        console.error("Token refresh failed:", error);
+        throw error;
       }
     },
-    // We want to verify/refresh if the token is close to expiry.
-    // initialData provides the "current" valid token.
-    // refetchInterval will check if it needs refreshing.
+    // Dynamically calculate when to refresh based on token expiry
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
+
       const now = Date.now();
       const expiresAt = data.expires_at;
       const timeUntilExpiry = expiresAt - now;
       const refetchTime = timeUntilExpiry - REFRESH_BUFFER_MS;
 
-      // If we are within buffer, we want to refetch (which calls queryFn -> silent refresh)
+      // If we are within buffer, refresh soon
       if (refetchTime <= 0) {
-        return 1000; // Try immediately (or soon)
+        return 1000;
       }
       return refetchTime;
     },
     retry: (failureCount, error) => {
+      // Don't retry if the refresh token is revoked
       if (
         error instanceof Error &&
-        (error.message.includes("interaction_required") ||
-          error.message.includes("popup_closed_by_user"))
+        (error.message.includes("revoked") ||
+          error.message.includes("expired") ||
+          error.message.includes("re-authenticate"))
       ) {
         return false;
       }
       return failureCount < 3;
     },
-    staleTime: Infinity, // The token remains "fresh" until we decide to refresh it based on time
+    staleTime: Number.POSITIVE_INFINITY, // Token remains fresh until we decide to refresh
   });
 
   // QUERY: User Profile
@@ -300,44 +230,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userProfile, tokenData?.access_token, isInitialized]);
 
-  // MUTATION: Interactive Login
-  const connectMutation = useMutation({
-    mutationFn: async () => {
-      // Interactive login
-      const response = await requestToken(); // default prompt
-      return response;
-    },
-    onSuccess: (data) => {
-      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.access_token);
-      localStorage.setItem(STORAGE_KEYS.EXPIRES_AT, data.expires_at.toString());
-      queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, data);
-      queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, data);
-    },
-    onError: (error) => {
-      console.error("Connection failed", error);
-      clearAuth();
-    },
-  });
-
   const clearAuth = useCallback(() => {
+    // Clear all auth-related storage
     localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.SHEET_ID);
     localStorage.removeItem(STORAGE_KEYS.SHEET_TAB_ID);
     localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
     localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
+    clearOAuthStorage();
 
     setSheetId(null);
     setSheetTabId(null);
     queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
-    queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
     queryClient.setQueryData(USER_PROFILE_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
   }, [queryClient]);
 
+  // Interactive login - redirects to Google OAuth
   const connect = useCallback(async () => {
-    await connectMutation.mutateAsync();
-  }, [connectMutation]);
+    setIsConnecting(true);
+    try {
+      // This will redirect the user to Google's consent page
+      await initiateLogin();
+      // Note: This code won't execute because the page redirects
+    } catch (error) {
+      console.error("Failed to initiate login:", error);
+      setIsConnecting(false);
+    }
+  }, []);
 
   const storeSheet = useCallback((id: string, tabId: number | null) => {
     localStorage.setItem(STORAGE_KEYS.SHEET_ID, id);
@@ -372,9 +293,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (refreshError) {
       if (
-        refreshError.message.includes("interaction_required") ||
-        refreshError.message.includes("invalid_grant") ||
-        refreshError.message.includes("popup_closed_by_user")
+        refreshError.message.includes("revoked") ||
+        refreshError.message.includes("expired") ||
+        refreshError.message.includes("re-authenticate")
       ) {
         clearAuth();
       }
@@ -384,25 +305,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Compute authStatus
   const authStatus: AuthStatus = useMemo(() => {
     if (!isInitialized) return "initializing";
-    if (refreshError || connectMutation.error) return "error";
-    if (connectMutation.isPending || (isFetching && !tokenData))
-      return "authenticating";
+    if (refreshError) return "error";
+    if (isConnecting || (isFetching && !tokenData)) return "authenticating";
     if (!tokenData?.access_token) return "unauthenticated";
     return "authenticated";
-  }, [
-    isInitialized,
-    refreshError,
-    connectMutation.error,
-    connectMutation.isPending,
-    isFetching,
-    tokenData,
-  ]);
+  }, [isInitialized, refreshError, isConnecting, isFetching, tokenData]);
 
   const authError: Error | null = useMemo(() => {
     if (refreshError) return refreshError;
-    if (connectMutation.error) return connectMutation.error;
     return null;
-  }, [refreshError, connectMutation.error]);
+  }, [refreshError]);
 
   const value = useMemo<AuthContextValue>(() => {
     const isExpired = tokenData?.expires_at
@@ -414,7 +326,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sheetId,
       sheetTabId,
       userProfile: userProfile ?? null,
-      isConnecting: connectMutation.isPending || (isFetching && !tokenData),
+      isConnecting: isConnecting || (isFetching && !tokenData),
       isInitialized,
       authStatus,
       authError,
@@ -427,10 +339,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sheetId,
     sheetTabId,
     userProfile,
-    connectMutation.isPending,
+    isConnecting,
     isFetching,
     isInitialized,
-    refreshError,
     authStatus,
     authError,
     connect,

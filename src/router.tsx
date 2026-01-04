@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { HomePage } from "./routes/HomePage";
+import { OAuthCallbackPage } from "./routes/OAuthCallbackPage";
 import { PrivacyPolicyPage } from "./routes/PrivacyPolicyPage";
 import { TermsPage } from "./routes/TermsPage";
 
@@ -16,6 +17,12 @@ const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: HomePage,
+});
+
+const callbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/callback",
+  component: OAuthCallbackPage,
 });
 
 const privacyRoute = createRoute({
@@ -30,7 +37,12 @@ const termsRoute = createRoute({
   component: TermsPage,
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, privacyRoute, termsRoute]);
+const routeTree = rootRoute.addChildren([
+  homeRoute,
+  callbackRoute,
+  privacyRoute,
+  termsRoute,
+]);
 const baseUrl = import.meta.env.BASE_URL;
 const basepath = baseUrl === "/" ? "/" : baseUrl.replace(/\/$/, "");
 
