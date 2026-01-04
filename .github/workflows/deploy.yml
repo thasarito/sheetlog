@@ -34,11 +34,18 @@ jobs:
       - name: Prepare env
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_CLIENT_SECRET }}
           VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: |
           if ! grep -q '^VITE_GOOGLE_CLIENT_ID=' .env; then
             if [ -n "$VITE_GOOGLE_CLIENT_ID" ]; then
               echo "VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID" >> .env
+            fi
+          fi
+
+          if ! grep -q '^VITE_GOOGLE_CLIENT_SECRET=' .env; then
+            if [ -n "$VITE_GOOGLE_CLIENT_SECRET" ]; then
+              echo "VITE_GOOGLE_CLIENT_SECRET=$VITE_GOOGLE_CLIENT_SECRET" >> .env
             fi
           fi
 
