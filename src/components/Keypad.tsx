@@ -31,7 +31,7 @@ export function Keypad({ value, onChange }: KeypadProps) {
         <button
           key={key}
           type="button"
-          className="h-14 rounded-2xl border border-border bg-card text-lg font-semibold text-foreground transition hover:bg-surface"
+          className="h-14 rounded-2xl bg-card text-lg font-semibold text-foreground transition hover:bg-surface"
           onClick={() => handleKey(key)}
         >
           {key}
