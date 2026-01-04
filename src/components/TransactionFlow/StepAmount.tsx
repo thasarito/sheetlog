@@ -65,6 +65,13 @@ export function StepAmount({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
+          <InlinePicker
+            label={accountLabel}
+            value={account || null}
+            options={accounts}
+            onChange={(value) => form.setFieldValue("account", value)}
+          />
+
           {isTransfer ? (
             <InlinePicker
               label="To"
@@ -81,13 +88,6 @@ export function StepAmount({
               onChange={(value) => form.setFieldValue("forValue", value)}
             />
           )}
-
-          <InlinePicker
-            label={accountLabel}
-            value={account || null}
-            options={accounts}
-            onChange={(value) => form.setFieldValue("account", value)}
-          />
         </div>
       </div>
 

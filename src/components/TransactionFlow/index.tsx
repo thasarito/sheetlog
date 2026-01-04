@@ -94,7 +94,21 @@ export function TransactionFlow() {
   }, []);
 
   useEffect(() => {
-    if (!account && onboarding.accounts.length === 1) {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (account) {
+      window.localStorage.setItem(STORAGE_KEYS.LAST_ACCOUNT, account);
+      return;
+    }
+    // Try to restore last account if none selected
+    const lastAccount = window.localStorage.getItem(STORAGE_KEYS.LAST_ACCOUNT);
+    if (lastAccount && onboarding.accounts.includes(lastAccount)) {
+      form.setFieldValue("account", lastAccount);
+      return;
+    }
+    // Default to first account if only one exists
+    if (onboarding.accounts.length === 1) {
       form.setFieldValue("account", onboarding.accounts[0]);
     }
   }, [account, form, onboarding.accounts]);
@@ -103,8 +117,30 @@ export function TransactionFlow() {
     if (typeof window === "undefined") {
       return;
     }
+    // Always update global fallback
     window.localStorage.setItem(STORAGE_KEYS.LAST_CURRENCY, currency);
-  }, [currency]);
+
+    // Update per-account currency
+    if (account) {
+      window.localStorage.setItem(
+        `${STORAGE_KEYS.LAST_CURRENCY}_${account}`,
+        currency
+      );
+    }
+  }, [currency, account]);
+
+  // Restore currency when account changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !account) {
+      return;
+    }
+    const lastCurrencyForAccount = window.localStorage.getItem(
+      `${STORAGE_KEYS.LAST_CURRENCY}_${account}`
+    );
+    if (lastCurrencyForAccount) {
+      form.setFieldValue("currency", lastCurrencyForAccount);
+    }
+  }, [account, form]);
 
   useEffect(() => {
     if (type === "transfer" && forValue) {

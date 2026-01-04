@@ -5,4 +5,5 @@ export const STORAGE_KEYS = {
   USER_PROFILE: "sheetlog.userProfile",
   EXPIRES_AT: "sheetlog.tokenExpiresAt",
   LAST_CURRENCY: "sheetlog.lastCurrency",
+  LAST_ACCOUNT: "sheetlog.lastAccount",
 } as const;
