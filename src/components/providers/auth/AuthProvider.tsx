@@ -11,11 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { STORAGE_KEYS } from "../../../lib/constants";
 import { GoogleTokenClient, isUnauthorizedError } from "../../../lib/google";
 import { ensureSheetReady } from "../../../lib/sheets";
-import {
-  GOOGLE_TOKEN_QUERY_KEY,
-  MIN_REFETCH_INTERVAL_MS,
-  REFRESH_BUFFER_MS,
-} from "./auth.constants";
+import { GOOGLE_TOKEN_QUERY_KEY, REFRESH_BUFFER_MS } from "./auth.constants";
 import type {
   AuthStatus,
   AuthContextValue,
@@ -100,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sheetTabId, setSheetTabId] = useState<number | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [hasStoredToken, setHasStoredToken] = useState(false);
 
   // Initialize from LocalStorage
   useEffect(() => {
@@ -126,6 +123,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         expires_in: expiresIn,
         expires_at: expiresAt,
       });
+      setHasStoredToken(true);
+    } else if (storedToken && !storedExpiresAt) {
+      // Invalid state: token exists but no expiry. Clear it to prevent
+      // auto-refresh loop (which causes popup blocks).
+      localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+      setHasStoredToken(false);
+    } else {
+      setHasStoredToken(false);
     }
 
     // Hydrate user profile cache
@@ -163,7 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { ...response, expires_at: expiresAt };
     },
-    enabled: isInitialized && !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
+    enabled: isInitialized && hasStoredToken,
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
@@ -172,10 +177,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const timeUntilExpiry = expiresAt - now;
       const refetchTime = timeUntilExpiry - REFRESH_BUFFER_MS;
       if (refetchTime <= 0) {
-        if (timeUntilExpiry <= 0) {
-          return MIN_REFETCH_INTERVAL_MS;
-        }
-        return Math.min(timeUntilExpiry, MIN_REFETCH_INTERVAL_MS);
+        // If the token is expired or about to expire, we cannot safely auto-refresh
+        // because prompt="none" may still trigger a popup (which gets blocked).
+        // relying on the 401 error handler or manual user action is safer.
+        return false;
       }
       return refetchTime;
     },
@@ -229,6 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.access_token);
       localStorage.setItem(STORAGE_KEYS.EXPIRES_AT, data.expires_at.toString());
       queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, data);
+      setHasStoredToken(true);
     },
     onError: (error) => {
       console.error("Connection failed", error);
@@ -247,6 +253,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSheetTabId(null);
     queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
+    setHasStoredToken(false);
     queryClient.setQueryData(USER_PROFILE_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
   }, [queryClient]);
@@ -327,10 +334,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       userProfile: userProfile ?? null,
       isConnecting: connectMutation.isPending || (isFetching && !tokenData),
       isInitialized:
-        isInitialized &&
-        (!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) ||
-          !!tokenData ||
-          !!refreshError),
+        isInitialized && (!hasStoredToken || !!tokenData || !!refreshError),
       authStatus,
       authError,
       connect,
@@ -351,6 +355,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       connect,
       refreshSheet,
       clearAuth,
+      hasStoredToken,
     ]
   );
 
