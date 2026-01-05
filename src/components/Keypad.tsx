@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import { Delete } from 'lucide-react';
 
 interface KeypadProps {
   value: string;
@@ -31,10 +31,11 @@ export function Keypad({ value, onChange }: KeypadProps) {
         <button
           key={key}
           type="button"
-          className="h-14 rounded-2xl bg-card text-lg font-semibold text-foreground transition hover:bg-surface"
+          aria-label={key === 'DEL' ? 'Backspace' : key}
+          className="flex h-14 items-center justify-center rounded-2xl bg-card text-lg font-semibold text-foreground transition hover:bg-surface"
           onClick={() => handleKey(key)}
         >
-          {key}
+          {key === 'DEL' ? <Delete className="h-6 w-6" /> : key}
         </button>
       ))}
     </div>
