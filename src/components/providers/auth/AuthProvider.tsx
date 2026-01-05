@@ -17,7 +17,11 @@ import {
   refreshAccessToken,
 } from "../../../lib/oauth";
 import { ensureSheetReady } from "../../../lib/sheets";
-import { GOOGLE_TOKEN_QUERY_KEY, REFRESH_BUFFER_MS } from "./auth.constants";
+import {
+  GOOGLE_TOKEN_QUERY_KEY,
+  MIN_REFETCH_INTERVAL_MS,
+  REFRESH_BUFFER_MS,
+} from "./auth.constants";
 import type {
   AuthStatus,
   AuthContextValue,
@@ -117,6 +121,30 @@ function getStoredToken(): TokenData | null {
   };
 }
 
+function persistToken(token: TokenData) {
+  localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token.access_token);
+  localStorage.setItem(STORAGE_KEYS.EXPIRES_AT, token.expires_at.toString());
+}
+
+function isTerminalRefreshError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /revoked|expired|re-authenticate|no refresh token/i.test(
+    error.message
+  );
+}
+
+function getRefreshDelay(token?: TokenData | null): number | false {
+  if (!token) return false;
+  const timeUntilExpiry = token.expires_at - Date.now();
+  const refreshIn = timeUntilExpiry - REFRESH_BUFFER_MS;
+  if (refreshIn <= 0) {
+    return MIN_REFETCH_INTERVAL_MS;
+  }
+  return refreshIn;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
@@ -148,62 +176,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryKey: GOOGLE_TOKEN_QUERY_KEY,
     initialData: getStoredToken(),
     queryFn: async () => {
-      // Only attempt refresh if we have a refresh token
       if (!hasRefreshToken()) {
         return null;
       }
-
-      try {
-        // Use the refresh token to get a new access token
-        const tokenResult = await refreshAccessToken();
-
-        // Store the new access token
-        localStorage.setItem(
-          STORAGE_KEYS.ACCESS_TOKEN,
-          tokenResult.access_token
-        );
-        localStorage.setItem(
-          STORAGE_KEYS.EXPIRES_AT,
-          tokenResult.expires_at.toString()
-        );
-
-        return tokenResult;
-      } catch (error) {
-        // If refresh fails, clear auth state
-        console.error("Token refresh failed:", error);
-        throw error;
-      }
+      return refreshAccessToken();
     },
     // Dynamically calculate when to refresh based on token expiry
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      if (!data) return false;
-
-      const now = Date.now();
-      const expiresAt = data.expires_at;
-      const timeUntilExpiry = expiresAt - now;
-      const refetchTime = timeUntilExpiry - REFRESH_BUFFER_MS;
-
-      // If we are within buffer, refresh soon
-      if (refetchTime <= 0) {
-        return 1000;
-      }
-      return refetchTime;
-    },
+    refetchInterval: (query) => getRefreshDelay(query.state.data),
+    refetchIntervalInBackground: true,
     retry: (failureCount, error) => {
       // Don't retry if the refresh token is revoked
-      if (
-        error instanceof Error &&
-        (error.message.includes("revoked") ||
-          error.message.includes("expired") ||
-          error.message.includes("re-authenticate"))
-      ) {
+      if (isTerminalRefreshError(error)) {
         return false;
       }
       return failureCount < 3;
     },
     staleTime: Number.POSITIVE_INFINITY, // Token remains fresh until we decide to refresh
+    enabled: hasRefreshToken(),
   });
+
+  useEffect(() => {
+    if (tokenData) {
+      persistToken(tokenData);
+    }
+  }, [tokenData]);
 
   // QUERY: User Profile
   const { data: userProfile } = useQuery({
@@ -291,14 +287,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Handle terminal refresh failures
   useEffect(() => {
-    if (refreshError) {
-      if (
-        refreshError.message.includes("revoked") ||
-        refreshError.message.includes("expired") ||
-        refreshError.message.includes("re-authenticate")
-      ) {
-        clearAuth();
-      }
+    if (refreshError && isTerminalRefreshError(refreshError)) {
+      clearAuth();
     }
   }, [refreshError, clearAuth]);
 
