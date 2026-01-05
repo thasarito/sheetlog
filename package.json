@@ -40,6 +40,7 @@
     "tailwindcss-safe-area": "^0.8.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.9",
-    "vite-plugin-pwa": "^0.20.0"
+    "vite-plugin-pwa": "^0.20.0",
+    "workbox-window": "^7.4.0"
   }
 }
