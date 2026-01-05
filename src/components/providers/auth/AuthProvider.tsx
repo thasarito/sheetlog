@@ -94,16 +94,16 @@ async function fetchUserProfile(
 }
 
 // Helper to read token synchronously for initial state
-function getStoredToken(): TokenData | null {
-  if (typeof window === "undefined") return null;
+function getStoredToken(): TokenData | undefined {
+  if (typeof window === "undefined") return undefined;
   const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
   const storedExpiresAt = localStorage.getItem(STORAGE_KEYS.EXPIRES_AT);
 
-  if (!storedToken || !storedExpiresAt) return null;
+  if (!storedToken || !storedExpiresAt) return undefined;
 
   const expiresAt = Number.parseInt(storedExpiresAt, 10);
   const now = Date.now();
-  if (expiresAt <= now) return null;
+  if (expiresAt <= now) return undefined;
 
   const expiresIn = Math.max(0, Math.floor((expiresAt - now) / 1000));
   return {
