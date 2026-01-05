@@ -4,7 +4,7 @@
 
 import { useContext } from "react";
 import { AUTH_STATUS_MESSAGES } from "./auth.constants";
-import { AuthContext } from "./AuthProvider";
+import { AuthContext } from "./AuthContext";
 import type { AuthContextValue, SheetStatus } from "./auth.types";
 
 /**

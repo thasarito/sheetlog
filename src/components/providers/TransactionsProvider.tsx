@@ -1,7 +1,5 @@
 import React, {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useReducer,
@@ -19,18 +17,18 @@ import type {
   TransactionType,
 } from "../../lib/types";
 import { useAuth } from "./auth";
-import { useConnectivity } from "./ConnectivityProvider";
+import { useConnectivity } from "./ConnectivityContext";
+import {
+  TransactionsContext,
+  type TransactionsContextValue,
+  type UndoResult,
+} from "./TransactionsContext";
 
 const DEFAULT_RECENTS: RecentCategories = {
   expense: [],
   income: [],
   transfer: [],
 };
-
-interface UndoResult {
-  ok: boolean;
-  message: string;
-}
 
 type TransactionsState = {
   queueCount: number;
@@ -85,25 +83,6 @@ function transactionsReducer(
       return state;
   }
 }
-
-interface TransactionsContextValue {
-  queueCount: number;
-  recentCategories: RecentCategories;
-  lastSyncError: string | null;
-  lastSyncErrorAt: string | null;
-  lastSyncAt: string | null;
-  addTransaction: (input: TransactionInput) => Promise<void>;
-  undoLast: () => Promise<UndoResult>;
-  syncNow: () => Promise<void>;
-  markRecentCategory: (
-    type: TransactionType,
-    category: string
-  ) => Promise<void>;
-}
-
-const TransactionsContext = createContext<TransactionsContextValue | null>(
-  null
-);
 
 export function TransactionsProvider({
   children,
@@ -317,12 +296,4 @@ export function TransactionsProvider({
       {children}
     </TransactionsContext.Provider>
   );
-}
-
-export function useTransactions() {
-  const context = useContext(TransactionsContext);
-  if (!context) {
-    throw new Error("useTransactions must be used within TransactionsProvider");
-  }
-  return context;
 }

@@ -1,18 +1,5 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
-interface ConnectivityContextValue {
-  isOnline: boolean;
-}
-
-const ConnectivityContext = createContext<ConnectivityContextValue | null>(
-  null
-);
+import React, { useEffect, useMemo, useState } from "react";
+import { ConnectivityContext } from "./ConnectivityContext";
 
 export function ConnectivityProvider({
   children,
@@ -55,12 +42,4 @@ export function ConnectivityProvider({
       {children}
     </ConnectivityContext.Provider>
   );
-}
-
-export function useConnectivity() {
-  const context = useContext(ConnectivityContext);
-  if (!context) {
-    throw new Error("useConnectivity must be used within ConnectivityProvider");
-  }
-  return context;
 }

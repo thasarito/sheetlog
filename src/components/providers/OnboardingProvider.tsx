@@ -1,7 +1,5 @@
 import React, {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useReducer,
@@ -18,7 +16,11 @@ import {
 } from "../../lib/onboarding";
 import { isGoogleAuthError } from "../../lib/googleErrors";
 import { useAuth } from "./auth";
-import { useConnectivity } from "./ConnectivityProvider";
+import { useConnectivity } from "./ConnectivityContext";
+import {
+  OnboardingContext,
+  type OnboardingContextValue,
+} from "./OnboardingContext";
 
 type OnboardingStore = {
   onboarding: OnboardingState;
@@ -42,16 +44,6 @@ function onboardingReducer(
       return state;
   }
 }
-
-interface OnboardingContextValue {
-  onboarding: OnboardingState;
-  updateOnboarding: (
-    updates: Partial<OnboardingState>
-  ) => Promise<OnboardingState>;
-  refreshOnboarding: () => Promise<boolean>;
-}
-
-const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
 export function OnboardingProvider({
   children,
@@ -180,12 +172,4 @@ export function OnboardingProvider({
       {children}
     </OnboardingContext.Provider>
   );
-}
-
-export function useOnboarding() {
-  const context = useContext(OnboardingContext);
-  if (!context) {
-    throw new Error("useOnboarding must be used within OnboardingProvider");
-  }
-  return context;
 }

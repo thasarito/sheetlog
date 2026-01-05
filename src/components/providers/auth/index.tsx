@@ -21,4 +21,5 @@ export { AUTH_STATUS_MESSAGES, GOOGLE_TOKEN_QUERY_KEY } from "./auth.constants";
 export { useAuth, useAuthWithStatus } from "./auth.hooks";
 
 // Provider
-export { AuthContext, AuthProvider } from "./AuthProvider";
+export { AuthProvider } from "./AuthProvider";
+export { AuthContext } from "./AuthContext";

@@ -1,11 +1,5 @@
 import type React from "react";
-import {
-  createContext,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { STORAGE_KEYS } from "../../../lib/constants";
@@ -28,6 +22,7 @@ import type {
   TokenData,
   UserProfile,
 } from "./auth.types";
+import { AuthContext } from "./AuthContext";
 
 const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
 const USER_PROFILE_QUERY_KEY = ["userProfile"];
@@ -97,9 +92,6 @@ async function fetchUserProfile(
     picture: data.picture ?? null,
   };
 }
-
-// Export context for use by hooks
-export const AuthContext = createContext<AuthContextValue | null>(null);
 
 // Helper to read token synchronously for initial state
 function getStoredToken(): TokenData | null {
