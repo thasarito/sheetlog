@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { exchangeCodeForTokens } from "../lib/oauth";
 import { STORAGE_KEYS } from "../lib/constants";
+import { GOOGLE_TOKEN_QUERY_KEY } from "../components/providers/auth/auth.constants";
 
 type OAuthSearchParams = {
   code?: string;
@@ -21,6 +23,7 @@ interface OAuthCallbackState {
  */
 export function useOAuthCallback(): OAuthCallbackState {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const search = useSearch({ strict: false }) as OAuthSearchParams;
   const [state, setState] = useState<OAuthCallbackState>({
     isProcessing: false,
@@ -70,12 +73,15 @@ export function useOAuthCallback(): OAuthCallbackState {
         // Exchange code for tokens
         const tokenData = await exchangeCodeForTokens(code, oauthState);
 
-        // Store tokens
+        // Store tokens in localStorage
         localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokenData.access_token);
         localStorage.setItem(
           STORAGE_KEYS.EXPIRES_AT,
           tokenData.expires_at.toString()
         );
+
+        // Update the auth query so AuthProvider immediately reflects authenticated state
+        queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, tokenData);
 
         // Clear OAuth params from URL by navigating to clean root
         navigate({ to: "/", replace: true, search: {} });
@@ -95,7 +101,7 @@ export function useOAuthCallback(): OAuthCallbackState {
     }
 
     handleCallback();
-  }, [search, navigate]);
+  }, [search, navigate, queryClient]);
 
   return state;
 }
