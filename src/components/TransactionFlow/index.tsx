@@ -13,10 +13,10 @@ import {
 } from "../providers";
 import { OnboardingFlow } from "../OnboardingFlow";
 import { ServiceWorker } from "../ServiceWorker";
+import { Header } from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
 import type { TransactionType } from "../../lib/types";
-import { AccountCategoryPanel } from "./AccountCategoryPanel";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
@@ -409,40 +409,30 @@ export function TransactionFlow() {
   ];
 
   const activeStep = steps[step] ?? steps[0];
-  const isCategoryStep = activeStep.key === "step-type-category";
 
   return (
     <main className="h-full from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
       <ServiceWorker />
       {isOnboarded ? (
-        <div className="mx-auto flex h-full w-full max-w-md flex-col gap-6">
-          {isCategoryStep ? (
-            <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
-              <div className="min-h-0">
-                <AccountCategoryPanel
-                  onToast={handleToast}
-                  onResync={() => void handleResync()}
-                  isResyncing={isResyncing}
-                />
-              </div>
-              <div className="min-h-0">
-                <StepCard
-                  animationKey={activeStep.key}
-                  className={activeStep.className}
-                  containerClassName="h-full"
-                >
-                  {activeStep.content}
-                </StepCard>
-              </div>
-            </div>
-          ) : (
+        <div className="mx-auto flex h-full w-full max-w-md flex-col">
+          {/* Header with settings drawer */}
+          <Header
+            showSettings
+            onResync={() => void handleResync()}
+            isResyncing={isResyncing}
+            onToast={handleToast}
+          />
+
+          {/* Main content - full height */}
+          <div className="flex-1 min-h-0 pb-6">
             <StepCard
               animationKey={activeStep.key}
               className={activeStep.className}
+              containerClassName="h-full"
             >
               {activeStep.content}
             </StepCard>
-          )}
+          </div>
         </div>
       ) : (
         <OnboardingFlow onToast={handleToast} />
