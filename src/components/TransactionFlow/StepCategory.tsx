@@ -57,6 +57,7 @@ export function StepCategory({
 
   const handleCategorySelect = (value: string) => {
     form.setFieldValue("category", value);
+    form.setFieldValue("dateObject", new Date());
     setIsDrawerOpen(true);
   };
 
