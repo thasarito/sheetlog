@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Reorder } from "framer-motion";
 import { RefreshCw, Plus } from "lucide-react";
 import {
   Drawer,
@@ -10,6 +11,7 @@ import {
 } from "./ui/drawer";
 import { AnimatedTabs } from "./ui/AnimatedTabs";
 import { SwipeableListItem } from "./SwipeableListItem";
+import { ReorderableListItem } from "./ReorderableListItem";
 import { useOnboarding } from "../hooks/useOnboarding";
 import { useAccountMutations } from "../hooks/useAccountMutations";
 import { useCategoryMutations } from "../hooks/useCategoryMutations";
@@ -61,12 +63,14 @@ export function SettingsDrawer({
     addAccount,
     removeAccount,
     updateAccountMeta,
+    reorderAccounts,
     isSaving: isAccountSaving,
   } = useAccountMutations(onToast);
   const {
     addCategory,
     removeCategory,
     updateCategoryMeta,
+    reorderCategories,
     isSaving: isCategorySaving,
   } = useCategoryMutations(onToast);
   const isSaving = isAccountSaving || isCategorySaving;
@@ -87,6 +91,19 @@ export function SettingsDrawer({
     transfer: [],
   };
   const activeCategories = categories[activeCategoryType] ?? [];
+
+  // Local state for optimistic reorder UI
+  const [localAccounts, setLocalAccounts] = useState(accounts);
+  const [localCategories, setLocalCategories] = useState(activeCategories);
+
+  // Sync local state with server state
+  useEffect(() => {
+    setLocalAccounts(accounts);
+  }, [accounts]);
+
+  useEffect(() => {
+    setLocalCategories(activeCategories);
+  }, [activeCategories]);
 
   // Get current item being edited
   const currentEditItem =
@@ -166,6 +183,31 @@ export function SettingsDrawer({
     setEditingItem(null);
   }
 
+  // Handle account reorder persistence
+  function handleAccountReorderEnd() {
+    // Only persist if order actually changed
+    const orderChanged = accounts.some(
+      (a, i) => a.name !== localAccounts[i]?.name
+    );
+    if (orderChanged) {
+      reorderAccounts.mutate({ accounts: localAccounts });
+    }
+  }
+
+  // Handle category reorder persistence
+  function handleCategoryReorderEnd() {
+    // Only persist if order actually changed
+    const orderChanged = activeCategories.some(
+      (c, i) => c.name !== localCategories[i]?.name
+    );
+    if (orderChanged) {
+      reorderCategories.mutate({
+        categories: localCategories,
+        categoryType: activeCategoryType,
+      });
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────
@@ -229,48 +271,61 @@ export function SettingsDrawer({
           {/* ─────────────────────────────────────────────────────── */}
           <div className="flex-1 overflow-y-auto px-4 pb-2">
             {activeView === "accounts" ? (
-              <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-                {accounts.length > 0 ? (
-                  accounts.map((account) => (
-                    <SwipeableListItem
-                      key={account.name}
-                      onDelete={() =>
-                        removeAccount.mutate({ name: account.name })
-                      }
-                      disabled={isSaving}
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditingItem({
-                            type: "account",
-                            name: account.name,
-                          })
-                        }
-                        className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface"
+              <div className="overflow-hidden rounded-xl border border-border">
+                {localAccounts.length > 0 ? (
+                  <Reorder.Group
+                    axis="y"
+                    values={localAccounts}
+                    onReorder={setLocalAccounts}
+                    className="divide-y divide-border"
+                  >
+                    {localAccounts.map((account) => (
+                      <ReorderableListItem
+                        key={account.name}
+                        value={account}
+                        onDragEnd={handleAccountReorderEnd}
+                        disabled={isSaving || isAddingAccount}
                       >
-                        <div
-                          className="flex h-9 w-9 items-center justify-center rounded-full"
-                          style={{
-                            backgroundColor: `${
-                              account.color || DEFAULT_ACCOUNT_COLOR
-                            }20`,
-                          }}
+                        <SwipeableListItem
+                          onDelete={() =>
+                            removeAccount.mutate({ name: account.name })
+                          }
+                          disabled={isSaving}
                         >
-                          <DynamicIcon
-                            name={account.icon}
-                            className="h-5 w-5"
-                            style={{
-                              color: account.color || DEFAULT_ACCOUNT_COLOR,
-                            }}
-                          />
-                        </div>
-                        <span className="flex-1 text-sm font-medium text-foreground">
-                          {account.name}
-                        </span>
-                      </button>
-                    </SwipeableListItem>
-                  ))
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingItem({
+                                type: "account",
+                                name: account.name,
+                              })
+                            }
+                            className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface"
+                          >
+                            <div
+                              className="flex h-9 w-9 items-center justify-center rounded-full"
+                              style={{
+                                backgroundColor: `${
+                                  account.color || DEFAULT_ACCOUNT_COLOR
+                                }20`,
+                              }}
+                            >
+                              <DynamicIcon
+                                name={account.icon}
+                                className="h-5 w-5"
+                                style={{
+                                  color: account.color || DEFAULT_ACCOUNT_COLOR,
+                                }}
+                              />
+                            </div>
+                            <span className="flex-1 text-sm font-medium text-foreground">
+                              {account.name}
+                            </span>
+                          </button>
+                        </SwipeableListItem>
+                      </ReorderableListItem>
+                    ))}
+                  </Reorder.Group>
                 ) : (
                   <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                     No accounts yet
@@ -333,57 +388,70 @@ export function SettingsDrawer({
                 )}
               </div>
             ) : (
-              <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-                {activeCategories.length > 0 ? (
-                  activeCategories.map((category) => (
-                    <SwipeableListItem
-                      key={category.name}
-                      onDelete={() =>
-                        removeCategory.mutate({
-                          name: category.name,
-                          categoryType: activeCategoryType,
-                        })
-                      }
-                      disabled={isSaving}
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditingItem({
-                            type: "category",
-                            name: category.name,
-                          })
-                        }
-                        className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface"
+              <div className="overflow-hidden rounded-xl border border-border">
+                {localCategories.length > 0 ? (
+                  <Reorder.Group
+                    axis="y"
+                    values={localCategories}
+                    onReorder={setLocalCategories}
+                    className="divide-y divide-border"
+                  >
+                    {localCategories.map((category) => (
+                      <ReorderableListItem
+                        key={category.name}
+                        value={category}
+                        onDragEnd={handleCategoryReorderEnd}
+                        disabled={isSaving || isAddingCategory}
                       >
-                        <div
-                          className="flex h-9 w-9 items-center justify-center rounded-full"
-                          style={{
-                            backgroundColor: `${
-                              category.color ||
-                              DEFAULT_CATEGORY_COLORS[activeCategoryType]
-                            }20`,
-                          }}
+                        <SwipeableListItem
+                          onDelete={() =>
+                            removeCategory.mutate({
+                              name: category.name,
+                              categoryType: activeCategoryType,
+                            })
+                          }
+                          disabled={isSaving}
                         >
-                          <DynamicIcon
-                            name={category.icon}
-                            fallback={
-                              DEFAULT_CATEGORY_ICONS[activeCategoryType]
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingItem({
+                                type: "category",
+                                name: category.name,
+                              })
                             }
-                            className="h-5 w-5"
-                            style={{
-                              color:
-                                category.color ||
-                                DEFAULT_CATEGORY_COLORS[activeCategoryType],
-                            }}
-                          />
-                        </div>
-                        <span className="flex-1 text-sm font-medium text-foreground">
-                          {category.name}
-                        </span>
-                      </button>
-                    </SwipeableListItem>
-                  ))
+                            className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface"
+                          >
+                            <div
+                              className="flex h-9 w-9 items-center justify-center rounded-full"
+                              style={{
+                                backgroundColor: `${
+                                  category.color ||
+                                  DEFAULT_CATEGORY_COLORS[activeCategoryType]
+                                }20`,
+                              }}
+                            >
+                              <DynamicIcon
+                                name={category.icon}
+                                fallback={
+                                  DEFAULT_CATEGORY_ICONS[activeCategoryType]
+                                }
+                                className="h-5 w-5"
+                                style={{
+                                  color:
+                                    category.color ||
+                                    DEFAULT_CATEGORY_COLORS[activeCategoryType],
+                                }}
+                              />
+                            </div>
+                            <span className="flex-1 text-sm font-medium text-foreground">
+                              {category.name}
+                            </span>
+                          </button>
+                        </SwipeableListItem>
+                      </ReorderableListItem>
+                    ))}
+                  </Reorder.Group>
                 ) : (
                   <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                     No {activeCategoryType} categories yet

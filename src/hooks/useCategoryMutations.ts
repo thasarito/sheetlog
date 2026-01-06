@@ -16,6 +16,10 @@ type UpdateCategoryMetaParams = {
   icon?: string;
   color?: string;
 };
+type ReorderCategoriesParams = {
+  categories: CategoryItem[];
+  categoryType: TransactionType;
+};
 
 export function useCategoryMutations(onToast: (message: string) => void) {
   const queryClient = useQueryClient();
@@ -85,15 +89,31 @@ export function useCategoryMutations(onToast: (message: string) => void) {
     onError: () => onToast("Failed to update category"),
   });
 
+  const reorderCategories = useMutation({
+    mutationFn: async ({ categories, categoryType }: ReorderCategoriesParams) => {
+      const allCategories = getCurrentCategories();
+      return updateOnboarding({
+        categories: {
+          ...allCategories,
+          [categoryType]: categories,
+        },
+        categoriesConfirmed: true,
+      });
+    },
+    onError: () => onToast("Failed to reorder categories"),
+  });
+
   const isSaving =
     addCategory.isPending ||
     removeCategory.isPending ||
-    updateCategoryMeta.isPending;
+    updateCategoryMeta.isPending ||
+    reorderCategories.isPending;
 
   return {
     addCategory,
     removeCategory,
     updateCategoryMeta,
+    reorderCategories,
     isSaving,
   };
 }

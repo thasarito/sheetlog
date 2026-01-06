@@ -9,6 +9,7 @@ import {
 type AddAccountParams = { name: string };
 type RemoveAccountParams = { name: string };
 type UpdateAccountMetaParams = { name: string; icon?: string; color?: string };
+type ReorderAccountsParams = { accounts: AccountItem[] };
 
 export function useAccountMutations(onToast: (message: string) => void) {
   const queryClient = useQueryClient();
@@ -66,15 +67,27 @@ export function useAccountMutations(onToast: (message: string) => void) {
     onError: () => onToast("Failed to update account"),
   });
 
+  const reorderAccounts = useMutation({
+    mutationFn: async ({ accounts }: ReorderAccountsParams) => {
+      return updateOnboarding({
+        accounts,
+        accountsConfirmed: true,
+      });
+    },
+    onError: () => onToast("Failed to reorder accounts"),
+  });
+
   const isSaving =
     addAccount.isPending ||
     removeAccount.isPending ||
-    updateAccountMeta.isPending;
+    updateAccountMeta.isPending ||
+    reorderAccounts.isPending;
 
   return {
     addAccount,
     removeAccount,
     updateAccountMeta,
+    reorderAccounts,
     isSaving,
   };
 }
