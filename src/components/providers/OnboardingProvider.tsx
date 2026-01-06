@@ -1,26 +1,15 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-} from "react";
-import type { OnboardingState } from "../../lib/types";
-import {
-  getDefaultOnboardingState,
-  getOnboardingState,
-} from "../../lib/settings";
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { isGoogleAuthError } from '../../lib/googleErrors';
 import {
   hydrateOnboardingFromSheet,
   updateOnboarding as persistOnboarding,
-} from "../../lib/onboarding";
-import { isGoogleAuthError } from "../../lib/googleErrors";
-import { useAuth } from "./auth";
-import { useConnectivity } from "./ConnectivityContext";
-import {
-  OnboardingContext,
-  type OnboardingContextValue,
-} from "./OnboardingContext";
+} from '../../lib/onboarding';
+import { getDefaultOnboardingState, getOnboardingState } from '../../lib/settings';
+import type { OnboardingState } from '../../lib/types';
+import { useAuth } from './auth';
+import { useConnectivity } from './ConnectivityContext';
+import { OnboardingContext, type OnboardingContextValue } from './OnboardingContext';
 
 type OnboardingStore = {
   onboarding: OnboardingState;
@@ -28,28 +17,21 @@ type OnboardingStore = {
 };
 
 type OnboardingAction =
-  | { type: "load"; onboarding: OnboardingState }
-  | { type: "update"; onboarding: OnboardingState };
+  | { type: 'load'; onboarding: OnboardingState }
+  | { type: 'update'; onboarding: OnboardingState };
 
-function onboardingReducer(
-  state: OnboardingStore,
-  action: OnboardingAction
-): OnboardingStore {
+function onboardingReducer(state: OnboardingStore, action: OnboardingAction): OnboardingStore {
   switch (action.type) {
-    case "load":
+    case 'load':
       return { onboarding: action.onboarding, hasLoaded: true };
-    case "update":
+    case 'update':
       return { ...state, onboarding: action.onboarding };
     default:
       return state;
   }
 }
 
-export function OnboardingProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const { accessToken, sheetId, clearAuth } = useAuth();
   const { isOnline } = useConnectivity();
   const [store, dispatch] = useReducer(onboardingReducer, undefined, () => ({
@@ -67,7 +49,7 @@ export function OnboardingProvider({
     async function loadStored() {
       const stored = await getOnboardingState();
       if (!cancelled) {
-        dispatch({ type: "load", onboarding: stored });
+        dispatch({ type: 'load', onboarding: stored });
       }
     }
     void loadStored();
@@ -85,20 +67,16 @@ export function OnboardingProvider({
     let cancelled = false;
     async function hydrate() {
       try {
-        const merged = await hydrateOnboardingFromSheet(
-          token,
-          sheet,
-          onboardingRef.current
-        );
+        const merged = await hydrateOnboardingFromSheet(token, sheet, onboardingRef.current);
         if (!cancelled && merged.changed) {
-          dispatch({ type: "update", onboarding: merged.next });
+          dispatch({ type: 'update', onboarding: merged.next });
         }
       } catch (error) {
-        console.error("Onboarding hydration error:", error);
+        console.error('Onboarding hydration error:', error);
         if (
           isGoogleAuthError(error) ||
-          (error instanceof Error && error.message.includes("401")) ||
-          (error instanceof Error && error.message.includes("Unauthorized"))
+          (error instanceof Error && error.message.includes('401')) ||
+          (error instanceof Error && error.message.includes('Unauthorized'))
         ) {
           clearAuth();
         }
@@ -120,7 +98,7 @@ export function OnboardingProvider({
           sheetId,
           isOnline,
         });
-        dispatch({ type: "update", onboarding: nextState });
+        dispatch({ type: 'update', onboarding: nextState });
         return nextState;
       } catch (error) {
         if (isGoogleAuthError(error)) {
@@ -129,25 +107,22 @@ export function OnboardingProvider({
         throw error;
       }
     },
-    [accessToken, sheetId, isOnline, clearAuth]
+    [accessToken, sheetId, isOnline, clearAuth],
   );
 
   const refreshOnboarding = useCallback(async (): Promise<boolean> => {
     if (!accessToken || !sheetId) {
-      throw new Error("Connect to sync accounts and categories");
+      throw new Error('Connect to sync accounts and categories');
     }
     if (!isOnline) {
-      throw new Error("Go online to sync accounts and categories");
+      throw new Error('Go online to sync accounts and categories');
     }
     try {
-      const merged = await hydrateOnboardingFromSheet(
-        accessToken,
-        sheetId,
-        onboardingRef.current,
-        { force: true }
-      );
+      const merged = await hydrateOnboardingFromSheet(accessToken, sheetId, onboardingRef.current, {
+        force: true,
+      });
       if (merged.changed) {
-        dispatch({ type: "update", onboarding: merged.next });
+        dispatch({ type: 'update', onboarding: merged.next });
       }
       return merged.changed;
     } catch (error) {
@@ -164,12 +139,8 @@ export function OnboardingProvider({
       updateOnboarding,
       refreshOnboarding,
     }),
-    [store.onboarding, updateOnboarding, refreshOnboarding]
+    [store.onboarding, updateOnboarding, refreshOnboarding],
   );
 
-  return (
-    <OnboardingContext.Provider value={value}>
-      {children}
-    </OnboardingContext.Provider>
-  );
+  return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
 }

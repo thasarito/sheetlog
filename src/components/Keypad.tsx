@@ -1,5 +1,6 @@
 'use client';
 
+import { Delete } from 'lucide-react';
 import React from 'react';
 
 interface KeypadProps {
@@ -27,16 +28,20 @@ export function Keypad({ value, onChange }: KeypadProps) {
 
   return (
     <div className="grid grid-cols-3 gap-3">
-      {KEYS.map((key) => (
-        <button
-          key={key}
-          type="button"
-          className="h-14 rounded-2xl bg-card text-lg font-semibold text-foreground transition hover:bg-surface"
-          onClick={() => handleKey(key)}
-        >
-          {key}
-        </button>
-      ))}
+      {KEYS.map((key) => {
+        const isDelete = key === 'DEL';
+        return (
+          <button
+            key={key}
+            type="button"
+            aria-label={isDelete ? 'Delete' : key === '.' ? 'Decimal separator' : key}
+            className="flex h-14 items-center justify-center rounded-2xl bg-card text-lg font-semibold text-foreground transition active:scale-95 active:bg-surface-2 hover:bg-surface"
+            onClick={() => handleKey(key)}
+          >
+            {isDelete ? <Delete className="h-6 w-6" /> : key}
+          </button>
+        );
+      })}
     </div>
   );
 }

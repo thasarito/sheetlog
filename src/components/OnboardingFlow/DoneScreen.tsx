@@ -1,7 +1,7 @@
-import React from "react";
-import { Check } from "lucide-react";
-import { OnboardingLayout } from "./OnboardingLayout";
-import type { ScreenMeta } from "./types";
+import { Check } from 'lucide-react';
+import React from 'react';
+import { OnboardingLayout } from './OnboardingLayout';
+import type { ScreenMeta } from './types';
 
 type DoneScreenProps = {
   meta: ScreenMeta;
@@ -27,9 +27,7 @@ export function DoneScreen({ meta }: DoneScreenProps) {
 
         <div className="space-y-2 max-w-xs">
           <h3 className="text-xl font-bold tracking-tight">Setup Complete</h3>
-          <p className="text-muted-foreground">
-            Your Google Sheet is connected and configured.
-          </p>
+          <p className="text-muted-foreground">Your Google Sheet is connected and configured.</p>
         </div>
       </div>
       {/* No footer button needed really, or maybe a "Go to Dashboard" if handled here */}

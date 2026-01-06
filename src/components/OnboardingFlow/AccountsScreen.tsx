@@ -1,8 +1,8 @@
-import React from "react";
-import { Wallet, X, Plus } from "lucide-react";
-import { OnboardingLayout } from "./OnboardingLayout";
-import type { ScreenMeta } from "./types";
-import { cn } from "../../lib/utils";
+import { Plus, Wallet, X } from 'lucide-react';
+import React from 'react';
+import { cn } from '../../lib/utils';
+import { OnboardingLayout } from './OnboardingLayout';
+import type { ScreenMeta } from './types';
 
 type AccountsScreenProps = {
   meta: ScreenMeta;
@@ -41,7 +41,7 @@ export function AccountsScreen({
             value={accountInput}
             onChange={(event) => onAccountInputChange(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void onAddAccount();
+              if (event.key === 'Enter') void onAddAccount();
             }}
           />
           <button
@@ -94,7 +94,7 @@ export function AccountsScreen({
           onClick={onContinue}
           disabled={isSaving || accounts.length === 0}
         >
-          {isSaving ? "Saving..." : "Continue"}
+          {isSaving ? 'Saving...' : 'Continue'}
         </button>
       </div>
     </OnboardingLayout>

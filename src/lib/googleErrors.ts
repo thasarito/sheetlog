@@ -19,7 +19,7 @@ export function mapGoogleSyncError(error: unknown): GoogleErrorInfo {
         message: 'Reconnect to Google to keep syncing.',
         shouldClearAuth: true,
         retryable: false,
-        status
+        status,
       };
     }
     if (status === 404) {
@@ -27,7 +27,7 @@ export function mapGoogleSyncError(error: unknown): GoogleErrorInfo {
         message: 'Sheet not found. Reconnect to create a new one.',
         shouldClearAuth: false,
         retryable: false,
-        status
+        status,
       };
     }
     if (status === 429 || status >= 500) {
@@ -35,14 +35,14 @@ export function mapGoogleSyncError(error: unknown): GoogleErrorInfo {
         message: 'Sync paused due to Google service issues. We will retry automatically.',
         shouldClearAuth: false,
         retryable: true,
-        status
+        status,
       };
     }
     return {
       message: error.message || 'Google API error',
       shouldClearAuth: false,
       retryable: false,
-      status
+      status,
     };
   }
 
@@ -51,7 +51,7 @@ export function mapGoogleSyncError(error: unknown): GoogleErrorInfo {
       message: 'Network error while syncing.',
       shouldClearAuth: false,
       retryable: true,
-      status: null
+      status: null,
     };
   }
 
@@ -60,7 +60,7 @@ export function mapGoogleSyncError(error: unknown): GoogleErrorInfo {
       message: error.message || 'Sync failed.',
       shouldClearAuth: false,
       retryable: false,
-      status: null
+      status: null,
     };
   }
 
@@ -68,6 +68,6 @@ export function mapGoogleSyncError(error: unknown): GoogleErrorInfo {
     message: 'Sync failed.',
     shouldClearAuth: false,
     retryable: false,
-    status: null
+    status: null,
   };
 }

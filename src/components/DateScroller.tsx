@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { format, addDays, isSameDay, addMonths, subMonths } from "date-fns";
+import { addDays, addMonths, format, isSameDay, subMonths } from 'date-fns';
+import { AnimatePresence, motion } from 'framer-motion';
+import type React from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 interface DateScrollerProps {
   value: Date;
@@ -11,18 +12,13 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
   const today = new Date();
   const weekDates = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(value, i - 3)),
-    [value]
+    [value],
   );
-  const weekKey = format(weekDates[0], "yyyy-MM-dd");
+  const weekKey = format(weekDates[0], 'yyyy-MM-dd');
   const previousValueRef = useRef(value);
   const valueTime = value.getTime();
   const previousValueTime = previousValueRef.current.getTime();
-  const direction =
-    valueTime === previousValueTime
-      ? 0
-      : valueTime > previousValueTime
-      ? 1
-      : -1;
+  const direction = valueTime === previousValueTime ? 0 : valueTime > previousValueTime ? 1 : -1;
   const isTodaySelected = isSameDay(value, today);
 
   useEffect(() => {
@@ -36,7 +32,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
 
   const handleDragEnd = (
     _event: MouseEvent | TouchEvent | PointerEvent,
-    info: { offset: { x: number } }
+    info: { offset: { x: number } },
   ) => {
     const swipeThreshold = 60;
     if (info.offset.x < -swipeThreshold) {
@@ -51,21 +47,17 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
   const handleToday = () => {
     if (isTodaySelected) return;
     const nextDate = new Date(value);
-    nextDate.setFullYear(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
+    nextDate.setFullYear(today.getFullYear(), today.getMonth(), today.getDate());
     onChange(nextDate);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "ArrowLeft") {
+    if (event.key === 'ArrowLeft') {
       event.preventDefault();
       onChange(addDays(value, -1));
       return;
     }
-    if (event.key === "ArrowRight") {
+    if (event.key === 'ArrowRight') {
       event.preventDefault();
       onChange(addDays(value, 1));
     }
@@ -96,11 +88,8 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           ←
         </motion.button>
         <div className="flex items-center justify-center gap-2">
-          <div
-            className="text-sm font-semibold text-foreground"
-            aria-live="polite"
-          >
-            {format(value, "MMMM yyyy")}
+          <div className="text-sm font-semibold text-foreground" aria-live="polite">
+            {format(value, 'MMMM yyyy')}
           </div>
           <motion.button
             type="button"
@@ -108,8 +97,8 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
             disabled={isTodaySelected}
             className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-60 ${
               isTodaySelected
-                ? "border-border text-muted-foreground"
-                : "border-primary/30 text-primary hover:border-primary/50"
+                ? 'border-border text-muted-foreground'
+                : 'border-primary/30 text-primary hover:border-primary/50'
             }`}
             whileTap={{ scale: 0.96 }}
           >
@@ -127,10 +116,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
         </motion.button>
       </div>
 
-      <div
-        className="overflow-hidden rounded-2xl bg-card p-1"
-        onKeyDown={handleKeyDown}
-      >
+      <div className="overflow-hidden rounded-2xl bg-card p-1" onKeyDown={handleKeyDown}>
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           <motion.div
             key={weekKey}
@@ -139,20 +125,20 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.2}
             onDragEnd={handleDragEnd}
             className="grid grid-cols-7 gap-2 cursor-grab select-none active:cursor-grabbing"
-            style={{ touchAction: "pan-y" }}
+            style={{ touchAction: 'pan-y' }}
             role="list"
             aria-label="Select date"
           >
             {weekDates.map((date) => {
               const isSelected = isSameDay(date, value);
               const isToday = isSameDay(date, today);
-              const dateKey = format(date, "yyyy-MM-dd");
+              const dateKey = format(date, 'yyyy-MM-dd');
 
               return (
                 <motion.button
@@ -161,38 +147,36 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
                   onClick={() => onChange(date)}
                   className={`relative flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer ${
                     isSelected
-                      ? "border-primary/60 text-primary-foreground"
-                      : "bg-card border-border text-muted-foreground hover:border-border/70"
+                      ? 'border-primary/60 text-primary-foreground'
+                      : 'bg-card border-border text-muted-foreground hover:border-border/70'
                   }`}
                   whileTap={{ scale: 0.96 }}
                   aria-pressed={isSelected}
-                  aria-label={format(date, "EEEE, MMMM d")}
-                  aria-current={isToday ? "date" : undefined}
+                  aria-label={format(date, 'EEEE, MMMM d')}
+                  aria-current={isToday ? 'date' : undefined}
                 >
                   {isSelected ? (
                     <motion.div
                       layoutId="activeDate"
                       className="absolute inset-0 rounded-xl bg-primary"
                       transition={{
-                        type: "spring",
+                        type: 'spring',
                         stiffness: 380,
                         damping: 30,
                       }}
                     />
                   ) : null}
                   <span className="relative z-10 text-[10px] uppercase tracking-wide opacity-70">
-                    {format(date, "EEE")}
+                    {format(date, 'EEE')}
                   </span>
-                  <span className="relative z-10 text-sm font-semibold">
-                    {format(date, "d")}
-                  </span>
+                  <span className="relative z-10 text-sm font-semibold">{format(date, 'd')}</span>
                   <span
                     className={`relative z-10 mt-1 h-1 w-1 rounded-full ${
                       isToday
                         ? isSelected
-                          ? "bg-primary-foreground"
-                          : "bg-primary"
-                        : "bg-transparent"
+                          ? 'bg-primary-foreground'
+                          : 'bg-primary'
+                        : 'bg-transparent'
                     }`}
                     aria-hidden="true"
                   />

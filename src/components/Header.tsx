@@ -1,4 +1,4 @@
-import { AuthUserProfile } from "./AuthUserProfile";
+import { AuthUserProfile } from './AuthUserProfile';
 
 export function Header() {
   return (
