@@ -8,9 +8,11 @@ import React, {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Download } from "lucide-react";
-import { useAuth, useOnboarding } from "../providers";
+import { useAuth } from "../providers";
+import { useOnboarding } from "../../hooks/useOnboarding";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
-import type { TransactionType } from "../../lib/types";
+import type { TransactionType, AccountItem } from "../../lib/types";
+import { DEFAULT_ACCOUNT_ICON, DEFAULT_ACCOUNT_COLOR } from "../../lib/icons";
 import { AccountsScreen } from "./AccountsScreen";
 import { CategoriesScreen } from "./CategoriesScreen";
 import { ConnectScreen } from "./ConnectScreen";
@@ -252,15 +254,20 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
       return;
     }
     const exists = onboarding.accounts.some(
-      (item) => item.toLowerCase() === nextValue.toLowerCase()
+      (item) => item.name.toLowerCase() === nextValue.toLowerCase()
     );
     if (exists) {
       onToast("Account already added");
       return;
     }
     try {
+      const newAccount: AccountItem = {
+        name: nextValue,
+        icon: DEFAULT_ACCOUNT_ICON,
+        color: DEFAULT_ACCOUNT_COLOR,
+      };
       await updateOnboarding({
-        accounts: [...onboarding.accounts, nextValue],
+        accounts: [...onboarding.accounts, newAccount],
       });
       setAccountInput("");
     } catch {
@@ -269,7 +276,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   }
 
   async function removeAccount(name: string) {
-    const next = onboarding.accounts.filter((item) => item !== name);
+    const next = onboarding.accounts.filter((item) => item.name !== name);
     try {
       await updateOnboarding({ accounts: next });
     } catch {

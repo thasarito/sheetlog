@@ -1,13 +1,15 @@
 import React from "react";
-import { Wallet, X, Plus } from "lucide-react";
+import { X, Plus } from "lucide-react";
 import { OnboardingLayout } from "./OnboardingLayout";
+import { DynamicIcon } from "../DynamicIcon";
 import type { ScreenMeta } from "./types";
-import { cn } from "../../lib/utils";
+import type { AccountItem } from "../../lib/types";
+import { DEFAULT_ACCOUNT_ICON, DEFAULT_ACCOUNT_COLOR } from "../../lib/icons";
 
 type AccountsScreenProps = {
   meta: ScreenMeta;
   accountInput: string;
-  accounts: string[];
+  accounts: AccountItem[];
   isSaving: boolean;
   onAccountInputChange: (value: string) => void;
   onAddAccount: () => void;
@@ -56,7 +58,7 @@ export function AccountsScreen({
 
         {accounts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground bg-muted/30 rounded-3xl border border-dashed border-border/60">
-            <Wallet className="w-12 h-12 mb-3 opacity-20" />
+            <DynamicIcon name="Wallet" className="w-12 h-12 mb-3 opacity-20" />
             <p className="text-sm">No accounts added yet.</p>
             <p className="text-xs opacity-70">Add at least one to continue.</p>
           </div>
@@ -64,20 +66,28 @@ export function AccountsScreen({
           <div className="space-y-3">
             {accounts.map((account) => (
               <div
-                key={account}
+                key={account.name}
                 className="flex items-center justify-between p-4 rounded-2xl bg-card border border-border/60 transition hover:border-primary/30 animate-in fade-in slide-in-from-bottom-2"
               >
                 <div className="flex items-center gap-4">
-                  <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-full">
-                    <Wallet className="w-5 h-5" />
+                  <div
+                    className="p-2.5 rounded-full"
+                    style={{ backgroundColor: `${account.color || DEFAULT_ACCOUNT_COLOR}20` }}
+                  >
+                    <DynamicIcon
+                      name={account.icon}
+                      fallback={DEFAULT_ACCOUNT_ICON}
+                      className="w-5 h-5"
+                      style={{ color: account.color || DEFAULT_ACCOUNT_COLOR }}
+                    />
                   </div>
-                  <span className="font-semibold text-base">{account}</span>
+                  <span className="font-semibold text-base">{account.name}</span>
                 </div>
                 <button
                   type="button"
                   className="p-2 -mr-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors"
-                  onClick={() => onRemoveAccount(account)}
-                  aria-label={`Remove ${account}`}
+                  onClick={() => onRemoveAccount(account.name)}
+                  aria-label={`Remove ${account.name}`}
                 >
                   <X className="w-5 h-5" />
                 </button>

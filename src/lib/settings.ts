@@ -1,6 +1,14 @@
 import { db } from './db';
 import { DEFAULT_CATEGORIES } from './categories';
-import type { OnboardingState, RecentCategories } from './types';
+import type { OnboardingState, RecentCategories, AccountItem, CategoryItem, CategoryConfigWithMeta, TransactionType } from './types';
+import {
+  SUGGESTED_CATEGORY_ICONS,
+  SUGGESTED_CATEGORY_COLORS,
+  DEFAULT_CATEGORY_ICONS,
+  DEFAULT_CATEGORY_COLORS,
+  DEFAULT_ACCOUNT_ICON,
+  DEFAULT_ACCOUNT_COLOR,
+} from './icons';
 
 const DEFAULT_RECENTS: RecentCategories = {
   expense: [],
@@ -15,6 +23,44 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   categories: DEFAULT_CATEGORIES,
   categoriesConfirmed: false
 };
+
+// Migration helpers for legacy string[] data
+function migrateAccounts(accounts: unknown[]): AccountItem[] {
+  if (accounts.length === 0) return [];
+  // Check if already migrated (first item is an object with 'name')
+  if (typeof accounts[0] === 'object' && accounts[0] !== null && 'name' in accounts[0]) {
+    return accounts as AccountItem[];
+  }
+  // Migrate from string[]
+  return (accounts as string[]).map(name => ({
+    name,
+    icon: DEFAULT_ACCOUNT_ICON,
+    color: DEFAULT_ACCOUNT_COLOR,
+  }));
+}
+
+function migrateCategories(categories: Record<string, unknown[]>, type: TransactionType): CategoryItem[] {
+  const items = categories[type];
+  if (!items || items.length === 0) return [];
+  // Check if already migrated
+  if (typeof items[0] === 'object' && items[0] !== null && 'name' in items[0]) {
+    return items as CategoryItem[];
+  }
+  // Migrate from string[]
+  return (items as string[]).map(name => ({
+    name,
+    icon: SUGGESTED_CATEGORY_ICONS[name] ?? DEFAULT_CATEGORY_ICONS[type],
+    color: SUGGESTED_CATEGORY_COLORS[name] ?? DEFAULT_CATEGORY_COLORS[type],
+  }));
+}
+
+function migrateCategoryConfig(categories: Record<string, unknown[]>): CategoryConfigWithMeta {
+  return {
+    expense: migrateCategories(categories, 'expense'),
+    income: migrateCategories(categories, 'income'),
+    transfer: migrateCategories(categories, 'transfer'),
+  };
+}
 
 export async function getRecentCategories(): Promise<RecentCategories> {
   const record = await db.settings.get('recentCategories');
@@ -63,15 +109,24 @@ export async function getOnboardingState(): Promise<OnboardingState> {
     return getDefaultOnboardingState();
   }
   try {
-    const parsed = JSON.parse(record.value) as Partial<OnboardingState>;
+    const parsed = JSON.parse(record.value) as Record<string, unknown>;
     const defaults = getDefaultOnboardingState();
+
+    // Migrate legacy data
+    const accounts = Array.isArray(parsed.accounts)
+      ? migrateAccounts(parsed.accounts)
+      : defaults.accounts;
+
+    const categories = parsed.categories && typeof parsed.categories === 'object'
+      ? migrateCategoryConfig(parsed.categories as Record<string, unknown[]>)
+      : defaults.categories;
+
     return {
-      ...defaults,
-      ...parsed,
-      categories: {
-        ...defaults.categories,
-        ...(parsed.categories ?? {})
-      }
+      sheetFolderId: typeof parsed.sheetFolderId === 'string' ? parsed.sheetFolderId : defaults.sheetFolderId,
+      accounts,
+      accountsConfirmed: typeof parsed.accountsConfirmed === 'boolean' ? parsed.accountsConfirmed : defaults.accountsConfirmed,
+      categories,
+      categoriesConfirmed: typeof parsed.categoriesConfirmed === 'boolean' ? parsed.categoriesConfirmed : defaults.categoriesConfirmed,
     };
   } catch {
     return getDefaultOnboardingState();

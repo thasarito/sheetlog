@@ -1,19 +1,25 @@
 import React, { useState } from "react";
-import { Tags, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { OnboardingLayout } from "./OnboardingLayout";
-import type { CategoryConfig } from "../../lib/types";
+import type { CategoryConfigWithMeta, CategoryItem, TransactionType } from "../../lib/types";
 import type { ScreenMeta } from "./types";
 import { cn } from "../../lib/utils";
+import {
+  SUGGESTED_CATEGORY_ICONS,
+  SUGGESTED_CATEGORY_COLORS,
+  DEFAULT_CATEGORY_ICONS,
+  DEFAULT_CATEGORY_COLORS,
+} from "../../lib/icons";
 
 type CategoriesScreenProps = {
   meta: ScreenMeta;
-  categories: CategoryConfig;
+  categories: CategoryConfigWithMeta;
   isSaving: boolean;
-  onChange: (categories: CategoryConfig) => void;
+  onChange: (categories: CategoryConfigWithMeta) => void;
   onContinue: () => void;
 };
 
-type TabType = keyof CategoryConfig;
+type TabType = TransactionType;
 
 export function CategoriesScreen({
   meta,
@@ -38,19 +44,25 @@ export function CategoriesScreen({
   function handleAdd(type: TabType) {
     const val = newInputs[type].trim();
     if (!val) return;
-    if (categories[type].includes(val)) return;
+    if (categories[type].some((c) => c.name.toLowerCase() === val.toLowerCase())) return;
+
+    const newCategory: CategoryItem = {
+      name: val,
+      icon: SUGGESTED_CATEGORY_ICONS[val] || DEFAULT_CATEGORY_ICONS[type],
+      color: SUGGESTED_CATEGORY_COLORS[val] || DEFAULT_CATEGORY_COLORS[type],
+    };
 
     onChange({
       ...categories,
-      [type]: [...categories[type], val],
+      [type]: [...categories[type], newCategory],
     });
     setNewInputs((prev) => ({ ...prev, [type]: "" }));
   }
 
-  function handleRemove(type: TabType, cat: string) {
+  function handleRemove(type: TabType, name: string) {
     onChange({
       ...categories,
-      [type]: categories[type].filter((c) => c !== cat),
+      [type]: categories[type].filter((c) => c.name !== name),
     });
   }
 
@@ -110,7 +122,7 @@ export function CategoriesScreen({
           <div className="flex flex-wrap gap-2 content-start pb-4">
             {categories[activeTab].map((cat) => (
               <div
-                key={cat}
+                key={cat.name}
                 className="animate-in fade-in zoom-in-95 duration-200"
               >
                 <span
@@ -125,11 +137,11 @@ export function CategoriesScreen({
                       "hover:border-blue-200 hover:bg-blue-50/50"
                   )}
                 >
-                  {cat}
+                  {cat.name}
                   <button
                     type="button"
                     className="ml-1.5 p-0.5 rounded-full text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition"
-                    onClick={() => handleRemove(activeTab, cat)}
+                    onClick={() => handleRemove(activeTab, cat.name)}
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>

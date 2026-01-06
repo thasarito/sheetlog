@@ -1,13 +1,13 @@
-import type { CategoryConfig, OnboardingState } from "./types";
+import type { AccountItem, CategoryItem, CategoryConfigWithMeta, OnboardingState } from "./types";
 import { setOnboardingState } from "./settings";
 import { readOnboardingConfig, writeOnboardingConfig } from "./google";
 
 type OnboardingSheetConfig = {
-  accounts?: string[];
-  categories?: CategoryConfig;
+  accounts?: AccountItem[];
+  categories?: CategoryConfigWithMeta;
 };
 
-function hasAllCategories(categories: CategoryConfig): boolean {
+function hasAllCategories(categories: CategoryConfigWithMeta): boolean {
   return (
     categories.expense.length > 0 &&
     categories.income.length > 0 &&
@@ -15,7 +15,7 @@ function hasAllCategories(categories: CategoryConfig): boolean {
   );
 }
 
-function hasAnyCategories(categories: CategoryConfig): boolean {
+function hasAnyCategories(categories: CategoryConfigWithMeta): boolean {
   return (
     categories.expense.length > 0 ||
     categories.income.length > 0 ||
@@ -23,29 +23,31 @@ function hasAnyCategories(categories: CategoryConfig): boolean {
   );
 }
 
-function normalizeStringList(values: string[]): string[] {
+function normalizeAccountList(accounts: AccountItem[]): AccountItem[] {
   const seen = new Set<string>();
-  const next: string[] = [];
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
+  return accounts.filter((item) => {
+    const key = item.name.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
     seen.add(key);
-    next.push(trimmed);
-  }
-  return next;
+    return true;
+  });
 }
 
-function normalizeCategories(categories: CategoryConfig): CategoryConfig {
+function normalizeCategoryList(items: CategoryItem[]): CategoryItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.name.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeCategories(categories: CategoryConfigWithMeta): CategoryConfigWithMeta {
   return {
-    expense: normalizeStringList(categories.expense),
-    income: normalizeStringList(categories.income),
-    transfer: normalizeStringList(categories.transfer),
+    expense: normalizeCategoryList(categories.expense),
+    income: normalizeCategoryList(categories.income),
+    transfer: normalizeCategoryList(categories.transfer),
   };
 }
 
@@ -123,12 +125,12 @@ export async function updateOnboarding(params: {
       nextState.categoriesConfirmed;
 
     const updatesToSheet: {
-      accounts?: string[];
-      categories?: CategoryConfig;
+      accounts?: AccountItem[];
+      categories?: CategoryConfigWithMeta;
     } = {};
 
     if (shouldPersistAccounts) {
-      const normalizedAccounts = normalizeStringList(nextState.accounts);
+      const normalizedAccounts = normalizeAccountList(nextState.accounts);
       if (normalizedAccounts.length > 0) {
         updatesToSheet.accounts = normalizedAccounts;
       }

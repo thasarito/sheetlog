@@ -36,10 +36,24 @@ export interface RecentCategories {
 
 export type CategoryConfig = Record<TransactionType, string[]>;
 
+export interface AccountItem {
+  name: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface CategoryItem {
+  name: string;
+  icon?: string;
+  color?: string;
+}
+
+export type CategoryConfigWithMeta = Record<TransactionType, CategoryItem[]>;
+
 export interface OnboardingState {
   sheetFolderId: string | null;
-  accounts: string[];
+  accounts: AccountItem[];
   accountsConfirmed: boolean;
-  categories: CategoryConfig;
+  categories: CategoryConfigWithMeta;
   categoriesConfirmed: boolean;
 }

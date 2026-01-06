@@ -1,4 +1,12 @@
-import type { CategoryConfig, TransactionRecord } from "./types";
+import type { CategoryConfigWithMeta, TransactionRecord, AccountItem, CategoryItem } from "./types";
+import {
+  SUGGESTED_CATEGORY_ICONS,
+  SUGGESTED_CATEGORY_COLORS,
+  DEFAULT_CATEGORY_ICONS,
+  DEFAULT_CATEGORY_COLORS,
+  DEFAULT_ACCOUNT_ICON,
+  DEFAULT_ACCOUNT_COLOR,
+} from "./icons";
 
 const SHEET_NAME = "SheetLog_DB";
 const TAB_NAME = "Transactions";
@@ -17,8 +25,8 @@ const HEADER_ROW = [
   "For",
   "Id",
 ];
-const ACCOUNT_HEADER_ROW = ["Account"];
-const CATEGORY_HEADER_ROW = ["Type", "Category"];
+const ACCOUNT_HEADER_ROW = ["Account", "Icon", "Color"];
+const CATEGORY_HEADER_ROW = ["Type", "Category", "Icon", "Color"];
 
 export class GoogleApiError extends Error {
   status: number;
@@ -191,7 +199,7 @@ async function ensureAccountsHeaders(
   accessToken: string,
   spreadsheetId: string
 ): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${ACCOUNT_TAB}!A1:A1?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${ACCOUNT_TAB}!A1:C1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
     body: JSON.stringify({ values: [ACCOUNT_HEADER_ROW] }),
@@ -202,7 +210,7 @@ async function ensureCategoriesHeaders(
   accessToken: string,
   spreadsheetId: string
 ): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${CATEGORY_TAB}!A1:B1?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${CATEGORY_TAB}!A1:D1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
     body: JSON.stringify({ values: [CATEGORY_HEADER_ROW] }),
@@ -407,25 +415,33 @@ function normalizeStringList(values: string[]): string[] {
   return next;
 }
 
-function normalizeCategoryConfig(categories: CategoryConfig): CategoryConfig {
-  return {
-    expense: normalizeStringList(categories.expense),
-    income: normalizeStringList(categories.income),
-    transfer: normalizeStringList(categories.transfer),
-  };
+function parseAccounts(rows: string[][]): AccountItem[] | null {
+  const items: AccountItem[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const name = row[0]?.trim();
+    if (!name) continue;
+
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const icon = row[1]?.trim() || undefined;
+    const color = row[2]?.trim() || undefined;
+
+    items.push({
+      name,
+      icon: icon || DEFAULT_ACCOUNT_ICON,
+      color: color || DEFAULT_ACCOUNT_COLOR,
+    });
+  }
+
+  return items.length > 0 ? items : null;
 }
 
-function parseAccounts(rows: string[][]): string[] | null {
-  const values = rows
-    .map((row) => row[0] ?? "")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const normalized = normalizeStringList(values);
-  return normalized.length > 0 ? normalized : null;
-}
-
-function parseCategories(rows: string[][]): CategoryConfig | null {
-  const result: CategoryConfig = {
+function parseCategories(rows: string[][]): CategoryConfigWithMeta | null {
+  const result: CategoryConfigWithMeta = {
     expense: [],
     income: [],
     transfer: [],
@@ -438,20 +454,28 @@ function parseCategories(rows: string[][]): CategoryConfig | null {
 
   for (const row of rows) {
     const rawType = row[0]?.trim().toLowerCase();
-    const rawValue = row[1]?.trim();
-    if (!rawType || !rawValue) {
+    const name = row[1]?.trim();
+    if (!rawType || !name) {
       continue;
     }
     if (!CATEGORY_TYPES.includes(rawType as CategoryType)) {
       continue;
     }
     const type = rawType as CategoryType;
-    const key = rawValue.toLowerCase();
+    const key = name.toLowerCase();
     if (seen[type].has(key)) {
       continue;
     }
     seen[type].add(key);
-    result[type].push(rawValue);
+
+    const icon = row[2]?.trim() || undefined;
+    const color = row[3]?.trim() || undefined;
+
+    result[type].push({
+      name,
+      icon: icon || SUGGESTED_CATEGORY_ICONS[name] || DEFAULT_CATEGORY_ICONS[type],
+      color: color || SUGGESTED_CATEGORY_COLORS[name] || DEFAULT_CATEGORY_COLORS[type],
+    });
   }
 
   const hasAny =
@@ -476,12 +500,12 @@ async function clearRange(
 export async function readOnboardingConfig(
   accessToken: string,
   spreadsheetId: string
-): Promise<{ accounts?: string[]; categories?: CategoryConfig } | null> {
-  let accounts: string[] | null = null;
-  let categories: CategoryConfig | null = null;
+): Promise<{ accounts?: AccountItem[]; categories?: CategoryConfigWithMeta } | null> {
+  let accounts: AccountItem[] | null = null;
+  let categories: CategoryConfigWithMeta | null = null;
 
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${ACCOUNT_TAB}!A2:A`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${ACCOUNT_TAB}!A2:C`;
     const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
     accounts = parseAccounts(data.values ?? []);
   } catch {
@@ -489,7 +513,7 @@ export async function readOnboardingConfig(
   }
 
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${CATEGORY_TAB}!A2:B`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${CATEGORY_TAB}!A2:D`;
     const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
     categories = parseCategories(data.values ?? []);
   } catch {
@@ -508,25 +532,37 @@ export async function readOnboardingConfig(
 export async function writeOnboardingConfig(
   accessToken: string,
   spreadsheetId: string,
-  updates: { accounts?: string[]; categories?: CategoryConfig }
+  updates: { accounts?: AccountItem[]; categories?: CategoryConfigWithMeta }
 ): Promise<void> {
   if (!updates.accounts && !updates.categories) {
     return;
   }
 
   if (updates.accounts) {
-    const normalizedAccounts = normalizeStringList(updates.accounts);
+    // Normalize and dedupe accounts
+    const seen = new Set<string>();
+    const normalizedAccounts = updates.accounts.filter((item) => {
+      const key = item.name.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     await ensureAccountsSheet(accessToken, spreadsheetId);
-    await clearRange(accessToken, spreadsheetId, `${ACCOUNT_TAB}!A2:A`);
+    await clearRange(accessToken, spreadsheetId, `${ACCOUNT_TAB}!A2:C`);
     if (normalizedAccounts.length > 0) {
-      const range = `${ACCOUNT_TAB}!A2:A${normalizedAccounts.length + 1}`;
+      const range = `${ACCOUNT_TAB}!A2:C${normalizedAccounts.length + 1}`;
       await fetchWithAuth(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
         accessToken,
         {
           method: "PUT",
           body: JSON.stringify({
-            values: normalizedAccounts.map((item) => [item]),
+            values: normalizedAccounts.map((item) => [
+              item.name.trim(),
+              item.icon || "",
+              item.color || "",
+            ]),
           }),
         }
       );
@@ -534,17 +570,20 @@ export async function writeOnboardingConfig(
   }
 
   if (updates.categories) {
-    const normalizedCategories = normalizeCategoryConfig(updates.categories);
     const rows: string[][] = [];
     (["expense", "income", "transfer"] as const).forEach((type) => {
-      normalizedCategories[type].forEach((category) => {
-        rows.push([type, category]);
+      const seen = new Set<string>();
+      updates.categories![type].forEach((item) => {
+        const key = item.name.trim().toLowerCase();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        rows.push([type, item.name.trim(), item.icon || "", item.color || ""]);
       });
     });
     await ensureCategoriesSheet(accessToken, spreadsheetId);
-    await clearRange(accessToken, spreadsheetId, `${CATEGORY_TAB}!A2:B`);
+    await clearRange(accessToken, spreadsheetId, `${CATEGORY_TAB}!A2:D`);
     if (rows.length > 0) {
-      const range = `${CATEGORY_TAB}!A2:B${rows.length + 1}`;
+      const range = `${CATEGORY_TAB}!A2:D${rows.length + 1}`;
       await fetchWithAuth(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
         accessToken,

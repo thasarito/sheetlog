@@ -5,18 +5,14 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  useAuth,
-  useConnectivity,
-  useOnboarding,
-  useTransactions,
-} from "../providers";
+import { useAuth, useConnectivity, useTransactions } from "../providers";
+import { useOnboarding } from "../../hooks/useOnboarding";
 import { OnboardingFlow } from "../OnboardingFlow";
 import { ServiceWorker } from "../ServiceWorker";
 import { Header } from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
-import type { TransactionType } from "../../lib/types";
+import type { TransactionType, CategoryItem } from "../../lib/types";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
@@ -82,7 +78,7 @@ export function TransactionFlow() {
       const typeCategories = categories[typeOption] ?? [];
       acc[typeOption] = typeCategories;
       return acc;
-    }, {} as Record<TransactionType, string[]>);
+    }, {} as Record<TransactionType, CategoryItem[]>);
   }, [categories]);
 
   useEffect(() => {
@@ -103,13 +99,13 @@ export function TransactionFlow() {
     }
     // Try to restore last account if none selected
     const lastAccount = window.localStorage.getItem(STORAGE_KEYS.LAST_ACCOUNT);
-    if (lastAccount && onboarding.accounts.includes(lastAccount)) {
+    if (lastAccount && onboarding.accounts.some((a) => a.name === lastAccount)) {
       form.setFieldValue("account", lastAccount);
       return;
     }
     // Default to first account if only one exists
     if (onboarding.accounts.length === 1) {
-      form.setFieldValue("account", onboarding.accounts[0]);
+      form.setFieldValue("account", onboarding.accounts[0].name);
     }
   }, [account, form, onboarding.accounts]);
 
@@ -144,7 +140,7 @@ export function TransactionFlow() {
 
   useEffect(() => {
     if (type === "transfer" && forValue) {
-      const isAccountValue = onboarding.accounts.includes(forValue);
+      const isAccountValue = onboarding.accounts.some((a) => a.name === forValue);
       if (!isAccountValue) {
         form.setFieldValue("forValue", "");
       }
@@ -377,7 +373,7 @@ export function TransactionFlow() {
       content: (
         <StepAmount
           form={form}
-          accounts={onboarding.accounts}
+          accounts={onboarding.accounts.map((a) => a.name)}
           onBack={() => setStep(0)}
           onSubmit={handleFormSubmit}
           isSubmitting={mutation.isPending}
