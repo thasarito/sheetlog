@@ -9,7 +9,6 @@ import {
 
 interface CategoryGridProps {
   categories: CategoryItem[];
-  selected: string | null;
   onSelect: (category: string) => void;
   transactionType?: TransactionType;
 }
@@ -38,14 +37,12 @@ function resolveCategoryColor(
 
 export function CategoryGrid({
   categories,
-  selected,
   onSelect,
   transactionType = "expense",
 }: CategoryGridProps) {
   return (
     <div className="grid grid-cols-4 gap-3">
       {categories.map((category) => {
-        const isSelected = selected === category.name;
         const icon = resolveCategoryIcon(category, transactionType);
         const color = resolveCategoryColor(category, transactionType);
 
@@ -53,29 +50,16 @@ export function CategoryGrid({
           <button
             key={category.name}
             type="button"
-            className={[
-              "flex flex-col items-center rounded-2xl px-2 py-3 text-center transition",
-              isSelected
-                ? "bg-accent ring-1 ring-primary/25"
-                : "hover:bg-surface",
-            ].join(" ")}
+            className="flex flex-col items-center rounded-2xl px-2 py-3 text-center transition hover:bg-surface"
             onClick={() => onSelect(category.name)}
           >
             <span
-              className={[
-                "flex h-12 w-12 items-center justify-center rounded-2xl border border-border transition",
-                isSelected ? "ring-2 ring-primary/30" : "ring-1 ring-border/50",
-              ].join(" ")}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border transition ring-1 ring-border/50"
               style={{ backgroundColor: `${color}20` }}
             >
               <DynamicIcon name={icon} className="h-5 w-5" style={{ color }} />
             </span>
-            <span
-              className={[
-                "mt-2 text-[11px] font-semibold leading-snug",
-                isSelected ? "text-foreground" : "text-muted-foreground",
-              ].join(" ")}
-            >
+            <span className="mt-2 text-[11px] font-semibold leading-snug text-muted-foreground">
               {category.name}
             </span>
           </button>

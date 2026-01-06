@@ -117,7 +117,6 @@ export function StepCategory({
             >
               <CategoryGrid
                 categories={activeGroup}
-                selected={category || null}
                 onSelect={handleCategorySelect}
                 transactionType={activeType}
               />
