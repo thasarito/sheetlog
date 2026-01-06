@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
 import type { TransactionType, CategoryItem } from "../../lib/types";
@@ -51,7 +51,7 @@ export function StepCategory({
   const lastIndexRef = useRef(selectedIndex);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const updateDirection = (nextIndex: number) => {
+  const updateDirection = useCallback((nextIndex: number) => {
     const previousIndex = lastIndexRef.current;
     if (nextIndex > previousIndex) {
       setDirection(1);
@@ -61,7 +61,7 @@ export function StepCategory({
       setDirection(0);
     }
     lastIndexRef.current = nextIndex;
-  };
+  }, []);
 
   useEffect(() => {
     if (selectedIndex !== lastIndexRef.current) {
