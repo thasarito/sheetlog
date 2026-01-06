@@ -15,6 +15,7 @@ type AnimatedTabsProps<T extends string> = {
   layoutId: string;
   variant?: "default" | "pill" | "simple";
   className?: string;
+  disabled?: boolean;
 };
 
 const springTransition = { type: "spring", stiffness: 380, damping: 30 };
@@ -26,6 +27,7 @@ export function AnimatedTabs<T extends string>({
   layoutId,
   variant = "default",
   className,
+  disabled,
 }: AnimatedTabsProps<T>) {
   if (variant === "pill") {
     return (
@@ -37,7 +39,11 @@ export function AnimatedTabs<T extends string>({
               key={tab.value}
               type="button"
               onClick={() => onChange(tab.value)}
-              className="relative rounded-full px-3 py-1.5 text-xs font-medium"
+              className={cn(
+                "relative rounded-full px-3 py-1.5 text-xs font-medium",
+                disabled && "opacity-60"
+              )}
+              disabled={disabled}
             >
               {isSelected ? (
                 <motion.div
@@ -71,7 +77,11 @@ export function AnimatedTabs<T extends string>({
               key={tab.value}
               type="button"
               onClick={() => onChange(tab.value)}
-              className="relative flex-1 rounded-lg py-2 text-sm font-medium"
+              className={cn(
+                "relative flex-1 rounded-lg py-2 text-sm font-medium",
+                disabled && "opacity-60"
+              )}
+              disabled={disabled}
             >
               {isSelected ? (
                 <motion.div
@@ -111,7 +121,11 @@ export function AnimatedTabs<T extends string>({
             key={tab.value}
             type="button"
             onClick={() => onChange(tab.value)}
-            className="relative flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold"
+            className={cn(
+              "relative flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold",
+              disabled && "opacity-60"
+            )}
+            disabled={disabled}
           >
             {isSelected ? (
               <motion.div

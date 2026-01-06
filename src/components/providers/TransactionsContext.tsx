@@ -17,6 +17,11 @@ export interface TransactionsContextValue {
   lastSyncErrorAt: string | null;
   lastSyncAt: string | null;
   addTransaction: (input: TransactionInput) => Promise<void>;
+  updateTransaction: (
+    id: string,
+    input: Partial<TransactionInput>
+  ) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<UndoResult>;
   undoLast: () => Promise<UndoResult>;
   syncNow: () => Promise<void>;
   markRecentCategory: (

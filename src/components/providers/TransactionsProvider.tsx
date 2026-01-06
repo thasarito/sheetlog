@@ -199,6 +199,43 @@ export function TransactionsProvider({
     [accessToken, isOnline, sheetId, refreshStats, markRecentCategory, syncNow]
   );
 
+  const updateTransaction = useCallback(
+    async (id: string, input: Partial<TransactionInput>) => {
+      // Get existing transaction to check if we need to delete old sheet row
+      const transaction = await db.transactions.get(id);
+      if (!transaction) return;
+
+      // For synced transactions, try to delete old sheet row first
+      if (transaction.status === "synced" && accessToken && sheetId) {
+        const effectiveTabId =
+          sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
+        if (effectiveTabId && transaction.sheetRow) {
+          try {
+            await deleteRow(accessToken, sheetId, effectiveTabId, transaction.sheetRow);
+          } catch (_error) {
+            // Continue with update even if delete fails - row will be orphaned but not duplicated
+          }
+        }
+      }
+
+      const now = new Date().toISOString();
+      await db.transactions.update(id, {
+        ...input,
+        status: "pending",
+        updatedAt: now,
+        sheetRow: undefined,
+      });
+      await refreshStats();
+      if (input.type && input.category) {
+        await markRecentCategory(input.type, input.category);
+      }
+      if (isOnline && accessToken && sheetId) {
+        await syncNow();
+      }
+    },
+    [accessToken, isOnline, sheetId, sheetTabId, refreshStats, markRecentCategory, syncNow]
+  );
+
   const undoLast = useCallback(async (): Promise<UndoResult> => {
     const last = await db.transactions.orderBy("createdAt").last();
     if (!last) {
@@ -267,6 +304,83 @@ export function TransactionsProvider({
     clearAuth,
   ]);
 
+  const deleteTransaction = useCallback(
+    async (id: string): Promise<UndoResult> => {
+      const transaction = await db.transactions.get(id);
+      if (!transaction) {
+        return { ok: false, message: "Transaction not found" };
+      }
+
+      if (transaction.status === "pending") {
+        await db.transactions.delete(id);
+        await refreshStats();
+        return { ok: true, message: "Removed pending entry" };
+      }
+
+      if (transaction.status === "synced" && accessToken && sheetId) {
+        const effectiveTabId =
+          sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
+        if (effectiveTabId && transaction.sheetRow) {
+          try {
+            await deleteRow(
+              accessToken,
+              sheetId,
+              effectiveTabId,
+              transaction.sheetRow
+            );
+            await db.transactions.delete(id);
+            await refreshStats();
+            return { ok: true, message: "Removed synced entry" };
+          } catch (error) {
+            const info = mapGoogleSyncError(error);
+            if (info.shouldClearAuth) {
+              clearAuth();
+            }
+            dispatch({
+              type: "sync_error",
+              message: info.message,
+              at: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      const now = new Date().toISOString();
+      const compensatingId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-delete`;
+      const compensating: TransactionRecord = {
+        ...transaction,
+        id: compensatingId,
+        amount: -transaction.amount,
+        note: transaction.note ? `DELETE: ${transaction.note}` : "DELETE",
+        status: "pending",
+        createdAt: now,
+        updatedAt: now,
+        sheetRow: undefined,
+        sheetId: undefined,
+        error: undefined,
+      };
+      await db.transactions.add(compensating);
+      await db.transactions.delete(id);
+      await refreshStats();
+      if (isOnline && accessToken && sheetId) {
+        await syncNow();
+      }
+      return { ok: true, message: "Delete queued as compensating entry" };
+    },
+    [
+      accessToken,
+      sheetId,
+      sheetTabId,
+      isOnline,
+      refreshStats,
+      syncNow,
+      clearAuth,
+    ]
+  );
+
   const value = useMemo<TransactionsContextValue>(
     () => ({
       queueCount: state.queueCount,
@@ -275,6 +389,8 @@ export function TransactionsProvider({
       lastSyncErrorAt: state.lastSyncErrorAt,
       lastSyncAt: state.lastSyncAt,
       addTransaction,
+      updateTransaction,
+      deleteTransaction,
       undoLast,
       syncNow,
       markRecentCategory,
@@ -286,6 +402,8 @@ export function TransactionsProvider({
       state.lastSyncErrorAt,
       state.lastSyncAt,
       addTransaction,
+      updateTransaction,
+      deleteTransaction,
       undoLast,
       syncNow,
       markRecentCategory,

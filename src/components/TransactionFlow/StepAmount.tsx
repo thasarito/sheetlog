@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { Check, FileText, X } from "lucide-react";
+import { format } from "date-fns";
+import { Check, ChevronLeft, FileText } from "lucide-react";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
@@ -22,7 +23,7 @@ export function StepAmount({
   onSubmit,
   isSubmitting = false,
 }: StepAmountProps) {
-  const { type, category, amount, currency, account, forValue, note } =
+  const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
   const isTransfer = type === "transfer";
   const accountLabel = isTransfer ? "From" : "Account";
@@ -64,18 +65,19 @@ export function StepAmount({
     <div className="flex h-full flex-col gap-5 px-4">
       <div className="flex-1 flex flex-col">
         {category ? (
-          <div className="pt-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground backdrop-blur">
-              <span className="max-w-[240px] truncate">{category}</span>
-              <button
-                type="button"
-                aria-label="Change category"
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-2 text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                onClick={onBack}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
+          <div className="flex items-center gap-3 border-b border-border/20 pt-4 pb-3">
+            <button
+              type="button"
+              aria-label="Go back"
+              className="rounded-full p-2 hover:bg-muted transition-colors -ml-2"
+              onClick={onBack}
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <span className="text-sm font-medium text-foreground">{category}</span>
+            <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+              {format(dateObject, "dd MMM · HH:mm")}
+            </span>
           </div>
         ) : null}
 

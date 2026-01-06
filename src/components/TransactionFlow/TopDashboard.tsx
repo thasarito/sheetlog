@@ -14,6 +14,7 @@ import { cn } from "../../lib/utils";
 import { useTransactions } from "../providers";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { Skeleton } from "../ui/skeleton";
+import { TransactionEditDrawer } from "./TransactionEditDrawer";
 import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
 
 export function TopDashboard() {
@@ -27,6 +28,9 @@ export function TopDashboard() {
   );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const visibleItemsRef = useRef<Set<string>>(new Set());
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<TransactionRecord | null>(null);
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
   // Scroll-linked physics for header
   const scrollY = useMotionValue(0);
@@ -328,7 +332,20 @@ export function TopDashboard() {
                     )}
                     <div
                       data-item-id={`${currentDate}:${t.id}`}
-                      className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 text-sm"
+                      role="button"
+                      tabIndex={0}
+                      className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 text-sm cursor-pointer rounded-lg transition-colors active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      onClick={() => {
+                        setSelectedTransaction(t);
+                        setEditDrawerOpen(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedTransaction(t);
+                          setEditDrawerOpen(true);
+                        }
+                      }}
                     >
                       <span className="text-xs text-muted-foreground font-medium tabular-nums w-[60px]">
                         {format(new Date(t.date), "HH:mm")}
@@ -368,6 +385,12 @@ export function TopDashboard() {
           )}
         </div>
       </div>
+
+      <TransactionEditDrawer
+        transaction={selectedTransaction}
+        open={editDrawerOpen}
+        onOpenChange={setEditDrawerOpen}
+      />
     </div>
   );
 }
