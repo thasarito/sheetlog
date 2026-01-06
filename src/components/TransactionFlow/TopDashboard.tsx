@@ -347,7 +347,7 @@ export function TopDashboard() {
                         }
                       }}
                     >
-                      <span className="text-xs text-muted-foreground font-medium tabular-nums w-[60px]">
+                      <span className="text-xs text-muted-foreground font-medium tabular-nums w-9">
                         {format(new Date(t.date), "HH:mm")}
                       </span>
 
@@ -373,6 +373,11 @@ export function TopDashboard() {
                         )}
                       >
                         {t.type === "expense" ? "" : "+"}
+                        {t.currency === "THB"
+                          ? "฿"
+                          : t.currency === "USD"
+                          ? "$"
+                          : t.currency}
                         {Number(t.amount).toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                         })}
