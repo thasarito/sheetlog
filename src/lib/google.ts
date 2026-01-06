@@ -1,12 +1,16 @@
-import type { CategoryConfigWithMeta, TransactionRecord, AccountItem, } from "./types";
 import {
-  SUGGESTED_CATEGORY_ICONS,
-  SUGGESTED_CATEGORY_COLORS,
-  DEFAULT_CATEGORY_ICONS,
-  DEFAULT_CATEGORY_COLORS,
-  DEFAULT_ACCOUNT_ICON,
   DEFAULT_ACCOUNT_COLOR,
+  DEFAULT_ACCOUNT_ICON,
+  DEFAULT_CATEGORY_COLORS,
+  DEFAULT_CATEGORY_ICONS,
+  SUGGESTED_CATEGORY_COLORS,
+  SUGGESTED_CATEGORY_ICONS,
 } from "./icons";
+import type {
+  AccountItem,
+  CategoryConfigWithMeta,
+  TransactionRecord,
+} from "./types";
 
 const SHEET_NAME = "SheetLog_DB";
 const TAB_NAME = "Transactions";
@@ -473,8 +477,12 @@ function parseCategories(rows: string[][]): CategoryConfigWithMeta | null {
 
     result[type].push({
       name,
-      icon: icon || SUGGESTED_CATEGORY_ICONS[name] || DEFAULT_CATEGORY_ICONS[type],
-      color: color || SUGGESTED_CATEGORY_COLORS[name] || DEFAULT_CATEGORY_COLORS[type],
+      icon:
+        icon || SUGGESTED_CATEGORY_ICONS[name] || DEFAULT_CATEGORY_ICONS[type],
+      color:
+        color ||
+        SUGGESTED_CATEGORY_COLORS[name] ||
+        DEFAULT_CATEGORY_COLORS[type],
     });
   }
 
@@ -500,7 +508,10 @@ async function clearRange(
 export async function readOnboardingConfig(
   accessToken: string,
   spreadsheetId: string
-): Promise<{ accounts?: AccountItem[]; categories?: CategoryConfigWithMeta } | null> {
+): Promise<{
+  accounts?: AccountItem[];
+  categories?: CategoryConfigWithMeta;
+} | null> {
   let accounts: AccountItem[] | null = null;
   let categories: CategoryConfigWithMeta | null = null;
 
@@ -608,4 +619,81 @@ export async function listFolders(
     files: Array<{ id: string; name: string }>;
   }>(url, accessToken);
   return data.files ?? [];
+}
+
+export async function getRecentTransactions(
+  accessToken: string,
+  spreadsheetId: string,
+  limit: number = 50
+): Promise<TransactionRecord[]> {
+  // 1. Get the number of rows (using column K as a proxy for data existence)
+  const countUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!K2:K`;
+  const countData = await fetchWithAuth<{ values?: string[][] }>(
+    countUrl,
+    accessToken
+  );
+  const totalRows = countData.values?.length ?? 0;
+
+  if (totalRows === 0) {
+    return [];
+  }
+
+  // 2. Calculate the range to fetch
+  // Data starts at row 2. Last row index is totalRows + 1.
+  const lastRowIndex = totalRows + 1;
+  const startRowIndex = Math.max(2, lastRowIndex - limit + 1);
+  const range = `${TAB_NAME}!A${startRowIndex}:K${lastRowIndex}`;
+
+  // 3. Fetch the data
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
+  const data = await fetchWithAuth<{ values?: any[][] }>(url, accessToken);
+  const rows = data.values ?? [];
+
+  // 4. Parse and reverse (newest first)
+  return rows
+    .map((row, index) => parseTransactionRow(row, startRowIndex + index))
+    .reverse();
+}
+
+function parseTransactionRow(row: any[], rowIndex: number): TransactionRecord {
+  // Column mapping based on HEADER_ROW:
+  // 0: Date, 1: Type, 2: Amount, 3: Category, 4: Note, 5: Timestamp,
+  // 6: Device, 7: Currency, 8: Account, 9: For, 10: Id
+
+  const [
+    date,
+    typeRaw,
+    amountRaw,
+    category,
+    note,
+    createdAt,
+    _device,
+    currency,
+    account,
+    forValue,
+    id,
+  ] = row;
+
+  // Handle amount safe parsing (it might be a number or a string if unformatted)
+  const amount = typeof amountRaw === "number" ? amountRaw : Number(amountRaw);
+
+  return {
+    id: String(id || `row-${rowIndex}`), // Ensure ID is string
+    date: String(date || new Date().toISOString()),
+    type: (["expense", "income", "transfer"].includes(
+      String(typeRaw || "").toLowerCase()
+    )
+      ? String(typeRaw).toLowerCase()
+      : "expense") as "expense" | "income" | "transfer",
+    amount: Number.isNaN(amount) ? 0 : amount,
+    category: String(category || "Uncategorized"),
+    note: note ? String(note) : undefined,
+    createdAt: String(createdAt || new Date().toISOString()),
+    updatedAt: String(createdAt || new Date().toISOString()), // Use createdAt as fallback
+    currency: String(currency || "THB"),
+    account: String(account || ""),
+    for: String(forValue || ""),
+    status: "synced",
+    sheetRow: rowIndex,
+  };
 }

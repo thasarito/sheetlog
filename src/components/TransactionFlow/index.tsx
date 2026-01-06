@@ -1,11 +1,5 @@
 import type React from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useConnectivity, useTransactions } from "../providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { OnboardingFlow } from "../OnboardingFlow";
@@ -26,6 +20,7 @@ import {
   transactionSchema,
   type TransactionFormValues,
 } from "./transactionSchema";
+import { TopDashboard } from "./TopDashboard";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -100,7 +95,10 @@ export function TransactionFlow() {
     }
     // Try to restore last account if none selected
     const lastAccount = window.localStorage.getItem(STORAGE_KEYS.LAST_ACCOUNT);
-    if (lastAccount && onboarding.accounts.some((a) => a.name === lastAccount)) {
+    if (
+      lastAccount &&
+      onboarding.accounts.some((a) => a.name === lastAccount)
+    ) {
       form.setFieldValue("account", lastAccount);
       return;
     }
@@ -141,7 +139,9 @@ export function TransactionFlow() {
 
   useEffect(() => {
     if (type === "transfer" && forValue) {
-      const isAccountValue = onboarding.accounts.some((a) => a.name === forValue);
+      const isAccountValue = onboarding.accounts.some(
+        (a) => a.name === forValue
+      );
       if (!isAccountValue) {
         form.setFieldValue("forValue", "");
       }
@@ -422,13 +422,30 @@ export function TransactionFlow() {
 
           {/* Main content - full height */}
           <div className="flex-1 min-h-0 pb-6">
-            <StepCard
-              animationKey={activeStep.key}
-              className={activeStep.className}
-              containerClassName="h-full"
-            >
-              {activeStep.content}
-            </StepCard>
+            {step === 0 ? (
+              <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
+                <div className="min-h-0">
+                  <TopDashboard />
+                </div>
+                <div className="min-h-0">
+                  <StepCard
+                    animationKey={activeStep.key}
+                    className={activeStep.className}
+                    containerClassName="h-full"
+                  >
+                    {activeStep.content}
+                  </StepCard>
+                </div>
+              </div>
+            ) : (
+              <StepCard
+                animationKey={activeStep.key}
+                className={activeStep.className}
+                containerClassName="h-full"
+              >
+                {activeStep.content}
+              </StepCard>
+            )}
           </div>
         </div>
       ) : (
