@@ -8,6 +8,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "./ui/drawer";
+import { AnimatedTabs } from "./ui/AnimatedTabs";
 import { SwipeableListItem } from "./SwipeableListItem";
 import { useOnboarding } from "./providers";
 import type { TransactionType } from "../lib/types";
@@ -21,6 +22,11 @@ type SettingsDrawerProps = {
 };
 
 type ActiveView = "accounts" | "categories";
+
+const SETTINGS_TABS = [
+  { value: "accounts" as const, label: "Accounts" },
+  { value: "categories" as const, label: "Categories" },
+];
 
 const CATEGORY_TYPES: { key: TransactionType; label: string }[] = [
   { key: "expense", label: "Expense" },
@@ -181,30 +187,13 @@ export function SettingsDrawer({
         {/* Primary tabs: Accounts / Categories */}
         {/* ─────────────────────────────────────────────────────── */}
         <div className="px-4 pb-3">
-          <div className="flex rounded-xl bg-surface-2 p-1">
-            <button
-              type="button"
-              onClick={() => handleViewChange("accounts")}
-              className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
-                activeView === "accounts"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground"
-              }`}
-            >
-              Accounts
-            </button>
-            <button
-              type="button"
-              onClick={() => handleViewChange("categories")}
-              className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
-                activeView === "categories"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground"
-              }`}
-            >
-              Categories
-            </button>
-          </div>
+          <AnimatedTabs
+            tabs={SETTINGS_TABS}
+            value={activeView}
+            onChange={handleViewChange}
+            layoutId="settingsTab"
+            variant="simple"
+          />
         </div>
 
         {/* ─────────────────────────────────────────────────────── */}
@@ -212,26 +201,20 @@ export function SettingsDrawer({
         {/* ─────────────────────────────────────────────────────── */}
         {activeView === "categories" && (
           <div className="px-4 pb-3">
-            <div className="flex gap-2">
-              {CATEGORY_TYPES.map(({ key, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setActiveCategoryType(key);
-                    setIsAddingCategory(false);
-                    setNewCategoryName("");
-                  }}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                    activeCategoryType === key
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-surface-2 text-muted-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <AnimatedTabs
+              tabs={CATEGORY_TYPES.map(({ key, label }) => ({
+                value: key,
+                label,
+              }))}
+              value={activeCategoryType}
+              onChange={(value) => {
+                setActiveCategoryType(value);
+                setIsAddingCategory(false);
+                setNewCategoryName("");
+              }}
+              layoutId="categoryType"
+              variant="pill"
+            />
           </div>
         )}
 

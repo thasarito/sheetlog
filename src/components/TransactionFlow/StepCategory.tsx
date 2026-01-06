@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Tab } from "@headlessui/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
-import type { TransactionType } from "../../lib/types";
+import type { TransactionType, CategoryItem } from "../../lib/types";
+import { AnimatedTabs } from "../ui/AnimatedTabs";
 import { CategoryGrid } from "../CategoryGrid";
 import { DateTimeDrawer } from "../DateTimeDrawer";
 import { TYPE_OPTIONS } from "./constants";
@@ -9,7 +10,7 @@ import type { TransactionFormApi } from "./useTransactionForm";
 
 type StepCategoryProps = {
   form: TransactionFormApi;
-  categoryGroups: Record<TransactionType, string[]>;
+  categoryGroups: Record<TransactionType, CategoryItem[]>;
   onConfirm: () => void;
 };
 
@@ -17,12 +18,24 @@ const TYPE_META: Record<
   TransactionType,
   {
     label: string;
-    icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+    icon: React.ComponentType<{ className?: string }>;
   }
 > = {
   expense: { label: "Expense", icon: ArrowDownRight },
   income: { label: "Income", icon: ArrowUpRight },
   transfer: { label: "Transfer", icon: ArrowLeftRight },
+};
+
+const TYPE_TABS = TYPE_OPTIONS.map((type) => ({
+  value: type,
+  label: TYPE_META[type].label,
+  icon: TYPE_META[type].icon,
+}));
+
+const panelVariants = {
+  enter: (dir: number) => ({ x: dir > 0 ? "100%" : "-100%" }),
+  center: { x: 0 },
+  exit: (dir: number) => ({ x: dir > 0 ? "-100%" : "100%" }),
 };
 
 export function StepCategory({
@@ -33,18 +46,18 @@ export function StepCategory({
   const { type, category, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
-  const [panelDirection, setPanelDirection] = useState<"left" | "right">(
-    "right"
-  );
+  const [direction, setDirection] = useState(0);
   const lastIndexRef = useRef(selectedIndex);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const updateDirection = (nextIndex: number) => {
     const previousIndex = lastIndexRef.current;
     if (nextIndex > previousIndex) {
-      setPanelDirection("right");
+      setDirection(1);
     } else if (nextIndex < previousIndex) {
-      setPanelDirection("left");
+      setDirection(-1);
+    } else {
+      setDirection(0);
     }
     lastIndexRef.current = nextIndex;
   };
@@ -74,78 +87,43 @@ export function StepCategory({
     }
   };
 
+  const activeGroup = categoryGroups[activeType] ?? [];
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
-      <Tab.Group
-        selectedIndex={selectedIndex}
-        onChange={handleTypeChange}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <Tab.List
-          aria-label="Transaction type"
-          className="grid grid-cols-3 gap-2 rounded-3xl border border-border/70 bg-surface-2/80 p-2"
-        >
-          {TYPE_OPTIONS.map((item) => {
-            const meta = TYPE_META[item];
-            const Icon = meta.icon;
-            return (
-              <Tab
-                key={item}
-                className={({ selected: isSelected }) =>
-                  [
-                    "flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                    isSelected
-                      ? "bg-card text-foreground"
-                      : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
-                  ].join(" ")
-                }
-              >
-                {({ selected: isSelected }) => (
-                  <>
-                    <span
-                      className={[
-                        "flex h-9 w-9 items-center justify-center rounded-2xl transition",
-                        isSelected ? "bg-accent" : "bg-card/70",
-                      ].join(" ")}
-                    >
-                      <Icon
-                        className={[
-                          "h-4 w-4",
-                          isSelected ? "text-primary" : "text-muted-foreground",
-                        ].join(" ")}
-                      />
-                    </span>
-                    <span>{meta.label}</span>
-                  </>
-                )}
-              </Tab>
-            );
-          })}
-        </Tab.List>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <AnimatedTabs
+          tabs={TYPE_TABS}
+          value={activeType}
+          onChange={(value) => {
+            const index = TYPE_OPTIONS.indexOf(value);
+            handleTypeChange(index);
+          }}
+          layoutId="transactionType"
+        />
 
-        <Tab.Panels className="relative flex-1 min-h-0 pt-4">
-          {TYPE_OPTIONS.map((item) => {
-            const group = categoryGroups[item] ?? [];
-            return (
-              <Tab.Panel
-                key={item}
-                static
-                className={`absolute inset-0 h-full overflow-y-auto pb-2 transition duration-300 ease-out focus-visible:outline-none opacity-0 pointer-events-none data-[headlessui-state~='selected']:opacity-100 data-[headlessui-state~='selected']:pointer-events-auto data-[headlessui-state~='selected']:z-10 ${
-                  panelDirection === "right"
-                    ? "translate-x-4 data-[headlessui-state~='selected']:translate-x-0"
-                    : "-translate-x-4 data-[headlessui-state~='selected']:translate-x-0"
-                }`}
-              >
-                <CategoryGrid
-                  categories={group}
-                  selected={category || null}
-                  onSelect={handleCategorySelect}
-                />
-              </Tab.Panel>
-            );
-          })}
-        </Tab.Panels>
-      </Tab.Group>
+        <div className="relative flex-1 min-h-0 pt-4 overflow-hidden">
+          <AnimatePresence initial={false} custom={direction} mode="popLayout">
+            <motion.div
+              key={activeType}
+              custom={direction}
+              variants={panelVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              className="absolute inset-0 h-full overflow-y-auto pb-2"
+            >
+              <CategoryGrid
+                categories={activeGroup}
+                selected={category || null}
+                onSelect={handleCategorySelect}
+                transactionType={activeType}
+              />
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
 
       <DateTimeDrawer
         value={dateObject}
