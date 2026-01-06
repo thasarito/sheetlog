@@ -1,5 +1,5 @@
-import type React from "react";
-import { DEFAULT_ACCOUNT_ICON, ICON_MAP, type IconName } from "../lib/icons";
+import type React from 'react';
+import { DEFAULT_ACCOUNT_ICON, ICON_MAP, type IconName } from '../lib/icons';
 
 type DynamicIconProps = {
   name: string | undefined;
@@ -19,9 +19,7 @@ export function DynamicIcon({
 
   if (!Icon) {
     const FallbackIcon = ICON_MAP[fallback as IconName];
-    return FallbackIcon ? (
-      <FallbackIcon className={className} style={style} />
-    ) : null;
+    return FallbackIcon ? <FallbackIcon className={className} style={style} /> : null;
   }
 
   return <Icon className={className} style={style} />;

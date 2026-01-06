@@ -1,15 +1,9 @@
-import { useState, useEffect } from "react";
-import { Check, Plus } from "lucide-react";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerFooter,
-} from "./ui/drawer";
-import { DynamicIcon } from "./DynamicIcon";
-import { AdvancedColorPicker } from "./AdvancedColorPicker";
-import { ICON_PICKER_LIST, ICON_MAP, COLOR_PALETTE, type IconName } from "../lib/icons";
+import { Check, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { COLOR_PALETTE, ICON_MAP, ICON_PICKER_LIST, type IconName } from '../lib/icons';
+import { AdvancedColorPicker } from './AdvancedColorPicker';
+import { DynamicIcon } from './DynamicIcon';
+import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from './ui/drawer';
 
 type AppearancePickerProps = {
   open: boolean;
@@ -28,17 +22,13 @@ export function AppearancePicker({
   initialIcon,
   initialColor,
   onSave,
-  defaultIcon = "Wallet",
-  defaultColor = "#6366f1",
-  title = "Choose Appearance",
+  defaultIcon = 'Wallet',
+  defaultColor = '#6366f1',
+  title = 'Choose Appearance',
 }: AppearancePickerProps) {
   // Draft state (changes as user selects, not committed until Save)
-  const [draftIcon, setDraftIcon] = useState<string>(
-    initialIcon ?? defaultIcon
-  );
-  const [draftColor, setDraftColor] = useState<string>(
-    initialColor ?? defaultColor
-  );
+  const [draftIcon, setDraftIcon] = useState<string>(initialIcon ?? defaultIcon);
+  const [draftColor, setDraftColor] = useState<string>(initialColor ?? defaultColor);
 
   // Nested drawer state
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
@@ -110,9 +100,7 @@ export function AppearancePicker({
                   type="button"
                   onClick={() => setDraftIcon(iconName)}
                   className={`flex flex-col items-center gap-1 rounded-xl p-3 transition ${
-                    isSelected
-                      ? "bg-primary/10 ring-2 ring-primary"
-                      : "hover:bg-surface-2"
+                    isSelected ? 'bg-primary/10 ring-2 ring-primary' : 'hover:bg-surface-2'
                   }`}
                 >
                   <Icon className="h-6 w-6" style={{ color: draftColor }} />
@@ -126,25 +114,17 @@ export function AppearancePicker({
         {/* Color Section - Horizontal scroll */}
         {/* ─────────────────────────────────────────────── */}
         <div className="border-t border-border pt-4">
-          <p className="mb-2 px-4 text-xs font-medium text-muted-foreground">
-            Color
-          </p>
+          <p className="mb-2 px-4 text-xs font-medium text-muted-foreground">Color</p>
           <div className="flex gap-2 overflow-x-auto px-4 pb-1">
             {/* Custom Color Button */}
-            <button
-              type="button"
-              onClick={() => setAdvancedColorOpen(true)}
-              className="shrink-0"
-            >
+            <button type="button" onClick={() => setAdvancedColorOpen(true)} className="shrink-0">
               <div
                 className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed transition ${
                   !isPresetColor
-                    ? "ring-2 ring-primary ring-offset-2 border-primary"
-                    : "border-border"
+                    ? 'ring-2 ring-primary ring-offset-2 border-primary'
+                    : 'border-border'
                 }`}
-                style={
-                  !isPresetColor ? { backgroundColor: draftColor } : undefined
-                }
+                style={!isPresetColor ? { backgroundColor: draftColor } : undefined}
               >
                 {!isPresetColor ? (
                   <Check className="h-3 w-3 text-white" />
@@ -165,7 +145,7 @@ export function AppearancePicker({
                 >
                   <div
                     className={`flex h-6 w-6 items-center justify-center rounded-full transition ${
-                      isSelected ? "ring-2 ring-primary ring-offset-2" : ""
+                      isSelected ? 'ring-2 ring-primary ring-offset-2' : ''
                     }`}
                     style={{ backgroundColor: value }}
                   >

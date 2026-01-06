@@ -1,11 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getOnboardingState, setOnboardingState, getDefaultOnboardingState } from '../lib/settings';
-import { hydrateOnboardingFromSheet } from '../lib/onboarding';
-import { writeOnboardingConfig } from '../lib/google';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../components/providers/auth';
 import { useConnectivity } from '../components/providers/ConnectivityContext';
+import { writeOnboardingConfig } from '../lib/google';
 import { isGoogleAuthError } from '../lib/googleErrors';
-import type { OnboardingState, AccountItem, CategoryConfigWithMeta } from '../lib/types';
+import { hydrateOnboardingFromSheet } from '../lib/onboarding';
+import { getDefaultOnboardingState, getOnboardingState, setOnboardingState } from '../lib/settings';
+import type { AccountItem, CategoryConfigWithMeta, OnboardingState } from '../lib/types';
 
 export const onboardingKeys = {
   all: ['onboarding'] as const,
@@ -13,12 +13,12 @@ export const onboardingKeys = {
 };
 
 /**
- * Main query that reads onboarding state from IndexedDB
+ * Main query that reads onboarding state from localStorage
  */
 export function useOnboardingQuery() {
   return useQuery({
     queryKey: onboardingKeys.all,
-    queryFn: getOnboardingState,
+    queryFn: () => getOnboardingState(),
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -41,10 +41,13 @@ export function useOnboardingSync() {
       if (!accessToken || !sheetId) {
         return { next: getDefaultOnboardingState(), changed: false };
       }
-      const current = queryClient.getQueryData<OnboardingState>(onboardingKeys.all) ?? getDefaultOnboardingState();
+      const current =
+        queryClient.getQueryData<OnboardingState>(onboardingKeys.all) ??
+        getDefaultOnboardingState();
       try {
         const result = await hydrateOnboardingFromSheet(accessToken, sheetId, current);
         if (result.changed) {
+          setOnboardingState(result.next);
           queryClient.setQueryData(onboardingKeys.all, result.next);
         }
         return result;
@@ -69,9 +72,7 @@ type SheetUpdates = {
 
 function hasAllCategories(categories: CategoryConfigWithMeta): boolean {
   return (
-    categories.expense.length > 0 &&
-    categories.income.length > 0 &&
-    categories.transfer.length > 0
+    categories.expense.length > 0 && categories.income.length > 0 && categories.transfer.length > 0
   );
 }
 
@@ -85,7 +86,9 @@ function normalizeAccountList(accounts: AccountItem[]): AccountItem[] {
   });
 }
 
-function normalizeCategoryList(items: { name: string; icon?: string; color?: string }[]): typeof items {
+function normalizeCategoryList(
+  items: { name: string; icon?: string; color?: string }[],
+): typeof items {
   const seen = new Set<string>();
   return items.filter((item) => {
     const key = item.name.trim().toLowerCase();
@@ -110,7 +113,7 @@ function normalizeCategories(categories: CategoryConfigWithMeta): CategoryConfig
 function buildSheetUpdates(
   _current: OnboardingState,
   updates: Partial<OnboardingState>,
-  next: OnboardingState
+  next: OnboardingState,
 ): SheetUpdates {
   const result: SheetUpdates = {};
 
@@ -145,11 +148,13 @@ export function useUpdateOnboarding() {
 
   return useMutation({
     mutationFn: async (updates: Partial<OnboardingState>): Promise<OnboardingState> => {
-      const current = queryClient.getQueryData<OnboardingState>(onboardingKeys.all) ?? getDefaultOnboardingState();
+      const current =
+        queryClient.getQueryData<OnboardingState>(onboardingKeys.all) ??
+        getDefaultOnboardingState();
       const next = { ...current, ...updates };
 
-      // Always persist to IndexedDB
-      await setOnboardingState(next);
+      // Always persist to localStorage
+      setOnboardingState(next);
 
       // Sync to Sheets if online and authenticated
       if (accessToken && sheetId && isOnline) {

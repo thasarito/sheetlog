@@ -1,10 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { DEFAULT_ACCOUNT_COLOR, DEFAULT_ACCOUNT_ICON } from '../lib/icons';
+import type { AccountItem, OnboardingState } from '../lib/types';
 import { onboardingKeys, useUpdateOnboarding } from './useOnboardingQuery';
-import type { OnboardingState, AccountItem } from '../lib/types';
-import {
-  DEFAULT_ACCOUNT_ICON,
-  DEFAULT_ACCOUNT_COLOR,
-} from '../lib/icons';
 
 type AddAccountParams = { name: string };
 type RemoveAccountParams = { name: string };
@@ -33,7 +30,7 @@ export function useAccountMutations(onToast: (message: string) => void) {
         accountsConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to add account"),
+    onError: () => onToast('Failed to add account'),
   });
 
   const removeAccount = useMutation({
@@ -44,7 +41,7 @@ export function useAccountMutations(onToast: (message: string) => void) {
         accountsConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to remove account"),
+    onError: () => onToast('Failed to remove account'),
   });
 
   const updateAccountMeta = useMutation({
@@ -57,14 +54,14 @@ export function useAccountMutations(onToast: (message: string) => void) {
               ...(icon !== undefined && { icon }),
               ...(color !== undefined && { color }),
             }
-          : a
+          : a,
       );
       return updateOnboarding({
         accounts: updated,
         accountsConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to update account"),
+    onError: () => onToast('Failed to update account'),
   });
 
   const reorderAccounts = useMutation({
@@ -74,7 +71,7 @@ export function useAccountMutations(onToast: (message: string) => void) {
         accountsConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to reorder accounts"),
+    onError: () => onToast('Failed to reorder accounts'),
   });
 
   const isSaving =

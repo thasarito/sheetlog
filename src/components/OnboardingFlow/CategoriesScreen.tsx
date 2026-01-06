@@ -1,15 +1,15 @@
-import { useState } from "react";
-import { Plus, X } from "lucide-react";
-import { OnboardingLayout } from "./OnboardingLayout";
-import type { CategoryConfigWithMeta, CategoryItem, TransactionType } from "../../lib/types";
-import type { ScreenMeta } from "./types";
-import { cn } from "../../lib/utils";
+import { Plus, X } from 'lucide-react';
+import { useState } from 'react';
 import {
-  SUGGESTED_CATEGORY_ICONS,
-  SUGGESTED_CATEGORY_COLORS,
-  DEFAULT_CATEGORY_ICONS,
   DEFAULT_CATEGORY_COLORS,
-} from "../../lib/icons";
+  DEFAULT_CATEGORY_ICONS,
+  SUGGESTED_CATEGORY_COLORS,
+  SUGGESTED_CATEGORY_ICONS,
+} from '../../lib/icons';
+import type { CategoryConfigWithMeta, CategoryItem, TransactionType } from '../../lib/types';
+import { cn } from '../../lib/utils';
+import { OnboardingLayout } from './OnboardingLayout';
+import type { ScreenMeta } from './types';
 
 type CategoriesScreenProps = {
   meta: ScreenMeta;
@@ -28,17 +28,17 @@ export function CategoriesScreen({
   onChange,
   onContinue,
 }: CategoriesScreenProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("expense");
+  const [activeTab, setActiveTab] = useState<TabType>('expense');
   const [newInputs, setNewInputs] = useState<Record<TabType, string>>({
-    expense: "",
-    income: "",
-    transfer: "",
+    expense: '',
+    income: '',
+    transfer: '',
   });
 
   const tabs: { id: TabType; label: string; color: string }[] = [
-    { id: "expense", label: "Expense", color: "text-red-500 bg-red-50" },
-    { id: "income", label: "Income", color: "text-green-500 bg-green-50" },
-    { id: "transfer", label: "Transfer", color: "text-blue-500 bg-blue-50" },
+    { id: 'expense', label: 'Expense', color: 'text-red-500 bg-red-50' },
+    { id: 'income', label: 'Income', color: 'text-green-500 bg-green-50' },
+    { id: 'transfer', label: 'Transfer', color: 'text-blue-500 bg-blue-50' },
   ];
 
   function handleAdd(type: TabType) {
@@ -56,7 +56,7 @@ export function CategoriesScreen({
       ...categories,
       [type]: [...categories[type], newCategory],
     });
-    setNewInputs((prev) => ({ ...prev, [type]: "" }));
+    setNewInputs((prev) => ({ ...prev, [type]: '' }));
   }
 
   function handleRemove(type: TabType, name: string) {
@@ -81,10 +81,10 @@ export function CategoriesScreen({
               key={tab.id}
               type="button"
               className={cn(
-                "flex-1 py-2 text-sm font-semibold rounded-lg transition-all",
+                'flex-1 py-2 text-sm font-semibold rounded-lg transition-all',
                 activeTab === tab.id
-                  ? "bg-card text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? 'bg-card text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
               onClick={() => setActiveTab(tab.id)}
             >
@@ -100,11 +100,9 @@ export function CategoriesScreen({
             className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
             placeholder={`Add ${activeTab} category...`}
             value={newInputs[activeTab]}
-            onChange={(e) =>
-              setNewInputs((prev) => ({ ...prev, [activeTab]: e.target.value }))
-            }
+            onChange={(e) => setNewInputs((prev) => ({ ...prev, [activeTab]: e.target.value }))}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleAdd(activeTab);
+              if (e.key === 'Enter') handleAdd(activeTab);
             }}
           />
           <button
@@ -121,20 +119,14 @@ export function CategoriesScreen({
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="flex flex-wrap gap-2 content-start pb-4">
             {categories[activeTab].map((cat) => (
-              <div
-                key={cat.name}
-                className="animate-in fade-in zoom-in-95 duration-200"
-              >
+              <div key={cat.name} className="animate-in fade-in zoom-in-95 duration-200">
                 <span
                   className={cn(
-                    "inline-flex items-center pl-3 pr-2 py-1.5 rounded-full text-sm font-medium border transition-all",
-                    "bg-card border-border/50",
-                    activeTab === "expense" &&
-                      "hover:border-red-200 hover:bg-red-50/50",
-                    activeTab === "income" &&
-                      "hover:border-green-200 hover:bg-green-50/50",
-                    activeTab === "transfer" &&
-                      "hover:border-blue-200 hover:bg-blue-50/50"
+                    'inline-flex items-center pl-3 pr-2 py-1.5 rounded-full text-sm font-medium border transition-all',
+                    'bg-card border-border/50',
+                    activeTab === 'expense' && 'hover:border-red-200 hover:bg-red-50/50',
+                    activeTab === 'income' && 'hover:border-green-200 hover:bg-green-50/50',
+                    activeTab === 'transfer' && 'hover:border-blue-200 hover:bg-blue-50/50',
                   )}
                 >
                   {cat.name}
@@ -164,7 +156,7 @@ export function CategoriesScreen({
           onClick={onContinue}
           disabled={isSaving}
         >
-          {isSaving ? "Saving..." : "All Set"}
+          {isSaving ? 'Saving...' : 'All Set'}
         </button>
       </div>
     </OnboardingLayout>

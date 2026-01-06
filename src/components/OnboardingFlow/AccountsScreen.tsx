@@ -1,10 +1,9 @@
-
-import { X, Plus } from "lucide-react";
-import { OnboardingLayout } from "./OnboardingLayout";
-import { DynamicIcon } from "../DynamicIcon";
-import type { ScreenMeta } from "./types";
-import type { AccountItem } from "../../lib/types";
-import { DEFAULT_ACCOUNT_ICON, DEFAULT_ACCOUNT_COLOR } from "../../lib/icons";
+import { Plus, X } from 'lucide-react';
+import { DEFAULT_ACCOUNT_COLOR, DEFAULT_ACCOUNT_ICON } from '../../lib/icons';
+import type { AccountItem } from '../../lib/types';
+import { DynamicIcon } from '../DynamicIcon';
+import { OnboardingLayout } from './OnboardingLayout';
+import type { ScreenMeta } from './types';
 
 type AccountsScreenProps = {
   meta: ScreenMeta;
@@ -43,7 +42,7 @@ export function AccountsScreen({
             value={accountInput}
             onChange={(event) => onAccountInputChange(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void onAddAccount();
+              if (event.key === 'Enter') void onAddAccount();
             }}
           />
           <button
@@ -104,7 +103,7 @@ export function AccountsScreen({
           onClick={onContinue}
           disabled={isSaving || accounts.length === 0}
         >
-          {isSaving ? "Saving..." : "Continue"}
+          {isSaving ? 'Saving...' : 'Continue'}
         </button>
       </div>
     </OnboardingLayout>

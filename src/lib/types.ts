@@ -22,12 +22,6 @@ export interface TransactionRecord extends TransactionInput {
   error?: string;
 }
 
-export interface SettingRecord {
-  key: string;
-  value: string;
-  updatedAt: string;
-}
-
 export interface RecentCategories {
   expense: string[];
   income: string[];
