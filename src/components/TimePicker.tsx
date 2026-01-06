@@ -1,17 +1,13 @@
-import { useCallback, useMemo } from "react";
-import { Picker } from "./Picker";
+import { useCallback, useMemo } from 'react';
+import { Picker } from './Picker';
 
 interface TimePickerProps {
   value: Date;
   onChange: (newDate: Date) => void;
 }
 
-const HOURS = Array.from({ length: 24 }, (_, index) =>
-  index.toString().padStart(2, "0")
-);
-const MINUTES = Array.from({ length: 60 }, (_, index) =>
-  index.toString().padStart(2, "0")
-);
+const HOURS = Array.from({ length: 24 }, (_, index) => index.toString().padStart(2, '0'));
+const MINUTES = Array.from({ length: 60 }, (_, index) => index.toString().padStart(2, '0'));
 
 type TimePickerValue = {
   hour: string;
@@ -27,7 +23,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       hour: HOURS[currentHour],
       minute: MINUTES[currentMinute],
     }),
-    [currentHour, currentMinute]
+    [currentHour, currentMinute],
   );
 
   const setTime = useCallback(
@@ -39,7 +35,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       newDate.setMilliseconds(0);
       onChange(newDate);
     },
-    [onChange, value]
+    [onChange, value],
   );
 
   const handlePickerChange = useCallback(
@@ -48,7 +44,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       const nextMinute = Number(nextValue.minute);
       setTime(nextHour, nextMinute);
     },
-    [setTime]
+    [setTime],
   );
 
   return (
@@ -64,11 +60,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
         {HOURS.map((hour) => (
           <Picker.Item key={hour} value={hour}>
             {({ selected }) => (
-              <span
-                className={selected ? "text-primary" : "text-muted-foreground"}
-              >
-                {hour}
-              </span>
+              <span className={selected ? 'text-primary' : 'text-muted-foreground'}>{hour}</span>
             )}
           </Picker.Item>
         ))}
@@ -77,11 +69,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
         {MINUTES.map((minute) => (
           <Picker.Item key={minute} value={minute}>
             {({ selected }) => (
-              <span
-                className={selected ? "text-primary" : "text-muted-foreground"}
-              >
-                {minute}
-              </span>
+              <span className={selected ? 'text-primary' : 'text-muted-foreground'}>{minute}</span>
             )}
           </Picker.Item>
         ))}

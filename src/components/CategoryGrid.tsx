@@ -1,11 +1,11 @@
-import { DynamicIcon } from "./DynamicIcon";
-import type { CategoryItem, TransactionType } from "../lib/types";
 import {
-  SUGGESTED_CATEGORY_ICONS,
-  SUGGESTED_CATEGORY_COLORS,
-  DEFAULT_CATEGORY_ICONS,
   DEFAULT_CATEGORY_COLORS,
-} from "../lib/icons";
+  DEFAULT_CATEGORY_ICONS,
+  SUGGESTED_CATEGORY_COLORS,
+  SUGGESTED_CATEGORY_ICONS,
+} from '../lib/icons';
+import type { CategoryItem, TransactionType } from '../lib/types';
+import { DynamicIcon } from './DynamicIcon';
 
 interface CategoryGridProps {
   categories: CategoryItem[];
@@ -13,32 +13,20 @@ interface CategoryGridProps {
   transactionType?: TransactionType;
 }
 
-function resolveCategoryIcon(
-  category: CategoryItem,
-  type: TransactionType = "expense"
-): string {
-  return (
-    category.icon ||
-    SUGGESTED_CATEGORY_ICONS[category.name] ||
-    DEFAULT_CATEGORY_ICONS[type]
-  );
+function resolveCategoryIcon(category: CategoryItem, type: TransactionType = 'expense'): string {
+  return category.icon || SUGGESTED_CATEGORY_ICONS[category.name] || DEFAULT_CATEGORY_ICONS[type];
 }
 
-function resolveCategoryColor(
-  category: CategoryItem,
-  type: TransactionType = "expense"
-): string {
+function resolveCategoryColor(category: CategoryItem, type: TransactionType = 'expense'): string {
   return (
-    category.color ||
-    SUGGESTED_CATEGORY_COLORS[category.name] ||
-    DEFAULT_CATEGORY_COLORS[type]
+    category.color || SUGGESTED_CATEGORY_COLORS[category.name] || DEFAULT_CATEGORY_COLORS[type]
   );
 }
 
 export function CategoryGrid({
   categories,
   onSelect,
-  transactionType = "expense",
+  transactionType = 'expense',
 }: CategoryGridProps) {
   return (
     <div className="grid grid-cols-4 gap-3">

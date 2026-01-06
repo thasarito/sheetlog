@@ -1,4 +1,4 @@
-import { animated, useSpring } from "@react-spring/web";
+import { animated, useSpring } from '@react-spring/web';
 
 interface AnimatedNumberProps {
   value: number;
@@ -9,7 +9,7 @@ interface AnimatedNumberProps {
 
 export function AnimatedNumber({
   value,
-  prefix = "",
+  prefix = '',
   className,
   decimals = 2,
 }: AnimatedNumberProps) {
@@ -25,7 +25,7 @@ export function AnimatedNumber({
           `${prefix}${n.toLocaleString(undefined, {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
-          })}`
+          })}`,
       )}
     </animated.span>
   );

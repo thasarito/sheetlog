@@ -1,42 +1,30 @@
-import { createContext, useContext } from "react";
-import type {
-  RecentCategories,
-  TransactionInput,
-  TransactionType,
-} from "../../lib/types";
+import { createContext, useContext } from 'react';
+import type { RecentCategories, TransactionInput, TransactionType } from '../../lib/types';
 
-export interface UndoResult {
+export interface OperationResult {
   ok: boolean;
   message: string;
 }
 
 export interface TransactionsContextValue {
-  queueCount: number;
   recentCategories: RecentCategories;
-  lastSyncError: string | null;
-  lastSyncErrorAt: string | null;
-  lastSyncAt: string | null;
+  lastError: string | null;
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (
     id: string,
-    input: Partial<TransactionInput>
+    input: Partial<TransactionInput>,
+    sheetRow?: number,
   ) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<UndoResult>;
-  undoLast: () => Promise<UndoResult>;
-  syncNow: () => Promise<void>;
-  markRecentCategory: (
-    type: TransactionType,
-    category: string
-  ) => Promise<void>;
+  deleteTransaction: (id: string, sheetRow?: number) => Promise<OperationResult>;
+  markRecentCategory: (type: TransactionType, category: string) => void;
 }
 
-export const TransactionsContext =
-  createContext<TransactionsContextValue | null>(null);
+export const TransactionsContext = createContext<TransactionsContextValue | null>(null);
 
 export function useTransactions() {
   const context = useContext(TransactionsContext);
   if (!context) {
-    throw new Error("useTransactions must be used within TransactionsProvider");
+    throw new Error('useTransactions must be used within TransactionsProvider');
   }
   return context;
 }

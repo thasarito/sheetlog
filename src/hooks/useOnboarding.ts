@@ -1,5 +1,5 @@
-import { useOnboardingQuery, useOnboardingSync, useUpdateOnboarding } from './useOnboardingQuery';
 import { getDefaultOnboardingState } from '../lib/settings';
+import { useOnboardingQuery, useOnboardingSync, useUpdateOnboarding } from './useOnboardingQuery';
 
 export function useOnboarding() {
   const { data: onboarding = getDefaultOnboardingState(), isLoading } = useOnboardingQuery();

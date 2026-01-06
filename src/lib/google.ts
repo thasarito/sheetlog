@@ -5,32 +5,28 @@ import {
   DEFAULT_CATEGORY_ICONS,
   SUGGESTED_CATEGORY_COLORS,
   SUGGESTED_CATEGORY_ICONS,
-} from "./icons";
-import type {
-  AccountItem,
-  CategoryConfigWithMeta,
-  TransactionRecord,
-} from "./types";
+} from './icons';
+import type { AccountItem, CategoryConfigWithMeta, TransactionRecord } from './types';
 
-const SHEET_NAME = "SheetLog_DB";
-const TAB_NAME = "Transactions";
-const ACCOUNT_TAB = "Account";
-const CATEGORY_TAB = "Category";
+const SHEET_NAME = 'SheetLog_DB';
+const TAB_NAME = 'Transactions';
+const ACCOUNT_TAB = 'Account';
+const CATEGORY_TAB = 'Category';
 const HEADER_ROW = [
-  "Date",
-  "Type",
-  "Amount",
-  "Category",
-  "Note",
-  "Timestamp",
-  "Device/Source",
-  "Currency",
-  "Account",
-  "For",
-  "Id",
+  'Date',
+  'Type',
+  'Amount',
+  'Category',
+  'Note',
+  'Timestamp',
+  'Device/Source',
+  'Currency',
+  'Account',
+  'For',
+  'Id',
 ];
-const ACCOUNT_HEADER_ROW = ["Account", "Icon", "Color"];
-const CATEGORY_HEADER_ROW = ["Type", "Category", "Icon", "Color"];
+const ACCOUNT_HEADER_ROW = ['Account', 'Icon', 'Color'];
+const CATEGORY_HEADER_ROW = ['Type', 'Category', 'Icon', 'Color'];
 
 export class GoogleApiError extends Error {
   status: number;
@@ -49,7 +45,7 @@ export class GoogleApiError extends Error {
     detail?: string;
   }) {
     super(message);
-    this.name = "GoogleApiError";
+    this.name = 'GoogleApiError';
     this.status = status;
     this.code = code;
     this.detail = detail;
@@ -77,8 +73,8 @@ function parseGoogleErrorBody(body: string): {
     };
     const error = parsed?.error;
     return {
-      message: typeof error?.message === "string" ? error.message : undefined,
-      code: typeof error?.status === "string" ? error.status : undefined,
+      message: typeof error?.message === 'string' ? error.message : undefined,
+      code: typeof error?.status === 'string' ? error.status : undefined,
       detail: trimmed,
     };
   } catch {
@@ -89,13 +85,13 @@ function parseGoogleErrorBody(body: string): {
 async function fetchWithAuth<T>(
   url: string,
   accessToken: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const response = await fetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
   });
@@ -104,7 +100,7 @@ async function fetchWithAuth<T>(
     const errorText = await response.text();
     const parsed = parseGoogleErrorBody(errorText);
     const message = parsed.message ?? `HTTP ${response.status}`;
-    console.error("Google API Error:", {
+    console.error('Google API Error:', {
       status: response.status,
       message,
       detail: parsed.detail,
@@ -122,37 +118,30 @@ async function fetchWithAuth<T>(
 
 export async function findExistingSheet(
   accessToken: string,
-  folderId?: string | null
+  folderId?: string | null,
 ): Promise<string | null> {
-  const folderFilter = folderId ? ` and '${folderId}' in parents` : "";
+  const folderFilter = folderId ? ` and '${folderId}' in parents` : '';
   const query = encodeURIComponent(
-    `name='${SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false${folderFilter}`
+    `name='${SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false${folderFilter}`,
   );
   const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
-  const data = await fetchWithAuth<{ files: Array<{ id: string }> }>(
-    url,
-    accessToken
-  );
+  const data = await fetchWithAuth<{ files: Array<{ id: string }> }>(url, accessToken);
   return data.files?.[0]?.id ?? null;
 }
 
 export async function createSheet(accessToken: string): Promise<string> {
-  const url = "https://sheets.googleapis.com/v4/spreadsheets";
-  const data = await fetchWithAuth<{ spreadsheetId: string }>(
-    url,
-    accessToken,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        properties: { title: SHEET_NAME },
-        sheets: [
-          { properties: { title: TAB_NAME } },
-          { properties: { title: ACCOUNT_TAB } },
-          { properties: { title: CATEGORY_TAB } },
-        ],
-      }),
-    }
-  );
+  const url = 'https://sheets.googleapis.com/v4/spreadsheets';
+  const data = await fetchWithAuth<{ spreadsheetId: string }>(url, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      properties: { title: SHEET_NAME },
+      sheets: [
+        { properties: { title: TAB_NAME } },
+        { properties: { title: ACCOUNT_TAB } },
+        { properties: { title: CATEGORY_TAB } },
+      ],
+    }),
+  });
 
   await ensureHeaders(accessToken, data.spreadsheetId);
   await ensureAccountsHeaders(accessToken, data.spreadsheetId);
@@ -163,73 +152,56 @@ export async function createSheet(accessToken: string): Promise<string> {
 async function moveFileToFolder(
   accessToken: string,
   fileId: string,
-  folderId: string
+  folderId: string,
 ): Promise<void> {
   const metadataUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`;
-  const metadata = await fetchWithAuth<{ parents?: string[] }>(
-    metadataUrl,
-    accessToken
-  );
+  const metadata = await fetchWithAuth<{ parents?: string[] }>(metadataUrl, accessToken);
   const parents = metadata.parents ?? [];
   if (parents.length === 1 && parents[0] === folderId) {
     return;
   }
-  const removeParents = parents
-    .filter((parent) => parent !== folderId)
-    .join(",");
+  const removeParents = parents.filter((parent) => parent !== folderId).join(',');
   const params = new URLSearchParams({
     addParents: folderId,
-    fields: "id,parents",
+    fields: 'id,parents',
   });
   if (removeParents) {
-    params.set("removeParents", removeParents);
+    params.set('removeParents', removeParents);
   }
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?${params.toString()}`;
-  await fetchWithAuth(url, accessToken, { method: "PATCH" });
+  await fetchWithAuth(url, accessToken, { method: 'PATCH' });
 }
 
-export async function ensureHeaders(
-  accessToken: string,
-  spreadsheetId: string
-): Promise<void> {
+export async function ensureHeaders(accessToken: string, spreadsheetId: string): Promise<void> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:K1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify({ values: [HEADER_ROW] }),
   });
 }
 
-async function ensureAccountsHeaders(
-  accessToken: string,
-  spreadsheetId: string
-): Promise<void> {
+async function ensureAccountsHeaders(accessToken: string, spreadsheetId: string): Promise<void> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${ACCOUNT_TAB}!A1:C1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify({ values: [ACCOUNT_HEADER_ROW] }),
   });
 }
 
-async function ensureCategoriesHeaders(
-  accessToken: string,
-  spreadsheetId: string
-): Promise<void> {
+async function ensureCategoriesHeaders(accessToken: string, spreadsheetId: string): Promise<void> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${CATEGORY_TAB}!A1:D1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify({ values: [CATEGORY_HEADER_ROW] }),
   });
 }
 
-async function ensureAccountsSheet(
-  accessToken: string,
-  spreadsheetId: string
-): Promise<void> {
+async function ensureAccountsSheet(accessToken: string, spreadsheetId: string): Promise<void> {
   const existing = await getSheetTabId(accessToken, spreadsheetId, ACCOUNT_TAB);
   if (existing === null) {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
     await fetchWithAuth(url, accessToken, {
-      method: "POST",
+      method: 'POST',
       body: JSON.stringify({
         requests: [{ addSheet: { properties: { title: ACCOUNT_TAB } } }],
       }),
@@ -238,19 +210,12 @@ async function ensureAccountsSheet(
   await ensureAccountsHeaders(accessToken, spreadsheetId);
 }
 
-async function ensureCategoriesSheet(
-  accessToken: string,
-  spreadsheetId: string
-): Promise<void> {
-  const existing = await getSheetTabId(
-    accessToken,
-    spreadsheetId,
-    CATEGORY_TAB
-  );
+async function ensureCategoriesSheet(accessToken: string, spreadsheetId: string): Promise<void> {
+  const existing = await getSheetTabId(accessToken, spreadsheetId, CATEGORY_TAB);
   if (existing === null) {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
     await fetchWithAuth(url, accessToken, {
-      method: "POST",
+      method: 'POST',
       body: JSON.stringify({
         requests: [{ addSheet: { properties: { title: CATEGORY_TAB } } }],
       }),
@@ -259,10 +224,7 @@ async function ensureCategoriesSheet(
   await ensureCategoriesHeaders(accessToken, spreadsheetId);
 }
 
-export async function ensureSheet(
-  accessToken: string,
-  folderId?: string | null
-): Promise<string> {
+export async function ensureSheet(accessToken: string, folderId?: string | null): Promise<string> {
   const existing = await findExistingSheet(accessToken, folderId);
   if (existing) {
     await ensureHeaders(accessToken, existing);
@@ -280,7 +242,7 @@ export async function ensureSheet(
 export async function getSheetTabId(
   accessToken: string,
   spreadsheetId: string,
-  title: string = TAB_NAME
+  title: string = TAB_NAME,
 ): Promise<number | null> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets(properties(sheetId,title))`;
   const data = await fetchWithAuth<{
@@ -293,11 +255,11 @@ export async function getSheetTabId(
 export async function appendTransaction(
   accessToken: string,
   spreadsheetId: string,
-  transaction: TransactionRecord
+  transaction: TransactionRecord,
 ): Promise<number | null> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-  let note = transaction.note ?? "";
-  let currency = transaction.currency ?? "";
+  let note = transaction.note ?? '';
+  let currency = transaction.currency ?? '';
   if (!currency && note) {
     const match = note.match(/^\[([A-Z]{3})\]\s*/);
     if (match) {
@@ -313,22 +275,18 @@ export async function appendTransaction(
       transaction.category,
       note,
       transaction.createdAt,
-      "PWA",
+      'PWA',
       currency,
-      transaction.account ?? "",
-      transaction.for ?? "",
+      transaction.account ?? '',
+      transaction.for ?? '',
       transaction.id,
     ],
   ];
 
-  const data = await fetchWithAuth<{ updates?: { updatedRange?: string } }>(
-    url,
-    accessToken,
-    {
-      method: "POST",
-      body: JSON.stringify({ values }),
-    }
-  );
+  const data = await fetchWithAuth<{ updates?: { updatedRange?: string } }>(url, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({ values }),
+  });
 
   const updatedRange = data.updates?.updatedRange;
   if (!updatedRange) {
@@ -339,7 +297,7 @@ export async function appendTransaction(
 
 export async function readTransactionIdMap(
   accessToken: string,
-  spreadsheetId: string
+  spreadsheetId: string,
 ): Promise<Map<string, number>> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!K2:K`;
   const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
@@ -364,21 +322,21 @@ export async function deleteRow(
   accessToken: string,
   spreadsheetId: string,
   sheetTabId: number,
-  rowIndex: number
+  rowIndex: number,
 ): Promise<void> {
   if (rowIndex <= 1) {
-    throw new Error("Refusing to delete header row");
+    throw new Error('Refusing to delete header row');
   }
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
   await fetchWithAuth(url, accessToken, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({
       requests: [
         {
           deleteDimension: {
             range: {
               sheetId: sheetTabId,
-              dimension: "ROWS",
+              dimension: 'ROWS',
               startIndex: rowIndex - 1,
               endIndex: rowIndex,
             },
@@ -397,7 +355,7 @@ function parseRowFromRange(range: string): number | null {
   return Number.parseInt(match[1], 10);
 }
 
-const CATEGORY_TYPES = ["expense", "income", "transfer"] as const;
+const CATEGORY_TYPES = ['expense', 'income', 'transfer'] as const;
 
 type CategoryType = (typeof CATEGORY_TYPES)[number];
 
@@ -477,37 +435,31 @@ function parseCategories(rows: string[][]): CategoryConfigWithMeta | null {
 
     result[type].push({
       name,
-      icon:
-        icon || SUGGESTED_CATEGORY_ICONS[name] || DEFAULT_CATEGORY_ICONS[type],
-      color:
-        color ||
-        SUGGESTED_CATEGORY_COLORS[name] ||
-        DEFAULT_CATEGORY_COLORS[type],
+      icon: icon || SUGGESTED_CATEGORY_ICONS[name] || DEFAULT_CATEGORY_ICONS[type],
+      color: color || SUGGESTED_CATEGORY_COLORS[name] || DEFAULT_CATEGORY_COLORS[type],
     });
   }
 
   const hasAny =
-    result.expense.length > 0 ||
-    result.income.length > 0 ||
-    result.transfer.length > 0;
+    result.expense.length > 0 || result.income.length > 0 || result.transfer.length > 0;
   return hasAny ? result : null;
 }
 
 async function clearRange(
   accessToken: string,
   spreadsheetId: string,
-  range: string
+  range: string,
 ): Promise<void> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}:clear`;
   await fetchWithAuth(url, accessToken, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({}),
   });
 }
 
 export async function readOnboardingConfig(
   accessToken: string,
-  spreadsheetId: string
+  spreadsheetId: string,
 ): Promise<{
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
@@ -543,7 +495,7 @@ export async function readOnboardingConfig(
 export async function writeOnboardingConfig(
   accessToken: string,
   spreadsheetId: string,
-  updates: { accounts?: AccountItem[]; categories?: CategoryConfigWithMeta }
+  updates: { accounts?: AccountItem[]; categories?: CategoryConfigWithMeta },
 ): Promise<void> {
   if (!updates.accounts && !updates.categories) {
     return;
@@ -567,28 +519,28 @@ export async function writeOnboardingConfig(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
         accessToken,
         {
-          method: "PUT",
+          method: 'PUT',
           body: JSON.stringify({
             values: normalizedAccounts.map((item) => [
               item.name.trim(),
-              item.icon || "",
-              item.color || "",
+              item.icon || '',
+              item.color || '',
             ]),
           }),
-        }
+        },
       );
     }
   }
 
   if (updates.categories) {
     const rows: string[][] = [];
-    (["expense", "income", "transfer"] as const).forEach((type) => {
+    (['expense', 'income', 'transfer'] as const).forEach((type) => {
       const seen = new Set<string>();
       updates.categories?.[type].forEach((item) => {
         const key = item.name.trim().toLowerCase();
         if (!key || seen.has(key)) return;
         seen.add(key);
-        rows.push([type, item.name.trim(), item.icon || "", item.color || ""]);
+        rows.push([type, item.name.trim(), item.icon || '', item.color || '']);
       });
     });
     await ensureCategoriesSheet(accessToken, spreadsheetId);
@@ -599,9 +551,9 @@ export async function writeOnboardingConfig(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
         accessToken,
         {
-          method: "PUT",
+          method: 'PUT',
           body: JSON.stringify({ values: rows }),
-        }
+        },
       );
     }
   }
@@ -609,10 +561,10 @@ export async function writeOnboardingConfig(
 
 export async function listFolders(
   accessToken: string,
-  parentId: string = "root"
+  parentId: string = 'root',
 ): Promise<{ id: string; name: string }[]> {
   const query = encodeURIComponent(
-    `mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+    `mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
   );
   const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&orderBy=name`;
   const data = await fetchWithAuth<{
@@ -624,14 +576,11 @@ export async function listFolders(
 export async function getRecentTransactions(
   accessToken: string,
   spreadsheetId: string,
-  limit: number = 50
+  limit: number = 50,
 ): Promise<TransactionRecord[]> {
   // 1. Get the number of rows (using column K as a proxy for data existence)
   const countUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!K2:K`;
-  const countData = await fetchWithAuth<{ values?: string[][] }>(
-    countUrl,
-    accessToken
-  );
+  const countData = await fetchWithAuth<{ values?: string[][] }>(countUrl, accessToken);
   const totalRows = countData.values?.length ?? 0;
 
   if (totalRows === 0) {
@@ -650,9 +599,7 @@ export async function getRecentTransactions(
   const rows = data.values ?? [];
 
   // 4. Parse and reverse (newest first)
-  return rows
-    .map((row, index) => parseTransactionRow(row, startRowIndex + index))
-    .reverse();
+  return rows.map((row, index) => parseTransactionRow(row, startRowIndex + index)).reverse();
 }
 
 function parseTransactionRow(row: any[], rowIndex: number): TransactionRecord {
@@ -675,25 +622,23 @@ function parseTransactionRow(row: any[], rowIndex: number): TransactionRecord {
   ] = row;
 
   // Handle amount safe parsing (it might be a number or a string if unformatted)
-  const amount = typeof amountRaw === "number" ? amountRaw : Number(amountRaw);
+  const amount = typeof amountRaw === 'number' ? amountRaw : Number(amountRaw);
 
   return {
     id: String(id || `row-${rowIndex}`), // Ensure ID is string
     date: String(date || new Date().toISOString()),
-    type: (["expense", "income", "transfer"].includes(
-      String(typeRaw || "").toLowerCase()
-    )
+    type: (['expense', 'income', 'transfer'].includes(String(typeRaw || '').toLowerCase())
       ? String(typeRaw).toLowerCase()
-      : "expense") as "expense" | "income" | "transfer",
+      : 'expense') as 'expense' | 'income' | 'transfer',
     amount: Number.isNaN(amount) ? 0 : amount,
-    category: String(category || "Uncategorized"),
+    category: String(category || 'Uncategorized'),
     note: note ? String(note) : undefined,
     createdAt: String(createdAt || new Date().toISOString()),
     updatedAt: String(createdAt || new Date().toISOString()), // Use createdAt as fallback
-    currency: String(currency || "THB"),
-    account: String(account || ""),
-    for: String(forValue || ""),
-    status: "synced",
+    currency: String(currency || 'THB'),
+    account: String(account || ''),
+    for: String(forValue || ''),
+    status: 'synced',
     sheetRow: rowIndex,
   };
 }
