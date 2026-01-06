@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import * as LucideIcons from "lucide-react";
 import { Check, Plus } from "lucide-react";
 import {
   Drawer,
@@ -10,7 +9,7 @@ import {
 } from "./ui/drawer";
 import { DynamicIcon } from "./DynamicIcon";
 import { AdvancedColorPicker } from "./AdvancedColorPicker";
-import { ICON_PICKER_LIST, COLOR_PALETTE } from "../lib/icons";
+import { ICON_PICKER_LIST, ICON_MAP, COLOR_PALETTE, type IconName } from "../lib/icons";
 
 type AppearancePickerProps = {
   open: boolean;
@@ -100,9 +99,7 @@ export function AppearancePicker({
           <p className="mb-2 text-xs font-medium text-muted-foreground">Icon</p>
           <div className="grid grid-cols-5 gap-2">
             {ICON_PICKER_LIST.map((iconName) => {
-              const Icon = LucideIcons[
-                iconName as keyof typeof LucideIcons
-              ] as LucideIcons.LucideIcon;
+              const Icon = ICON_MAP[iconName as IconName];
               const isSelected = draftIcon === iconName;
 
               if (!Icon) return null;

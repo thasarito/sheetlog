@@ -1,6 +1,5 @@
 import type React from "react";
-import * as LucideIcons from "lucide-react";
-import { DEFAULT_ACCOUNT_ICON } from "../lib/icons";
+import { DEFAULT_ACCOUNT_ICON, ICON_MAP, type IconName } from "../lib/icons";
 
 type DynamicIconProps = {
   name: string | undefined;
@@ -15,14 +14,14 @@ export function DynamicIcon({
   className,
   style,
 }: DynamicIconProps) {
-  const iconName = (name || fallback) as keyof typeof LucideIcons;
-  const Icon = LucideIcons[iconName] as LucideIcons.LucideIcon | undefined;
+  const iconName = (name || fallback) as IconName;
+  const Icon = ICON_MAP[iconName];
 
   if (!Icon) {
-    const FallbackIcon = LucideIcons[
-      fallback as keyof typeof LucideIcons
-    ] as LucideIcons.LucideIcon;
-    return <FallbackIcon className={className} style={style} />;
+    const FallbackIcon = ICON_MAP[fallback as IconName];
+    return FallbackIcon ? (
+      <FallbackIcon className={className} style={style} />
+    ) : null;
   }
 
   return <Icon className={className} style={style} />;

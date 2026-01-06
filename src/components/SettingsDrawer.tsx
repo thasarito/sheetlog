@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Reorder } from "framer-motion";
 import { RefreshCw, Plus } from "lucide-react";
 import {
@@ -90,7 +90,11 @@ export function SettingsDrawer({
     income: [],
     transfer: [],
   };
-  const activeCategories = categories[activeCategoryType] ?? [];
+  // Memoize activeCategories to avoid creating new array reference on each render
+  const activeCategories = useMemo(
+    () => categories[activeCategoryType] ?? [],
+    [categories, activeCategoryType]
+  );
 
   // Local state for optimistic reorder UI
   const [localAccounts, setLocalAccounts] = useState(accounts);

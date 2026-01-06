@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useDrag } from "@use-gesture/react";
 import { animated, useSpring } from "@react-spring/web";
 import { Trash2 } from "lucide-react";
@@ -18,11 +18,27 @@ export function SwipeableListItem({
   disabled = false,
 }: SwipeableListItemProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const isMountedRef = useRef(true);
+
+  // Track mounted state to prevent memory leaks
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const [{ x }, api] = useSpring(() => ({
     x: 0,
     config: { tension: 300, friction: 30 },
   }));
+
+  // Safe delete handler that checks mounted state
+  function safeDelete() {
+    if (isMountedRef.current) {
+      onDelete();
+    }
+  }
 
   const bind = useDrag(
     ({ down, movement: [mx], cancel }) => {
@@ -43,7 +59,7 @@ export function SwipeableListItem({
           api.start({ x: -300 });
           setIsDeleting(true);
           triggerHaptic();
-          setTimeout(onDelete, 200);
+          setTimeout(safeDelete, 200);
         } else if (clampedX < DELETE_REVEAL_THRESHOLD) {
           // Partial swipe - snap to reveal delete button
           api.start({ x: DELETE_REVEAL_THRESHOLD });
@@ -72,7 +88,7 @@ export function SwipeableListItem({
     api.start({ x: -300 });
     setIsDeleting(true);
     triggerHaptic();
-    setTimeout(onDelete, 200);
+    setTimeout(safeDelete, 200);
   }
 
   function handleContentClick() {
