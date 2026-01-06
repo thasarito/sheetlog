@@ -1,11 +1,11 @@
-import React, { useState } from "react";
-import { useForm } from "@tanstack/react-form";
-import { RefreshCw, X } from "lucide-react";
-import { z } from "zod";
-import type { TransactionType } from "../../lib/types";
-import { useOnboarding } from "../providers";
-import { Header } from "../Header";
-import { TYPE_OPTIONS } from "./constants";
+import { useForm } from '@tanstack/react-form';
+import { RefreshCw, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { z } from 'zod';
+import type { TransactionType } from '../../lib/types';
+import { Header } from '../Header';
+import { useOnboarding } from '../providers';
+import { TYPE_OPTIONS } from './constants';
 
 type AccountCategoryPanelProps = {
   onToast: (message: string) => void;
@@ -13,17 +13,17 @@ type AccountCategoryPanelProps = {
   isResyncing: boolean;
 };
 
-type PanelView = "accounts" | "categories";
+type PanelView = 'accounts' | 'categories';
 
 type CategoryInputs = Record<TransactionType, string>;
 
 const CATEGORY_LABELS: Record<TransactionType, string> = {
-  expense: "Expense",
-  income: "Income",
-  transfer: "Transfer",
+  expense: 'Expense',
+  income: 'Income',
+  transfer: 'Transfer',
 };
 
-const accountNameSchema = z.string().trim().min(1, "Enter an account name");
+const accountNameSchema = z.string().trim().min(1, 'Enter an account name');
 
 export function AccountCategoryPanel({
   onToast,
@@ -31,14 +31,12 @@ export function AccountCategoryPanel({
   isResyncing,
 }: AccountCategoryPanelProps) {
   const { onboarding, updateOnboarding } = useOnboarding();
-  const [activeView, setActiveView] = useState<PanelView>("accounts");
-  const [activeCategoryType, setActiveCategoryType] = useState<TransactionType>(
-    TYPE_OPTIONS[0]
-  );
+  const [activeView, setActiveView] = useState<PanelView>('accounts');
+  const [activeCategoryType, setActiveCategoryType] = useState<TransactionType>(TYPE_OPTIONS[0]);
   const [categoryInputs, setCategoryInputs] = useState<CategoryInputs>({
-    expense: "",
-    income: "",
-    transfer: "",
+    expense: '',
+    income: '',
+    transfer: '',
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -47,21 +45,19 @@ export function AccountCategoryPanel({
   const activeCategories = categories[activeCategoryType] ?? [];
 
   const accountForm = useForm({
-    defaultValues: { accountName: "" },
+    defaultValues: { accountName: '' },
     onSubmit: async ({ value }) => {
       if (isSaving) {
         return;
       }
       const nextValue = value.accountName.trim();
       if (!nextValue) {
-        onToast("Enter an account name");
+        onToast('Enter an account name');
         return;
       }
-      const exists = accounts.some(
-        (item) => item.toLowerCase() === nextValue.toLowerCase()
-      );
+      const exists = accounts.some((item) => item.toLowerCase() === nextValue.toLowerCase());
       if (exists) {
-        onToast("Account already added");
+        onToast('Account already added');
         return;
       }
       setIsSaving(true);
@@ -72,7 +68,7 @@ export function AccountCategoryPanel({
         });
         accountForm.reset();
       } catch {
-        onToast("Failed to add account");
+        onToast('Failed to add account');
       } finally {
         setIsSaving(false);
       }
@@ -90,7 +86,7 @@ export function AccountCategoryPanel({
         accountsConfirmed: true,
       });
     } catch {
-      onToast("Failed to remove account");
+      onToast('Failed to remove account');
     } finally {
       setIsSaving(false);
     }
@@ -102,15 +98,13 @@ export function AccountCategoryPanel({
     }
     const nextValue = categoryInputs[type].trim();
     if (!nextValue) {
-      onToast("Enter a category");
+      onToast('Enter a category');
       return;
     }
     const list = categories[type] ?? [];
-    const exists = list.some(
-      (item) => item.toLowerCase() === nextValue.toLowerCase()
-    );
+    const exists = list.some((item) => item.toLowerCase() === nextValue.toLowerCase());
     if (exists) {
-      onToast("Category already added");
+      onToast('Category already added');
       return;
     }
     setIsSaving(true);
@@ -124,10 +118,10 @@ export function AccountCategoryPanel({
       });
       setCategoryInputs((prev) => ({
         ...prev,
-        [type]: "",
+        [type]: '',
       }));
     } catch {
-      onToast("Failed to add category");
+      onToast('Failed to add category');
     } finally {
       setIsSaving(false);
     }
@@ -147,7 +141,7 @@ export function AccountCategoryPanel({
         categoriesConfirmed: true,
       });
     } catch {
-      onToast("Failed to remove category");
+      onToast('Failed to remove category');
     } finally {
       setIsSaving(false);
     }
@@ -170,32 +164,30 @@ export function AccountCategoryPanel({
             disabled={isResyncing}
             aria-label="Re-sync accounts and categories"
           >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${isResyncing ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`h-3.5 w-3.5 ${isResyncing ? 'animate-spin' : ''}`} />
           </button>
           <div className="flex rounded-full bg-card/70 p-1 text-[11px] font-semibold">
             <button
               type="button"
               className={[
-                "rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                activeView === "accounts"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              ].join(" ")}
-              onClick={() => setActiveView("accounts")}
+                'rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                activeView === 'accounts'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              ].join(' ')}
+              onClick={() => setActiveView('accounts')}
             >
               Accounts
             </button>
             <button
               type="button"
               className={[
-                "rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                activeView === "categories"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              ].join(" ")}
-              onClick={() => setActiveView("categories")}
+                'rounded-full px-3 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                activeView === 'categories'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              ].join(' ')}
+              onClick={() => setActiveView('categories')}
             >
               Categories
             </button>
@@ -203,7 +195,7 @@ export function AccountCategoryPanel({
         </div>
       </div>
 
-      {activeView === "accounts" ? (
+      {activeView === 'accounts' ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="flex flex-wrap gap-2">
@@ -226,9 +218,7 @@ export function AccountCategoryPanel({
                   </div>
                 ))
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  No accounts yet.
-                </p>
+                <p className="text-xs text-muted-foreground">No accounts yet.</p>
               )}
             </div>
           </div>
@@ -261,15 +251,11 @@ export function AccountCategoryPanel({
                       className="w-full rounded-2xl border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground"
                       placeholder="Add account"
                       value={field.state.value}
-                      onChange={(event) =>
-                        field.handleChange(event.target.value)
-                      }
+                      onChange={(event) => field.handleChange(event.target.value)}
                       onBlur={field.handleBlur}
                       disabled={isSaving}
                     />
-                    {error ? (
-                      <p className="mt-1 text-[11px] text-danger">{error}</p>
-                    ) : null}
+                    {error ? <p className="mt-1 text-[11px] text-danger">{error}</p> : null}
                   </div>
                 );
               }}
@@ -291,11 +277,11 @@ export function AccountCategoryPanel({
                 key={item}
                 type="button"
                 className={[
-                  "flex-1 rounded-full px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                  'flex-1 rounded-full px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
                   activeCategoryType === item
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                ].join(" ")}
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                ].join(' ')}
                 onClick={() => setActiveCategoryType(item)}
               >
                 {CATEGORY_LABELS[item]}
@@ -323,9 +309,7 @@ export function AccountCategoryPanel({
                   </div>
                 ))
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  No categories yet.
-                </p>
+                <p className="text-xs text-muted-foreground">No categories yet.</p>
               )}
             </div>
           </div>
@@ -342,7 +326,7 @@ export function AccountCategoryPanel({
                 }))
               }
               onKeyDown={(event) => {
-                if (event.key === "Enter") void addCategory(activeCategoryType);
+                if (event.key === 'Enter') void addCategory(activeCategoryType);
               }}
             />
             <button

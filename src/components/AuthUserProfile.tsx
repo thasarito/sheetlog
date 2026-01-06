@@ -1,4 +1,4 @@
-import { useAuth } from "./providers";
+import { useAuth } from './providers';
 
 type AuthUserProfileProps = {
   /** Show only the avatar, hide name */
@@ -12,8 +12,7 @@ export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
     return null;
   }
 
-  const fallbackInitial =
-    userProfile.name.trim().charAt(0).toUpperCase() || "U";
+  const fallbackInitial = userProfile.name.trim().charAt(0).toUpperCase() || 'U';
 
   if (compact) {
     return (
@@ -25,9 +24,7 @@ export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
             src={userProfile.picture}
           />
         ) : (
-          <span className="text-[11px] text-muted-foreground">
-            {fallbackInitial}
-          </span>
+          <span className="text-[11px] text-muted-foreground">{fallbackInitial}</span>
         )}
       </div>
     );
@@ -43,9 +40,7 @@ export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
             src={userProfile.picture}
           />
         ) : (
-          <span className="text-[11px] text-muted-foreground">
-            {fallbackInitial}
-          </span>
+          <span className="text-[11px] text-muted-foreground">{fallbackInitial}</span>
         )}
       </div>
       <span className="max-w-[140px] truncate">{userProfile.name}</span>

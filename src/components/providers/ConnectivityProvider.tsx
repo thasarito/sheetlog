@@ -1,20 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ConnectivityContext } from "./ConnectivityContext";
+import type React from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ConnectivityContext } from './ConnectivityContext';
 
-export function ConnectivityProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function ConnectivityProvider({ children }: { children: React.ReactNode }) {
   const [isOnline, setIsOnline] = useState(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return true;
     }
     return window.navigator.onLine;
   });
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return;
     }
     setIsOnline(window.navigator.onLine);
@@ -27,19 +24,15 @@ export function ConnectivityProvider({
       setIsOnline(false);
     }
 
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
   const value = useMemo(() => ({ isOnline }), [isOnline]);
 
-  return (
-    <ConnectivityContext.Provider value={value}>
-      {children}
-    </ConnectivityContext.Provider>
-  );
+  return <ConnectivityContext.Provider value={value}>{children}</ConnectivityContext.Provider>;
 }

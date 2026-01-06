@@ -3,18 +3,18 @@
  */
 
 export type AuthStatus =
-  | "initializing"
-  | "unauthenticated"
-  | "authenticating"
-  | "authenticated"
-  | "error";
+  | 'initializing'
+  | 'unauthenticated'
+  | 'authenticating'
+  | 'authenticated'
+  | 'error';
 
 export type UserProfile = {
   name: string;
   picture: string | null;
 };
 
-export type SheetStatus = "ready" | "no-sheet" | "no-auth";
+export type SheetStatus = 'ready' | 'no-sheet' | 'no-auth';
 
 export interface AuthContextValue {
   accessToken: string | null;

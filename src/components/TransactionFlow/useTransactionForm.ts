@@ -1,24 +1,16 @@
-import { useMemo } from "react";
-import { useForm } from "@tanstack/react-form";
-import { zodValidator, type ZodValidator } from "@tanstack/zod-form-adapter";
-import { CURRENCIES, DEFAULT_CURRENCY } from "../../lib/currencies";
-import { STORAGE_KEYS } from "../../lib/constants";
-import {
-  transactionSchema,
-  type TransactionFormValues,
-} from "./transactionSchema";
+import { useForm } from '@tanstack/react-form';
+import { type ZodValidator, zodValidator } from '@tanstack/zod-form-adapter';
+import { useMemo } from 'react';
+import { STORAGE_KEYS } from '../../lib/constants';
+import { CURRENCIES, DEFAULT_CURRENCY } from '../../lib/currencies';
+import { type TransactionFormValues, transactionSchema } from './transactionSchema';
 
 function resolveStoredCurrency() {
-  if (typeof window === "undefined") {
+  if (typeof window === 'undefined') {
     return DEFAULT_CURRENCY;
   }
-  const storedCurrency = window.localStorage.getItem(
-    STORAGE_KEYS.LAST_CURRENCY
-  );
-  if (
-    storedCurrency &&
-    CURRENCIES.includes(storedCurrency as (typeof CURRENCIES)[number])
-  ) {
+  const storedCurrency = window.localStorage.getItem(STORAGE_KEYS.LAST_CURRENCY);
+  if (storedCurrency && CURRENCIES.includes(storedCurrency as (typeof CURRENCIES)[number])) {
     return storedCurrency;
   }
   return DEFAULT_CURRENCY;
@@ -32,16 +24,16 @@ export function useTransactionForm(options?: {
   // on every render, triggering an update loop.
   const defaultValues = useMemo<TransactionFormValues>(
     () => ({
-      type: "expense",
-      category: "",
-      amount: "",
+      type: 'expense',
+      category: '',
+      amount: '',
       currency: resolveStoredCurrency(),
-      account: "",
-      forValue: "Me",
+      account: '',
+      forValue: 'Me',
       dateObject: new Date(),
-      note: "",
+      note: '',
     }),
-    []
+    [],
   );
 
   return useForm<TransactionFormValues, ZodValidator>({

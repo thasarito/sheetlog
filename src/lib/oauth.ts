@@ -8,17 +8,17 @@
  * 4. Refresh access token using refresh token
  */
 
-import { SCOPES } from "../components/providers/auth/auth.constants";
+import { SCOPES } from '../components/providers/auth/auth.constants';
 
 // OAuth endpoints
-const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 // Storage keys for OAuth flow
 export const OAUTH_STORAGE_KEYS = {
-  CODE_VERIFIER: "sheetlog.oauth.codeVerifier",
-  REFRESH_TOKEN: "sheetlog.oauth.refreshToken",
-  STATE: "sheetlog.oauth.state",
+  CODE_VERIFIER: 'sheetlog.oauth.codeVerifier',
+  REFRESH_TOKEN: 'sheetlog.oauth.refreshToken',
+  STATE: 'sheetlog.oauth.state',
 } as const;
 
 // Types
@@ -62,7 +62,7 @@ export function generateState(): string {
 export async function generateCodeChallenge(verifier: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
+  const digest = await crypto.subtle.digest('SHA-256', data);
   return base64UrlEncode(new Uint8Array(digest));
 }
 
@@ -71,7 +71,7 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
  */
 function base64UrlEncode(buffer: Uint8Array): string {
   const base64 = btoa(String.fromCharCode(...buffer));
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**
@@ -82,7 +82,7 @@ function getOAuthConfig() {
   const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
 
   if (!clientId) {
-    throw new Error("Missing VITE_GOOGLE_CLIENT_ID environment variable");
+    throw new Error('Missing VITE_GOOGLE_CLIENT_ID environment variable');
   }
 
   return { clientId, clientSecret };
@@ -94,9 +94,9 @@ function getOAuthConfig() {
  */
 export function getRedirectUri(): string {
   const baseUrl = window.location.origin;
-  const basePath = import.meta.env.BASE_URL || "/";
+  const basePath = import.meta.env.BASE_URL || '/';
   // Return root URL - OAuth params will be handled at the root
-  return `${baseUrl}${basePath.endsWith("/") ? basePath : `${basePath}/`}`;
+  return `${baseUrl}${basePath.endsWith('/') ? basePath : `${basePath}/`}`;
 }
 
 /**
@@ -115,13 +115,13 @@ export async function buildAuthorizationUrl(): Promise<string> {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: getRedirectUri(),
-    response_type: "code",
-    scope: SCOPES.join(" "),
-    access_type: "offline", // Request refresh token
-    prompt: "consent", // Always show consent to get refresh token
+    response_type: 'code',
+    scope: SCOPES.join(' '),
+    access_type: 'offline', // Request refresh token
+    prompt: 'consent', // Always show consent to get refresh token
     state,
     code_challenge: codeChallenge,
-    code_challenge_method: "S256",
+    code_challenge_method: 'S256',
   });
 
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
@@ -130,28 +130,23 @@ export async function buildAuthorizationUrl(): Promise<string> {
 /**
  * Exchanges an authorization code for access and refresh tokens
  */
-export async function exchangeCodeForTokens(
-  code: string,
-  state: string
-): Promise<TokenData> {
+export async function exchangeCodeForTokens(code: string, state: string): Promise<TokenData> {
   const { clientId, clientSecret } = getOAuthConfig();
 
   // Verify state to prevent CSRF
   const storedState = localStorage.getItem(OAUTH_STORAGE_KEYS.STATE);
 
   // Debug logging
-  console.log("[OAuth] State validation:", {
+  console.log('[OAuth] State validation:', {
     receivedState: state,
     storedState,
     stateMatch: storedState === state,
-    storageKeys: Object.keys(localStorage).filter((k) =>
-      k.startsWith("sheetlog")
-    ),
+    storageKeys: Object.keys(localStorage).filter((k) => k.startsWith('sheetlog')),
   });
 
   if (!storedState) {
     throw new Error(
-      "OAuth state not found in storage. The OAuth flow may have been interrupted or started from a different tab/window."
+      'OAuth state not found in storage. The OAuth flow may have been interrupted or started from a different tab/window.',
     );
   }
 
@@ -159,17 +154,15 @@ export async function exchangeCodeForTokens(
     throw new Error(
       `OAuth state mismatch. Expected: ${storedState.substring(
         0,
-        8
-      )}..., Got: ${state.substring(0, 8)}...`
+        8,
+      )}..., Got: ${state.substring(0, 8)}...`,
     );
   }
 
   // Get stored code verifier
   const codeVerifier = localStorage.getItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER);
   if (!codeVerifier) {
-    throw new Error(
-      "Missing code verifier - OAuth flow not initiated properly"
-    );
+    throw new Error('Missing code verifier - OAuth flow not initiated properly');
   }
 
   // Clean up stored PKCE state
@@ -180,7 +173,7 @@ export async function exchangeCodeForTokens(
     code,
     client_id: clientId,
     redirect_uri: getRedirectUri(),
-    grant_type: "authorization_code",
+    grant_type: 'authorization_code',
     code_verifier: codeVerifier,
   };
 
@@ -190,16 +183,16 @@ export async function exchangeCodeForTokens(
   }
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams(body),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("Token exchange failed:", errorText);
+    console.error('Token exchange failed:', errorText);
     throw new Error(`Token exchange failed: ${response.status}`);
   }
 
@@ -228,12 +221,12 @@ export async function refreshAccessToken(): Promise<TokenData> {
   const refreshToken = localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
 
   if (!refreshToken) {
-    throw new Error("No refresh token available - user must re-authenticate");
+    throw new Error('No refresh token available - user must re-authenticate');
   }
 
   const body: Record<string, string> = {
     client_id: clientId,
-    grant_type: "refresh_token",
+    grant_type: 'refresh_token',
     refresh_token: refreshToken,
   };
 
@@ -243,23 +236,21 @@ export async function refreshAccessToken(): Promise<TokenData> {
   }
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams(body),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error("Token refresh failed:", errorText);
+    console.error('Token refresh failed:', errorText);
 
     // If refresh fails with 400/401, the refresh token is likely revoked
     if (response.status === 400 || response.status === 401) {
       localStorage.removeItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
-      throw new Error(
-        "Refresh token expired or revoked - user must re-authenticate"
-      );
+      throw new Error('Refresh token expired or revoked - user must re-authenticate');
     }
 
     throw new Error(`Token refresh failed: ${response.status}`);

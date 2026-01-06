@@ -1,11 +1,11 @@
-import React, { useCallback, useMemo } from "react";
-import { Check, X } from "lucide-react";
-import { CurrencyPicker } from "../CurrencyPicker";
-import { Keypad } from "../Keypad";
-import { InlinePicker } from "../ui/inline-picker";
-import { FOR_OPTIONS } from "./constants";
-import { STORAGE_KEYS } from "../../lib/constants";
-import type { TransactionFormApi } from "./useTransactionForm";
+import { Check, X } from 'lucide-react';
+import React, { useCallback, useMemo } from 'react';
+import { STORAGE_KEYS } from '../../lib/constants';
+import { CurrencyPicker } from '../CurrencyPicker';
+import { Keypad } from '../Keypad';
+import { InlinePicker } from '../ui/inline-picker';
+import { FOR_OPTIONS } from './constants';
+import type { TransactionFormApi } from './useTransactionForm';
 
 type StepAmountProps = {
   form: TransactionFormApi;
@@ -22,33 +22,30 @@ export function StepAmount({
   onSubmit,
   isSubmitting = false,
 }: StepAmountProps) {
-  const { type, category, amount, currency, account, forValue, note } =
-    form.useStore((state) => state.values);
-  const isTransfer = type === "transfer";
-  const accountLabel = isTransfer ? "From" : "Account";
+  const { type, category, amount, currency, account, forValue, note } = form.useStore(
+    (state) => state.values,
+  );
+  const isTransfer = type === 'transfer';
+  const accountLabel = isTransfer ? 'From' : 'Account';
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
   const handleAccountChange = useCallback(
     (value: string) => {
-      form.setFieldValue("account", value);
-      if (typeof window === "undefined") {
+      form.setFieldValue('account', value);
+      if (typeof window === 'undefined') {
         return;
       }
-      const accountCurrency = window.localStorage.getItem(
-        `${STORAGE_KEYS.LAST_CURRENCY}_${value}`
-      );
+      const accountCurrency = window.localStorage.getItem(`${STORAGE_KEYS.LAST_CURRENCY}_${value}`);
       if (accountCurrency) {
-        form.setFieldValue("currency", accountCurrency);
+        form.setFieldValue('currency', accountCurrency);
         return;
       }
-      const fallbackCurrency = window.localStorage.getItem(
-        STORAGE_KEYS.LAST_CURRENCY
-      );
+      const fallbackCurrency = window.localStorage.getItem(STORAGE_KEYS.LAST_CURRENCY);
       if (fallbackCurrency) {
-        form.setFieldValue("currency", fallbackCurrency);
+        form.setFieldValue('currency', fallbackCurrency);
       }
     },
-    [form]
+    [form],
   );
   const toAccountOptions = useMemo(() => {
     if (!isTransfer || !hasTransferAccounts) {
@@ -80,10 +77,10 @@ export function StepAmount({
         ) : null}
 
         <div className="flex flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
-          <span>{amount ? amount : "0"}</span>
+          <span>{amount ? amount : '0'}</span>
           <CurrencyPicker
             value={currency}
-            onChange={(value) => form.setFieldValue("currency", value)}
+            onChange={(value) => form.setFieldValue('currency', value)}
           />
         </div>
 
@@ -100,7 +97,7 @@ export function StepAmount({
               label="To"
               value={selectedFor}
               options={toAccountOptions}
-              onChange={(value) => form.setFieldValue("forValue", value)}
+              onChange={(value) => form.setFieldValue('forValue', value)}
               disabled={!hasTransferAccounts}
             />
           ) : (
@@ -108,7 +105,7 @@ export function StepAmount({
               label="For"
               value={selectedFor}
               options={FOR_OPTIONS}
-              onChange={(value) => form.setFieldValue("forValue", value)}
+              onChange={(value) => form.setFieldValue('forValue', value)}
             />
           )}
         </div>
@@ -121,16 +118,10 @@ export function StepAmount({
       ) : null}
 
       <div className="flex flex-col gap-5 pb-6">
-        <Keypad
-          value={amount}
-          onChange={(value) => form.setFieldValue("amount", value)}
-        />
+        <Keypad value={amount} onChange={(value) => form.setFieldValue('amount', value)} />
 
         <div>
-          <label
-            htmlFor="note"
-            className="text-xs uppercase tracking-widest text-muted-foreground"
-          >
+          <label htmlFor="note" className="text-xs uppercase tracking-widest text-muted-foreground">
             Note
           </label>
           <input
@@ -138,7 +129,7 @@ export function StepAmount({
             className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
             placeholder="Optional"
             value={note}
-            onChange={(event) => form.setFieldValue("note", event.target.value)}
+            onChange={(event) => form.setFieldValue('note', event.target.value)}
           />
         </div>
 
@@ -149,7 +140,7 @@ export function StepAmount({
           disabled={isSubmitting}
         >
           <Check className="h-4 w-4" />
-          {isSubmitting ? "Submitting" : "Submit"}
+          {isSubmitting ? 'Submitting' : 'Submit'}
         </button>
       </div>
     </div>

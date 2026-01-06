@@ -1,9 +1,9 @@
-import type { Variants } from "framer-motion";
-import type { HTMLAttributes, MouseEvent } from "react";
-import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
-import { motion, useAnimation } from "framer-motion";
+import type { Variants } from 'framer-motion';
+import { motion, useAnimation } from 'framer-motion';
+import type { HTMLAttributes, MouseEvent } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useRef } from 'react';
 
-import { cn } from "../../lib/utils";
+import { cn } from '../../lib/utils';
 
 export interface CircleCheckIconHandle {
   startAnimation: () => void;
@@ -42,31 +42,31 @@ const CircleCheckIcon = forwardRef<CircleCheckIconHandle, CircleCheckIconProps>(
       isControlledRef.current = true;
 
       return {
-        startAnimation: () => controls.start("animate"),
-        stopAnimation: () => controls.start("normal"),
+        startAnimation: () => controls.start('animate'),
+        stopAnimation: () => controls.start('normal'),
       };
     });
 
     const handleMouseEnter = useCallback(
       (event: MouseEvent<HTMLDivElement>) => {
         if (!isControlledRef.current) {
-          controls.start("animate");
+          controls.start('animate');
         } else {
           onMouseEnter?.(event);
         }
       },
-      [controls, onMouseEnter]
+      [controls, onMouseEnter],
     );
 
     const handleMouseLeave = useCallback(
       (event: MouseEvent<HTMLDivElement>) => {
         if (!isControlledRef.current) {
-          controls.start("normal");
+          controls.start('normal');
         } else {
           onMouseLeave?.(event);
         }
       },
-      [controls, onMouseLeave]
+      [controls, onMouseLeave],
     );
 
     return (
@@ -97,9 +97,9 @@ const CircleCheckIcon = forwardRef<CircleCheckIconHandle, CircleCheckIconProps>(
         </svg>
       </div>
     );
-  }
+  },
 );
 
-CircleCheckIcon.displayName = "CircleCheckIcon";
+CircleCheckIcon.displayName = 'CircleCheckIcon';
 
 export { CircleCheckIcon };

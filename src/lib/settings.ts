@@ -1,11 +1,11 @@
-import { db } from './db';
 import { DEFAULT_CATEGORIES } from './categories';
+import { db } from './db';
 import type { OnboardingState, RecentCategories } from './types';
 
 const DEFAULT_RECENTS: RecentCategories = {
   expense: [],
   income: [],
-  transfer: []
+  transfer: [],
 };
 
 const DEFAULT_ONBOARDING_STATE: OnboardingState = {
@@ -13,7 +13,7 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   accounts: [],
   accountsConfirmed: false,
   categories: DEFAULT_CATEGORIES,
-  categoriesConfirmed: false
+  categoriesConfirmed: false,
 };
 
 export async function getRecentCategories(): Promise<RecentCategories> {
@@ -32,11 +32,14 @@ export async function setRecentCategories(recents: RecentCategories): Promise<vo
   await db.settings.put({
     key: 'recentCategories',
     value: JSON.stringify(recents),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   });
 }
 
-export async function updateRecentCategory(type: keyof RecentCategories, category: string): Promise<RecentCategories> {
+export async function updateRecentCategory(
+  type: keyof RecentCategories,
+  category: string,
+): Promise<RecentCategories> {
   const current = await getRecentCategories();
   const existing = current[type].filter((item) => item !== category);
   const next = [category, ...existing].slice(0, 6);
@@ -52,8 +55,8 @@ export function getDefaultOnboardingState(): OnboardingState {
     categories: {
       expense: [...DEFAULT_ONBOARDING_STATE.categories.expense],
       income: [...DEFAULT_ONBOARDING_STATE.categories.income],
-      transfer: [...DEFAULT_ONBOARDING_STATE.categories.transfer]
-    }
+      transfer: [...DEFAULT_ONBOARDING_STATE.categories.transfer],
+    },
   };
 }
 
@@ -70,8 +73,8 @@ export async function getOnboardingState(): Promise<OnboardingState> {
       ...parsed,
       categories: {
         ...defaults.categories,
-        ...(parsed.categories ?? {})
-      }
+        ...(parsed.categories ?? {}),
+      },
     };
   } catch {
     return getDefaultOnboardingState();
@@ -82,6 +85,6 @@ export async function setOnboardingState(state: OnboardingState): Promise<void> 
   await db.settings.put({
     key: 'onboardingState',
     value: JSON.stringify(state),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   });
 }

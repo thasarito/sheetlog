@@ -2,7 +2,10 @@ import { db } from './db';
 import { appendTransaction, readTransactionIdMap } from './google';
 import { mapGoogleSyncError } from './googleErrors';
 
-export async function syncPendingTransactions(accessToken: string, sheetId: string): Promise<number> {
+export async function syncPendingTransactions(
+  accessToken: string,
+  sheetId: string,
+): Promise<number> {
   const pending = await db.transactions.where('status').equals('pending').sortBy('createdAt');
   if (pending.length === 0) {
     return 0;
@@ -19,7 +22,7 @@ export async function syncPendingTransactions(accessToken: string, sheetId: stri
         sheetRow: existingRow,
         sheetId,
         error: undefined,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
       syncedCount += 1;
       continue;
@@ -31,7 +34,7 @@ export async function syncPendingTransactions(accessToken: string, sheetId: stri
         sheetRow: rowIndex ?? undefined,
         sheetId,
         error: undefined,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
       if (rowIndex) {
         existingIds.set(item.id, rowIndex);
@@ -42,7 +45,7 @@ export async function syncPendingTransactions(accessToken: string, sheetId: stri
       await db.transactions.update(item.id, {
         status: info.retryable ? 'pending' : 'error',
         error: info.message,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
       if (info.shouldClearAuth || info.retryable) {
         syncFailure = error;
