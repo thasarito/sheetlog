@@ -16,8 +16,8 @@ export function useUpdateTransactionMutation() {
     }) => {
       await updateTransaction(id, input);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["recentTransactions"] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ["recentTransactions"] });
     },
   });
 }

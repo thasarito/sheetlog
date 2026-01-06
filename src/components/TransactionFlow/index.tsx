@@ -1,5 +1,6 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { format } from "date-fns";
 import { useAuth, useConnectivity, useTransactions } from "../providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { OnboardingFlow } from "../OnboardingFlow";
@@ -7,7 +8,8 @@ import { ServiceWorker } from "../ServiceWorker";
 import { Header } from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
-import type { TransactionType, CategoryItem } from "../../lib/types";
+import { db } from "../../lib/db";
+import type { TransactionType, CategoryItem, TransactionRecord } from "../../lib/types";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
@@ -21,6 +23,10 @@ import {
   type TransactionFormValues,
 } from "./transactionSchema";
 import { TopDashboard } from "./TopDashboard";
+import { CategoryGridDrawer } from "../CategoryGridDrawer";
+import { DateTimeDrawer } from "../DateTimeDrawer";
+import { useUpdateTransactionMutation } from "./useUpdateTransactionMutation";
+import { useDeleteTransactionMutation } from "./useDeleteTransactionMutation";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -38,7 +44,13 @@ export function TransactionFlow() {
   const [isResyncing, setIsResyncing] = useState(false);
   const [step, setStep] = useState(0);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<TransactionRecord | null>(null);
+  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
+  const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const mutation = useAddTransactionMutation();
+  const updateMutation = useUpdateTransactionMutation();
+  const deleteMutation = useDeleteTransactionMutation();
   const form = useTransactionForm({
     onSubmit: async (values) => {
       await handleSubmit(values);
@@ -246,22 +258,67 @@ export function TransactionFlow() {
     }
   }
 
-  function resetFlow() {
+  const resetFlow = useCallback(() => {
     setStep(0);
     setReceiptData(null);
+    setEditingTransaction(null);
+    setShowDeleteConfirm(false);
     mutation.reset();
+    updateMutation.reset();
     form.setFieldValue("type", TYPE_OPTIONS[0]);
     form.setFieldValue("category", "");
     form.setFieldValue("amount", "");
     form.setFieldValue("forValue", "Me");
     form.setFieldValue("note", "");
     form.setFieldValue("dateObject", new Date());
-  }
+  }, [mutation, updateMutation, form]);
+
+  const handleEditTransaction = useCallback(async (t: TransactionRecord) => {
+    // Ensure transaction exists in IndexedDB for update/delete to work
+    // (Recent transactions come from Google Sheets, not IndexedDB)
+    const existingTx = await db.transactions.get(t.id);
+    if (!existingTx) {
+      await db.transactions.put(t);
+    }
+
+    form.setFieldValue("type", t.type);
+    form.setFieldValue("category", t.category);
+    form.setFieldValue("amount", String(t.amount));
+    form.setFieldValue("currency", t.currency);
+    form.setFieldValue("account", t.account);
+    form.setFieldValue("forValue", t.for);
+    form.setFieldValue("dateObject", new Date(t.date));
+    form.setFieldValue("note", t.note ?? "");
+    setEditingTransaction(t);
+    setStep(1);
+  }, [form]);
+
+  const handleDelete = useCallback(() => {
+    if (!editingTransaction) return;
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      toast("Tap delete again to confirm", {
+        duration: 3000,
+        onAutoClose: () => setShowDeleteConfirm(false),
+      });
+      return;
+    }
+    deleteMutation.mutate(editingTransaction.id, {
+      onSuccess: () => {
+        resetFlow();
+      },
+      onError: () => {
+        toast.error("Failed to delete transaction");
+      },
+    });
+  }, [editingTransaction, showDeleteConfirm, deleteMutation, resetFlow]);
 
   function clearReceiptStep() {
     setStep(0);
     setReceiptData(null);
+    setEditingTransaction(null);
     mutation.reset();
+    updateMutation.reset();
   }
 
   function handleReceiptDone() {
@@ -281,7 +338,7 @@ export function TransactionFlow() {
   }
 
   async function handleSubmit(values: TransactionFormValues) {
-    if (mutation.isPending) {
+    if (mutation.isPending || updateMutation.isPending) {
       return;
     }
     if (!values.type || !values.category || !values.amount) {
@@ -314,6 +371,46 @@ export function TransactionFlow() {
       }
     }
     const resolvedFor = trimmedFor || values.forValue;
+
+    // Handle update mode
+    if (editingTransaction) {
+      const nextReceipt: ReceiptData = {
+        type: values.type,
+        category: values.category,
+        amount: values.amount,
+        currency: values.currency,
+        account: values.account,
+        forValue: resolvedFor,
+        dateObject: values.dateObject,
+        note: trimmedNote,
+      };
+      setReceiptData(nextReceipt);
+      setStep(2);
+      try {
+        await updateMutation.mutateAsync({
+          id: editingTransaction.id,
+          input: {
+            type: values.type,
+            category: values.category,
+            amount: parsedAmount,
+            currency: values.currency,
+            account: values.account,
+            for: resolvedFor,
+            date: format(values.dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
+            note: trimmedNote || undefined,
+          },
+        });
+        scheduleReceiptTransition(() => resetFlow(), 2000);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to update transaction";
+        handleToast(message);
+        scheduleReceiptTransition(() => clearReceiptStep(), 2000);
+      }
+      return;
+    }
+
+    // Handle create mode
     const nextReceipt: ReceiptData = {
       type: values.type,
       category: values.category,
@@ -375,9 +472,20 @@ export function TransactionFlow() {
         <StepAmount
           form={form}
           accounts={onboarding.accounts.map((a) => a.name)}
-          onBack={() => setStep(0)}
+          onBack={() => {
+            if (editingTransaction) {
+              setEditingTransaction(null);
+              setShowDeleteConfirm(false);
+            }
+            setStep(0);
+          }}
           onSubmit={handleFormSubmit}
-          isSubmitting={mutation.isPending}
+          isSubmitting={mutation.isPending || updateMutation.isPending}
+          onDelete={editingTransaction ? handleDelete : undefined}
+          isDeleting={deleteMutation.isPending}
+          onCategoryClick={editingTransaction ? () => setCategoryDrawerOpen(true) : undefined}
+          onDateClick={editingTransaction ? () => setDateDrawerOpen(true) : undefined}
+          submitLabel={editingTransaction ? "Save" : undefined}
         />
       ),
     },
@@ -385,23 +493,26 @@ export function TransactionFlow() {
       key: "step-receipt",
       label: "Receipt",
       className: "space-y-6 h-full",
-      content: (
-        <StepReceipt
-          {...receiptSnapshot}
-          isPending={mutation.isPending}
-          isSuccess={mutation.isSuccess}
-          isError={mutation.isError}
-          errorMessage={
-            mutation.error instanceof Error
-              ? mutation.error.message
-              : mutation.isError
-              ? "Failed to save transaction"
-              : undefined
-          }
-          onDone={handleReceiptDone}
-          onUndo={handleReceiptUndo}
-        />
-      ),
+      content: (() => {
+        const activeMutation = editingTransaction ? updateMutation : mutation;
+        return (
+          <StepReceipt
+            {...receiptSnapshot}
+            isPending={activeMutation.isPending}
+            isSuccess={activeMutation.isSuccess}
+            isError={activeMutation.isError}
+            errorMessage={
+              activeMutation.error instanceof Error
+                ? activeMutation.error.message
+                : activeMutation.isError
+                ? "Failed to save transaction"
+                : undefined
+            }
+            onDone={handleReceiptDone}
+            onUndo={editingTransaction ? undefined : handleReceiptUndo}
+          />
+        );
+      })(),
     },
   ];
 
@@ -425,7 +536,7 @@ export function TransactionFlow() {
             {step === 0 ? (
               <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
                 <div className="min-h-0">
-                  <TopDashboard />
+                  <TopDashboard onEditTransaction={handleEditTransaction} />
                 </div>
                 <div className="min-h-0">
                   <StepCard
@@ -450,6 +561,33 @@ export function TransactionFlow() {
         </div>
       ) : (
         <OnboardingFlow onToast={handleToast} />
+      )}
+
+      {editingTransaction && (
+        <>
+          <DateTimeDrawer
+            value={dateObject}
+            onChange={(date) => form.setFieldValue("dateObject", date)}
+            open={dateDrawerOpen}
+            onOpenChange={setDateDrawerOpen}
+            showTrigger={false}
+          />
+          <CategoryGridDrawer
+            type={type}
+            onTypeChange={(newType) => {
+              form.setFieldValue("type", newType);
+              form.setFieldValue("category", "");
+            }}
+            categories={categoryGroups[type] ?? []}
+            onSelect={(cat) => {
+              form.setFieldValue("category", cat);
+              setCategoryDrawerOpen(false);
+            }}
+            open={categoryDrawerOpen}
+            onOpenChange={setCategoryDrawerOpen}
+            layoutId="editTransactionCategory"
+          />
+        </>
       )}
     </main>
   );

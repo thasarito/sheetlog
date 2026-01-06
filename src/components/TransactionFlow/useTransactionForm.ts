@@ -25,6 +25,7 @@ function resolveStoredCurrency() {
 }
 
 export function useTransactionForm(options?: {
+  initialValues?: Partial<TransactionFormValues>;
   onSubmit?: (values: TransactionFormValues) => Promise<void>;
 }) {
   // Memoize defaultValues to prevent infinite re-renders.
@@ -32,15 +33,16 @@ export function useTransactionForm(options?: {
   // on every render, triggering an update loop.
   const defaultValues = useMemo<TransactionFormValues>(
     () => ({
-      type: "expense",
-      category: "",
-      amount: "",
-      currency: resolveStoredCurrency(),
-      account: "",
-      forValue: "Me",
-      dateObject: new Date(),
-      note: "",
+      type: options?.initialValues?.type ?? "expense",
+      category: options?.initialValues?.category ?? "",
+      amount: options?.initialValues?.amount ?? "",
+      currency: options?.initialValues?.currency ?? resolveStoredCurrency(),
+      account: options?.initialValues?.account ?? "",
+      forValue: options?.initialValues?.forValue ?? "Me",
+      dateObject: options?.initialValues?.dateObject ?? new Date(),
+      note: options?.initialValues?.note ?? "",
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 

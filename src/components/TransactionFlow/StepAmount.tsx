@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { format } from "date-fns";
-import { Check, ChevronLeft, FileText } from "lucide-react";
+import { Check, ChevronLeft, FileText, Pencil, Trash2 } from "lucide-react";
+import { cn } from "../../lib/utils";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
@@ -14,6 +15,12 @@ type StepAmountProps = {
   onBack: () => void;
   onSubmit: () => void;
   isSubmitting?: boolean;
+  // Edit mode props
+  onDelete?: () => void;
+  isDeleting?: boolean;
+  onCategoryClick?: () => void;
+  onDateClick?: () => void;
+  submitLabel?: string;
 };
 
 export function StepAmount({
@@ -22,6 +29,11 @@ export function StepAmount({
   onBack,
   onSubmit,
   isSubmitting = false,
+  onDelete,
+  isDeleting = false,
+  onCategoryClick,
+  onDateClick,
+  submitLabel,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -74,10 +86,32 @@ export function StepAmount({
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
-            <span className="text-sm font-medium text-foreground">{category}</span>
-            <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-              {format(dateObject, "dd MMM · HH:mm")}
-            </span>
+            {onCategoryClick ? (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors"
+                onClick={onCategoryClick}
+              >
+                {category}
+                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            ) : (
+              <span className="text-sm font-medium text-foreground">{category}</span>
+            )}
+            {onDateClick ? (
+              <button
+                type="button"
+                className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors tabular-nums"
+                onClick={onDateClick}
+              >
+                {format(dateObject, "dd MMM · HH:mm")}
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                {format(dateObject, "dd MMM · HH:mm")}
+              </span>
+            )}
           </div>
         ) : null}
 
@@ -140,15 +174,34 @@ export function StepAmount({
           onChange={(value) => form.setFieldValue("amount", value)}
         />
 
-        <button
-          type="button"
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={onSubmit}
-          disabled={isSubmitting}
-        >
-          <Check className="h-4 w-4" />
-          {isSubmitting ? "Submitting" : "Submit"}
-        </button>
+        <div className="flex items-center gap-2">
+          {onDelete && (
+            <button
+              type="button"
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive",
+                (isSubmitting || isDeleting) && "opacity-60"
+              )}
+              onClick={onDelete}
+              disabled={isSubmitting || isDeleting}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            type="button"
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onSubmit}
+            disabled={isSubmitting || isDeleting}
+          >
+            <Check className="h-4 w-4" />
+            {isSubmitting
+              ? submitLabel
+                ? "Saving..."
+                : "Submitting"
+              : submitLabel ?? "Submit"}
+          </button>
+        </div>
       </div>
     </div>
   );

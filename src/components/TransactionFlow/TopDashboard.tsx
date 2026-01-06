@@ -14,10 +14,13 @@ import { cn } from "../../lib/utils";
 import { useTransactions } from "../providers";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { Skeleton } from "../ui/skeleton";
-import { TransactionEditDrawer } from "./TransactionEditDrawer";
 import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
 
-export function TopDashboard() {
+type TopDashboardProps = {
+  onEditTransaction?: (t: TransactionRecord) => void;
+};
+
+export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
   const { queueCount, lastSyncAt } = useTransactions();
   const queryClient = useQueryClient();
   const [pendingTransactions, setPendingTransactions] = useState<
@@ -28,9 +31,6 @@ export function TopDashboard() {
   );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const visibleItemsRef = useRef<Set<string>>(new Set());
-  const [selectedTransaction, setSelectedTransaction] =
-    useState<TransactionRecord | null>(null);
-  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
   // Scroll-linked physics for header
   const scrollY = useMotionValue(0);
@@ -228,7 +228,7 @@ export function TopDashboard() {
   }, [scrollY]);
 
   return (
-    <div className="h-full w-full p-1 animate-in fade-in slide-in-from-top-8 duration-500">
+    <div className="relative h-full w-full p-1 animate-in fade-in slide-in-from-top-8 duration-500">
       <div className="flex h-full w-full flex-col">
         {/* Header Section */}
         <motion.div
@@ -335,15 +335,11 @@ export function TopDashboard() {
                       role="button"
                       tabIndex={0}
                       className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 text-sm cursor-pointer rounded-lg transition-colors active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                      onClick={() => {
-                        setSelectedTransaction(t);
-                        setEditDrawerOpen(true);
-                      }}
+                      onClick={() => onEditTransaction?.(t)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setSelectedTransaction(t);
-                          setEditDrawerOpen(true);
+                          onEditTransaction?.(t);
                         }
                       }}
                     >
@@ -390,12 +386,6 @@ export function TopDashboard() {
           )}
         </div>
       </div>
-
-      <TransactionEditDrawer
-        transaction={selectedTransaction}
-        open={editDrawerOpen}
-        onOpenChange={setEditDrawerOpen}
-      />
     </div>
   );
 }

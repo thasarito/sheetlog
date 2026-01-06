@@ -9,8 +9,8 @@ export function useDeleteTransactionMutation() {
     mutationFn: async (id: string) => {
       return deleteTransaction(id);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["recentTransactions"] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ["recentTransactions"] });
     },
   });
 }
