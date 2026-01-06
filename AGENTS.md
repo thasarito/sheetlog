@@ -15,3 +15,7 @@
 ## Style
 
 - Do not use `shadow`
+
+## Engineering
+
+- Always try to use `tanstack/query` when query or mutate
