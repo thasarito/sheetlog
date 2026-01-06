@@ -107,7 +107,7 @@ export function StepReceipt({
   );
 
   return (
-    <div className="flex min-h-[100dvh] flex-col justify-between gap-6 pb-6">
+    <div className="flex h-full flex-col justify-between gap-6 pb-6 px-4">
       <div className="space-y-6">
         <div
           className={

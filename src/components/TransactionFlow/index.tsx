@@ -384,7 +384,7 @@ export function TransactionFlow() {
     {
       key: "step-receipt",
       label: "Receipt",
-      className: "space-y-6",
+      className: "space-y-6 h-full",
       content: (
         <StepReceipt
           {...receiptSnapshot}
@@ -408,7 +408,7 @@ export function TransactionFlow() {
   const activeStep = steps[step] ?? steps[0];
 
   return (
-    <main className="h-full from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
+    <main className="h-dvh from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
       <ServiceWorker />
       {isOnboarded ? (
         <div className="mx-auto flex h-full w-full max-w-md flex-col">
