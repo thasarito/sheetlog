@@ -161,7 +161,7 @@ export function SettingsDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[85vh]">
+      <DrawerContent className="h-[65vh]!">
         <DrawerHeader className="flex flex-row items-center justify-between pb-2">
           <DrawerTitle>Settings</DrawerTitle>
           <button
