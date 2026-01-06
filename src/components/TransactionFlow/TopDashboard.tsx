@@ -198,7 +198,7 @@ export function TopDashboard() {
     }
 
     return () => observer.disconnect();
-  }, [updateVisibleDate]);
+  }, [updateVisibleDate, displayList]);
 
   // Scroll event for physics-based header animation
   useEffect(() => {
@@ -225,11 +225,11 @@ export function TopDashboard() {
 
   return (
     <div className="h-full w-full p-1 animate-in fade-in slide-in-from-top-8 duration-500">
-      <div className="flex h-full w-full flex-col overflow-hidden rounded-[24px] bg-surface-variant/30 border border-border/20 backdrop-blur-sm">
+      <div className="flex h-full w-full flex-col">
         {/* Header Section */}
         <motion.div
           style={{ y: headerY, opacity: headerOpacity }}
-          className="flex items-center justify-between px-4 py-2 border-b border-border/10 bg-surface-variant/20"
+          className="flex items-center justify-between px-4 py-2 border-b border-border/10"
         >
           <AnimatePresence mode="wait">
             <motion.span
@@ -322,7 +322,7 @@ export function TopDashboard() {
                 return (
                   <div key={t.id}>
                     {showDateSeparator && (
-                      <div className="text-xs text-muted-foreground font-medium px-3 py-2 bg-surface-variant/80 backdrop-blur-sm">
+                      <div className="text-xs text-muted-foreground font-medium px-3 py-2">
                         {formatDateLabel(currentDate)}
                       </div>
                     )}
