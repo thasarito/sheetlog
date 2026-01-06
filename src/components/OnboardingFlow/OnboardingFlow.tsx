@@ -1,5 +1,5 @@
 import "@khmyznikov/pwa-install";
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -11,7 +11,7 @@ import { Download } from "lucide-react";
 import { useAuth } from "../providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
-import type { TransactionType, AccountItem } from "../../lib/types";
+import type { AccountItem } from "../../lib/types";
 import { DEFAULT_ACCOUNT_ICON, DEFAULT_ACCOUNT_COLOR } from "../../lib/icons";
 import { AccountsScreen } from "./AccountsScreen";
 import { CategoriesScreen } from "./CategoriesScreen";
@@ -47,7 +47,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     onboarding.sheetFolderId ?? ""
   );
   const [accountInput, setAccountInput] = useState("");
-  const [categoryInputs, setCategoryInputs] = useState<CategoryInputs>({
+  const [_categoryInputs, _setCategoryInputs] = useState<CategoryInputs>({
     expense: "",
     income: "",
     transfer: "",
@@ -292,7 +292,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     setIsSaving(true);
     try {
       await updateOnboarding({ accountsConfirmed: true });
-    } catch (error) {
+    } catch (_error) {
       onToast("Failed to save accounts to sheet");
     } finally {
       setIsSaving(false);
@@ -307,7 +307,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     setIsSaving(true);
     try {
       await updateOnboarding({ categoriesConfirmed: true });
-    } catch (error) {
+    } catch (_error) {
       onToast("Failed to save categories to sheet");
     } finally {
       setIsSaving(false);

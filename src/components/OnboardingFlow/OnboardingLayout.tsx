@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import { ChevronLeft } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Stepper } from "../ui/stepper";

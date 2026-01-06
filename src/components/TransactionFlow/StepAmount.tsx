@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Check, X } from "lucide-react";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";

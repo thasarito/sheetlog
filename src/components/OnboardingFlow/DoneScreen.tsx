@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Check } from "lucide-react";
 import { OnboardingLayout } from "./OnboardingLayout";
 import type { ScreenMeta } from "./types";

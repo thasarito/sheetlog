@@ -63,7 +63,6 @@ input[type="date"] {
     --overlay: 220 40% 2%;
     --border: 215 27% 30%;
     --ring: 160 84% 45%;
-    --ring: 160 84% 45%;
   }
 
   input[type="date"] {
@@ -73,4 +72,26 @@ input[type="date"] {
 
 .no-tap-highlight {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* react-colorful custom styles */
+.react-colorful {
+  width: 100% !important;
+}
+
+.react-colorful__saturation {
+  border-radius: 12px;
+}
+
+.react-colorful__hue {
+  height: 24px;
+  border-radius: 12px;
+  margin-top: 12px;
+}
+
+.react-colorful__saturation-pointer,
+.react-colorful__hue-pointer {
+  width: 20px;
+  height: 20px;
+  border-width: 3px;
 }

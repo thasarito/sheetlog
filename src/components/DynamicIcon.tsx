@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import * as LucideIcons from "lucide-react";
 import { DEFAULT_ACCOUNT_ICON } from "../lib/icons";
 

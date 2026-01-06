@@ -1,4 +1,4 @@
-import React from "react";
+
 import { X, Plus } from "lucide-react";
 import { OnboardingLayout } from "./OnboardingLayout";
 import { DynamicIcon } from "../DynamicIcon";

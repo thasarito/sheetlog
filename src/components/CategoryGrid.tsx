@@ -1,6 +1,3 @@
-"use client";
-
-import React from "react";
 import { DynamicIcon } from "./DynamicIcon";
 import type { CategoryItem, TransactionType } from "../lib/types";
 import {
@@ -71,11 +68,7 @@ export function CategoryGrid({
               ].join(" ")}
               style={{ backgroundColor: `${color}20` }}
             >
-              <DynamicIcon
-                name={icon}
-                className="h-5 w-5"
-                style={{ color }}
-              />
+              <DynamicIcon name={icon} className="h-5 w-5" style={{ color }} />
             </span>
             <span
               className={[

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Folder, ChevronRight, Check, ArrowLeft } from "lucide-react";
 import { OnboardingLayout } from "./OnboardingLayout";

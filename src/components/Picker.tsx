@@ -1,7 +1,8 @@
-import React, {
-  CSSProperties,
-  HTMLProps,
-  MutableRefObject,
+import type React from "react";
+import {type 
+  CSSProperties,type 
+  HTMLProps,type 
+  MutableRefObject,type 
   ReactNode,
   createContext,
   useCallback,
@@ -11,7 +12,7 @@ import React, {
   useReducer,
   useRef,
   useState,
-} from "react";
+} from "react"
 
 interface Option {
   value: string | number;
@@ -361,10 +362,10 @@ function PickerColumn({
     (nextScrollerTranslate: number) => {
       if (nextScrollerTranslate < minTranslate) {
         nextScrollerTranslate =
-          minTranslate - Math.pow(minTranslate - nextScrollerTranslate, 0.8);
+          minTranslate - (minTranslate - nextScrollerTranslate) ** 0.8;
       } else if (nextScrollerTranslate > maxTranslate) {
         nextScrollerTranslate =
-          maxTranslate + Math.pow(nextScrollerTranslate - maxTranslate, 0.8);
+          maxTranslate + (nextScrollerTranslate - maxTranslate) ** 0.8;
       }
       setScrollerTranslate(nextScrollerTranslate);
     },
@@ -426,7 +427,7 @@ function PickerColumn({
       const nextScrollerTranslate = translateRef.current + velocity * dt;
       updateScrollerWhileMoving(nextScrollerTranslate);
 
-      let nextVelocity = velocity * Math.pow(decay, dt / 16);
+      let nextVelocity = velocity * decay ** (dt / 16);
       if (
         nextScrollerTranslate < minTranslate ||
         nextScrollerTranslate > maxTranslate

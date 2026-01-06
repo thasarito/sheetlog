@@ -1,4 +1,4 @@
-import type { CategoryConfigWithMeta, TransactionRecord, AccountItem, CategoryItem } from "./types";
+import type { CategoryConfigWithMeta, TransactionRecord, AccountItem, } from "./types";
 import {
   SUGGESTED_CATEGORY_ICONS,
   SUGGESTED_CATEGORY_COLORS,
@@ -397,7 +397,7 @@ const CATEGORY_TYPES = ["expense", "income", "transfer"] as const;
 
 type CategoryType = (typeof CATEGORY_TYPES)[number];
 
-function normalizeStringList(values: string[]): string[] {
+function _normalizeStringList(values: string[]): string[] {
   const seen = new Set<string>();
   const next: string[] = [];
   for (const item of values) {
@@ -573,7 +573,7 @@ export async function writeOnboardingConfig(
     const rows: string[][] = [];
     (["expense", "income", "transfer"] as const).forEach((type) => {
       const seen = new Set<string>();
-      updates.categories![type].forEach((item) => {
+      updates.categories?.[type].forEach((item) => {
         const key = item.name.trim().toLowerCase();
         if (!key || seen.has(key)) return;
         seen.add(key);

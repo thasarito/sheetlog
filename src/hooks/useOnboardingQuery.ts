@@ -108,7 +108,7 @@ function normalizeCategories(categories: CategoryConfigWithMeta): CategoryConfig
  * what changed and confirmation status
  */
 function buildSheetUpdates(
-  current: OnboardingState,
+  _current: OnboardingState,
   updates: Partial<OnboardingState>,
   next: OnboardingState
 ): SheetUpdates {

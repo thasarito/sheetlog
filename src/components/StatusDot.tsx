@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 
 export function StatusDot({ online }: { online: boolean }) {
   return (

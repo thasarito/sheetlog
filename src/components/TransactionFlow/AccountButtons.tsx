@@ -1,4 +1,4 @@
-import React from "react";
+
 
 type AccountButtonsProps = {
   accounts: string[];

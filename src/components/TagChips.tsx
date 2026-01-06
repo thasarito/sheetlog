@@ -1,7 +1,3 @@
-"use client";
-
-import React from "react";
-
 interface TagChipsProps {
   tags: string[];
   selected: string[];

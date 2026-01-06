@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
 import type { TransactionType, CategoryItem } from "../../lib/types";
@@ -66,7 +67,7 @@ export function StepCategory({
     if (selectedIndex !== lastIndexRef.current) {
       updateDirection(selectedIndex);
     }
-  }, [selectedIndex]);
+  }, [selectedIndex, updateDirection]);
 
   const handleCategorySelect = (value: string) => {
     form.setFieldValue("category", value);

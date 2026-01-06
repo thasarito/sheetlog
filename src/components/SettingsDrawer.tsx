@@ -14,10 +14,10 @@ import { useOnboarding } from "../hooks/useOnboarding";
 import { useAccountMutations } from "../hooks/useAccountMutations";
 import { useCategoryMutations } from "../hooks/useCategoryMutations";
 import { DynamicIcon } from "./DynamicIcon";
-import { IconPicker } from "./IconPicker";
-import { ColorPicker } from "./ColorPicker";
+import { AppearancePicker } from "./AppearancePicker";
 import type { TransactionType } from "../lib/types";
 import {
+  DEFAULT_ACCOUNT_ICON,
   DEFAULT_ACCOUNT_COLOR,
   DEFAULT_CATEGORY_ICONS,
   DEFAULT_CATEGORY_COLORS,
@@ -36,7 +36,6 @@ type ActiveView = "accounts" | "categories";
 type EditingItem = {
   type: "account" | "category";
   name: string;
-  field: "icon" | "color";
 };
 
 const SETTINGS_TABS = [
@@ -151,29 +150,16 @@ export function SettingsDrawer({
     setNewCategoryName("");
   }
 
-  // Handle icon/color selection
-  function handleIconSelect(icon: string) {
+  // Handle appearance (icon + color) save
+  function handleAppearanceSave(icon: string, color: string) {
     if (!editingItem) return;
     if (editingItem.type === "account") {
-      updateAccountMeta.mutate({ name: editingItem.name, icon });
+      updateAccountMeta.mutate({ name: editingItem.name, icon, color });
     } else {
       updateCategoryMeta.mutate({
         name: editingItem.name,
         categoryType: activeCategoryType,
         icon,
-      });
-    }
-    setEditingItem(null);
-  }
-
-  function handleColorSelect(color: string) {
-    if (!editingItem) return;
-    if (editingItem.type === "account") {
-      updateAccountMeta.mutate({ name: editingItem.name, color });
-    } else {
-      updateCategoryMeta.mutate({
-        name: editingItem.name,
-        categoryType: activeCategoryType,
         color,
       });
     }
@@ -253,18 +239,18 @@ export function SettingsDrawer({
                       }
                       disabled={isSaving}
                     >
-                      <div className="flex items-center gap-3 bg-card px-4 py-3">
-                        {/* Icon button */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingItem({
-                              type: "account",
-                              name: account.name,
-                              field: "icon",
-                            })
-                          }
-                          className="flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingItem({
+                            type: "account",
+                            name: account.name,
+                          })
+                        }
+                        className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface"
+                      >
+                        <div
+                          className="flex h-9 w-9 items-center justify-center rounded-full"
                           style={{
                             backgroundColor: `${
                               account.color || DEFAULT_ACCOUNT_COLOR
@@ -278,27 +264,11 @@ export function SettingsDrawer({
                               color: account.color || DEFAULT_ACCOUNT_COLOR,
                             }}
                           />
-                        </button>
+                        </div>
                         <span className="flex-1 text-sm font-medium text-foreground">
                           {account.name}
                         </span>
-                        {/* Color button */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingItem({
-                              type: "account",
-                              name: account.name,
-                              field: "color",
-                            })
-                          }
-                          className="h-6 w-6 rounded-full border border-border transition hover:scale-110"
-                          style={{
-                            backgroundColor:
-                              account.color || DEFAULT_ACCOUNT_COLOR,
-                          }}
-                        />
-                      </div>
+                      </button>
                     </SwipeableListItem>
                   ))
                 ) : (
@@ -322,7 +292,6 @@ export function SettingsDrawer({
                         }
                       }}
                       placeholder="Account name"
-                      autoFocus
                       disabled={isSaving}
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                     />
@@ -377,18 +346,18 @@ export function SettingsDrawer({
                       }
                       disabled={isSaving}
                     >
-                      <div className="flex items-center gap-3 bg-card px-4 py-3">
-                        {/* Icon button */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingItem({
-                              type: "category",
-                              name: category.name,
-                              field: "icon",
-                            })
-                          }
-                          className="flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingItem({
+                            type: "category",
+                            name: category.name,
+                          })
+                        }
+                        className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface"
+                      >
+                        <div
+                          className="flex h-9 w-9 items-center justify-center rounded-full"
                           style={{
                             backgroundColor: `${
                               category.color ||
@@ -408,28 +377,11 @@ export function SettingsDrawer({
                                 DEFAULT_CATEGORY_COLORS[activeCategoryType],
                             }}
                           />
-                        </button>
+                        </div>
                         <span className="flex-1 text-sm font-medium text-foreground">
                           {category.name}
                         </span>
-                        {/* Color button */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingItem({
-                              type: "category",
-                              name: category.name,
-                              field: "color",
-                            })
-                          }
-                          className="h-6 w-6 rounded-full border border-border transition hover:scale-110"
-                          style={{
-                            backgroundColor:
-                              category.color ||
-                              DEFAULT_CATEGORY_COLORS[activeCategoryType],
-                          }}
-                        />
-                      </div>
+                      </button>
                     </SwipeableListItem>
                   ))
                 ) : (
@@ -453,7 +405,6 @@ export function SettingsDrawer({
                         }
                       }}
                       placeholder="Category name"
-                      autoFocus
                       disabled={isSaving}
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                     />
@@ -510,24 +461,26 @@ export function SettingsDrawer({
         </DrawerContent>
       </Drawer>
 
-      {/* Icon Picker */}
-      <IconPicker
-        open={editingItem?.field === "icon"}
+      {/* Appearance Picker (Icon + Color) */}
+      <AppearancePicker
+        open={editingItem !== null}
         onOpenChange={(isOpen) => {
           if (!isOpen) setEditingItem(null);
         }}
-        selected={currentEditItem?.icon}
-        onSelect={handleIconSelect}
-      />
-
-      {/* Color Picker */}
-      <ColorPicker
-        open={editingItem?.field === "color"}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) setEditingItem(null);
-        }}
-        selected={currentEditItem?.color}
-        onSelect={handleColorSelect}
+        initialIcon={currentEditItem?.icon}
+        initialColor={currentEditItem?.color}
+        defaultIcon={
+          editingItem?.type === "account"
+            ? DEFAULT_ACCOUNT_ICON
+            : DEFAULT_CATEGORY_ICONS[activeCategoryType]
+        }
+        defaultColor={
+          editingItem?.type === "account"
+            ? DEFAULT_ACCOUNT_COLOR
+            : DEFAULT_CATEGORY_COLORS[activeCategoryType]
+        }
+        onSave={handleAppearanceSave}
+        title={`Edit ${editingItem?.type === "account" ? "Account" : "Category"}`}
       />
     </>
   );
