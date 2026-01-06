@@ -1,27 +1,26 @@
-'use client';
-
+"use client";
 
 interface KeypadProps {
   value: string;
   onChange: (next: string) => void;
 }
 
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'DEL'];
+const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "DEL"];
 
 export function Keypad({ value, onChange }: KeypadProps) {
   function handleKey(key: string) {
-    if (key === 'DEL') {
+    if (key === "DEL") {
       onChange(value.slice(0, -1));
       return;
     }
-    if (key === '.') {
-      if (value.includes('.')) {
+    if (key === ".") {
+      if (value.includes(".")) {
         return;
       }
-      onChange(value ? `${value}.` : '0.');
+      onChange(value ? `${value}.` : "0.");
       return;
     }
-    onChange(`${value}${key}`.replace(/^0+(\d)/, '$1'));
+    onChange(`${value}${key}`.replace(/^0+(\d)/, "$1"));
   }
 
   return (
@@ -30,7 +29,7 @@ export function Keypad({ value, onChange }: KeypadProps) {
         <button
           key={key}
           type="button"
-          className="h-14 rounded-2xl bg-card text-lg font-semibold text-foreground transition hover:bg-surface"
+          className="h-14 text-lg font-semibold text-foreground transition hover:bg-surface"
           onClick={() => handleKey(key)}
         >
           {key}

@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { Check, X } from "lucide-react";
+import { Check, FileText, X } from "lucide-react";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
@@ -61,10 +61,10 @@ export function StepAmount({
   }, [account, accounts, hasTransferAccounts, isTransfer]);
 
   return (
-    <div className="flex min-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] flex-col gap-5">
+    <div className="flex h-full flex-col gap-5 px-4">
       <div className="flex-1 flex flex-col">
         {category ? (
-          <div className="px-4 pt-4">
+          <div className="pt-4">
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/90 px-3 py-1.5 text-xs font-semibold text-foreground backdrop-blur">
               <span className="max-w-[240px] truncate">{category}</span>
               <button
@@ -112,6 +112,18 @@ export function StepAmount({
             />
           )}
         </div>
+
+        <div className="mt-4 flex items-center gap-3 border-b border-border/10 pb-2 transition-colors focus-within:border-primary/50">
+          <FileText className="h-4 w-4 text-muted-foreground/50" />
+          <input
+            type="text"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+            placeholder="Add a note..."
+            value={note}
+            onChange={(event) => form.setFieldValue("note", event.target.value)}
+            autoComplete="off"
+          />
+        </div>
       </div>
 
       {isTransfer && !hasTransferAccounts ? (
@@ -125,22 +137,6 @@ export function StepAmount({
           value={amount}
           onChange={(value) => form.setFieldValue("amount", value)}
         />
-
-        <div>
-          <label
-            htmlFor="note"
-            className="text-xs uppercase tracking-widest text-muted-foreground"
-          >
-            Note
-          </label>
-          <input
-            type="text"
-            className="mt-2 w-full rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
-            placeholder="Optional"
-            value={note}
-            onChange={(event) => form.setFieldValue("note", event.target.value)}
-          />
-        </div>
 
         <button
           type="button"

@@ -370,7 +370,7 @@ export function TransactionFlow() {
     {
       key: "step-amount",
       label: "Amount",
-      className: "space-y-5",
+      className: "space-y-5 h-full",
       content: (
         <StepAmount
           form={form}

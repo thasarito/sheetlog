@@ -19,7 +19,7 @@ export function Header({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   return (
-    <header className="flex items-center justify-between px-4 py-3">
+    <header className="flex items-center justify-between px-4 py-3 shrink-0">
       {/* Logo and brand name */}
       <div className="flex items-center gap-2">
         <img src="/icon.svg" alt="Sheetlog logo" className="w-8 h-8" />
