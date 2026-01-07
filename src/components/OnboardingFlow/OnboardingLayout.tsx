@@ -1,7 +1,7 @@
-import type React from "react";
-import { ChevronLeft } from "lucide-react";
-import { cn } from "../../lib/utils";
-import { Stepper } from "../ui/stepper";
+import { ChevronLeft } from 'lucide-react';
+import type React from 'react';
+import { cn } from '../../lib/utils';
+import { Stepper } from '../ui/stepper';
 
 interface OnboardingLayoutProps {
   title: string;
@@ -25,7 +25,7 @@ export function OnboardingLayout({
   className,
 }: OnboardingLayoutProps) {
   return (
-    <div className={cn("flex h-full w-full flex-col bg-background", className)}>
+    <div className={cn('flex h-full w-full flex-col bg-background', className)}>
       {/* Header */}
       <header className="flex items-center gap-4 px-6 pt-12 pb-4">
         <div className="flex-none">

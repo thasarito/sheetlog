@@ -1,11 +1,11 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider } from "@tanstack/react-router";
-import { router } from "./router";
-import { getOnboardingState } from "./lib/settings";
-import { onboardingKeys } from "./hooks/useOnboardingQuery";
-import "./styles/globals.css";
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { RouterProvider } from '@tanstack/react-router';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { onboardingKeys } from './hooks/useOnboardingQuery';
+import { getOnboardingState } from './lib/settings';
+import { router } from './router';
+import './styles/globals.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,10 +13,10 @@ const queryClient = new QueryClient({
       retry: false,
       staleTime: 1000 * 60,
       refetchOnWindowFocus: false,
-      networkMode: "offlineFirst",
+      networkMode: 'offlineFirst',
     },
     mutations: {
-      networkMode: "offlineFirst",
+      networkMode: 'offlineFirst',
     },
   },
 });
@@ -26,10 +26,10 @@ getOnboardingState().then((state) => {
   queryClient.setQueryData(onboardingKeys.all, state);
 });
 
-const rootElement = document.getElementById("root");
+const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  throw new Error("Missing root element");
+  throw new Error('Missing root element');
 }
 
 ReactDOM.createRoot(rootElement).render(
@@ -37,5 +37,5 @@ ReactDOM.createRoot(rootElement).render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

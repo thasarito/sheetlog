@@ -1,29 +1,20 @@
-import {
-  ArrowDownRight,
-  ArrowLeftRight,
-  ArrowUpRight,
-} from "lucide-react";
-import type React from "react";
-import type { CategoryItem, TransactionType } from "../lib/types";
-import { CategoryGrid } from "./CategoryGrid";
-import { AnimatedTabs } from "./ui/AnimatedTabs";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "./ui/drawer";
+import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from 'lucide-react';
+import type React from 'react';
+import type { CategoryItem, TransactionType } from '../lib/types';
+import { CategoryGrid } from './CategoryGrid';
+import { AnimatedTabs } from './ui/AnimatedTabs';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from './ui/drawer';
 
 const TYPE_META: Record<
   TransactionType,
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
-  expense: { label: "Expense", icon: ArrowDownRight },
-  income: { label: "Income", icon: ArrowUpRight },
-  transfer: { label: "Transfer", icon: ArrowLeftRight },
+  expense: { label: 'Expense', icon: ArrowDownRight },
+  income: { label: 'Income', icon: ArrowUpRight },
+  transfer: { label: 'Transfer', icon: ArrowLeftRight },
 };
 
-const TYPE_OPTIONS: TransactionType[] = ["expense", "income", "transfer"];
+const TYPE_OPTIONS: TransactionType[] = ['expense', 'income', 'transfer'];
 
 const TYPE_TABS = TYPE_OPTIONS.map((type) => ({
   value: type,
@@ -48,7 +39,7 @@ export function CategoryGridDrawer({
   onSelect,
   open,
   onOpenChange,
-  layoutId = "categoryGridDrawer",
+  layoutId = 'categoryGridDrawer',
 }: CategoryGridDrawerProps) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -74,9 +65,7 @@ export function CategoryGridDrawer({
                 transactionType={type}
               />
             ) : (
-              <span className="text-sm text-muted-foreground">
-                No categories available
-              </span>
+              <span className="text-sm text-muted-foreground">No categories available</span>
             )}
           </div>
         </div>
