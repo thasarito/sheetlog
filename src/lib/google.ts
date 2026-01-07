@@ -389,6 +389,51 @@ export async function deleteRow(
   });
 }
 
+export async function updateRow(
+  accessToken: string,
+  spreadsheetId: string,
+  rowIndex: number,
+  transaction: TransactionRecord
+): Promise<void> {
+  if (rowIndex <= 1) {
+    throw new Error("Refusing to update header row");
+  }
+
+  let note = transaction.note ?? "";
+  let currency = transaction.currency ?? "";
+  if (!currency && note) {
+    const match = note.match(/^\[([A-Z]{3})\]\s*/);
+    if (match) {
+      currency = match[1];
+      note = note.slice(match[0].length);
+    }
+  }
+
+  const values = [
+    [
+      transaction.date,
+      transaction.type,
+      transaction.amount,
+      transaction.category,
+      note,
+      transaction.createdAt,
+      "PWA",
+      currency,
+      transaction.account ?? "",
+      transaction.for ?? "",
+      transaction.id,
+    ],
+  ];
+
+  const range = `${TAB_NAME}!A${rowIndex}:K${rowIndex}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+
+  await fetchWithAuth(url, accessToken, {
+    method: "PUT",
+    body: JSON.stringify({ values }),
+  });
+}
+
 function parseRowFromRange(range: string): number | null {
   const match = range.match(/!A(\d+):/);
   if (!match) {

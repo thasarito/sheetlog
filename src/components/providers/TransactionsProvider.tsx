@@ -7,7 +7,7 @@ import {
   useRef,
 } from "react";
 import { db } from "../../lib/db";
-import { deleteRow, getSheetTabId } from "../../lib/google";
+import { deleteRow, getSheetTabId, readTransactionIdMap, updateRow } from "../../lib/google";
 import { mapGoogleSyncError } from "../../lib/googleErrors";
 import { getRecentCategories, updateRecentCategory } from "../../lib/settings";
 import { syncPendingTransactions } from "../../lib/sync";
@@ -201,24 +201,36 @@ export function TransactionsProvider({
 
   const updateTransaction = useCallback(
     async (id: string, input: Partial<TransactionInput>) => {
-      // Get existing transaction to check if we need to delete old sheet row
       const transaction = await db.transactions.get(id);
       if (!transaction) return;
 
-      // For synced transactions, try to delete old sheet row first
+      const now = new Date().toISOString();
+      const updatedRecord = { ...transaction, ...input, updatedAt: now };
+
+      // Try in-place update for synced transactions
       if (transaction.status === "synced" && accessToken && sheetId) {
-        const effectiveTabId =
-          sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
-        if (effectiveTabId && transaction.sheetRow) {
-          try {
-            await deleteRow(accessToken, sheetId, effectiveTabId, transaction.sheetRow);
-          } catch (_error) {
-            // Continue with update even if delete fails - row will be orphaned but not duplicated
+        try {
+          // Look up fresh row number by transaction ID (handles row shifts from deletions)
+          const idMap = await readTransactionIdMap(accessToken, sheetId);
+          const currentRow = idMap.get(transaction.id);
+
+          if (currentRow) {
+            await updateRow(accessToken, sheetId, currentRow, updatedRecord);
+            // Success - keep synced status, update sheetRow to current value
+            await db.transactions.update(id, { ...input, updatedAt: now, sheetRow: currentRow });
+            await refreshStats();
+            if (input.type && input.category) {
+              await markRecentCategory(input.type, input.category);
+            }
+            return;
           }
+          // Row not found in sheet - fall through to pending
+        } catch (error) {
+          console.warn("In-place update failed, falling back to pending:", error);
         }
       }
 
-      const now = new Date().toISOString();
+      // Fallback: mark as pending for sync
       await db.transactions.update(id, {
         ...input,
         status: "pending",
@@ -233,7 +245,7 @@ export function TransactionsProvider({
         await syncNow();
       }
     },
-    [accessToken, isOnline, sheetId, sheetTabId, refreshStats, markRecentCategory, syncNow]
+    [accessToken, isOnline, sheetId, refreshStats, markRecentCategory, syncNow]
   );
 
   const undoLast = useCallback(async (): Promise<UndoResult> => {
