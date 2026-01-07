@@ -1,6 +1,7 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
+import { parseDate } from "../../lib/date-utils";
 import { useAuth, useConnectivity, useTransactions } from "../providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { OnboardingFlow } from "../OnboardingFlow";
@@ -287,7 +288,7 @@ export function TransactionFlow() {
     form.setFieldValue("currency", t.currency);
     form.setFieldValue("account", t.account);
     form.setFieldValue("forValue", t.for);
-    form.setFieldValue("dateObject", new Date(t.date));
+    form.setFieldValue("dateObject", parseDate(t.date));
     form.setFieldValue("note", t.note ?? "");
     setEditingTransaction(t);
     setStep(1);

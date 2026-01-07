@@ -10,7 +10,9 @@
     "start": "vite preview --port 3100",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
@@ -43,6 +45,7 @@
     "tailwindcss-safe-area": "^0.8.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.9",
-    "vite-plugin-pwa": "^0.20.0"
+    "vite-plugin-pwa": "^0.20.0",
+    "vitest": "^4.0.16"
   }
 }

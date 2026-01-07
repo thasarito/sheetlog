@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { format, isSameDay, subDays } from "date-fns";
+import { parseDate } from "../../lib/date-utils";
 import {
   motion,
   useMotionValue,
@@ -94,7 +95,7 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
   const transactionsByDate = useMemo(() => {
     const grouped: Record<string, TransactionRecord[]> = {};
     for (const t of transactions) {
-      const dateKey = format(new Date(t.date), "yyyy-MM-dd");
+      const dateKey = format(parseDate(t.date), "yyyy-MM-dd");
       if (!grouped[dateKey]) grouped[dateKey] = [];
       grouped[dateKey].push(t);
     }
@@ -316,10 +317,10 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
           ) : (
             <div className="space-y-0.5">
               {displayList.map((t, idx) => {
-                const currentDate = format(new Date(t.date), "yyyy-MM-dd");
+                const currentDate = format(parseDate(t.date), "yyyy-MM-dd");
                 const prevDate =
                   idx > 0
-                    ? format(new Date(displayList[idx - 1].date), "yyyy-MM-dd")
+                    ? format(parseDate(displayList[idx - 1].date), "yyyy-MM-dd")
                     : null;
                 const showDateSeparator = currentDate !== prevDate;
 
@@ -344,7 +345,7 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
                       }}
                     >
                       <span className="text-xs text-muted-foreground font-medium tabular-nums w-9">
-                        {format(new Date(t.date), "HH:mm")}
+                        {format(parseDate(t.date), "HH:mm")}
                       </span>
 
                       <div className="flex items-center gap-2 min-w-0 pr-2">
