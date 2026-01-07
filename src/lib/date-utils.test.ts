@@ -37,4 +37,14 @@ describe('parseDate', () => {
     const result = parseDate('invalid-date');
     expect(isValid(result)).toBe(true); // Falls back to current date
   });
+
+  it('should parse Google Sheets datetime format (M/d/yyyy HH:mm:ss)', () => {
+    const result = parseDate('1/1/2026 19:56:00');
+    expect(isValid(result)).toBe(true);
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(0); // January
+    expect(result.getDate()).toBe(1);
+    expect(result.getHours()).toBe(19);
+    expect(result.getMinutes()).toBe(56);
+  });
 });

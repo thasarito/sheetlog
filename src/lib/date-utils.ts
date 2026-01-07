@@ -18,7 +18,7 @@ export function parseDate(dateStr: string): Date {
   }
 
   // Try common formatted date patterns from Google Sheets
-  const formats = ['M/d/yyyy', 'd/M/yyyy', 'yyyy-MM-dd'];
+  const formats = ['M/d/yyyy HH:mm:ss', 'M/d/yyyy', 'd/M/yyyy', 'yyyy-MM-dd'];
   for (const fmt of formats) {
     const parsed = parse(dateStr, fmt, new Date());
     if (isValid(parsed)) {
