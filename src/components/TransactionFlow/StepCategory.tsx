@@ -1,13 +1,13 @@
-import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
-import type { TransactionType, CategoryItem } from "../../lib/types";
-import { AnimatedTabs } from "../ui/AnimatedTabs";
-import { CategoryGrid } from "../CategoryGrid";
-import { DateTimeDrawer } from "../DateTimeDrawer";
-import { TYPE_OPTIONS } from "./constants";
-import type { TransactionFormApi } from "./useTransactionForm";
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from 'lucide-react';
+import type React from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CategoryItem, TransactionType } from '../../lib/types';
+import { CategoryGrid } from '../CategoryGrid';
+import { DateTimeDrawer } from '../DateTimeDrawer';
+import { AnimatedTabs } from '../ui/AnimatedTabs';
+import { TYPE_OPTIONS } from './constants';
+import type { TransactionFormApi } from './useTransactionForm';
 
 type StepCategoryProps = {
   form: TransactionFormApi;
@@ -22,9 +22,9 @@ const TYPE_META: Record<
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
-  expense: { label: "Expense", icon: ArrowDownRight },
-  income: { label: "Income", icon: ArrowUpRight },
-  transfer: { label: "Transfer", icon: ArrowLeftRight },
+  expense: { label: 'Expense', icon: ArrowDownRight },
+  income: { label: 'Income', icon: ArrowUpRight },
+  transfer: { label: 'Transfer', icon: ArrowLeftRight },
 };
 
 const TYPE_TABS = TYPE_OPTIONS.map((type) => ({
@@ -34,16 +34,12 @@ const TYPE_TABS = TYPE_OPTIONS.map((type) => ({
 }));
 
 const panelVariants = {
-  enter: (dir: number) => ({ x: dir > 0 ? "100%" : "-100%" }),
+  enter: (dir: number) => ({ x: dir > 0 ? '100%' : '-100%' }),
   center: { x: 0 },
-  exit: (dir: number) => ({ x: dir > 0 ? "-100%" : "100%" }),
+  exit: (dir: number) => ({ x: dir > 0 ? '-100%' : '100%' }),
 };
 
-export function StepCategory({
-  form,
-  categoryGroups,
-  onConfirm,
-}: StepCategoryProps) {
+export function StepCategory({ form, categoryGroups, onConfirm }: StepCategoryProps) {
   const { type, category, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
@@ -70,8 +66,8 @@ export function StepCategory({
   }, [selectedIndex, updateDirection]);
 
   const handleCategorySelect = (value: string) => {
-    form.setFieldValue("category", value);
-    form.setFieldValue("dateObject", new Date());
+    form.setFieldValue('category', value);
+    form.setFieldValue('dateObject', new Date());
     setIsDrawerOpen(true);
   };
 
@@ -82,9 +78,9 @@ export function StepCategory({
   const handleTypeChange = (index: number) => {
     updateDirection(index);
     const nextType = TYPE_OPTIONS[index];
-    form.setFieldValue("type", nextType);
+    form.setFieldValue('type', nextType);
     if (nextType !== type) {
-      form.setFieldValue("category", "");
+      form.setFieldValue('category', '');
     }
   };
 
@@ -112,7 +108,7 @@ export function StepCategory({
               initial="enter"
               animate="center"
               exit="exit"
-              transition={{ type: "spring", stiffness: 500, damping: 40 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 40 }}
               className="absolute inset-0 h-full overflow-y-auto pb-2"
             >
               <CategoryGrid
@@ -127,7 +123,7 @@ export function StepCategory({
 
       <DateTimeDrawer
         value={dateObject}
-        onChange={(value) => form.setFieldValue("dateObject", value)}
+        onChange={(value) => form.setFieldValue('dateObject', value)}
         open={isDrawerOpen}
         onOpenChange={setIsDrawerOpen}
         showTrigger={false}

@@ -1,6 +1,6 @@
-import { format } from "date-fns";
-import { DateScroller } from "./DateScroller";
-import { TimePicker } from "./TimePicker";
+import { format } from 'date-fns';
+import { DateScroller } from './DateScroller';
+import { TimePicker } from './TimePicker';
 import {
   Drawer,
   DrawerClose,
@@ -10,7 +10,7 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
-} from "./ui/drawer";
+} from './ui/drawer';
 
 type DateTimeDrawerProps = {
   value: Date;
@@ -31,8 +31,8 @@ export function DateTimeDrawer({
   showTrigger = true,
   onConfirm,
 }: DateTimeDrawerProps) {
-  const dateLabel = format(value, "EEE, MMM d");
-  const timeLabel = format(value, "HH:mm");
+  const dateLabel = format(value, 'EEE, MMM d');
+  const timeLabel = format(value, 'HH:mm');
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
@@ -43,9 +43,7 @@ export function DateTimeDrawer({
             className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-left transition hover:border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <div>
-              <div className="text-sm font-semibold text-foreground">
-                {dateLabel}
-              </div>
+              <div className="text-sm font-semibold text-foreground">{dateLabel}</div>
               <div className="text-xs text-muted-foreground">{timeLabel}</div>
             </div>
             <span className="text-xs font-semibold uppercase tracking-widest text-primary">
@@ -57,9 +55,7 @@ export function DateTimeDrawer({
       <DrawerContent>
         <DrawerHeader className="text-left">
           <DrawerTitle>Date & time</DrawerTitle>
-          <DrawerDescription>
-            Choose when this transaction happened.
-          </DrawerDescription>
+          <DrawerDescription>Choose when this transaction happened.</DrawerDescription>
         </DrawerHeader>
         <div className="space-y-4 px-4 pb-2">
           <DateScroller value={value} onChange={onChange} />

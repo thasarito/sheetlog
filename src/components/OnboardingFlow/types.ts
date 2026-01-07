@@ -1,6 +1,6 @@
-import type { TransactionType } from "../../lib/types";
+import type { TransactionType } from '../../lib/types';
 
-export type LocationMode = "root" | "folder";
+export type LocationMode = 'root' | 'folder';
 
 export type CategoryInputs = Record<TransactionType, string>;
 

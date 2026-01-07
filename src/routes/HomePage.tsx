@@ -1,11 +1,11 @@
-import { TransactionFlow } from "../components/TransactionFlow";
+import { TransactionFlow } from '../components/TransactionFlow';
 
-import { useDocumentMeta } from "../hooks/useDocumentMeta";
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 
 export function HomePage() {
   useDocumentMeta({
-    title: "SheetLog",
-    description: "Rapid financial logging to Google Sheets",
+    title: 'SheetLog',
+    description: 'Rapid financial logging to Google Sheets',
   });
 
   return (

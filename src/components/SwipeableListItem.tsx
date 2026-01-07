@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from "react";
-import { useDrag } from "@use-gesture/react";
-import { animated, useSpring } from "@react-spring/web";
-import { Trash2 } from "lucide-react";
+import { animated, useSpring } from '@react-spring/web';
+import { useDrag } from '@use-gesture/react';
+import { Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 type SwipeableListItemProps = {
   children: React.ReactNode;
@@ -71,14 +71,14 @@ export function SwipeableListItem({
       }
     },
     {
-      axis: "x",
+      axis: 'x',
       from: () => [x.get(), 0],
       filterTaps: true,
-    }
+    },
   );
 
   function triggerHaptic() {
-    if ("vibrate" in navigator) {
+    if ('vibrate' in navigator) {
       navigator.vibrate(10);
     }
   }
@@ -119,9 +119,9 @@ export function SwipeableListItem({
         onClick={handleContentClick}
         style={{
           x,
-          touchAction: "pan-y",
+          touchAction: 'pan-y',
         }}
-        className={`relative bg-card ${isDeleting ? "opacity-50" : ""}`}
+        className={`relative bg-card ${isDeleting ? 'opacity-50' : ''}`}
       >
         {children}
       </animated.div>

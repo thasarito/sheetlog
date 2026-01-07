@@ -1,0 +1,9 @@
+
+> sheetlog@0.1.0 dev /app
+> vite --port 3100
+
+
+  VITE v5.4.21  ready in 473 ms
+
+  ➜  Local:   http://localhost:3100/
+  ➜  Network: use --host to expose
