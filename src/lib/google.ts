@@ -1,3 +1,4 @@
+import { parseDate } from "./date-utils";
 import {
   DEFAULT_ACCOUNT_COLOR,
   DEFAULT_ACCOUNT_ICON,
@@ -690,7 +691,7 @@ export async function getRecentTransactions(
   const range = `${TAB_NAME}!A${startRowIndex}:K${lastRowIndex}`;
 
   // 3. Fetch the data
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
   const data = await fetchWithAuth<{ values?: any[][] }>(url, accessToken);
   const rows = data.values ?? [];
 
@@ -724,7 +725,8 @@ function parseTransactionRow(row: any[], rowIndex: number): TransactionRecord {
 
   return {
     id: String(id || `row-${rowIndex}`), // Ensure ID is string
-    date: String(date || new Date().toISOString()),
+    date:
+      date != null ? parseDate(date).toISOString() : new Date().toISOString(),
     type: (["expense", "income", "transfer"].includes(
       String(typeRaw || "").toLowerCase()
     )
