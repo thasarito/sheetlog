@@ -155,6 +155,7 @@ export function StepAmount({
             type="text"
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
             placeholder="Add a note..."
+            aria-label="Transaction note"
             value={note}
             onChange={(event) => form.setFieldValue("note", event.target.value)}
             autoComplete="off"
@@ -184,6 +185,7 @@ export function StepAmount({
               )}
               onClick={onDelete}
               disabled={isSubmitting || isDeleting}
+              aria-label="Delete transaction"
             >
               <Trash2 className="h-4 w-4" />
             </button>
