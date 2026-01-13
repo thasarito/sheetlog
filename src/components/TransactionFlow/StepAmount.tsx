@@ -41,6 +41,19 @@ export function StepAmount({
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
+  const canQuickSubmit = useMemo(() => {
+    if (!type || !category || !amount || !account) {
+      return false;
+    }
+    const parsedAmount = Number.parseFloat(amount);
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      return false;
+    }
+    if (isTransfer) {
+      return Boolean(selectedFor?.trim());
+    }
+    return true;
+  }, [account, amount, category, isTransfer, selectedFor, type]);
   const handleAccountChange = useCallback(
     (value: string) => {
       form.setFieldValue("account", value);
@@ -157,6 +170,15 @@ export function StepAmount({
             placeholder="Add a note..."
             value={note}
             onChange={(event) => form.setFieldValue("note", event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") {
+                return;
+              }
+              event.preventDefault();
+              if (canQuickSubmit && !isSubmitting && !isDeleting) {
+                onSubmit();
+              }
+            }}
             autoComplete="off"
           />
         </div>
