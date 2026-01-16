@@ -157,6 +157,11 @@ export function StepAmount({
             placeholder="Add a note..."
             value={note}
             onChange={(event) => form.setFieldValue("note", event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && amount && !isSubmitting && !isDeleting) {
+                onSubmit();
+              }
+            }}
             autoComplete="off"
           />
         </div>
