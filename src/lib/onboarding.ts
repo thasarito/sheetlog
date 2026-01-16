@@ -1,6 +1,17 @@
-import type { AccountItem, CategoryItem, CategoryConfigWithMeta, OnboardingState } from "./types";
-import { setOnboardingState } from "./settings";
-import { readOnboardingConfig, writeOnboardingConfig } from "./google";
+import {
+  readOnboardingConfig as realReadOnboardingConfig,
+  writeOnboardingConfig as realWriteOnboardingConfig,
+} from './google';
+import {
+  IS_DEV_MODE,
+  readOnboardingConfig as mockReadOnboardingConfig,
+  writeOnboardingConfig as mockWriteOnboardingConfig,
+} from './mock';
+import { setOnboardingState } from './settings';
+import type { AccountItem, CategoryConfigWithMeta, CategoryItem, OnboardingState } from './types';
+
+const readOnboardingConfig = IS_DEV_MODE ? mockReadOnboardingConfig : realReadOnboardingConfig;
+const writeOnboardingConfig = IS_DEV_MODE ? mockWriteOnboardingConfig : realWriteOnboardingConfig;
 
 type OnboardingSheetConfig = {
   accounts?: AccountItem[];
@@ -9,17 +20,13 @@ type OnboardingSheetConfig = {
 
 function hasAllCategories(categories: CategoryConfigWithMeta): boolean {
   return (
-    categories.expense.length > 0 &&
-    categories.income.length > 0 &&
-    categories.transfer.length > 0
+    categories.expense.length > 0 && categories.income.length > 0 && categories.transfer.length > 0
   );
 }
 
 function hasAnyCategories(categories: CategoryConfigWithMeta): boolean {
   return (
-    categories.expense.length > 0 ||
-    categories.income.length > 0 ||
-    categories.transfer.length > 0
+    categories.expense.length > 0 || categories.income.length > 0 || categories.transfer.length > 0
   );
 }
 
@@ -58,7 +65,7 @@ type MergeOptions = {
 function mergeOnboardingState(
   current: OnboardingState,
   config: OnboardingSheetConfig,
-  options: MergeOptions = {}
+  options: MergeOptions = {},
 ): { next: OnboardingState; changed: boolean } {
   let next = current;
   let changed = false;
@@ -93,7 +100,7 @@ export async function hydrateOnboardingFromSheet(
   accessToken: string,
   sheetId: string,
   current: OnboardingState,
-  options: MergeOptions = {}
+  options: MergeOptions = {},
 ): Promise<{ next: OnboardingState; changed: boolean }> {
   const sheetConfig = await readOnboardingConfig(accessToken, sheetId);
   if (!sheetConfig) {
@@ -118,10 +125,9 @@ export async function updateOnboarding(params: {
 
   if (accessToken && sheetId && isOnline) {
     const shouldPersistAccounts =
-      ("accounts" in updates || "accountsConfirmed" in updates) &&
-      nextState.accountsConfirmed;
+      ('accounts' in updates || 'accountsConfirmed' in updates) && nextState.accountsConfirmed;
     const shouldPersistCategories =
-      ("categories" in updates || "categoriesConfirmed" in updates) &&
+      ('categories' in updates || 'categoriesConfirmed' in updates) &&
       nextState.categoriesConfirmed;
 
     const updatesToSheet: {

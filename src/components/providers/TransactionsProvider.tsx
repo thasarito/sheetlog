@@ -1,29 +1,40 @@
-import type React from "react";
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { db } from '../../lib/db';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-} from "react";
-import { db } from "../../lib/db";
-import { deleteRow, getSheetTabId, readTransactionIdMap, updateRow } from "../../lib/google";
-import { mapGoogleSyncError } from "../../lib/googleErrors";
-import { getRecentCategories, updateRecentCategory } from "../../lib/settings";
-import { syncPendingTransactions } from "../../lib/sync";
+  deleteRow as realDeleteRow,
+  getSheetTabId as realGetSheetTabId,
+  readTransactionIdMap as realReadTransactionIdMap,
+  updateRow as realUpdateRow,
+} from '../../lib/google';
+import { mapGoogleSyncError } from '../../lib/googleErrors';
+import {
+  IS_DEV_MODE,
+  deleteRow as mockDeleteRow,
+  getSheetTabId as mockGetSheetTabId,
+  readTransactionIdMap as mockReadTransactionIdMap,
+  updateRow as mockUpdateRow,
+} from '../../lib/mock';
+import { getRecentCategories, updateRecentCategory } from '../../lib/settings';
+import { syncPendingTransactions } from '../../lib/sync';
 import type {
   RecentCategories,
   TransactionInput,
   TransactionRecord,
   TransactionType,
-} from "../../lib/types";
-import { useAuth } from "./auth";
-import { useConnectivity } from "./ConnectivityContext";
+} from '../../lib/types';
+import { useAuth } from './auth';
+import { useConnectivity } from './ConnectivityContext';
 import {
   TransactionsContext,
   type TransactionsContextValue,
   type UndoResult,
-} from "./TransactionsContext";
+} from './TransactionsContext';
+
+const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
+const getSheetTabId = IS_DEV_MODE ? mockGetSheetTabId : realGetSheetTabId;
+const readTransactionIdMap = IS_DEV_MODE ? mockReadTransactionIdMap : realReadTransactionIdMap;
+const updateRow = IS_DEV_MODE ? mockUpdateRow : realUpdateRow;
 
 const DEFAULT_RECENTS: RecentCategories = {
   expense: [],
@@ -42,38 +53,38 @@ type TransactionsState = {
 
 type TransactionsAction =
   | {
-      type: "set_stats";
+      type: 'set_stats';
       queueCount: number;
     }
-  | { type: "set_recent"; recentCategories: RecentCategories }
-  | { type: "sync_start" }
-  | { type: "sync_end" }
-  | { type: "sync_error"; message: string; at: string }
-  | { type: "sync_success"; at: string };
+  | { type: 'set_recent'; recentCategories: RecentCategories }
+  | { type: 'sync_start' }
+  | { type: 'sync_end' }
+  | { type: 'sync_error'; message: string; at: string }
+  | { type: 'sync_success'; at: string };
 
 function transactionsReducer(
   state: TransactionsState,
-  action: TransactionsAction
+  action: TransactionsAction,
 ): TransactionsState {
   switch (action.type) {
-    case "set_stats":
+    case 'set_stats':
       return {
         ...state,
         queueCount: action.queueCount,
       };
-    case "set_recent":
+    case 'set_recent':
       return { ...state, recentCategories: action.recentCategories };
-    case "sync_start":
+    case 'sync_start':
       return { ...state, isSyncing: true };
-    case "sync_end":
+    case 'sync_end':
       return { ...state, isSyncing: false };
-    case "sync_error":
+    case 'sync_error':
       return {
         ...state,
         lastSyncError: action.message,
         lastSyncErrorAt: action.at,
       };
-    case "sync_success":
+    case 'sync_success':
       return {
         ...state,
         lastSyncError: null,
@@ -85,11 +96,7 @@ function transactionsReducer(
   }
 }
 
-export function TransactionsProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function TransactionsProvider({ children }: { children: React.ReactNode }) {
   const { accessToken, sheetId, sheetTabId, clearAuth } = useAuth();
   const { isOnline } = useConnectivity();
   const [state, dispatch] = useReducer(transactionsReducer, {
@@ -107,12 +114,9 @@ export function TransactionsProvider({
   }, [state.isSyncing]);
 
   const refreshStats = useCallback(async () => {
-    const pendingCount = await db.transactions
-      .where("status")
-      .equals("pending")
-      .count();
+    const pendingCount = await db.transactions.where('status').equals('pending').count();
     dispatch({
-      type: "set_stats",
+      type: 'set_stats',
       queueCount: pendingCount,
     });
   }, []);
@@ -122,7 +126,7 @@ export function TransactionsProvider({
     async function loadRecents() {
       const stored = await getRecentCategories();
       if (!cancelled) {
-        dispatch({ type: "set_recent", recentCategories: stored });
+        dispatch({ type: 'set_recent', recentCategories: stored });
       }
     }
     void loadRecents();
@@ -140,23 +144,23 @@ export function TransactionsProvider({
       return;
     }
     syncingRef.current = true;
-    dispatch({ type: "sync_start" });
+    dispatch({ type: 'sync_start' });
     try {
       await syncPendingTransactions(accessToken, sheetId);
-      dispatch({ type: "sync_success", at: new Date().toISOString() });
+      dispatch({ type: 'sync_success', at: new Date().toISOString() });
     } catch (error) {
       const info = mapGoogleSyncError(error);
       if (info.shouldClearAuth) {
         clearAuth();
       }
       dispatch({
-        type: "sync_error",
+        type: 'sync_error',
         message: info.message,
         at: new Date().toISOString(),
       });
     } finally {
       await refreshStats();
-      dispatch({ type: "sync_end" });
+      dispatch({ type: 'sync_end' });
       syncingRef.current = false;
     }
   }, [accessToken, sheetId, refreshStats, clearAuth]);
@@ -167,25 +171,22 @@ export function TransactionsProvider({
     }
   }, [isOnline, accessToken, sheetId, syncNow]);
 
-  const markRecentCategory = useCallback(
-    async (type: TransactionType, category: string) => {
-      const updated = await updateRecentCategory(type, category);
-      dispatch({ type: "set_recent", recentCategories: updated });
-    },
-    []
-  );
+  const markRecentCategory = useCallback(async (type: TransactionType, category: string) => {
+    const updated = await updateRecentCategory(type, category);
+    dispatch({ type: 'set_recent', recentCategories: updated });
+  }, []);
 
   const addTransaction = useCallback(
     async (input: TransactionInput) => {
       const now = new Date().toISOString();
       const id =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}`;
       const record: TransactionRecord = {
         ...input,
         id,
-        status: "pending",
+        status: 'pending',
         createdAt: now,
         updatedAt: now,
       };
@@ -196,7 +197,7 @@ export function TransactionsProvider({
         await syncNow();
       }
     },
-    [accessToken, isOnline, sheetId, refreshStats, markRecentCategory, syncNow]
+    [accessToken, isOnline, sheetId, refreshStats, markRecentCategory, syncNow],
   );
 
   const updateTransaction = useCallback(
@@ -208,7 +209,7 @@ export function TransactionsProvider({
       const updatedRecord = { ...transaction, ...input, updatedAt: now };
 
       // Try in-place update for synced transactions
-      if (transaction.status === "synced" && accessToken && sheetId) {
+      if (transaction.status === 'synced' && accessToken && sheetId) {
         try {
           // Look up fresh row number by transaction ID (handles row shifts from deletions)
           const idMap = await readTransactionIdMap(accessToken, sheetId);
@@ -226,14 +227,14 @@ export function TransactionsProvider({
           }
           // Row not found in sheet - fall through to pending
         } catch (error) {
-          console.warn("In-place update failed, falling back to pending:", error);
+          console.warn('In-place update failed, falling back to pending:', error);
         }
       }
 
       // Fallback: mark as pending for sync
       await db.transactions.update(id, {
         ...input,
-        status: "pending",
+        status: 'pending',
         updatedAt: now,
         sheetRow: undefined,
       });
@@ -245,37 +246,36 @@ export function TransactionsProvider({
         await syncNow();
       }
     },
-    [accessToken, isOnline, sheetId, refreshStats, markRecentCategory, syncNow]
+    [accessToken, isOnline, sheetId, refreshStats, markRecentCategory, syncNow],
   );
 
   const undoLast = useCallback(async (): Promise<UndoResult> => {
-    const last = await db.transactions.orderBy("createdAt").last();
+    const last = await db.transactions.orderBy('createdAt').last();
     if (!last) {
-      return { ok: false, message: "Nothing to undo" };
+      return { ok: false, message: 'Nothing to undo' };
     }
 
-    if (last.status === "pending") {
+    if (last.status === 'pending') {
       await db.transactions.delete(last.id);
       await refreshStats();
-      return { ok: true, message: "Removed pending entry" };
+      return { ok: true, message: 'Removed pending entry' };
     }
 
-    if (last.status === "synced" && accessToken && sheetId) {
-      const effectiveTabId =
-        sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
+    if (last.status === 'synced' && accessToken && sheetId) {
+      const effectiveTabId = sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
       if (effectiveTabId && last.sheetRow) {
         try {
           await deleteRow(accessToken, sheetId, effectiveTabId, last.sheetRow);
           await db.transactions.delete(last.id);
           await refreshStats();
-          return { ok: true, message: "Removed last synced entry" };
+          return { ok: true, message: 'Removed last synced entry' };
         } catch (error) {
           const info = mapGoogleSyncError(error);
           if (info.shouldClearAuth) {
             clearAuth();
           }
           dispatch({
-            type: "sync_error",
+            type: 'sync_error',
             message: info.message,
             at: new Date().toISOString(),
           });
@@ -285,15 +285,15 @@ export function TransactionsProvider({
 
     const now = new Date().toISOString();
     const id =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `${Date.now()}-undo`;
     const compensating: TransactionRecord = {
       ...last,
       id,
       amount: -last.amount,
-      note: last.note ? `UNDO: ${last.note}` : "UNDO",
-      status: "pending",
+      note: last.note ? `UNDO: ${last.note}` : 'UNDO',
+      status: 'pending',
       createdAt: now,
       updatedAt: now,
       sheetRow: undefined,
@@ -305,51 +305,37 @@ export function TransactionsProvider({
     if (isOnline && accessToken && sheetId) {
       await syncNow();
     }
-    return { ok: true, message: "Undo queued as compensating entry" };
-  }, [
-    accessToken,
-    sheetId,
-    sheetTabId,
-    isOnline,
-    refreshStats,
-    syncNow,
-    clearAuth,
-  ]);
+    return { ok: true, message: 'Undo queued as compensating entry' };
+  }, [accessToken, sheetId, sheetTabId, isOnline, refreshStats, syncNow, clearAuth]);
 
   const deleteTransaction = useCallback(
     async (id: string): Promise<UndoResult> => {
       const transaction = await db.transactions.get(id);
       if (!transaction) {
-        return { ok: false, message: "Transaction not found" };
+        return { ok: false, message: 'Transaction not found' };
       }
 
-      if (transaction.status === "pending") {
+      if (transaction.status === 'pending') {
         await db.transactions.delete(id);
         await refreshStats();
-        return { ok: true, message: "Removed pending entry" };
+        return { ok: true, message: 'Removed pending entry' };
       }
 
-      if (transaction.status === "synced" && accessToken && sheetId) {
-        const effectiveTabId =
-          sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
+      if (transaction.status === 'synced' && accessToken && sheetId) {
+        const effectiveTabId = sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
         if (effectiveTabId && transaction.sheetRow) {
           try {
-            await deleteRow(
-              accessToken,
-              sheetId,
-              effectiveTabId,
-              transaction.sheetRow
-            );
+            await deleteRow(accessToken, sheetId, effectiveTabId, transaction.sheetRow);
             await db.transactions.delete(id);
             await refreshStats();
-            return { ok: true, message: "Removed synced entry" };
+            return { ok: true, message: 'Removed synced entry' };
           } catch (error) {
             const info = mapGoogleSyncError(error);
             if (info.shouldClearAuth) {
               clearAuth();
             }
             dispatch({
-              type: "sync_error",
+              type: 'sync_error',
               message: info.message,
               at: new Date().toISOString(),
             });
@@ -359,15 +345,15 @@ export function TransactionsProvider({
 
       const now = new Date().toISOString();
       const compensatingId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-delete`;
       const compensating: TransactionRecord = {
         ...transaction,
         id: compensatingId,
         amount: -transaction.amount,
-        note: transaction.note ? `DELETE: ${transaction.note}` : "DELETE",
-        status: "pending",
+        note: transaction.note ? `DELETE: ${transaction.note}` : 'DELETE',
+        status: 'pending',
         createdAt: now,
         updatedAt: now,
         sheetRow: undefined,
@@ -380,17 +366,9 @@ export function TransactionsProvider({
       if (isOnline && accessToken && sheetId) {
         await syncNow();
       }
-      return { ok: true, message: "Delete queued as compensating entry" };
+      return { ok: true, message: 'Delete queued as compensating entry' };
     },
-    [
-      accessToken,
-      sheetId,
-      sheetTabId,
-      isOnline,
-      refreshStats,
-      syncNow,
-      clearAuth,
-    ]
+    [accessToken, sheetId, sheetTabId, isOnline, refreshStats, syncNow, clearAuth],
   );
 
   const value = useMemo<TransactionsContextValue>(
@@ -419,12 +397,8 @@ export function TransactionsProvider({
       undoLast,
       syncNow,
       markRecentCategory,
-    ]
+    ],
   );
 
-  return (
-    <TransactionsContext.Provider value={value}>
-      {children}
-    </TransactionsContext.Provider>
-  );
+  return <TransactionsContext.Provider value={value}>{children}</TransactionsContext.Provider>;
 }
