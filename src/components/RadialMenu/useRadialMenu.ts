@@ -21,6 +21,7 @@ export interface UseRadialMenuOptions<T> {
   getItemIcon: (item: T) => string;
   getItemLabel: (item: T) => string;
   onSelect?: (item: T | null, category: string) => void;
+  onDefault?: (category: string) => void;
 }
 
 export interface UseRadialMenuReturn {
@@ -35,7 +36,7 @@ export interface UseRadialMenuReturn {
 }
 
 export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMenuReturn {
-  const { getItems, getItemId, getItemIcon, getItemLabel, onSelect } = options;
+  const { getItems, getItemId, getItemIcon, getItemLabel, onSelect, onDefault } = options;
   const [state, setState] = useState<RadialMenuState | null>(null);
 
   const handleLongPressStart = useCallback(
@@ -87,14 +88,17 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
         return;
       }
 
-      const selectedItem = selectedId
-        ? items.find((item) => getItemId(item) === selectedId) ?? null
-        : null;
+      if (selectedId === null) {
+        onDefault?.(state.category);
+        setState(null);
+        return;
+      }
 
+      const selectedItem = items.find((item) => getItemId(item) === selectedId) ?? null;
       onSelect?.(selectedItem, state.category);
       setState(null);
     },
-    [state, getItems, getItemId, getItemIcon, getItemLabel, onSelect]
+    [state, getItems, getItemId, getItemIcon, getItemLabel, onSelect, onDefault]
   );
 
   const handleCancel = useCallback(() => {

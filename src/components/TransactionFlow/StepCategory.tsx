@@ -78,6 +78,11 @@ export function StepCategory({
       }
       setIsDrawerOpen(true);
     },
+    onDefault: (category) => {
+      form.setFieldValue("category", category);
+      form.setFieldValue("dateObject", new Date());
+      setIsDrawerOpen(true);
+    },
   });
 
   const updateDirection = useCallback((nextIndex: number) => {
