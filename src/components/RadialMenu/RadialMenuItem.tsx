@@ -49,18 +49,18 @@ function createHighlightArc(
 
 const NODE_RADIUS = 18;
 
-// Calculate text anchor based on angle to prevent label overlap with nodes
-function getTextAnchor(angle: number): 'start' | 'middle' | 'end' {
-  // Normalize angle to 0-360
-  const normalized = ((angle % 360) + 360) % 360;
-  if (normalized > 110 && normalized < 250) return 'end';    // Left side
-  if (normalized < 70 || normalized > 290) return 'start';   // Right side
-  return 'middle';  // Top/bottom
-}
-
 // Estimate text width based on character count (rough approximation for 12px font)
 function estimateTextWidth(text: string): number {
   return text.length * 6.5;
+}
+
+// Calculate horizontal offset to push labels away from center based on angle
+function getLabelOffsetX(angle: number, textWidth: number): number {
+  const normalized = ((angle % 360) + 360) % 360;
+  const pushAmount = textWidth / 2 + 5;
+  if (normalized > 110 && normalized < 250) return -pushAmount; // Left side - push left
+  if (normalized < 70 || normalized > 290) return pushAmount;   // Right side - push right
+  return 0;  // Top/bottom - centered
 }
 
 export function RadialMenuSegment({
@@ -78,22 +78,19 @@ export function RadialMenuSegment({
 
   // Calculate label position (outside the ring)
   const labelRadius = ringRadius + 36;
-  const labelPos = polarToCartesian(midAngle, labelRadius);
+  const baseLabelPos = polarToCartesian(midAngle, labelRadius);
 
-  // Calculate text anchor and background position
-  const textAnchor = getTextAnchor(midAngle);
+  // Calculate adjusted label position with offset to push away from center
   const textWidth = estimateTextWidth(label);
+  const labelOffsetX = getLabelOffsetX(midAngle, textWidth);
+  const labelPos = {
+    x: baseLabelPos.x + labelOffsetX,
+    y: baseLabelPos.y,
+  };
+
   const labelPadding = { x: 10, y: 4 };
   const labelHeight = 22;
-
-  // Calculate rect x position based on text anchor
-  const getLabelRectX = () => {
-    switch (textAnchor) {
-      case 'start': return labelPos.x - labelPadding.x;
-      case 'end': return labelPos.x - textWidth - labelPadding.x;
-      case 'middle': return labelPos.x - textWidth / 2 - labelPadding.x;
-    }
-  };
+  const rectWidth = textWidth + labelPadding.x * 2;
 
   const highlightPath = createHighlightArc(startAngle, endAngle, ringRadius, 16);
 
@@ -157,9 +154,9 @@ export function RadialMenuSegment({
 
       {/* Label background pill */}
       <motion.rect
-        x={getLabelRectX()}
+        x={labelPos.x - rectWidth / 2}
         y={labelPos.y - labelHeight / 2}
-        width={textWidth + labelPadding.x * 2}
+        width={rectWidth}
         height={labelHeight}
         rx={4}
         ry={4}
@@ -175,7 +172,7 @@ export function RadialMenuSegment({
       <motion.text
         x={labelPos.x}
         y={labelPos.y}
-        textAnchor={textAnchor}
+        textAnchor="middle"
         dominantBaseline="central"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
