@@ -49,6 +49,20 @@ function createHighlightArc(
 
 const NODE_RADIUS = 18;
 
+// Calculate text anchor based on angle to prevent label overlap with nodes
+function getTextAnchor(angle: number): 'start' | 'middle' | 'end' {
+  // Normalize angle to 0-360
+  const normalized = ((angle % 360) + 360) % 360;
+  if (normalized > 110 && normalized < 250) return 'end';    // Left side
+  if (normalized < 70 || normalized > 290) return 'start';   // Right side
+  return 'middle';  // Top/bottom
+}
+
+// Estimate text width based on character count (rough approximation for 12px font)
+function estimateTextWidth(text: string): number {
+  return text.length * 6.5;
+}
+
 export function RadialMenuSegment({
   icon,
   label,
@@ -63,8 +77,23 @@ export function RadialMenuSegment({
   const nodePos = polarToCartesian(midAngle, ringRadius);
 
   // Calculate label position (outside the ring)
-  const labelRadius = ringRadius + 40;
+  const labelRadius = ringRadius + 36;
   const labelPos = polarToCartesian(midAngle, labelRadius);
+
+  // Calculate text anchor and background position
+  const textAnchor = getTextAnchor(midAngle);
+  const textWidth = estimateTextWidth(label);
+  const labelPadding = { x: 10, y: 4 };
+  const labelHeight = 22;
+
+  // Calculate rect x position based on text anchor
+  const getLabelRectX = () => {
+    switch (textAnchor) {
+      case 'start': return labelPos.x - labelPadding.x;
+      case 'end': return labelPos.x - textWidth - labelPadding.x;
+      case 'middle': return labelPos.x - textWidth / 2 - labelPadding.x;
+    }
+  };
 
   const highlightPath = createHighlightArc(startAngle, endAngle, ringRadius, 16);
 
@@ -126,12 +155,28 @@ export function RadialMenuSegment({
         {isCancel ? icon : label.charAt(0).toUpperCase()}
       </motion.text>
 
+      {/* Label background pill */}
+      <motion.rect
+        x={getLabelRectX()}
+        y={labelPos.y - labelHeight / 2}
+        width={textWidth + labelPadding.x * 2}
+        height={labelHeight}
+        rx={4}
+        ry={4}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2, delay: 0.05 }}
+        className="fill-card stroke-border"
+        strokeWidth={1}
+      />
+
       {/* Label text */}
       <motion.text
         x={labelPos.x}
         y={labelPos.y}
-        textAnchor="middle"
-        dominantBaseline="middle"
+        textAnchor={textAnchor}
+        dominantBaseline="central"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
