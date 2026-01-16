@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Reorder } from "framer-motion";
-import { RefreshCw, Plus } from "lucide-react";
+import { RefreshCw, Plus, Zap } from "lucide-react";
 import {
   Drawer,
   DrawerClose,
@@ -17,6 +17,7 @@ import { useAccountMutations } from "../hooks/useAccountMutations";
 import { useCategoryMutations } from "../hooks/useCategoryMutations";
 import { DynamicIcon } from "./DynamicIcon";
 import { AppearancePicker } from "./AppearancePicker";
+import { QuickNotesSettings } from "./QuickNotes/QuickNotesSettings";
 import type { TransactionType } from "../lib/types";
 import {
   DEFAULT_ACCOUNT_ICON,
@@ -39,6 +40,11 @@ type EditingItem = {
   type: "account" | "category";
   name: string;
 };
+
+type QuickNotesEditingState = {
+  categoryName: string;
+  transactionType: TransactionType;
+} | null;
 
 const SETTINGS_TABS = [
   { value: "accounts" as const, label: "Accounts" },
@@ -83,6 +89,7 @@ export function SettingsDrawer({
   const [newAccountName, setNewAccountName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
+  const [quickNotesEditing, setQuickNotesEditing] = useState<QuickNotesEditingState>(null);
 
   const accounts = onboarding.accounts ?? [];
   const categories = onboarding.categories ?? {
@@ -416,42 +423,57 @@ export function SettingsDrawer({
                           }
                           disabled={isSaving}
                         >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditingItem({
-                                type: "category",
-                                name: category.name,
-                              })
-                            }
-                            className="flex w-full items-center gap-3 bg-card px-4 py-3 text-left transition hover:bg-surface"
-                          >
-                            <div
-                              className="flex h-9 w-9 items-center justify-center rounded-full"
-                              style={{
-                                backgroundColor: `${
-                                  category.color ||
-                                  DEFAULT_CATEGORY_COLORS[activeCategoryType]
-                                }20`,
-                              }}
+                          <div className="flex w-full items-center bg-card">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingItem({
+                                  type: "category",
+                                  name: category.name,
+                                })
+                              }
+                              className="flex flex-1 items-center gap-3 px-4 py-3 text-left transition hover:bg-surface"
                             >
-                              <DynamicIcon
-                                name={category.icon}
-                                fallback={
-                                  DEFAULT_CATEGORY_ICONS[activeCategoryType]
-                                }
-                                className="h-5 w-5"
+                              <div
+                                className="flex h-9 w-9 items-center justify-center rounded-full"
                                 style={{
-                                  color:
+                                  backgroundColor: `${
                                     category.color ||
-                                    DEFAULT_CATEGORY_COLORS[activeCategoryType],
+                                    DEFAULT_CATEGORY_COLORS[activeCategoryType]
+                                  }20`,
                                 }}
-                              />
-                            </div>
-                            <span className="flex-1 text-sm font-medium text-foreground">
-                              {category.name}
-                            </span>
-                          </button>
+                              >
+                                <DynamicIcon
+                                  name={category.icon}
+                                  fallback={
+                                    DEFAULT_CATEGORY_ICONS[activeCategoryType]
+                                  }
+                                  className="h-5 w-5"
+                                  style={{
+                                    color:
+                                      category.color ||
+                                      DEFAULT_CATEGORY_COLORS[activeCategoryType],
+                                  }}
+                                />
+                              </div>
+                              <span className="flex-1 text-sm font-medium text-foreground">
+                                {category.name}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setQuickNotesEditing({
+                                  categoryName: category.name,
+                                  transactionType: activeCategoryType,
+                                })
+                              }
+                              className="flex h-full items-center px-3 py-3 text-muted-foreground transition hover:text-primary"
+                              aria-label="Configure quick notes"
+                            >
+                              <Zap className="h-4 w-4" />
+                            </button>
+                          </div>
                         </SwipeableListItem>
                       </ReorderableListItem>
                     ))}
@@ -553,6 +575,17 @@ export function SettingsDrawer({
         }
         onSave={handleAppearanceSave}
         title={`Edit ${editingItem?.type === "account" ? "Account" : "Category"}`}
+      />
+
+      {/* Quick Notes Settings */}
+      <QuickNotesSettings
+        open={quickNotesEditing !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setQuickNotesEditing(null);
+        }}
+        transactionType={quickNotesEditing?.transactionType ?? "expense"}
+        categoryName={quickNotesEditing?.categoryName ?? ""}
+        onToast={onToast}
       />
     </>
   );

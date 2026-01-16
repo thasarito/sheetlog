@@ -2,10 +2,13 @@ import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
-import type { TransactionType, CategoryItem } from "../../lib/types";
+import type { TransactionType, CategoryItem, QuickNote } from "../../lib/types";
 import { AnimatedTabs } from "../ui/AnimatedTabs";
 import { CategoryGrid } from "../CategoryGrid";
 import { DateTimeDrawer } from "../DateTimeDrawer";
+import { RadialMenu } from "../RadialMenu";
+import { useRadialMenu } from "../RadialMenu/useRadialMenu";
+import { useQuickNotesQuery, getQuickNotesForCategory } from "../../hooks/useQuickNotes";
 import { TYPE_OPTIONS } from "./constants";
 import type { TransactionFormApi } from "./useTransactionForm";
 
@@ -44,12 +47,38 @@ export function StepCategory({
   categoryGroups,
   onConfirm,
 }: StepCategoryProps) {
-  const { type, category, dateObject } = form.useStore((state) => state.values);
+  const { type, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
   const [direction, setDirection] = useState(0);
   const lastIndexRef = useRef(selectedIndex);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const { data: quickNotesConfig } = useQuickNotesQuery();
+
+  // Radial menu hook
+  const { state: radialMenuState, handlers: radialHandlers, menuItems } = useRadialMenu<QuickNote>({
+    getItems: (category) => getQuickNotesForCategory(quickNotesConfig, activeType, category),
+    getItemId: (note) => note.id,
+    getItemIcon: (note) => note.icon,
+    getItemLabel: (note) => note.label,
+    onSelect: (selectedNote, category) => {
+      if (!selectedNote) return;
+      form.setFieldValue("category", category);
+      form.setFieldValue("note", selectedNote.note);
+      form.setFieldValue("dateObject", new Date());
+      if (selectedNote.currency) {
+        form.setFieldValue("currency", selectedNote.currency);
+      }
+      if (selectedNote.account) {
+        form.setFieldValue("account", selectedNote.account);
+      }
+      if (selectedNote.forValue) {
+        form.setFieldValue("forValue", selectedNote.forValue);
+      }
+      setIsDrawerOpen(true);
+    },
+  });
 
   const updateDirection = useCallback((nextIndex: number) => {
     const previousIndex = lastIndexRef.current;
@@ -91,7 +120,7 @@ export function StepCategory({
   const activeGroup = categoryGroups[activeType] ?? [];
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6">
+    <div className="flex h-full min-h-0 flex-col gap-6 select-none">
       <div className="flex min-h-0 flex-1 flex-col">
         <AnimatedTabs
           tabs={TYPE_TABS}
@@ -118,6 +147,9 @@ export function StepCategory({
               <CategoryGrid
                 categories={activeGroup}
                 onSelect={handleCategorySelect}
+                onLongPress={radialHandlers.onLongPressStart}
+                onDrag={radialHandlers.onDrag}
+                onRelease={radialHandlers.onRelease}
                 transactionType={activeType}
               />
             </motion.div>
@@ -133,6 +165,18 @@ export function StepCategory({
         showTrigger={false}
         onConfirm={handleConfirm}
       />
+
+      {/* Radial menu for quick notes */}
+      {radialMenuState && (
+        <RadialMenu
+          items={menuItems}
+          anchorPosition={radialMenuState.anchorPosition}
+          dragPosition={radialMenuState.dragPosition}
+          isOpen={radialMenuState.isOpen}
+          onSelectItem={() => {}}
+          onCancel={radialHandlers.onCancel}
+        />
+      )}
     </div>
   );
 }
