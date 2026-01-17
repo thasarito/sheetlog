@@ -1,18 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Reorder } from "framer-motion";
-import { GripVertical, Plus } from "lucide-react";
-import { getQuickNotesForCategory, useQuickNotesQuery, useUpdateQuickNotes } from "../../hooks/useQuickNotes";
-import type { QuickNote, TransactionType } from "../../lib/types";
-import { DynamicIcon } from "../DynamicIcon";
-import { SwipeableListItem } from "../SwipeableListItem";
+import { Reorder } from 'framer-motion';
+import { GripVertical, Plus } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Drawer,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "../ui/drawer";
-import { QuickNoteEditor } from "./QuickNoteEditor";
+  getQuickNotesForCategory,
+  useQuickNotesQuery,
+  useUpdateQuickNotes,
+} from '../../hooks/useQuickNotes';
+import type { QuickNote, TransactionType } from '../../lib/types';
+import { DynamicIcon } from '../DynamicIcon';
+import { SwipeableListItem } from '../SwipeableListItem';
+import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '../ui/drawer';
+import { QuickNoteFlow } from './QuickNoteFlow';
 
 interface QuickNotesSettingsProps {
   open: boolean;
@@ -40,13 +38,15 @@ export function QuickNotesSettings({
 
   const notes = useMemo(
     () => getQuickNotesForCategory(quickNotesConfig, transactionType, categoryName),
-    [quickNotesConfig, transactionType, categoryName]
+    [quickNotesConfig, transactionType, categoryName],
   );
 
   // Local state for optimistic reorder UI
   const [localNotes, setLocalNotes] = useState<QuickNote[]>(notes);
-  const [editingNote, setEditingNote] = useState<QuickNote | null>(null);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editMode, setEditMode] = useState<{ isOpen: boolean; note: QuickNote | null }>({
+    isOpen: false,
+    note: null,
+  });
 
   // Sync local state with server state
   useEffect(() => {
@@ -60,22 +60,28 @@ export function QuickNotesSettings({
       onToast?.(`Maximum ${MAX_QUICK_NOTES} quick notes per category`);
       return;
     }
-    setEditingNote(null);
-    setIsEditorOpen(true);
+    onOpenChange(false);
+    setEditMode({ isOpen: true, note: null });
   }
 
   function handleEditNote(note: QuickNote) {
-    setEditingNote(note);
-    setIsEditorOpen(true);
+    onOpenChange(false);
+    setEditMode({ isOpen: true, note });
   }
 
-  function handleSaveNote(noteData: Omit<QuickNote, "id"> & { id?: string }) {
+  function handleCloseEditMode() {
+    setEditMode({ isOpen: false, note: null });
+    onOpenChange(true);
+  }
+
+  function handleSaveNote(noteData: Omit<QuickNote, 'id'> & { id?: string }) {
     const isNew = !noteData.id;
     const newNote: QuickNote = {
       id: noteData.id ?? generateId(),
       icon: noteData.icon,
       label: noteData.label,
       note: noteData.note,
+      amount: noteData.amount,
       currency: noteData.currency,
       account: noteData.account,
       forValue: noteData.forValue,
@@ -94,17 +100,20 @@ export function QuickNotesSettings({
       categoryName,
       notes: updatedNotes,
     });
+    handleCloseEditMode();
   }
 
   function handleDeleteNote() {
-    if (!editingNote) return;
-    const updatedNotes = localNotes.filter((n) => n.id !== editingNote.id);
+    if (!editMode.note) return;
+    const noteId = editMode.note.id;
+    const updatedNotes = localNotes.filter((n) => n.id !== noteId);
     setLocalNotes(updatedNotes);
     updateQuickNotes.mutate({
       type: transactionType,
       categoryName,
       notes: updatedNotes,
     });
+    handleCloseEditMode();
   }
 
   function handleRemoveNote(noteId: string) {
@@ -119,9 +128,7 @@ export function QuickNotesSettings({
 
   function handleReorderEnd() {
     // Only persist if order actually changed
-    const orderChanged = notes.some(
-      (n, i) => n.id !== localNotes[i]?.id
-    );
+    const orderChanged = notes.some((n, i) => n.id !== localNotes[i]?.id);
     if (orderChanged) {
       updateQuickNotes.mutate({
         type: transactionType,
@@ -141,7 +148,8 @@ export function QuickNotesSettings({
 
           <div className="flex-1 overflow-y-auto px-4 pb-2">
             <p className="mb-3 text-xs text-muted-foreground">
-              Long press on this category to quickly add a pre-filled note. Max {MAX_QUICK_NOTES} quick notes.
+              Long press on this category to quickly add a pre-filled note. Max {MAX_QUICK_NOTES}{' '}
+              quick notes.
             </p>
 
             <div className="overflow-hidden rounded-xl border border-border">
@@ -201,9 +209,7 @@ export function QuickNotesSettings({
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
                     <Plus className="h-4 w-4 text-primary" />
                   </span>
-                  <span className="text-sm font-medium text-primary">
-                    Add Quick Note
-                  </span>
+                  <span className="text-sm font-medium text-primary">Add Quick Note</span>
                 </button>
               )}
             </div>
@@ -221,15 +227,16 @@ export function QuickNotesSettings({
         </DrawerContent>
       </Drawer>
 
-      {/* Quick Note Editor */}
-      <QuickNoteEditor
-        open={isEditorOpen}
-        onOpenChange={setIsEditorOpen}
-        note={editingNote}
-        onSave={handleSaveNote}
-        onDelete={handleDeleteNote}
-        transactionType={transactionType}
-      />
+      {/* Quick Note Flow */}
+      {editMode.isOpen && (
+        <QuickNoteFlow
+          note={editMode.note}
+          onSave={handleSaveNote}
+          onCancel={handleCloseEditMode}
+          onDelete={handleDeleteNote}
+          transactionType={transactionType}
+        />
+      )}
     </>
   );
 }

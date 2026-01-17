@@ -21,6 +21,9 @@ type StepAmountProps = {
   onCategoryClick?: () => void;
   onDateClick?: () => void;
   submitLabel?: string;
+  // Quick note mode props
+  customHeader?: React.ReactNode;
+  optionalAmount?: boolean;
 };
 
 export function StepAmount({
@@ -34,6 +37,8 @@ export function StepAmount({
   onCategoryClick,
   onDateClick,
   submitLabel,
+  customHeader,
+  optionalAmount = false,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -76,7 +81,9 @@ export function StepAmount({
   return (
     <div className="flex h-full flex-col gap-5 px-4">
       <div className="flex-1 flex flex-col">
-        {category ? (
+        {customHeader ? (
+          customHeader
+        ) : category ? (
           <div className="flex items-center gap-3 border-b border-border/20 pt-4 pb-3">
             <button
               type="button"
@@ -158,7 +165,7 @@ export function StepAmount({
             value={note}
             onChange={(event) => form.setFieldValue("note", event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && amount && !isSubmitting && !isDeleting) {
+              if (event.key === "Enter" && (amount || optionalAmount) && !isSubmitting && !isDeleting) {
                 onSubmit();
               }
             }}
