@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
 import {
-  findHoveredItem,
-  calculateAvailableArc,
   CANCEL_ITEM_ID,
-  OUTER_RADIUS,
+  calculateAvailableArc,
+  findHoveredItem,
+  MAX_DRAG_DISTANCE,
   MENU_PADDING,
+  OUTER_RADIUS,
   type RadialMenuItemData,
 } from './index';
 
@@ -51,7 +52,7 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
         });
       }
     },
-    [getItems]
+    [getItems],
   );
 
   const handleDrag = useCallback((position: { x: number; y: number }) => {
@@ -63,6 +64,14 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       if (!state) return;
 
       const items = getItems(state.category);
+
+      const dx = position.x - state.anchorPosition.x;
+      const dy = position.y - state.anchorPosition.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > MAX_DRAG_DISTANCE) {
+        setState(null);
+        return;
+      }
 
       const menuItems: RadialMenuItemData[] = [
         ...items.map((item) => ({
@@ -78,7 +87,7 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
         state.anchorPosition,
         viewport,
         OUTER_RADIUS,
-        MENU_PADDING
+        MENU_PADDING,
       );
 
       const selectedId = findHoveredItem(menuItems, state.anchorPosition, position, arcConfig);
@@ -98,7 +107,7 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       onSelect?.(selectedItem, state.category);
       setState(null);
     },
-    [state, getItems, getItemId, getItemIcon, getItemLabel, onSelect, onDefault]
+    [state, getItems, getItemId, getItemIcon, getItemLabel, onSelect, onDefault],
   );
 
   const handleCancel = useCallback(() => {

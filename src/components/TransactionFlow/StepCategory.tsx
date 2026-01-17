@@ -67,6 +67,9 @@ export function StepCategory({ form, categoryGroups, onConfirm }: StepCategoryPr
       form.setFieldValue('category', category);
       form.setFieldValue('note', selectedNote.note ?? '');
       form.setFieldValue('dateObject', new Date());
+      if (selectedNote.amount) {
+        form.setFieldValue('amount', selectedNote.amount);
+      }
       if (selectedNote.currency) {
         form.setFieldValue('currency', selectedNote.currency);
       }
