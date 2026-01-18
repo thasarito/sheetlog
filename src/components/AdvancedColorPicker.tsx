@@ -1,12 +1,6 @@
-import { useState, useEffect } from "react";
-import { HexColorPicker, HexColorInput } from "react-colorful";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerFooter,
-} from "./ui/drawer";
+import { useEffect, useState } from 'react';
+import { HexColorInput, HexColorPicker } from 'react-colorful';
+import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from './ui/drawer';
 
 type AdvancedColorPickerProps = {
   open: boolean;
@@ -51,7 +45,7 @@ export function AdvancedColorPicker({
             color={draftColor}
             onChange={setDraftColor}
             className="!w-full"
-            style={{ height: "200px" }}
+            style={{ height: '200px' }}
           />
 
           {/* Preview + Hex Input */}

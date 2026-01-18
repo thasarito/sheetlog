@@ -1,33 +1,30 @@
-import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { format } from "date-fns";
-import { parseDate } from "../../lib/date-utils";
-import { useAuth, useConnectivity, useTransactions } from "../providers";
-import { useOnboarding } from "../../hooks/useOnboarding";
-import { OnboardingFlow } from "../OnboardingFlow";
-import { ServiceWorker } from "../ServiceWorker";
-import { Header } from "../Header";
-import { DEFAULT_CATEGORIES } from "../../lib/categories";
-import { STORAGE_KEYS } from "../../lib/constants";
-import { db } from "../../lib/db";
-import type { TransactionType, CategoryItem, TransactionRecord } from "../../lib/types";
-import { StepCard } from "./StepCard";
-import { StepAmount } from "./StepAmount";
-import { StepCategory } from "./StepCategory";
-import { StepReceipt, type ReceiptData } from "./StepReceipt";
-import { FOR_OPTIONS, TYPE_OPTIONS } from "./constants";
-import { toast } from "sonner";
-import { useTransactionForm } from "./useTransactionForm";
-import { useAddTransactionMutation } from "./useAddTransactionMutation";
-import {
-  transactionSchema,
-  type TransactionFormValues,
-} from "./transactionSchema";
-import { TopDashboard } from "./TopDashboard";
-import { CategoryGridDrawer } from "../CategoryGridDrawer";
-import { DateTimeDrawer } from "../DateTimeDrawer";
-import { useUpdateTransactionMutation } from "./useUpdateTransactionMutation";
-import { useDeleteTransactionMutation } from "./useDeleteTransactionMutation";
+import { format } from 'date-fns';
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { useOnboarding } from '../../hooks/useOnboarding';
+import { DEFAULT_CATEGORIES } from '../../lib/categories';
+import { STORAGE_KEYS } from '../../lib/constants';
+import { parseDate } from '../../lib/date-utils';
+import { db } from '../../lib/db';
+import type { CategoryItem, TransactionRecord, TransactionType } from '../../lib/types';
+import { CategoryGridDrawer } from '../CategoryGridDrawer';
+import { DateTimeDrawer } from '../DateTimeDrawer';
+import { Header } from '../Header';
+import { OnboardingFlow } from '../OnboardingFlow';
+import { useAuth, useConnectivity, useTransactions } from '../providers';
+import { ServiceWorker } from '../ServiceWorker';
+import { FOR_OPTIONS, TYPE_OPTIONS } from './constants';
+import { StepAmount } from './StepAmount';
+import { StepCard } from './StepCard';
+import { StepCategory } from './StepCategory';
+import { type ReceiptData, StepReceipt } from './StepReceipt';
+import { TopDashboard } from './TopDashboard';
+import { type TransactionFormValues, transactionSchema } from './transactionSchema';
+import { useAddTransactionMutation } from './useAddTransactionMutation';
+import { useDeleteTransactionMutation } from './useDeleteTransactionMutation';
+import { useTransactionForm } from './useTransactionForm';
+import { useUpdateTransactionMutation } from './useUpdateTransactionMutation';
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -57,37 +54,28 @@ export function TransactionFlow() {
       await handleSubmit(values);
     },
   });
-  const {
-    type,
-    category,
-    amount,
-    currency,
-    account,
-    forValue,
-    dateObject,
-    note,
-  } = form.useStore((state) => state.values);
+  const { type, category, amount, currency, account, forValue, dateObject, note } = form.useStore(
+    (state) => state.values,
+  );
   const receiptTimeoutRef = useRef<number | null>(null);
   const lastSyncErrorRef = useRef<string | null>(null);
 
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
   const hasCategories =
-    categories.expense.length > 0 &&
-    categories.income.length > 0 &&
-    categories.transfer.length > 0;
-  const accountsReady =
-    onboarding.accountsConfirmed && onboarding.accounts.length > 0;
+    categories.expense.length > 0 && categories.income.length > 0 && categories.transfer.length > 0;
+  const accountsReady = onboarding.accountsConfirmed && onboarding.accounts.length > 0;
   const categoriesReady = onboarding.categoriesConfirmed && hasCategories;
-  const isOnboarded = Boolean(
-    accessToken && sheetId && accountsReady && categoriesReady
-  );
+  const isOnboarded = Boolean(accessToken && sheetId && accountsReady && categoriesReady);
 
   const categoryGroups = useMemo(() => {
-    return TYPE_OPTIONS.reduce((acc, typeOption) => {
-      const typeCategories = categories[typeOption] ?? [];
-      acc[typeOption] = typeCategories;
-      return acc;
-    }, {} as Record<TransactionType, CategoryItem[]>);
+    return TYPE_OPTIONS.reduce(
+      (acc, typeOption) => {
+        const typeCategories = categories[typeOption] ?? [];
+        acc[typeOption] = typeCategories;
+        return acc;
+      },
+      {} as Record<TransactionType, CategoryItem[]>,
+    );
   }, [categories]);
 
   useEffect(() => {
@@ -99,7 +87,7 @@ export function TransactionFlow() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return;
     }
     if (account) {
@@ -108,21 +96,18 @@ export function TransactionFlow() {
     }
     // Try to restore last account if none selected
     const lastAccount = window.localStorage.getItem(STORAGE_KEYS.LAST_ACCOUNT);
-    if (
-      lastAccount &&
-      onboarding.accounts.some((a) => a.name === lastAccount)
-    ) {
-      form.setFieldValue("account", lastAccount);
+    if (lastAccount && onboarding.accounts.some((a) => a.name === lastAccount)) {
+      form.setFieldValue('account', lastAccount);
       return;
     }
     // Default to first account if only one exists
     if (onboarding.accounts.length === 1) {
-      form.setFieldValue("account", onboarding.accounts[0].name);
+      form.setFieldValue('account', onboarding.accounts[0].name);
     }
   }, [account, form, onboarding.accounts]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return;
     }
     // Always update global fallback
@@ -130,49 +115,44 @@ export function TransactionFlow() {
 
     // Update per-account currency
     if (account) {
-      window.localStorage.setItem(
-        `${STORAGE_KEYS.LAST_CURRENCY}_${account}`,
-        currency
-      );
+      window.localStorage.setItem(`${STORAGE_KEYS.LAST_CURRENCY}_${account}`, currency);
     }
   }, [currency, account]);
 
   // Restore currency when account changes
   useEffect(() => {
-    if (typeof window === "undefined" || !account) {
+    if (typeof window === 'undefined' || !account) {
       return;
     }
     const lastCurrencyForAccount = window.localStorage.getItem(
-      `${STORAGE_KEYS.LAST_CURRENCY}_${account}`
+      `${STORAGE_KEYS.LAST_CURRENCY}_${account}`,
     );
     if (lastCurrencyForAccount) {
-      form.setFieldValue("currency", lastCurrencyForAccount);
+      form.setFieldValue('currency', lastCurrencyForAccount);
     }
   }, [account, form]);
 
   useEffect(() => {
-    if (type === "transfer" && forValue) {
-      const isAccountValue = onboarding.accounts.some(
-        (a) => a.name === forValue
-      );
+    if (type === 'transfer' && forValue) {
+      const isAccountValue = onboarding.accounts.some((a) => a.name === forValue);
       if (!isAccountValue) {
-        form.setFieldValue("forValue", "");
+        form.setFieldValue('forValue', '');
       }
     }
   }, [type, forValue, form, onboarding.accounts]);
 
   useEffect(() => {
-    if (type === "transfer" && account && forValue === account) {
-      form.setFieldValue("forValue", "");
+    if (type === 'transfer' && account && forValue === account) {
+      form.setFieldValue('forValue', '');
     }
   }, [type, account, forValue, form]);
 
   useEffect(() => {
-    if (type === "transfer") {
+    if (type === 'transfer') {
       return;
     }
     if (!forValue || !FOR_OPTIONS.includes(forValue)) {
-      form.setFieldValue("forValue", "Me");
+      form.setFieldValue('forValue', 'Me');
     }
   }, [type, forValue, form]);
 
@@ -201,7 +181,7 @@ export function TransactionFlow() {
       note,
     });
     if (!result.success) {
-      handleToast(result.error.issues[0]?.message ?? "Complete all fields");
+      handleToast(result.error.issues[0]?.message ?? 'Complete all fields');
       return;
     }
     void form.handleSubmit();
@@ -237,22 +217,18 @@ export function TransactionFlow() {
       return;
     }
     if (!isOnline) {
-      handleToast("Go online to sync accounts and categories");
+      handleToast('Go online to sync accounts and categories');
       return;
     }
     setIsResyncing(true);
     try {
       const changed = await refreshOnboarding();
       handleToast(
-        changed
-          ? "Accounts and categories refreshed"
-          : "Accounts and categories are up to date"
+        changed ? 'Accounts and categories refreshed' : 'Accounts and categories are up to date',
       );
     } catch (error) {
       handleToast(
-        error instanceof Error
-          ? error.message
-          : "Failed to sync accounts and categories"
+        error instanceof Error ? error.message : 'Failed to sync accounts and categories',
       );
     } finally {
       setIsResyncing(false);
@@ -266,39 +242,42 @@ export function TransactionFlow() {
     setShowDeleteConfirm(false);
     mutation.reset();
     updateMutation.reset();
-    form.setFieldValue("type", TYPE_OPTIONS[0]);
-    form.setFieldValue("category", "");
-    form.setFieldValue("amount", "");
-    form.setFieldValue("forValue", "Me");
-    form.setFieldValue("note", "");
-    form.setFieldValue("dateObject", new Date());
+    form.setFieldValue('type', TYPE_OPTIONS[0]);
+    form.setFieldValue('category', '');
+    form.setFieldValue('amount', '');
+    form.setFieldValue('forValue', 'Me');
+    form.setFieldValue('note', '');
+    form.setFieldValue('dateObject', new Date());
   }, [mutation, updateMutation, form]);
 
-  const handleEditTransaction = useCallback(async (t: TransactionRecord) => {
-    // Ensure transaction exists in IndexedDB for update/delete to work
-    // (Recent transactions come from Google Sheets, not IndexedDB)
-    const existingTx = await db.transactions.get(t.id);
-    if (!existingTx) {
-      await db.transactions.put(t);
-    }
+  const handleEditTransaction = useCallback(
+    async (t: TransactionRecord) => {
+      // Ensure transaction exists in IndexedDB for update/delete to work
+      // (Recent transactions come from Google Sheets, not IndexedDB)
+      const existingTx = await db.transactions.get(t.id);
+      if (!existingTx) {
+        await db.transactions.put(t);
+      }
 
-    form.setFieldValue("type", t.type);
-    form.setFieldValue("category", t.category);
-    form.setFieldValue("amount", String(t.amount));
-    form.setFieldValue("currency", t.currency);
-    form.setFieldValue("account", t.account);
-    form.setFieldValue("forValue", t.for);
-    form.setFieldValue("dateObject", parseDate(t.date));
-    form.setFieldValue("note", t.note ?? "");
-    setEditingTransaction(t);
-    setStep(1);
-  }, [form]);
+      form.setFieldValue('type', t.type);
+      form.setFieldValue('category', t.category);
+      form.setFieldValue('amount', String(t.amount));
+      form.setFieldValue('currency', t.currency);
+      form.setFieldValue('account', t.account);
+      form.setFieldValue('forValue', t.for);
+      form.setFieldValue('dateObject', parseDate(t.date));
+      form.setFieldValue('note', t.note ?? '');
+      setEditingTransaction(t);
+      setStep(1);
+    },
+    [form],
+  );
 
   const handleDelete = useCallback(() => {
     if (!editingTransaction) return;
     if (!showDeleteConfirm) {
       setShowDeleteConfirm(true);
-      toast("Tap delete again to confirm", {
+      toast('Tap delete again to confirm', {
         duration: 3000,
         onAutoClose: () => setShowDeleteConfirm(false),
       });
@@ -309,7 +288,7 @@ export function TransactionFlow() {
         resetFlow();
       },
       onError: () => {
-        toast.error("Failed to delete transaction");
+        toast.error('Failed to delete transaction');
       },
     });
   }, [editingTransaction, showDeleteConfirm, deleteMutation, resetFlow]);
@@ -343,31 +322,31 @@ export function TransactionFlow() {
       return;
     }
     if (!values.type || !values.category || !values.amount) {
-      handleToast("Complete all fields");
+      handleToast('Complete all fields');
       return;
     }
     const parsedAmount = Number.parseFloat(values.amount);
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      handleToast("Enter a valid amount");
+      handleToast('Enter a valid amount');
       return;
     }
     if (!values.account) {
-      handleToast("Select an account");
+      handleToast('Select an account');
       return;
     }
     const trimmedFor = values.forValue.trim();
     const trimmedNote = values.note.trim();
-    if (values.type === "transfer") {
+    if (values.type === 'transfer') {
       if (onboarding.accounts.length < 2) {
-        handleToast("Add another account to log transfers");
+        handleToast('Add another account to log transfers');
         return;
       }
       if (!trimmedFor) {
-        handleToast("Select a destination account");
+        handleToast('Select a destination account');
         return;
       }
       if (trimmedFor === values.account) {
-        handleToast("Pick two different accounts");
+        handleToast('Pick two different accounts');
         return;
       }
     }
@@ -403,8 +382,7 @@ export function TransactionFlow() {
         });
         scheduleReceiptTransition(() => resetFlow(), 2000);
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to update transaction";
+        const message = error instanceof Error ? error.message : 'Failed to update transaction';
         handleToast(message);
         scheduleReceiptTransition(() => clearReceiptStep(), 2000);
       }
@@ -432,8 +410,7 @@ export function TransactionFlow() {
       });
       scheduleReceiptTransition(() => resetFlow(), 2000);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to save transaction";
+      const message = error instanceof Error ? error.message : 'Failed to save transaction';
       handleToast(message);
       scheduleReceiptTransition(() => {
         clearReceiptStep();
@@ -443,10 +420,10 @@ export function TransactionFlow() {
 
   const receiptSnapshot: ReceiptData = receiptData ?? {
     type: type ?? TYPE_OPTIONS[0],
-    category: category ?? "",
+    category: category ?? '',
     amount,
     currency,
-    account: account ?? "",
+    account: account ?? '',
     forValue,
     dateObject,
     note,
@@ -454,21 +431,17 @@ export function TransactionFlow() {
 
   const steps: StepDefinition[] = [
     {
-      key: "step-type-category",
-      label: "Type & category",
-      className: "h-full min-h-0",
+      key: 'step-type-category',
+      label: 'Type & category',
+      className: 'h-full min-h-0',
       content: (
-        <StepCategory
-          form={form}
-          categoryGroups={categoryGroups}
-          onConfirm={() => setStep(1)}
-        />
+        <StepCategory form={form} categoryGroups={categoryGroups} onConfirm={() => setStep(1)} />
       ),
     },
     {
-      key: "step-amount",
-      label: "Amount",
-      className: "space-y-5 h-full",
+      key: 'step-amount',
+      label: 'Amount',
+      className: 'space-y-5 h-full',
       content: (
         <StepAmount
           form={form}
@@ -486,14 +459,14 @@ export function TransactionFlow() {
           isDeleting={deleteMutation.isPending}
           onCategoryClick={editingTransaction ? () => setCategoryDrawerOpen(true) : undefined}
           onDateClick={editingTransaction ? () => setDateDrawerOpen(true) : undefined}
-          submitLabel={editingTransaction ? "Save" : undefined}
+          submitLabel={editingTransaction ? 'Save' : undefined}
         />
       ),
     },
     {
-      key: "step-receipt",
-      label: "Receipt",
-      className: "space-y-6 h-full",
+      key: 'step-receipt',
+      label: 'Receipt',
+      className: 'space-y-6 h-full',
       content: (() => {
         const activeMutation = editingTransaction ? updateMutation : mutation;
         return (
@@ -506,8 +479,8 @@ export function TransactionFlow() {
               activeMutation.error instanceof Error
                 ? activeMutation.error.message
                 : activeMutation.isError
-                ? "Failed to save transaction"
-                : undefined
+                  ? 'Failed to save transaction'
+                  : undefined
             }
             onDone={handleReceiptDone}
             onUndo={editingTransaction ? undefined : handleReceiptUndo}
@@ -568,7 +541,7 @@ export function TransactionFlow() {
         <>
           <DateTimeDrawer
             value={dateObject}
-            onChange={(date) => form.setFieldValue("dateObject", date)}
+            onChange={(date) => form.setFieldValue('dateObject', date)}
             open={dateDrawerOpen}
             onOpenChange={setDateDrawerOpen}
             showTrigger={false}
@@ -576,12 +549,12 @@ export function TransactionFlow() {
           <CategoryGridDrawer
             type={type}
             onTypeChange={(newType) => {
-              form.setFieldValue("type", newType);
-              form.setFieldValue("category", "");
+              form.setFieldValue('type', newType);
+              form.setFieldValue('category', '');
             }}
             categories={categoryGroups[type] ?? []}
             onSelect={(cat) => {
-              form.setFieldValue("category", cat);
+              form.setFieldValue('category', cat);
               setCategoryDrawerOpen(false);
             }}
             open={categoryDrawerOpen}

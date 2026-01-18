@@ -1,6 +1,5 @@
 'use client';
 
-
 export function StatusDot({ online }: { online: boolean }) {
   return (
     <span

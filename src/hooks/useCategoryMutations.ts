@@ -1,12 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { onboardingKeys, useUpdateOnboarding } from './useOnboardingQuery';
-import type { OnboardingState, CategoryItem, TransactionType, CategoryConfigWithMeta } from '../lib/types';
 import {
-  DEFAULT_CATEGORY_ICONS,
   DEFAULT_CATEGORY_COLORS,
-  SUGGESTED_CATEGORY_ICONS,
+  DEFAULT_CATEGORY_ICONS,
   SUGGESTED_CATEGORY_COLORS,
+  SUGGESTED_CATEGORY_ICONS,
 } from '../lib/icons';
+import type {
+  CategoryConfigWithMeta,
+  CategoryItem,
+  OnboardingState,
+  TransactionType,
+} from '../lib/types';
+import { onboardingKeys, useUpdateOnboarding } from './useOnboardingQuery';
 
 type AddCategoryParams = { name: string; categoryType: TransactionType };
 type RemoveCategoryParams = { name: string; categoryType: TransactionType };
@@ -47,7 +52,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to add category"),
+    onError: () => onToast('Failed to add category'),
   });
 
   const removeCategory = useMutation({
@@ -62,7 +67,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to remove category"),
+    onError: () => onToast('Failed to remove category'),
   });
 
   const updateCategoryMeta = useMutation({
@@ -76,7 +81,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
               ...(icon !== undefined && { icon }),
               ...(color !== undefined && { color }),
             }
-          : c
+          : c,
       );
       return updateOnboarding({
         categories: {
@@ -86,7 +91,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to update category"),
+    onError: () => onToast('Failed to update category'),
   });
 
   const reorderCategories = useMutation({
@@ -100,7 +105,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to reorder categories"),
+    onError: () => onToast('Failed to reorder categories'),
   });
 
   const isSaving =

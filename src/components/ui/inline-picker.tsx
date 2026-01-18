@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from "react";
-import { Picker } from "../Picker";
-import { cn } from "../../lib/utils";
+import { useCallback, useMemo } from 'react';
+import { cn } from '../../lib/utils';
+import { Picker } from '../Picker';
 
 type InlinePickerValue = {
   selection: string;
@@ -41,32 +41,29 @@ export function InlinePicker({
   const hasOptions = options.length > 0;
   const resolvedItemHeight = itemHeight ?? INLINE_PICKER_ITEM_HEIGHT;
   const resolvedVisibleItems = visibleItems ?? INLINE_PICKER_VISIBLE_ITEMS;
-  const pickerValue = useMemo<InlinePickerValue>(
-    () => ({ selection: value ?? "" }),
-    [value]
-  );
+  const pickerValue = useMemo<InlinePickerValue>(() => ({ selection: value ?? '' }), [value]);
 
   const handlePickerChange = useCallback(
     (nextValue: InlinePickerValue) => {
       onChange(nextValue.selection);
     },
-    [onChange]
+    [onChange],
   );
 
   return (
     <div
       className={cn(
-        "flex items-center gap-2",
-        stretch ? "flex-1" : null,
-        disabled ? "pointer-events-none opacity-60" : null,
-        className
+        'flex items-center gap-2',
+        stretch ? 'flex-1' : null,
+        disabled ? 'pointer-events-none opacity-60' : null,
+        className,
       )}
     >
       <span
         className={
           labelHidden
-            ? "sr-only"
-            : "shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
+            ? 'sr-only'
+            : 'shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground'
         }
       >
         {label}
@@ -74,34 +71,25 @@ export function InlinePicker({
       {hasOptions ? (
         <Picker
           value={pickerValue}
-          onChange={(nextValue) =>
-            handlePickerChange(nextValue as InlinePickerValue)
-          }
+          onChange={(nextValue) => handlePickerChange(nextValue as InlinePickerValue)}
           height={resolvedItemHeight * resolvedVisibleItems}
           itemHeight={resolvedItemHeight}
           wheelMode="natural"
-          className={cn("min-w-0 flex-1", pickerClassName)}
+          className={cn('min-w-0 flex-1', pickerClassName)}
           aria-label={label}
         >
-          <Picker.Column
-            name="selection"
-            className={cn("text-sm font-semibold", columnClassName)}
-          >
+          <Picker.Column name="selection" className={cn('text-sm font-semibold', columnClassName)}>
             {options.map((item) => (
               <Picker.Item key={item} value={item}>
                 {({ selected }) => (
-                  <span className={selected ? "text-primary" : "text-muted"}>
-                    {item}
-                  </span>
+                  <span className={selected ? 'text-primary' : 'text-muted'}>{item}</span>
                 )}
               </Picker.Item>
             ))}
           </Picker.Column>
         </Picker>
       ) : (
-        <span className="text-xs text-muted-foreground">
-          No options available yet.
-        </span>
+        <span className="text-xs text-muted-foreground">No options available yet.</span>
       )}
     </div>
   );

@@ -75,8 +75,7 @@ export function useUpdateQuickNotes() {
       categoryName: string;
       notes: QuickNote[];
     }): Promise<QuickNotesConfig> => {
-      const current =
-        queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all) ?? {};
+      const current = queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all) ?? {};
       const key = buildQuickNotesKey(type, categoryName);
       const next = { ...current, [key]: notes };
 
@@ -112,7 +111,7 @@ export function useUpdateQuickNotes() {
 export function getQuickNotesForCategory(
   config: QuickNotesConfig | undefined,
   type: TransactionType,
-  categoryName: string
+  categoryName: string,
 ): QuickNote[] {
   if (!config) return [];
   const key = buildQuickNotesKey(type, categoryName);

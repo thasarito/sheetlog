@@ -1,9 +1,5 @@
-import { createContext, useContext } from "react";
-import type {
-  RecentCategories,
-  TransactionInput,
-  TransactionType,
-} from "../../lib/types";
+import { createContext, useContext } from 'react';
+import type { RecentCategories, TransactionInput, TransactionType } from '../../lib/types';
 
 export interface UndoResult {
   ok: boolean;
@@ -17,26 +13,19 @@ export interface TransactionsContextValue {
   lastSyncErrorAt: string | null;
   lastSyncAt: string | null;
   addTransaction: (input: TransactionInput) => Promise<void>;
-  updateTransaction: (
-    id: string,
-    input: Partial<TransactionInput>
-  ) => Promise<void>;
+  updateTransaction: (id: string, input: Partial<TransactionInput>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<UndoResult>;
   undoLast: () => Promise<UndoResult>;
   syncNow: () => Promise<void>;
-  markRecentCategory: (
-    type: TransactionType,
-    category: string
-  ) => Promise<void>;
+  markRecentCategory: (type: TransactionType, category: string) => Promise<void>;
 }
 
-export const TransactionsContext =
-  createContext<TransactionsContextValue | null>(null);
+export const TransactionsContext = createContext<TransactionsContextValue | null>(null);
 
 export function useTransactions() {
   const context = useContext(TransactionsContext);
   if (!context) {
-    throw new Error("useTransactions must be used within TransactionsProvider");
+    throw new Error('useTransactions must be used within TransactionsProvider');
   }
   return context;
 }

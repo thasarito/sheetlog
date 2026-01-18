@@ -1,5 +1,5 @@
-import type React from "react";
-import type { ScreenMeta } from "./types";
+import type React from 'react';
+import type { ScreenMeta } from './types';
 
 type ScreenFrameProps = ScreenMeta & {
   title: string;
@@ -36,9 +36,7 @@ export function ScreenFrame({
           />
         </div>
         <div className="mt-4 flex items-start gap-3">
-          <div className="rounded-2xl bg-primary/15 p-3 text-primary">
-            {icon}
-          </div>
+          <div className="rounded-2xl bg-primary/15 p-3 text-primary">{icon}</div>
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">{title}</h2>
             <p className="text-sm text-muted-foreground">{subtitle}</p>
@@ -47,9 +45,7 @@ export function ScreenFrame({
       </div>
       <div className="flex-1 px-5 py-5">{children}</div>
       {footer ? (
-        <div className="border-t border-border/70 bg-card/80 px-5 pb-6 pt-4">
-          {footer}
-        </div>
+        <div className="border-t border-border/70 bg-card/80 px-5 pb-6 pt-4">{footer}</div>
       ) : (
         <div className="pb-4" />
       )}

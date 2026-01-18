@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Settings } from "lucide-react";
-import { AuthUserProfile } from "./AuthUserProfile";
-import { SettingsDrawer } from "./SettingsDrawer";
+import { Settings } from 'lucide-react';
+import { useState } from 'react';
+import { AuthUserProfile } from './AuthUserProfile';
+import { SettingsDrawer } from './SettingsDrawer';
 
 type HeaderProps = {
   showSettings?: boolean;

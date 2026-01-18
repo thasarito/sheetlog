@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
 type DocumentMeta = {
   title: string;
@@ -13,7 +13,7 @@ export function useDocumentMeta({ title, description }: DocumentMeta) {
     }
     const meta = document.querySelector('meta[name="description"]');
     if (meta) {
-      meta.setAttribute("content", description);
+      meta.setAttribute('content', description);
     }
   }, [title, description]);
 }

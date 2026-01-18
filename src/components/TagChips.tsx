@@ -15,9 +15,7 @@ export function TagChips({ tags, selected, onToggle }: TagChipsProps) {
             type="button"
             onClick={() => onToggle(tag)}
             className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition ${
-              isActive
-                ? "bg-primary text-primary-foreground"
-                : "bg-surface-2 text-muted-foreground"
+              isActive ? 'bg-primary text-primary-foreground' : 'bg-surface-2 text-muted-foreground'
             }`}
           >
             #{tag}

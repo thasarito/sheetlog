@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useMemo } from 'react';
 import { RadialMenuSegment } from './RadialMenuItem';
 
 export interface RadialMenuItemData {
@@ -19,20 +19,20 @@ export interface RadialMenuProps {
 }
 
 export interface ArcConfig {
-  startAngle: number;  // Start angle in degrees (where -90 = top)
-  sweepAngle: number;  // Total arc span in degrees
+  startAngle: number; // Start angle in degrees (where -90 = top)
+  sweepAngle: number; // Total arc span in degrees
 }
 
 // ===== Interaction Thresholds =====
-const MIN_DRAG_DISTANCE = 40;   // Minimum distance from center to start selecting
-const MAX_DRAG_DISTANCE = 200;  // Maximum distance - beyond this, nothing is selected
+const MIN_DRAG_DISTANCE = 40; // Minimum distance from center to start selecting
+const MAX_DRAG_DISTANCE = 200; // Maximum distance - beyond this, nothing is selected
 
 // ===== Layout Dimensions =====
-const RING_RADIUS = 100;        // Radius of the ring where nodes sit
-const OUTER_RADIUS = 160;       // Extended to accommodate labels
-const GAP_ANGLE = 4;            // Gap between segments in degrees
+const RING_RADIUS = 100; // Radius of the ring where nodes sit
+const OUTER_RADIUS = 160; // Extended to accommodate labels
+const GAP_ANGLE = 4; // Gap between segments in degrees
 const SVG_SIZE = OUTER_RADIUS * 2 + 80; // Extra space for labels
-const MENU_PADDING = 20;        // Padding from viewport edges
+const MENU_PADDING = 20; // Padding from viewport edges
 
 // ===== Special IDs =====
 const CANCEL_ITEM_ID = '__cancel__';
@@ -45,7 +45,7 @@ export function findHoveredItem(
   items: RadialMenuItemData[],
   center: { x: number; y: number },
   dragPos: { x: number; y: number } | null,
-  arcConfig: ArcConfig = { startAngle: -90, sweepAngle: 360 }
+  arcConfig: ArcConfig = { startAngle: -90, sweepAngle: 360 },
 ): string | null {
   if (!dragPos || items.length === 0) return null;
 
@@ -88,7 +88,7 @@ export function calculateAvailableArc(
   anchor: { x: number; y: number },
   viewport: { width: number; height: number },
   outerRadius: number,
-  padding: number = 20
+  padding: number = 20,
 ): ArcConfig {
   // Calculate available space as ratios relative to outerRadius
   const spaceRatio = {
@@ -99,8 +99,7 @@ export function calculateAvailableArc(
   };
 
   // Full circle if all directions have enough space
-  if (spaceRatio.right >= 1 && spaceRatio.left >= 1 &&
-      spaceRatio.up >= 1 && spaceRatio.down >= 1) {
+  if (spaceRatio.right >= 1 && spaceRatio.left >= 1 && spaceRatio.up >= 1 && spaceRatio.down >= 1) {
     return { startAngle: -90, sweepAngle: 360 };
   }
 
@@ -124,7 +123,7 @@ export function calculateAvailableArc(
   const validAngles: boolean[] = [];
 
   for (let i = 0; i < SAMPLES; i++) {
-    const deg = (i * STEP) - 180; // Range: -180 to 179
+    const deg = i * STEP - 180; // Range: -180 to 179
     validAngles.push(isValidAngle(deg));
   }
 
@@ -151,13 +150,12 @@ export function calculateAvailableArc(
   }
 
   // Convert index back to degrees (-180 to 179)
-  const startAngle = (bestStart * STEP) - 180;
+  const startAngle = bestStart * STEP - 180;
   // Ensure minimum sweep angle for usability
   const sweepAngle = Math.max(bestLength * STEP, 45);
 
   return { startAngle, sweepAngle };
 }
-
 
 // Ring track component
 function RingTrack() {
@@ -200,12 +198,12 @@ export function RadialMenu({
 
   const arcConfig = useMemo(
     () => calculateAvailableArc(anchorPosition, viewport, OUTER_RADIUS, MENU_PADDING),
-    [anchorPosition, viewport.width, viewport.height]
+    [anchorPosition, viewport.width, viewport.height],
   );
 
   const hoveredItemId = useMemo(
     () => findHoveredItem(itemsWithCancel, anchorPosition, dragPosition, arcConfig),
-    [itemsWithCancel, anchorPosition, dragPosition, arcConfig]
+    [itemsWithCancel, anchorPosition, dragPosition, arcConfig],
   );
 
   const segmentAngle = arcConfig.sweepAngle / itemsWithCancel.length;
@@ -255,7 +253,8 @@ export function RadialMenu({
                   {/* Menu segments with nodes */}
                   {itemsWithCancel.map((item, index) => {
                     const startAngle = arcConfig.startAngle + index * segmentAngle + GAP_ANGLE / 2;
-                    const endAngle = arcConfig.startAngle + (index + 1) * segmentAngle - GAP_ANGLE / 2;
+                    const endAngle =
+                      arcConfig.startAngle + (index + 1) * segmentAngle - GAP_ANGLE / 2;
                     return (
                       <RadialMenuSegment
                         key={item.id}
@@ -272,7 +271,6 @@ export function RadialMenu({
                       />
                     );
                   })}
-
                 </g>
               </svg>
             </motion.div>
