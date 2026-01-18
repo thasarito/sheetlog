@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { exchangeCodeForTokens } from "../lib/oauth";
-import { STORAGE_KEYS } from "../lib/constants";
-import { GOOGLE_TOKEN_QUERY_KEY } from "../components/providers/auth/auth.constants";
+import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useEffect, useRef, useState } from 'react';
+import { GOOGLE_TOKEN_QUERY_KEY } from '../components/providers/auth/auth.constants';
+import { STORAGE_KEYS } from '../lib/constants';
+import { exchangeCodeForTokens } from '../lib/oauth';
 
 type OAuthSearchParams = {
   code?: string;
@@ -51,7 +51,7 @@ export function useOAuthCallback(): OAuthCallbackState {
       if (error) {
         setState({
           isProcessing: false,
-          error: error_description || error || "OAuth authorization failed",
+          error: error_description || error || 'OAuth authorization failed',
         });
         return;
       }
@@ -60,7 +60,7 @@ export function useOAuthCallback(): OAuthCallbackState {
       if (!code || !oauthState) {
         setState({
           isProcessing: false,
-          error: "Missing authorization code or state parameter",
+          error: 'Missing authorization code or state parameter',
         });
         return;
       }
@@ -75,27 +75,21 @@ export function useOAuthCallback(): OAuthCallbackState {
 
         // Store tokens in localStorage
         localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokenData.access_token);
-        localStorage.setItem(
-          STORAGE_KEYS.EXPIRES_AT,
-          tokenData.expires_at.toString()
-        );
+        localStorage.setItem(STORAGE_KEYS.EXPIRES_AT, tokenData.expires_at.toString());
 
         // Update the auth query so AuthProvider immediately reflects authenticated state
         queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, tokenData);
 
         // Clear OAuth params from URL by navigating to clean root
-        navigate({ to: "/", replace: true, search: {} });
+        navigate({ to: '/', replace: true, search: {} });
 
         setState({ isProcessing: false, error: null });
       } catch (err) {
-        console.error("OAuth callback error:", err);
+        console.error('OAuth callback error:', err);
         hasProcessedRef.current = false; // Allow retry on error
         setState({
           isProcessing: false,
-          error:
-            err instanceof Error
-              ? err.message
-              : "Failed to complete authentication",
+          error: err instanceof Error ? err.message : 'Failed to complete authentication',
         });
       }
     }

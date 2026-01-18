@@ -1,6 +1,6 @@
-import type React from "react";
-import { motion } from "framer-motion";
-import { cn } from "../../lib/utils";
+import { motion } from 'framer-motion';
+import type React from 'react';
+import { cn } from '../../lib/utils';
 
 type Tab<T extends string> = {
   value: T;
@@ -13,25 +13,25 @@ type AnimatedTabsProps<T extends string> = {
   value: T;
   onChange: (value: T) => void;
   layoutId: string;
-  variant?: "default" | "pill" | "simple";
+  variant?: 'default' | 'pill' | 'simple';
   className?: string;
   disabled?: boolean;
 };
 
-const springTransition = { type: "spring", stiffness: 380, damping: 30 };
+const springTransition = { type: 'spring', stiffness: 380, damping: 30 };
 
 export function AnimatedTabs<T extends string>({
   tabs,
   value,
   onChange,
   layoutId,
-  variant = "default",
+  variant = 'default',
   className,
   disabled,
 }: AnimatedTabsProps<T>) {
-  if (variant === "pill") {
+  if (variant === 'pill') {
     return (
-      <div className={cn("flex gap-2", className)}>
+      <div className={cn('flex gap-2', className)}>
         {tabs.map((tab) => {
           const isSelected = tab.value === value;
           return (
@@ -40,8 +40,8 @@ export function AnimatedTabs<T extends string>({
               type="button"
               onClick={() => onChange(tab.value)}
               className={cn(
-                "relative rounded-full px-3 py-1.5 text-xs font-medium",
-                disabled && "opacity-60"
+                'relative rounded-full px-3 py-1.5 text-xs font-medium',
+                disabled && 'opacity-60',
               )}
               disabled={disabled}
             >
@@ -54,8 +54,8 @@ export function AnimatedTabs<T extends string>({
               ) : null}
               <span
                 className={cn(
-                  "relative z-10",
-                  isSelected ? "text-primary-foreground" : "text-muted-foreground"
+                  'relative z-10',
+                  isSelected ? 'text-primary-foreground' : 'text-muted-foreground',
                 )}
               >
                 {tab.label}
@@ -67,9 +67,9 @@ export function AnimatedTabs<T extends string>({
     );
   }
 
-  if (variant === "simple") {
+  if (variant === 'simple') {
     return (
-      <div className={cn("flex rounded-xl bg-surface-2 p-1", className)}>
+      <div className={cn('flex rounded-xl bg-surface-2 p-1', className)}>
         {tabs.map((tab) => {
           const isSelected = tab.value === value;
           return (
@@ -78,8 +78,8 @@ export function AnimatedTabs<T extends string>({
               type="button"
               onClick={() => onChange(tab.value)}
               className={cn(
-                "relative flex-1 rounded-lg py-2 text-sm font-medium",
-                disabled && "opacity-60"
+                'relative flex-1 rounded-lg py-2 text-sm font-medium',
+                disabled && 'opacity-60',
               )}
               disabled={disabled}
             >
@@ -92,8 +92,8 @@ export function AnimatedTabs<T extends string>({
               ) : null}
               <span
                 className={cn(
-                  "relative z-10",
-                  isSelected ? "text-foreground" : "text-muted-foreground"
+                  'relative z-10',
+                  isSelected ? 'text-foreground' : 'text-muted-foreground',
                 )}
               >
                 {tab.label}
@@ -108,8 +108,8 @@ export function AnimatedTabs<T extends string>({
   return (
     <div
       className={cn(
-        "grid gap-2 rounded-3xl border border-border/70 bg-surface-2/80 p-2",
-        className
+        'grid gap-2 rounded-3xl border border-border/70 bg-surface-2/80 p-2',
+        className,
       )}
       style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
     >
@@ -122,8 +122,8 @@ export function AnimatedTabs<T extends string>({
             type="button"
             onClick={() => onChange(tab.value)}
             className={cn(
-              "relative flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold",
-              disabled && "opacity-60"
+              'relative flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold',
+              disabled && 'opacity-60',
             )}
             disabled={disabled}
           >
@@ -137,10 +137,8 @@ export function AnimatedTabs<T extends string>({
             {Icon ? (
               <span
                 className={cn(
-                  "relative z-10 flex h-8 w-8 items-center justify-center rounded-xl",
-                  isSelected
-                    ? "bg-accent text-primary"
-                    : "bg-card/70 text-muted-foreground"
+                  'relative z-10 flex h-8 w-8 items-center justify-center rounded-xl',
+                  isSelected ? 'bg-accent text-primary' : 'bg-card/70 text-muted-foreground',
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -148,8 +146,8 @@ export function AnimatedTabs<T extends string>({
             ) : null}
             <span
               className={cn(
-                "relative z-10",
-                isSelected ? "text-foreground" : "text-muted-foreground"
+                'relative z-10',
+                isSelected ? 'text-foreground' : 'text-muted-foreground',
               )}
             >
               {tab.label}

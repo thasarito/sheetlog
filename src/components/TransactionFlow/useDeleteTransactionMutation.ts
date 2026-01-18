@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useTransactions } from "../providers";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTransactions } from '../providers';
 
 export function useDeleteTransactionMutation() {
   const { deleteTransaction } = useTransactions();
@@ -10,7 +10,7 @@ export function useDeleteTransactionMutation() {
       return deleteTransaction(id);
     },
     onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["recentTransactions"] });
+      await queryClient.refetchQueries({ queryKey: ['recentTransactions'] });
     },
   });
 }

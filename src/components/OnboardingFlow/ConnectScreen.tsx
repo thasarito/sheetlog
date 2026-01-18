@@ -1,7 +1,7 @@
-import { Link } from "@tanstack/react-router";
+import { Link } from '@tanstack/react-router';
 
-import { OnboardingLayout } from "./OnboardingLayout";
-import type { ScreenMeta } from "./types";
+import { OnboardingLayout } from './OnboardingLayout';
+import type { ScreenMeta } from './types';
 
 type ConnectScreenProps = {
   meta: ScreenMeta;
@@ -9,11 +9,7 @@ type ConnectScreenProps = {
   onConnect: () => void;
 };
 
-export function ConnectScreen({
-  meta,
-  isConnecting,
-  onConnect,
-}: ConnectScreenProps) {
+export function ConnectScreen({ meta, isConnecting, onConnect }: ConnectScreenProps) {
   return (
     <OnboardingLayout
       title="Let's get started"
@@ -32,7 +28,7 @@ export function ConnectScreen({
             disabled={isConnecting}
           >
             {isConnecting ? (
-              "Connecting..."
+              'Connecting...'
             ) : (
               <>
                 <img src="/google-logo.svg" alt="Google" className="w-5 h-5" />

@@ -1,31 +1,26 @@
-import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { STORAGE_KEYS } from "../../../lib/constants";
-import { isUnauthorizedError } from "../../../lib/google";
+import { STORAGE_KEYS } from '../../../lib/constants';
+import { isUnauthorizedError } from '../../../lib/google';
 import {
   clearOAuthStorage,
   hasRefreshToken,
   initiateLogin,
   refreshAccessToken,
-} from "../../../lib/oauth";
-import { ensureSheetReady } from "../../../lib/sheets";
+} from '../../../lib/oauth';
+import { ensureSheetReady } from '../../../lib/sheets';
+import { AuthContext } from './AuthContext';
 import {
   GOOGLE_TOKEN_QUERY_KEY,
   MIN_REFETCH_INTERVAL_MS,
   REFRESH_BUFFER_MS,
-} from "./auth.constants";
-import type {
-  AuthStatus,
-  AuthContextValue,
-  TokenData,
-  UserProfile,
-} from "./auth.types";
-import { AuthContext } from "./AuthContext";
+} from './auth.constants';
+import type { AuthContextValue, AuthStatus, TokenData, UserProfile } from './auth.types';
 
-const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
-const USER_PROFILE_QUERY_KEY = ["userProfile"];
+const USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v3/userinfo';
+const USER_PROFILE_QUERY_KEY = ['userProfile'];
 
 type UserInfoResponse = {
   name?: string;
@@ -35,7 +30,7 @@ type UserInfoResponse = {
 };
 
 function readStoredProfile(): UserProfile | null {
-  if (typeof window === "undefined") {
+  if (typeof window === 'undefined') {
     return null;
   }
   const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
@@ -50,7 +45,7 @@ function readStoredProfile(): UserProfile | null {
 }
 
 function persistProfile(profile: UserProfile | null) {
-  if (typeof window === "undefined") {
+  if (typeof window === 'undefined') {
     return;
   }
   if (!profile) {
@@ -65,16 +60,13 @@ function resolveProfileName(info: UserInfoResponse) {
   if (direct) {
     return direct;
   }
-  const combined = [info.given_name, info.family_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  return combined || "Google account";
+  const combined = [info.given_name, info.family_name].filter(Boolean).join(' ').trim();
+  return combined || 'Google account';
 }
 
 async function fetchUserProfile(
   accessToken: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<UserProfile | null> {
   const response = await fetch(USERINFO_ENDPOINT, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -95,7 +87,7 @@ async function fetchUserProfile(
 
 // Helper to read token synchronously for initial state
 function getStoredToken(): TokenData | undefined {
-  if (typeof window === "undefined") return undefined;
+  if (typeof window === 'undefined') return undefined;
   const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
   const storedExpiresAt = localStorage.getItem(STORAGE_KEYS.EXPIRES_AT);
 
@@ -122,9 +114,7 @@ function isTerminalRefreshError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
-  return /revoked|expired|re-authenticate|no refresh token/i.test(
-    error.message
-  );
+  return /revoked|expired|re-authenticate|no refresh token/i.test(error.message);
 }
 
 function getRefreshDelay(token?: TokenData | null): number | false {
@@ -142,12 +132,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Lazy init from local storage
   const [sheetId, setSheetId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
+    if (typeof window === 'undefined') return null;
     return localStorage.getItem(STORAGE_KEYS.SHEET_ID);
   });
 
   const [sheetTabId, setSheetTabId] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
+    if (typeof window === 'undefined') return null;
     const val = localStorage.getItem(STORAGE_KEYS.SHEET_TAB_ID);
     return val ? Number.parseInt(val, 10) : null;
   });
@@ -196,8 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // QUERY: User Profile
   const { data: userProfile } = useQuery({
     queryKey: USER_PROFILE_QUERY_KEY,
-    queryFn: ({ signal }) =>
-      fetchUserProfile(tokenData?.access_token ?? "", signal),
+    queryFn: ({ signal }) => fetchUserProfile(tokenData?.access_token ?? '', signal),
     enabled: Boolean(tokenData?.access_token) && isInitialized,
     placeholderData: readStoredProfile(),
     staleTime: 1000 * 60 * 10, // 10 minutes
@@ -243,7 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await initiateLogin();
       // Note: This code won't execute because the page redirects
     } catch (error) {
-      console.error("Failed to initiate login:", error);
+      console.error('Failed to initiate login:', error);
       setIsConnecting(false);
     }
   }, []);
@@ -264,8 +253,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
-        const { sheetId: nextSheetId, sheetTabId: nextTabId } =
-          await ensureSheetReady(accessToken, folderId);
+        const { sheetId: nextSheetId, sheetTabId: nextTabId } = await ensureSheetReady(
+          accessToken,
+          folderId,
+        );
         storeSheet(nextSheetId, nextTabId);
       } catch (error) {
         if (isUnauthorizedError(error)) {
@@ -274,7 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
     },
-    [tokenData?.access_token, storeSheet, queryClient]
+    [tokenData?.access_token, storeSheet, queryClient],
   );
 
   // Handle terminal refresh failures
@@ -286,11 +277,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Compute authStatus
   const authStatus: AuthStatus = useMemo(() => {
-    if (!isInitialized) return "initializing";
-    if (refreshError) return "error";
-    if (isConnecting || (isFetching && !tokenData)) return "authenticating";
-    if (!tokenData?.access_token) return "unauthenticated";
-    return "authenticated";
+    if (!isInitialized) return 'initializing';
+    if (refreshError) return 'error';
+    if (isConnecting || (isFetching && !tokenData)) return 'authenticating';
+    if (!tokenData?.access_token) return 'unauthenticated';
+    return 'authenticated';
   }, [isInitialized, refreshError, isConnecting, isFetching, tokenData]);
 
   const authError: Error | null = useMemo(() => {
@@ -299,12 +290,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshError]);
 
   const value = useMemo<AuthContextValue>(() => {
-    const isExpired = tokenData?.expires_at
-      ? tokenData.expires_at <= Date.now()
-      : true;
+    const isExpired = tokenData?.expires_at ? tokenData.expires_at <= Date.now() : true;
 
     return {
-      accessToken: !isExpired ? tokenData?.access_token ?? null : null,
+      accessToken: !isExpired ? (tokenData?.access_token ?? null) : null,
       sheetId,
       sheetTabId,
       userProfile: userProfile ?? null,

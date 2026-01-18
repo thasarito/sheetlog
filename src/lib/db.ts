@@ -9,7 +9,7 @@ class SheetLogDB extends Dexie {
     super('SheetLogDB');
     this.version(1).stores({
       transactions: 'id, status, createdAt',
-      settings: 'key'
+      settings: 'key',
     });
   }
 }

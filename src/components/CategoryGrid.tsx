@@ -1,15 +1,15 @@
-import { useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion } from 'framer-motion';
+import { useRef, useState } from 'react';
 import {
   DEFAULT_CATEGORY_COLORS,
   DEFAULT_CATEGORY_ICONS,
   SUGGESTED_CATEGORY_COLORS,
   SUGGESTED_CATEGORY_ICONS,
-} from "../lib/icons";
-import type { CategoryItem, TransactionType } from "../lib/types";
-import { DynamicIcon } from "./DynamicIcon";
+} from '../lib/icons';
+import type { CategoryItem, TransactionType } from '../lib/types';
+import { DynamicIcon } from './DynamicIcon';
 
-const springTransition = { type: "spring", stiffness: 400, damping: 30 } as const;
+const springTransition = { type: 'spring', stiffness: 400, damping: 30 } as const;
 
 interface CategoryGridProps {
   categories: CategoryItem[];
@@ -20,25 +20,13 @@ interface CategoryGridProps {
   transactionType?: TransactionType;
 }
 
-function resolveCategoryIcon(
-  category: CategoryItem,
-  type: TransactionType = "expense"
-): string {
-  return (
-    category.icon ||
-    SUGGESTED_CATEGORY_ICONS[category.name] ||
-    DEFAULT_CATEGORY_ICONS[type]
-  );
+function resolveCategoryIcon(category: CategoryItem, type: TransactionType = 'expense'): string {
+  return category.icon || SUGGESTED_CATEGORY_ICONS[category.name] || DEFAULT_CATEGORY_ICONS[type];
 }
 
-function resolveCategoryColor(
-  category: CategoryItem,
-  type: TransactionType = "expense"
-): string {
+function resolveCategoryColor(category: CategoryItem, type: TransactionType = 'expense'): string {
   return (
-    category.color ||
-    SUGGESTED_CATEGORY_COLORS[category.name] ||
-    DEFAULT_CATEGORY_COLORS[type]
+    category.color || SUGGESTED_CATEGORY_COLORS[category.name] || DEFAULT_CATEGORY_COLORS[type]
   );
 }
 
@@ -46,7 +34,7 @@ const LONG_PRESS_THRESHOLD = 400;
 const MOVEMENT_TOLERANCE = 10;
 
 function triggerHaptic() {
-  if ("vibrate" in navigator) {
+  if ('vibrate' in navigator) {
     navigator.vibrate(10);
   }
 }
@@ -165,7 +153,7 @@ function CategoryButton({
     >
       <motion.span
         className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
-          isHovered ? "border-primary ring-2 ring-primary/20" : "border-border"
+          isHovered ? 'border-primary ring-2 ring-primary/20' : 'border-border'
         }`}
         style={{ backgroundColor: `${color}20` }}
         animate={{ scale: isHovered ? 1.05 : 1 }}
@@ -175,7 +163,7 @@ function CategoryButton({
       </motion.span>
       <motion.span
         className="mt-2 text-[11px] font-semibold leading-snug"
-        animate={{ color: isHovered ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}
+        animate={{ color: isHovered ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))' }}
         transition={springTransition}
       >
         {category.name}
@@ -190,7 +178,7 @@ export function CategoryGrid({
   onLongPress,
   onDrag,
   onRelease,
-  transactionType = "expense",
+  transactionType = 'expense',
 }: CategoryGridProps) {
   return (
     <div className="grid grid-cols-4 gap-3">

@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 
 export function LegalLayout({ children }: { children: ReactNode }) {
   return (
@@ -19,9 +19,7 @@ export function LegalLayout({ children }: { children: ReactNode }) {
         </nav>
       </header>
       <main className="flex-1 overflow-y-auto px-6 py-10">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
-          {children}
-        </div>
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">{children}</div>
       </main>
     </div>
   );

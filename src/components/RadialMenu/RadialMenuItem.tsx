@@ -26,7 +26,7 @@ function createHighlightArc(
   startAngle: number,
   endAngle: number,
   radius: number,
-  thickness: number
+  thickness: number,
 ): string {
   const innerR = radius - thickness / 2;
   const outerR = radius + thickness / 2;
@@ -59,8 +59,8 @@ function getLabelOffsetX(angle: number, textWidth: number): number {
   const normalized = ((angle % 360) + 360) % 360;
   const pushAmount = textWidth / 2 + 5;
   if (normalized > 110 && normalized < 250) return -pushAmount; // Left side - push left
-  if (normalized < 70 || normalized > 290) return pushAmount;   // Right side - push right
-  return 0;  // Top/bottom - centered
+  if (normalized < 70 || normalized > 290) return pushAmount; // Right side - push right
+  return 0; // Top/bottom - centered
 }
 
 export function RadialMenuSegment({

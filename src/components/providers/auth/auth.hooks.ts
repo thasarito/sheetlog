@@ -2,10 +2,10 @@
  * Authentication consumer hooks
  */
 
-import { useContext } from "react";
-import { AUTH_STATUS_MESSAGES } from "./auth.constants";
-import { AuthContext } from "./AuthContext";
-import type { AuthContextValue, SheetStatus } from "./auth.types";
+import { useContext } from 'react';
+import { AuthContext } from './AuthContext';
+import { AUTH_STATUS_MESSAGES } from './auth.constants';
+import type { AuthContextValue, SheetStatus } from './auth.types';
 
 /**
  * Core hook to access auth context.
@@ -14,7 +14,7 @@ import type { AuthContextValue, SheetStatus } from "./auth.types";
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used within AuthProvider");
+    throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
 }
@@ -31,22 +31,22 @@ export function useAuthWithStatus() {
   // Compute more granular status for sheet connection
   const sheetStatus: SheetStatus = auth.accessToken
     ? auth.sheetId
-      ? "ready"
-      : "no-sheet"
-    : "no-auth";
+      ? 'ready'
+      : 'no-sheet'
+    : 'no-auth';
 
   const sheetStatusMessage =
-    sheetStatus === "ready"
-      ? "Google Sheet connected"
-      : sheetStatus === "no-sheet"
-      ? "Please connect a Google Sheet"
-      : null;
+    sheetStatus === 'ready'
+      ? 'Google Sheet connected'
+      : sheetStatus === 'no-sheet'
+        ? 'Please connect a Google Sheet'
+        : null;
 
   return {
     ...auth,
     statusMessage,
     sheetStatus,
     sheetStatusMessage,
-    isReady: auth.authStatus === "authenticated" && !!auth.sheetId,
+    isReady: auth.authStatus === 'authenticated' && !!auth.sheetId,
   };
 }

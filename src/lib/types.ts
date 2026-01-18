@@ -60,12 +60,12 @@ export interface OnboardingState {
 
 export interface QuickNote {
   id: string;
-  icon: string;      // lucide icon name
-  label: string;     // short label for radial menu
-  note?: string;     // full note text to pre-fill (optional)
-  amount?: string;   // amount to pre-fill (optional)
+  icon: string; // lucide icon name
+  label: string; // short label for radial menu
+  note?: string; // full note text to pre-fill (optional)
+  amount?: string; // amount to pre-fill (optional)
   currency?: string;
-  account?: string;  // "from" account
+  account?: string; // "from" account
   forValue?: string; // "for" (Me/Partner/etc.) or "to" account for transfers
 }
 

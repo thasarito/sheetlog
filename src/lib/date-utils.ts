@@ -1,4 +1,4 @@
-import { isValid, parse } from "date-fns";
+import { isValid, parse } from 'date-fns';
 
 /**
  * Converts Excel serial number to JavaScript Date.
@@ -28,7 +28,7 @@ export function serialNumberToDate(serial: number): Date {
     datePart.getUTCDate(),
     hours,
     minutes,
-    seconds
+    seconds,
   );
 }
 
@@ -42,12 +42,12 @@ export function serialNumberToDate(serial: number): Date {
  */
 export function parseDate(dateStr: string | number): Date {
   // Handle serial number from Google Sheets
-  if (typeof dateStr === "number") {
+  if (typeof dateStr === 'number') {
     return serialNumberToDate(dateStr);
   }
 
   // Try ISO format first (from new transactions created in-app)
-  if (dateStr.includes("T")) {
+  if (dateStr.includes('T')) {
     const isoDate = new Date(dateStr);
     if (isValid(isoDate)) {
       return isoDate;
@@ -55,7 +55,7 @@ export function parseDate(dateStr: string | number): Date {
   }
 
   // Try common formatted date patterns (legacy support)
-  const formats = ["M/d/yyyy HH:mm:ss", "M/d/yyyy", "d/M/yyyy", "yyyy-MM-dd"];
+  const formats = ['M/d/yyyy HH:mm:ss', 'M/d/yyyy', 'd/M/yyyy', 'yyyy-MM-dd'];
   for (const fmt of formats) {
     const parsed = parse(dateStr, fmt, new Date());
     if (isValid(parsed)) {

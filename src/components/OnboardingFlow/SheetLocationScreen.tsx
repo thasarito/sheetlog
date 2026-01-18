@@ -1,20 +1,20 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Folder, ChevronRight, Check, ArrowLeft } from "lucide-react";
-import { OnboardingLayout } from "./OnboardingLayout";
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Check, ChevronRight, Folder } from 'lucide-react';
+import { useState } from 'react';
+import { listFolders } from '../../lib/google';
+import { cn } from '../../lib/utils';
+import { useAuth } from '../providers';
 import {
   Drawer,
   DrawerContent,
+  DrawerDescription,
   DrawerHeader,
   DrawerTitle,
-  DrawerDescription,
   DrawerTrigger,
-} from "../ui/drawer";
-import { Skeleton } from "../ui/skeleton";
-import { useAuth } from "../providers";
-import { listFolders } from "../../lib/google";
-import type { LocationMode, ScreenMeta } from "./types";
-import { cn } from "../../lib/utils";
+} from '../ui/drawer';
+import { Skeleton } from '../ui/skeleton';
+import { OnboardingLayout } from './OnboardingLayout';
+import type { LocationMode, ScreenMeta } from './types';
 
 type SheetLocationScreenProps = {
   meta: ScreenMeta;
@@ -37,9 +37,9 @@ export function SheetLocationScreen({
 }: SheetLocationScreenProps) {
   const { accessToken } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [folderStack, setFolderStack] = useState<
-    { id: string; name: string }[]
-  >([{ id: "root", name: "My Drive" }]);
+  const [folderStack, setFolderStack] = useState<{ id: string; name: string }[]>([
+    { id: 'root', name: 'My Drive' },
+  ]);
   const currentFolder = folderStack[folderStack.length - 1];
 
   const [selectedFolder, setSelectedFolder] = useState<{
@@ -48,7 +48,7 @@ export function SheetLocationScreen({
   } | null>(null);
 
   const { data: folders = [], isLoading } = useQuery({
-    queryKey: ["folders", accessToken, currentFolder.id],
+    queryKey: ['folders', accessToken, currentFolder.id],
     queryFn: async () => {
       if (!accessToken) {
         return [];
@@ -56,7 +56,7 @@ export function SheetLocationScreen({
       try {
         return await listFolders(accessToken, currentFolder.id);
       } catch (error) {
-        console.error("Failed to list folders", error);
+        console.error('Failed to list folders', error);
         return [];
       }
     },
@@ -70,7 +70,7 @@ export function SheetLocationScreen({
   function handleSelectFolder(folder: { id: string; name: string }) {
     setSelectedFolder(folder);
     onFolderIdChange(folder.id);
-    onLocationModeChange("folder");
+    onLocationModeChange('folder');
     setIsOpen(false);
   }
 
@@ -91,10 +91,10 @@ export function SheetLocationScreen({
       <div className="space-y-4 pt-4 flex-1 w-full">
         <label
           className={cn(
-            "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer",
-            locationMode === "root"
-              ? "border-primary bg-primary/5"
-              : "border-border bg-card hover:border-primary/50"
+            'flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer',
+            locationMode === 'root'
+              ? 'border-primary bg-primary/5'
+              : 'border-border bg-card hover:border-primary/50',
           )}
         >
           <div className="flex items-center gap-3">
@@ -103,22 +103,18 @@ export function SheetLocationScreen({
             </div>
             <div>
               <div className="font-semibold">My Drive</div>
-              <div className="text-xs text-muted-foreground">
-                Store in main folder
-              </div>
+              <div className="text-xs text-muted-foreground">Store in main folder</div>
             </div>
           </div>
           <div className="relative flex items-center">
             <input
               type="radio"
               name="location"
-              checked={locationMode === "root"}
-              onChange={() => onLocationModeChange("root")}
+              checked={locationMode === 'root'}
+              onChange={() => onLocationModeChange('root')}
               className="peer sr-only"
             />
-            {locationMode === "root" && (
-              <Check className="w-5 h-5 text-primary" />
-            )}
+            {locationMode === 'root' && <Check className="w-5 h-5 text-primary" />}
           </div>
         </label>
 
@@ -126,17 +122,17 @@ export function SheetLocationScreen({
           <DrawerTrigger asChild>
             <div
               className={cn(
-                "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer",
-                locationMode === "folder"
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-card hover:border-primary/50"
+                'flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer',
+                locationMode === 'folder'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-card hover:border-primary/50',
               )}
               onClick={() => {
-                onLocationModeChange("folder");
+                onLocationModeChange('folder');
               }}
               onKeyUp={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  onLocationModeChange("folder");
+                if (e.key === 'Enter' || e.key === ' ') {
+                  onLocationModeChange('folder');
                 }
               }}
               role="button"
@@ -152,8 +148,8 @@ export function SheetLocationScreen({
                     {selectedFolder
                       ? selectedFolder.name
                       : folderIdInput
-                      ? "Folder Selected"
-                      : "Choose a folder"}
+                        ? 'Folder Selected'
+                        : 'Choose a folder'}
                   </div>
                 </div>
               </div>
@@ -164,9 +160,7 @@ export function SheetLocationScreen({
             <DrawerHeader>
               <DrawerTitle>Select Folder</DrawerTitle>
               <DrawerDescription>
-                {currentFolder.id === "root"
-                  ? "Browse your Google Drive"
-                  : currentFolder.name}
+                {currentFolder.id === 'root' ? 'Browse your Google Drive' : currentFolder.name}
               </DrawerDescription>
             </DrawerHeader>
             <div className="p-4 h-[60vh] overflow-y-auto">
@@ -176,8 +170,8 @@ export function SheetLocationScreen({
                   onClick={handleBack}
                   className="flex items-center gap-2 mb-4 text-sm text-muted-foreground hover:text-foreground"
                 >
-                  <ArrowLeft className="w-4 h-4" /> Back to{" "}
-                  {folderStack[folderStack.length - 2]?.name ?? "Drive"}
+                  <ArrowLeft className="w-4 h-4" /> Back to{' '}
+                  {folderStack[folderStack.length - 2]?.name ?? 'Drive'}
                 </button>
               )}
               {isLoading ? (
@@ -208,9 +202,7 @@ export function SheetLocationScreen({
                         onClick={() => handleFolderClick(folder)}
                       >
                         <Folder className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
-                        <span className="text-sm font-medium">
-                          {folder.name}
-                        </span>
+                        <span className="text-sm font-medium">{folder.name}</span>
                       </button>
                       <button
                         type="button"
@@ -225,9 +217,7 @@ export function SheetLocationScreen({
                     </div>
                   ))}
                   {folders.length === 0 && (
-                    <div className="text-center text-muted-foreground py-8">
-                      No folders found
-                    </div>
+                    <div className="text-center text-muted-foreground py-8">No folders found</div>
                   )}
                 </div>
               )}
@@ -241,12 +231,9 @@ export function SheetLocationScreen({
           type="button"
           className="w-full rounded-2xl bg-primary py-3 text-base font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
           onClick={onSubmit}
-          disabled={
-            isSettingUpSheet ||
-            (locationMode === "folder" && !folderIdInput.trim())
-          }
+          disabled={isSettingUpSheet || (locationMode === 'folder' && !folderIdInput.trim())}
         >
-          {isSettingUpSheet ? "Setting up..." : "Continue"}
+          {isSettingUpSheet ? 'Setting up...' : 'Continue'}
         </button>
       </div>
     </OnboardingLayout>
