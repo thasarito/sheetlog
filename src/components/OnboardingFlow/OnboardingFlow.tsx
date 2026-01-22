@@ -8,7 +8,8 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Download } from "lucide-react";
-import { useAuth } from "../providers";
+import { useSession, useWorkspace } from "../../app/providers";
+import { useAppPhase } from "../../hooks/useAppPhase";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import type { AccountItem } from "../../lib/types";
@@ -37,9 +38,10 @@ interface OnboardingFlowProps {
 }
 
 export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
-  const { accessToken, sheetId, isConnecting, connect, refreshSheet } =
-    useAuth();
+  const { accessToken, isConnecting, connect } = useSession();
+  const { sheetId, ensureSheet } = useWorkspace();
   const { onboarding, updateOnboarding } = useOnboarding();
+  const { phase } = useAppPhase();
   const [locationMode, setLocationMode] = useState<LocationMode>(
     onboarding.sheetFolderId ? "folder" : "root"
   );
@@ -67,15 +69,16 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   const accountsReady =
     onboarding.accountsConfirmed && onboarding.accounts.length > 0;
   const categoriesReady = onboarding.categoriesConfirmed && hasCategories;
-  const stepIndex = !accessToken
-    ? 0
-    : !sheetId
-    ? 1
-    : !accountsReady
-    ? 2
-    : !categoriesReady
-    ? 3
-    : 4;
+  const stepIndex =
+    phase === "needs_sheet"
+      ? 1
+      : phase === "needs_accounts"
+      ? 2
+      : phase === "needs_categories"
+      ? 3
+      : phase === "ready"
+      ? 4
+      : 0;
 
   useEffect(() => {
     if (onboarding.sheetFolderId) {
@@ -221,7 +224,6 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   async function handleConnect() {
     try {
       await connect();
-      onToast("Connected to Google");
     } catch (error) {
       onToast(error instanceof Error ? error.message : "Failed to connect");
     }
@@ -235,7 +237,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     const folderId = locationMode === "folder" ? folderIdInput.trim() : null;
     setIsSettingUpSheet(true);
     try {
-      await refreshSheet(folderId);
+      await ensureSheet(folderId);
       await updateOnboarding({ sheetFolderId: folderId });
       onToast("Sheet ready");
     } catch (error) {

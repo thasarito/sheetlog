@@ -3,7 +3,7 @@
  * Returns fake tokens that are always "valid"
  */
 
-import type { TokenData } from '../../components/providers/auth/auth.types';
+import type { TokenData } from '../../app/providers/session/session.types';
 
 const MOCK_TOKEN_KEY = 'sheetlog.mock.token';
 

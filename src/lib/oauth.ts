@@ -8,7 +8,7 @@
  * 4. Refresh access token using refresh token
  */
 
-import { SCOPES } from "../components/providers/auth/auth.constants";
+import { SCOPES } from "../app/providers/session";
 
 // OAuth endpoints
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -37,13 +37,34 @@ export interface TokenData {
   refresh_token?: string;
 }
 
+function requireWebCrypto(): Crypto {
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi || typeof cryptoApi.getRandomValues !== "function") {
+    throw new Error(
+      "WebCrypto is unavailable. Use HTTPS or localhost to sign in with Google."
+    );
+  }
+  return cryptoApi;
+}
+
+function requireSubtleCrypto(): SubtleCrypto {
+  const cryptoApi = requireWebCrypto();
+  if (!cryptoApi.subtle || typeof cryptoApi.subtle.digest !== "function") {
+    throw new Error(
+      "OAuth requires a secure context (HTTPS or localhost) to sign in with Google."
+    );
+  }
+  return cryptoApi.subtle;
+}
+
 /**
  * Generates a cryptographically random code verifier for PKCE
  * Must be between 43-128 characters
  */
 export function generateCodeVerifier(): string {
+  const cryptoApi = requireWebCrypto();
   const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
+  cryptoApi.getRandomValues(array);
   return base64UrlEncode(array);
 }
 
@@ -51,8 +72,9 @@ export function generateCodeVerifier(): string {
  * Generates a random state parameter to prevent CSRF attacks
  */
 export function generateState(): string {
+  const cryptoApi = requireWebCrypto();
   const array = new Uint8Array(16);
-  crypto.getRandomValues(array);
+  cryptoApi.getRandomValues(array);
   return base64UrlEncode(array);
 }
 
@@ -60,9 +82,10 @@ export function generateState(): string {
  * Generates the code challenge from the code verifier using SHA-256
  */
 export async function generateCodeChallenge(verifier: string): Promise<string> {
+  const subtle = requireSubtleCrypto();
   const encoder = new TextEncoder();
   const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
+  const digest = await subtle.digest("SHA-256", data);
   return base64UrlEncode(new Uint8Array(digest));
 }
 

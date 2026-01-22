@@ -692,7 +692,7 @@ export async function getRecentTransactions(
 
   // 3. Fetch the data
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
-  const data = await fetchWithAuth<{ values?: any[][] }>(url, accessToken);
+  const data = await fetchWithAuth<{ values?: unknown[][] }>(url, accessToken);
   const rows = data.values ?? [];
 
   // 4. Parse and reverse (newest first)
@@ -701,7 +701,7 @@ export async function getRecentTransactions(
     .reverse();
 }
 
-function parseTransactionRow(row: any[], rowIndex: number): TransactionRecord {
+function parseTransactionRow(row: unknown[], rowIndex: number): TransactionRecord {
   // Column mapping based on HEADER_ROW:
   // 0: Date, 1: Type, 2: Amount, 3: Category, 4: Note, 5: Timestamp,
   // 6: Device, 7: Currency, 8: Account, 9: For, 10: Id
@@ -726,7 +726,9 @@ function parseTransactionRow(row: any[], rowIndex: number): TransactionRecord {
   return {
     id: String(id || `row-${rowIndex}`), // Ensure ID is string
     date:
-      date != null ? parseDate(date).toISOString() : new Date().toISOString(),
+      typeof date === "string" || typeof date === "number"
+        ? parseDate(date).toISOString()
+        : new Date().toISOString(),
     type: (["expense", "income", "transfer"].includes(
       String(typeRaw || "").toLowerCase()
     )

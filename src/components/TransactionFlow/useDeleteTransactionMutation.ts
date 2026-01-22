@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useTransactions } from "../providers";
+import { useTransactions } from "../../app/providers";
 
 export function useDeleteTransactionMutation() {
   const { deleteTransaction } = useTransactions();

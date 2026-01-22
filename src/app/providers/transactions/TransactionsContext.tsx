@@ -3,7 +3,7 @@ import type {
   RecentCategories,
   TransactionInput,
   TransactionType,
-} from "../../lib/types";
+} from "../../../lib/types";
 
 export interface UndoResult {
   ok: boolean;
@@ -17,17 +17,11 @@ export interface TransactionsContextValue {
   lastSyncErrorAt: string | null;
   lastSyncAt: string | null;
   addTransaction: (input: TransactionInput) => Promise<void>;
-  updateTransaction: (
-    id: string,
-    input: Partial<TransactionInput>
-  ) => Promise<void>;
+  updateTransaction: (id: string, input: Partial<TransactionInput>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<UndoResult>;
   undoLast: () => Promise<UndoResult>;
   syncNow: () => Promise<void>;
-  markRecentCategory: (
-    type: TransactionType,
-    category: string
-  ) => Promise<void>;
+  markRecentCategory: (type: TransactionType, category: string) => Promise<void>;
 }
 
 export const TransactionsContext =
@@ -40,3 +34,4 @@ export function useTransactions() {
   }
   return context;
 }
+

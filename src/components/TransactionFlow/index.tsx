@@ -2,10 +2,8 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { parseDate } from "../../lib/date-utils";
-import { useAuth, useConnectivity, useTransactions } from "../providers";
+import { useConnectivity, useTransactions } from "../../app/providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
-import { OnboardingFlow } from "../OnboardingFlow";
-import { ServiceWorker } from "../ServiceWorker";
 import { Header } from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
@@ -38,7 +36,6 @@ type StepDefinition = {
 };
 
 export function TransactionFlow() {
-  const { accessToken, sheetId } = useAuth();
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { onboarding, refreshOnboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
@@ -71,16 +68,6 @@ export function TransactionFlow() {
   const lastSyncErrorRef = useRef<string | null>(null);
 
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
-  const hasCategories =
-    categories.expense.length > 0 &&
-    categories.income.length > 0 &&
-    categories.transfer.length > 0;
-  const accountsReady =
-    onboarding.accountsConfirmed && onboarding.accounts.length > 0;
-  const categoriesReady = onboarding.categoriesConfirmed && hasCategories;
-  const isOnboarded = Boolean(
-    accessToken && sheetId && accountsReady && categoriesReady
-  );
 
   const categoryGroups = useMemo(() => {
     return TYPE_OPTIONS.reduce((acc, typeOption) => {
@@ -521,48 +508,43 @@ export function TransactionFlow() {
 
   return (
     <main className="h-dvh from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
-      <ServiceWorker />
-      {isOnboarded ? (
-        <div className="mx-auto flex h-full w-full max-w-md flex-col">
-          {/* Header with settings drawer */}
-          <Header
-            showSettings
-            onResync={() => void handleResync()}
-            isResyncing={isResyncing}
-            onToast={handleToast}
-          />
+      <div className="mx-auto flex h-full w-full max-w-md flex-col">
+        {/* Header with settings drawer */}
+        <Header
+          showSettings
+          onResync={() => void handleResync()}
+          isResyncing={isResyncing}
+          onToast={handleToast}
+        />
 
-          {/* Main content - full height */}
-          <div className="flex-1 min-h-0 pb-6">
-            {step === 0 ? (
-              <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
-                <div className="min-h-0">
-                  <TopDashboard onEditTransaction={handleEditTransaction} />
-                </div>
-                <div className="min-h-0">
-                  <StepCard
-                    animationKey={activeStep.key}
-                    className={activeStep.className}
-                    containerClassName="h-full"
-                  >
-                    {activeStep.content}
-                  </StepCard>
-                </div>
+        {/* Main content - full height */}
+        <div className="flex-1 min-h-0 pb-6">
+          {step === 0 ? (
+            <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
+              <div className="min-h-0">
+                <TopDashboard onEditTransaction={handleEditTransaction} />
               </div>
-            ) : (
-              <StepCard
-                animationKey={activeStep.key}
-                className={activeStep.className}
-                containerClassName="h-full"
-              >
-                {activeStep.content}
-              </StepCard>
-            )}
-          </div>
+              <div className="min-h-0">
+                <StepCard
+                  animationKey={activeStep.key}
+                  className={activeStep.className}
+                  containerClassName="h-full"
+                >
+                  {activeStep.content}
+                </StepCard>
+              </div>
+            </div>
+          ) : (
+            <StepCard
+              animationKey={activeStep.key}
+              className={activeStep.className}
+              containerClassName="h-full"
+            >
+              {activeStep.content}
+            </StepCard>
+          )}
         </div>
-      ) : (
-        <OnboardingFlow onToast={handleToast} />
-      )}
+      </div>
 
       {editingTransaction && (
         <>

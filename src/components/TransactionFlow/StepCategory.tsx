@@ -181,7 +181,6 @@ export function StepCategory({ form, categoryGroups, onConfirm }: StepCategoryPr
           anchorPosition={radialMenuState.anchorPosition}
           dragPosition={radialMenuState.dragPosition}
           isOpen={radialMenuState.isOpen}
-          onSelectItem={() => {}}
           onCancel={radialHandlers.onCancel}
         />
       )}

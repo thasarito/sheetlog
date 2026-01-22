@@ -45,14 +45,20 @@ const PickerDataContext = createContext<{
 } | null>(null);
 PickerDataContext.displayName = "PickerDataContext";
 
+type ErrorWithCaptureStackTrace = ErrorConstructor & {
+  captureStackTrace?: (targetObject: object, constructorOpt?: unknown) => void;
+};
+
+const ErrorCapture = Error as unknown as ErrorWithCaptureStackTrace;
+
 function usePickerData(componentName: string) {
   const context = useContext(PickerDataContext);
   if (context === null) {
     const error = new Error(
       `<${componentName} /> is missing a parent <Picker /> component.`
     );
-    if ((Error as any).captureStackTrace) {
-      (Error as any).captureStackTrace(error, usePickerData);
+    if (ErrorCapture.captureStackTrace) {
+      ErrorCapture.captureStackTrace(error, usePickerData);
     }
     throw error;
   }
@@ -71,8 +77,8 @@ function usePickerActions(componentName: string) {
     const error = new Error(
       `<${componentName} /> is missing a parent <Picker /> component.`
     );
-    if ((Error as any).captureStackTrace) {
-      (Error as any).captureStackTrace(error, usePickerActions);
+    if (ErrorCapture.captureStackTrace) {
+      ErrorCapture.captureStackTrace(error, usePickerActions);
     }
     throw error;
   }
@@ -259,8 +265,8 @@ function useColumnData(componentName: string) {
     const error = new Error(
       `<${componentName} /> is missing a parent <Picker.Column /> component.`
     );
-    if ((Error as any).captureStackTrace) {
-      (Error as any).captureStackTrace(error, useColumnData);
+    if (ErrorCapture.captureStackTrace) {
+      ErrorCapture.captureStackTrace(error, useColumnData);
     }
     throw error;
   }
@@ -590,17 +596,19 @@ interface PickerItemRenderProps {
 }
 
 interface PickerItemProps
-  extends Omit<HTMLProps<HTMLDivElement>, "value" | "children"> {
+  extends Omit<HTMLProps<HTMLButtonElement>, "value" | "children" | "type"> {
   children: ReactNode | ((renderProps: PickerItemRenderProps) => ReactNode);
   value: string | number;
 }
 
-function isFunction(functionToCheck: unknown): functionToCheck is Function {
+function isFunction(
+  functionToCheck: PickerItemProps["children"]
+): functionToCheck is (renderProps: PickerItemRenderProps) => ReactNode {
   return typeof functionToCheck === "function";
 }
 
 function PickerItem({ style, children, value, ...restProps }: PickerItemProps) {
-  const optionRef = useRef<HTMLDivElement | null>(null);
+  const optionRef = useRef<HTMLButtonElement | null>(null);
   const { itemHeight, value: pickerValue } = usePickerData("Picker.Item");
   const pickerActions = usePickerActions("Picker.Item");
   const { key } = useColumnData("Picker.Item");
@@ -616,6 +624,12 @@ function PickerItem({ style, children, value, ...restProps }: PickerItemProps) {
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
+      background: "none",
+      border: "none",
+      padding: 0,
+      width: "100%",
+      font: "inherit",
+      color: "inherit",
     }),
     [itemHeight]
   );
@@ -625,7 +639,8 @@ function PickerItem({ style, children, value, ...restProps }: PickerItemProps) {
   }, [pickerActions, key, value]);
 
   return (
-    <div
+    <button
+      type="button"
       style={{
         ...itemStyle,
         ...style,
@@ -637,7 +652,7 @@ function PickerItem({ style, children, value, ...restProps }: PickerItemProps) {
       {isFunction(children)
         ? children({ selected: pickerValue[key] === value })
         : children}
-    </div>
+    </button>
   );
 }
 

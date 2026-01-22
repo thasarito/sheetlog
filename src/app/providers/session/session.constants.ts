@@ -1,8 +1,4 @@
-/**
- * Authentication constants and configuration
- */
-
-import type { AuthStatus } from "./auth.types";
+import type { SessionStatus } from "./session.types";
 
 /** Buffer time before token expiry to trigger refresh (5 minutes) */
 export const REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -14,7 +10,7 @@ export const MIN_REFETCH_INTERVAL_MS = 1000;
 export const GOOGLE_TOKEN_QUERY_KEY = ["googleToken"] as const;
 
 /** User-friendly status messages for each auth state */
-export const AUTH_STATUS_MESSAGES: Record<AuthStatus, string> = {
+export const SESSION_STATUS_MESSAGES: Record<SessionStatus, string> = {
   initializing: "Checking authentication...",
   unauthenticated: "Please sign in with Google to continue",
   authenticating: "Connecting to Google...",
@@ -28,3 +24,4 @@ export const SCOPES = [
   "https://www.googleapis.com/auth/drive.metadata.readonly",
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
+

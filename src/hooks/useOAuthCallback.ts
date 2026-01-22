@@ -3,7 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { exchangeCodeForTokens } from "../lib/oauth";
 import { STORAGE_KEYS } from "../lib/constants";
-import { GOOGLE_TOKEN_QUERY_KEY } from "../components/providers/auth/auth.constants";
+import { GOOGLE_TOKEN_QUERY_KEY } from "../app/providers/session";
 
 type OAuthSearchParams = {
   code?: string;

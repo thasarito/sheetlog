@@ -10,7 +10,10 @@ export const ConnectivityContext =
 export function useConnectivity() {
   const context = useContext(ConnectivityContext);
   if (!context) {
-    throw new Error("useConnectivity must be used within ConnectivityProvider");
+    throw new Error(
+      "useConnectivity must be used within ConnectivityProvider"
+    );
   }
   return context;
 }
+

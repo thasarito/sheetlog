@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../components/providers/auth';
-import { useConnectivity } from '../components/providers/ConnectivityContext';
+import { useSession, useWorkspace, useConnectivity } from '../app/providers';
 import { writeOnboardingConfig as realWriteOnboardingConfig } from '../lib/google';
 import { isGoogleAuthError } from '../lib/googleErrors';
 import { IS_DEV_MODE, writeOnboardingConfig as mockWriteOnboardingConfig } from '../lib/mock';
@@ -11,17 +10,17 @@ import type { AccountItem, CategoryConfigWithMeta, OnboardingState } from '../li
 const writeOnboardingConfig = IS_DEV_MODE ? mockWriteOnboardingConfig : realWriteOnboardingConfig;
 
 export const onboardingKeys = {
-  all: ['onboarding'] as const,
+  state: (sheetId: string | null) => ['onboarding', sheetId] as const,
   sync: (sheetId: string | null) => ['onboarding', 'sync', sheetId] as const,
 };
 
 /**
  * Main query that reads onboarding state from IndexedDB
  */
-export function useOnboardingQuery() {
+export function useOnboardingQuery(sheetId: string | null) {
   return useQuery({
-    queryKey: onboardingKeys.all,
-    queryFn: getOnboardingState,
+    queryKey: onboardingKeys.state(sheetId),
+    queryFn: () => getOnboardingState(sheetId),
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -34,7 +33,8 @@ export function useOnboardingQuery() {
  * Only runs when authenticated and online
  */
 export function useOnboardingSync() {
-  const { accessToken, sheetId, clearAuth } = useAuth();
+  const { accessToken, signOut } = useSession();
+  const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
 
@@ -45,17 +45,17 @@ export function useOnboardingSync() {
         return { next: getDefaultOnboardingState(), changed: false };
       }
       const current =
-        queryClient.getQueryData<OnboardingState>(onboardingKeys.all) ??
+        queryClient.getQueryData<OnboardingState>(onboardingKeys.state(sheetId)) ??
         getDefaultOnboardingState();
       try {
         const result = await hydrateOnboardingFromSheet(accessToken, sheetId, current);
         if (result.changed) {
-          queryClient.setQueryData(onboardingKeys.all, result.next);
+          queryClient.setQueryData(onboardingKeys.state(sheetId), result.next);
         }
         return result;
       } catch (error) {
         if (isGoogleAuthError(error)) {
-          clearAuth();
+          signOut();
         }
         throw error;
       }
@@ -145,18 +145,19 @@ function buildSheetUpdates(
  */
 export function useUpdateOnboarding() {
   const queryClient = useQueryClient();
-  const { accessToken, sheetId, clearAuth } = useAuth();
+  const { accessToken, signOut } = useSession();
+  const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
 
   return useMutation({
     mutationFn: async (updates: Partial<OnboardingState>): Promise<OnboardingState> => {
       const current =
-        queryClient.getQueryData<OnboardingState>(onboardingKeys.all) ??
+        queryClient.getQueryData<OnboardingState>(onboardingKeys.state(sheetId)) ??
         getDefaultOnboardingState();
       const next = { ...current, ...updates };
 
       // Always persist to IndexedDB
-      await setOnboardingState(next);
+      await setOnboardingState(next, sheetId);
 
       // Sync to Sheets if online and authenticated
       if (accessToken && sheetId && isOnline) {
@@ -166,7 +167,7 @@ export function useUpdateOnboarding() {
             await writeOnboardingConfig(accessToken, sheetId, sheetUpdates);
           } catch (error) {
             if (isGoogleAuthError(error)) {
-              clearAuth();
+              signOut();
             }
             throw error;
           }
@@ -177,15 +178,15 @@ export function useUpdateOnboarding() {
     },
     onMutate: async (updates) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: onboardingKeys.all });
+      await queryClient.cancelQueries({ queryKey: onboardingKeys.state(sheetId) });
 
       // Snapshot the previous value
-      const previous = queryClient.getQueryData<OnboardingState>(onboardingKeys.all);
+      const previous = queryClient.getQueryData<OnboardingState>(onboardingKeys.state(sheetId));
 
       // Optimistically update to the new value
       if (previous) {
         const next = { ...previous, ...updates };
-        queryClient.setQueryData(onboardingKeys.all, next);
+        queryClient.setQueryData(onboardingKeys.state(sheetId), next);
       }
 
       return { previous };
@@ -193,12 +194,12 @@ export function useUpdateOnboarding() {
     onError: (_error, _updates, context) => {
       // Rollback to the previous state on error
       if (context?.previous) {
-        queryClient.setQueryData(onboardingKeys.all, context.previous);
+        queryClient.setQueryData(onboardingKeys.state(sheetId), context.previous);
       }
     },
     onSettled: () => {
       // Invalidate to ensure we have the latest data after mutation
-      queryClient.invalidateQueries({ queryKey: onboardingKeys.all });
+      queryClient.invalidateQueries({ queryKey: onboardingKeys.state(sheetId) });
     },
   });
 }

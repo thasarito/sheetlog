@@ -1,4 +1,3 @@
-import type React from "react";
 import { useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { format, addDays, isSameDay, addMonths, subMonths } from "date-fns";
@@ -60,18 +59,6 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
     onChange(nextDate);
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      onChange(addDays(value, -1));
-      return;
-    }
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      onChange(addDays(value, 1));
-    }
-  };
-
   const weekVariants = {
     enter: (directionValue: number) => ({
       x: directionValue === 0 ? 0 : directionValue > 0 ? 36 : -36,
@@ -130,7 +117,6 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
 
       <div
         className="overflow-hidden rounded-2xl bg-card p-1"
-        onKeyDown={handleKeyDown}
       >
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           <motion.div

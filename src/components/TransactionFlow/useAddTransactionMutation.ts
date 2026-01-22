@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { useTransactions } from "../providers";
+import { useTransactions } from "../../app/providers";
 import type { TransactionFormValues } from "./transactionSchema";
 
 export function useAddTransactionMutation() {

@@ -1,9 +1,10 @@
 import { Outlet, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import AppProvider from "./providers";
+import AppProviders from "../app/providers";
 import { Toaster } from "./ui/sonner";
 import { ReloadPrompt } from "./ReloadPrompt";
 import { useOAuthCallback } from "../hooks/useOAuthCallback";
+import { ServiceWorker } from "./ServiceWorker";
 
 function AppContent() {
   const navigate = useNavigate();
@@ -53,10 +54,11 @@ function AppContent() {
 
 export function AppShell() {
   return (
-    <AppProvider>
+    <AppProviders>
       <div className="flex h-full w-full flex-col overflow-hidden">
+        <ServiceWorker />
         <AppContent />
       </div>
-    </AppProvider>
+    </AppProviders>
   );
 }

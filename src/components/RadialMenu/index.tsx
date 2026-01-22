@@ -14,7 +14,6 @@ export interface RadialMenuProps {
   anchorPosition: { x: number; y: number };
   dragPosition: { x: number; y: number } | null;
   isOpen: boolean;
-  onSelectItem: (id: string) => void;
   onCancel: () => void;
 }
 
@@ -179,13 +178,10 @@ export function RadialMenu({
   anchorPosition,
   dragPosition,
   isOpen,
-  onSelectItem,
   onCancel,
 }: RadialMenuProps) {
-  const viewport = {
-    width: typeof window !== 'undefined' ? window.innerWidth : 375,
-    height: typeof window !== 'undefined' ? window.innerHeight : 812,
-  };
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 375;
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 812;
 
   // Add cancel item when there are items to display
   const itemsWithCancel = useMemo(() => {
@@ -199,8 +195,14 @@ export function RadialMenu({
   }, [items]);
 
   const arcConfig = useMemo(
-    () => calculateAvailableArc(anchorPosition, viewport, OUTER_RADIUS, MENU_PADDING),
-    [anchorPosition, viewport.width, viewport.height]
+    () =>
+      calculateAvailableArc(
+        anchorPosition,
+        { width: viewportWidth, height: viewportHeight },
+        OUTER_RADIUS,
+        MENU_PADDING,
+      ),
+    [anchorPosition, viewportWidth, viewportHeight],
   );
 
   const hoveredItemId = useMemo(
@@ -247,6 +249,7 @@ export function RadialMenu({
                 viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
                 style={{ overflow: 'visible' }}
               >
+                <title>Radial menu</title>
                 {/* Center the wheel elements */}
                 <g transform={`translate(${center}, ${center})`}>
                   {/* Ring track (dashed circle) */}

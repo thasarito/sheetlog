@@ -1,4 +1,4 @@
-import { useAuth } from "./providers";
+import { useSession } from "../app/providers";
 
 type AuthUserProfileProps = {
   /** Show only the avatar, hide name */
@@ -6,7 +6,7 @@ type AuthUserProfileProps = {
 };
 
 export function AuthUserProfile({ compact = false }: AuthUserProfileProps) {
-  const { userProfile, isInitialized, accessToken } = useAuth();
+  const { userProfile, isInitialized, accessToken } = useSession();
 
   if (!isInitialized || !accessToken || !userProfile) {
     return null;

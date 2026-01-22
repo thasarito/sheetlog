@@ -7,6 +7,7 @@ export function StatusDot({ online }: { online: boolean }) {
       className={`inline-flex h-2.5 w-2.5 items-center justify-center rounded-full ${
         online ? 'bg-success' : 'bg-warning'
       }`}
+      role="img"
       aria-label={online ? 'Online' : 'Offline'}
       title={online ? 'Online' : 'Offline'}
     />

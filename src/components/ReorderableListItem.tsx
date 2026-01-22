@@ -40,16 +40,18 @@ export function ReorderableListItem<T>({
     >
       <div className="flex items-stretch">
         {/* Drag handle */}
-        <div
+        <button
+          type="button"
           onPointerDown={handlePointerDown}
           className={`flex items-center justify-center px-2 text-muted-foreground bg-card border-r border-border ${
             disabled ? "opacity-50" : "cursor-grab active:cursor-grabbing"
           }`}
           style={{ touchAction: "none" }}
           aria-label="Drag to reorder"
+          disabled={disabled}
         >
           <GripVertical className="h-5 w-5" />
-        </div>
+        </button>
         {/* Content */}
         <div className="flex-1 min-w-0">{children}</div>
       </div>

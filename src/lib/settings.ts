@@ -24,6 +24,14 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   categoriesConfirmed: false
 };
 
+const LEGACY_ONBOARDING_STATE_KEY = 'onboardingState';
+const ONBOARDING_STATE_KEY_PREFIX = 'onboardingState:';
+const PRE_SHEET_ONBOARDING_STATE_KEY = `${ONBOARDING_STATE_KEY_PREFIX}preSheet`;
+
+function getOnboardingStateKey(sheetId: string | null | undefined): string {
+  return sheetId ? `${ONBOARDING_STATE_KEY_PREFIX}${sheetId}` : PRE_SHEET_ONBOARDING_STATE_KEY;
+}
+
 // Migration helpers for legacy string[] data
 function migrateAccounts(accounts: unknown[]): AccountItem[] {
   if (accounts.length === 0) return [];
@@ -103,9 +111,47 @@ export function getDefaultOnboardingState(): OnboardingState {
   };
 }
 
-export async function getOnboardingState(): Promise<OnboardingState> {
-  const record = await db.settings.get('onboardingState');
+export async function getOnboardingState(sheetId?: string | null): Promise<OnboardingState> {
+  const key = getOnboardingStateKey(sheetId);
+  const record = await db.settings.get(key);
   if (!record?.value) {
+    if (sheetId) {
+      const legacy = await db.settings.get(LEGACY_ONBOARDING_STATE_KEY);
+      if (legacy?.value) {
+        try {
+          const parsed = JSON.parse(legacy.value) as Record<string, unknown>;
+          const defaults = getDefaultOnboardingState();
+
+          const accounts = Array.isArray(parsed.accounts)
+            ? migrateAccounts(parsed.accounts)
+            : defaults.accounts;
+
+          const categories =
+            parsed.categories && typeof parsed.categories === 'object'
+              ? migrateCategoryConfig(parsed.categories as Record<string, unknown[]>)
+              : defaults.categories;
+
+          const migrated: OnboardingState = {
+            sheetFolderId: typeof parsed.sheetFolderId === 'string' ? parsed.sheetFolderId : defaults.sheetFolderId,
+            accounts,
+            accountsConfirmed:
+              typeof parsed.accountsConfirmed === 'boolean'
+                ? parsed.accountsConfirmed
+                : defaults.accountsConfirmed,
+            categories,
+            categoriesConfirmed:
+              typeof parsed.categoriesConfirmed === 'boolean'
+                ? parsed.categoriesConfirmed
+                : defaults.categoriesConfirmed,
+          };
+
+          await setOnboardingState(migrated, sheetId);
+          return migrated;
+        } catch {
+          // Fall through to default
+        }
+      }
+    }
     return getDefaultOnboardingState();
   }
   try {
@@ -133,9 +179,9 @@ export async function getOnboardingState(): Promise<OnboardingState> {
   }
 }
 
-export async function setOnboardingState(state: OnboardingState): Promise<void> {
+export async function setOnboardingState(state: OnboardingState, sheetId?: string | null): Promise<void> {
   await db.settings.put({
-    key: 'onboardingState',
+    key: getOnboardingStateKey(sheetId),
     value: JSON.stringify(state),
     updatedAt: new Date().toISOString()
   });

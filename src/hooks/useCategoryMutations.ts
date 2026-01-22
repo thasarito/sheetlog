@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { onboardingKeys, useUpdateOnboarding } from './useOnboardingQuery';
 import type { OnboardingState, CategoryItem, TransactionType, CategoryConfigWithMeta } from '../lib/types';
+import { useWorkspace } from '../app/providers';
 import {
   DEFAULT_CATEGORY_ICONS,
   DEFAULT_CATEGORY_COLORS,
@@ -23,10 +24,13 @@ type ReorderCategoriesParams = {
 
 export function useCategoryMutations(onToast: (message: string) => void) {
   const queryClient = useQueryClient();
+  const { sheetId } = useWorkspace();
   const { mutateAsync: updateOnboarding } = useUpdateOnboarding();
 
   const getCurrentCategories = (): CategoryConfigWithMeta => {
-    const state = queryClient.getQueryData<OnboardingState>(onboardingKeys.all);
+    const state = queryClient.getQueryData<OnboardingState>(
+      onboardingKeys.state(sheetId)
+    );
     return state?.categories ?? { expense: [], income: [], transfer: [] };
   };
 

@@ -4,3 +4,4 @@ out
 dist
 .env.local
 .DS_Store
+.env

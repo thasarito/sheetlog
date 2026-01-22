@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TransactionInput } from "../../lib/types";
-import { useTransactions } from "../providers";
+import { useTransactions } from "../../app/providers";
 
 export function useUpdateTransactionMutation() {
   const { updateTransaction } = useTransactions();

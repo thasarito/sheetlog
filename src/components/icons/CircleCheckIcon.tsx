@@ -70,6 +70,7 @@ const CircleCheckIcon = forwardRef<CircleCheckIconHandle, CircleCheckIconProps>(
     );
 
     return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: hover-only animation trigger.
       <div
         className={cn(className)}
         onMouseEnter={handleMouseEnter}
@@ -87,6 +88,7 @@ const CircleCheckIcon = forwardRef<CircleCheckIconHandle, CircleCheckIconProps>(
           strokeLinecap="round"
           strokeLinejoin="round"
         >
+          <title>Check</title>
           <circle cx="12" cy="12" r="10" />
           <motion.path
             variants={PATH_VARIANTS}

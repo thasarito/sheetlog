@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { onboardingKeys, useUpdateOnboarding } from './useOnboardingQuery';
 import type { OnboardingState, AccountItem } from '../lib/types';
+import { useWorkspace } from '../app/providers';
 import {
   DEFAULT_ACCOUNT_ICON,
   DEFAULT_ACCOUNT_COLOR,
@@ -13,10 +14,13 @@ type ReorderAccountsParams = { accounts: AccountItem[] };
 
 export function useAccountMutations(onToast: (message: string) => void) {
   const queryClient = useQueryClient();
+  const { sheetId } = useWorkspace();
   const { mutateAsync: updateOnboarding } = useUpdateOnboarding();
 
   const getCurrentAccounts = (): AccountItem[] => {
-    const state = queryClient.getQueryData<OnboardingState>(onboardingKeys.all);
+    const state = queryClient.getQueryData<OnboardingState>(
+      onboardingKeys.state(sheetId)
+    );
     return state?.accounts ?? [];
   };
 

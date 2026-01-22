@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { getRecentTransactions } from '../../lib/google';
+import { getRecentTransactions as realGetRecentTransactions } from '../../lib/google';
 import type { TransactionRecord } from '../../lib/types';
-import { useAuth } from '../providers';
+import { IS_DEV_MODE, getRecentTransactions as mockGetRecentTransactions } from '../../lib/mock';
+import { useSession, useWorkspace } from '../../app/providers';
+
+const getRecentTransactions = IS_DEV_MODE ? mockGetRecentTransactions : realGetRecentTransactions;
 
 export function useRecentTransactionsQuery(limit: number = 50) {
-  const { accessToken, sheetId } = useAuth();
+  const { accessToken } = useSession();
+  const { sheetId } = useWorkspace();
 
   return useQuery<TransactionRecord[]>({
     queryKey: ['recentTransactions', sheetId, limit],

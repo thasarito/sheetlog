@@ -11,7 +11,7 @@ import {
   DrawerTrigger,
 } from "../ui/drawer";
 import { Skeleton } from "../ui/skeleton";
-import { useAuth } from "../providers";
+import { useSession } from "../../app/providers";
 import { listFolders } from "../../lib/google";
 import type { LocationMode, ScreenMeta } from "./types";
 import { cn } from "../../lib/utils";
@@ -35,7 +35,7 @@ export function SheetLocationScreen({
   onFolderIdChange,
   onSubmit,
 }: SheetLocationScreenProps) {
-  const { accessToken } = useAuth();
+  const { accessToken } = useSession();
   const [isOpen, setIsOpen] = useState(false);
   const [folderStack, setFolderStack] = useState<
     { id: string; name: string }[]
@@ -124,7 +124,8 @@ export function SheetLocationScreen({
 
         <Drawer open={isOpen} onOpenChange={setIsOpen}>
           <DrawerTrigger asChild>
-            <div
+            <button
+              type="button"
               className={cn(
                 "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer",
                 locationMode === "folder"
@@ -134,13 +135,6 @@ export function SheetLocationScreen({
               onClick={() => {
                 onLocationModeChange("folder");
               }}
-              onKeyUp={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  onLocationModeChange("folder");
-                }
-              }}
-              role="button"
-              tabIndex={0}
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-orange-100 text-orange-600 rounded-full">
@@ -158,7 +152,7 @@ export function SheetLocationScreen({
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
-            </div>
+            </button>
           </DrawerTrigger>
           <DrawerContent>
             <DrawerHeader>
@@ -184,6 +178,7 @@ export function SheetLocationScreen({
                 <div className="space-y-2">
                   {Array.from({ length: 5 }).map((_, index) => (
                     <div
+                      // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list.
                       key={`folder-skeleton-${index}`}
                       className="flex items-center justify-between rounded-xl p-3"
                     >

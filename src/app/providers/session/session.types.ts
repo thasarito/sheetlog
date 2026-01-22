@@ -1,8 +1,4 @@
-/**
- * Authentication types and interfaces
- */
-
-export type AuthStatus =
+export type SessionStatus =
   | "initializing"
   | "unauthenticated"
   | "authenticating"
@@ -14,20 +10,15 @@ export type UserProfile = {
   picture: string | null;
 };
 
-export type SheetStatus = "ready" | "no-sheet" | "no-auth";
-
-export interface AuthContextValue {
+export interface SessionContextValue {
   accessToken: string | null;
-  sheetId: string | null;
-  sheetTabId: number | null;
   userProfile: UserProfile | null;
   isConnecting: boolean;
   isInitialized: boolean;
-  authStatus: AuthStatus;
-  authError: Error | null;
+  status: SessionStatus;
+  error: Error | null;
   connect: () => Promise<void>;
-  refreshSheet: (folderId?: string | null) => Promise<void>;
-  clearAuth: () => void;
+  signOut: () => void;
 }
 
 export interface TokenData {
@@ -35,3 +26,4 @@ export interface TokenData {
   expires_in: number;
   expires_at: number;
 }
+

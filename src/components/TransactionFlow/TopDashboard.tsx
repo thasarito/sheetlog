@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../../lib/db";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
-import { useTransactions } from "../providers";
+import { useTransactions } from "../../app/providers";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { Skeleton } from "../ui/skeleton";
 import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
@@ -119,7 +119,7 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
 
   // Dynamic header based on visible date
   const headerLabel = useMemo(() => {
-    const visibleDateObj = new Date(visibleDate + "T00:00:00");
+    const visibleDateObj = new Date(`${visibleDate}T00:00:00`);
     if (isSameDay(visibleDateObj, today)) return "Today so far";
     if (isSameDay(visibleDateObj, subDays(today, 1))) return "Yesterday";
     return format(visibleDateObj, "MMM d");
@@ -144,7 +144,7 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
   // Format date label for separators
   const formatDateLabel = useCallback(
     (dateKey: string) => {
-      const dateObj = new Date(dateKey + "T00:00:00");
+      const dateObj = new Date(`${dateKey}T00:00:00`);
       if (isSameDay(dateObj, today)) return "Today";
       if (isSameDay(dateObj, subDays(today, 1))) return "Yesterday";
       return format(dateObj, "EEEE, MMM d");
@@ -173,6 +173,7 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
   }, [today]);
 
   // IntersectionObserver for tracking visible items
+  // biome-ignore lint/correctness/useExhaustiveDependencies: depends on DOM nodes which change with displayList.
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -331,18 +332,11 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
                         {formatDateLabel(currentDate)}
                       </div>
                     )}
-                    <div
+                    <button
+                      type="button"
                       data-item-id={`${currentDate}:${t.id}`}
-                      role="button"
-                      tabIndex={0}
-                      className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-2 text-sm cursor-pointer rounded-lg transition-colors active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                       onClick={() => onEditTransaction?.(t)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          onEditTransaction?.(t);
-                        }
-                      }}
+                      className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       <span className="text-xs text-muted-foreground font-medium tabular-nums w-9">
                         {format(parseDate(t.date), "HH:mm")}
@@ -379,7 +373,7 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
                           minimumFractionDigits: 2,
                         })}
                       </span>
-                    </div>
+                    </button>
                   </div>
                 );
               })}

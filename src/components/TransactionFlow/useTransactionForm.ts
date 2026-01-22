@@ -31,6 +31,7 @@ export function useTransactionForm(options?: {
   // Memoize defaultValues to prevent infinite re-renders.
   // Creating new Date() inline causes tanstack-form to detect a "change"
   // on every render, triggering an update loop.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: defaultValues must remain stable to avoid form reinitialization loops.
   const defaultValues = useMemo<TransactionFormValues>(
     () => ({
       type: options?.initialValues?.type ?? "expense",
@@ -42,7 +43,6 @@ export function useTransactionForm(options?: {
       dateObject: options?.initialValues?.dateObject ?? new Date(),
       note: options?.initialValues?.note ?? "",
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
