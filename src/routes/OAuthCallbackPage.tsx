@@ -1,13 +1,22 @@
 import { useEffect } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
+
+type OAuthSearchParams = {
+  code?: string;
+  error?: string;
+};
 
 export function OAuthCallbackPage() {
   const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as OAuthSearchParams;
 
   useEffect(() => {
-    navigate({ to: "/", replace: true, search: {} });
-  }, [navigate]);
+    if (search.code || search.error) {
+      return;
+    }
+    navigate({ to: "/app", replace: true, search: {} });
+  }, [navigate, search.code, search.error]);
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
@@ -16,3 +25,4 @@ export function OAuthCallbackPage() {
     </div>
   );
 }
+

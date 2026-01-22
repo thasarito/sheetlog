@@ -10,6 +10,9 @@ export function LegalLayout({ children }: { children: ReactNode }) {
           <Link className="transition hover:text-foreground" to="/">
             Home
           </Link>
+          <Link className="transition hover:text-foreground" to="/app">
+            App
+          </Link>
           <Link className="transition hover:text-foreground" to="/privacy">
             Privacy
           </Link>

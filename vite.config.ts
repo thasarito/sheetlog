@@ -15,11 +15,14 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: "prompt",
+        devOptions: {
+          enabled: true,
+        },
         includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
         manifest: {
           name: "SheetLog",
           short_name: "SheetLog",
-          start_url: ".",
+          start_url: `${normalizedBase}app`,
           display: "standalone",
           background_color: "#ffffff",
           theme_color: "#ffffff",

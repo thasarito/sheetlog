@@ -83,8 +83,8 @@ export function useOAuthCallback(): OAuthCallbackState {
         // Update the auth query so AuthProvider immediately reflects authenticated state
         queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, tokenData);
 
-        // Clear OAuth params from URL by navigating to clean root
-        navigate({ to: "/", replace: true, search: {} });
+        // Clear OAuth params from URL by navigating to the app
+        navigate({ to: "/app", replace: true, search: {} });
 
         setState({ isProcessing: false, error: null });
       } catch (err) {

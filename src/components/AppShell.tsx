@@ -4,7 +4,6 @@ import AppProviders from "../app/providers";
 import { Toaster } from "./ui/sonner";
 import { ReloadPrompt } from "./ReloadPrompt";
 import { useOAuthCallback } from "../hooks/useOAuthCallback";
-import { ServiceWorker } from "./ServiceWorker";
 
 function AppContent() {
   const navigate = useNavigate();
@@ -34,10 +33,10 @@ function AppContent() {
         </div>
         <button
           type="button"
-          onClick={() => navigate({ to: "/", replace: true, search: {} })}
+          onClick={() => navigate({ to: "/app", replace: true, search: {} })}
           className="rounded-2xl bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground"
         >
-          Return to Home
+          Return to App
         </button>
       </div>
     );
@@ -56,7 +55,6 @@ export function AppShell() {
   return (
     <AppProviders>
       <div className="flex h-full w-full flex-col overflow-hidden">
-        <ServiceWorker />
         <AppContent />
       </div>
     </AppProviders>

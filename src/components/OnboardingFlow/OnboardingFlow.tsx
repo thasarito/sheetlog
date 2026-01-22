@@ -1,25 +1,19 @@
-import "@khmyznikov/pwa-install";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Download } from "lucide-react";
-import { useSession, useWorkspace } from "../../app/providers";
-import { useAppPhase } from "../../hooks/useAppPhase";
-import { useOnboarding } from "../../hooks/useOnboarding";
-import { DEFAULT_CATEGORIES } from "../../lib/categories";
-import type { AccountItem } from "../../lib/types";
-import { DEFAULT_ACCOUNT_ICON, DEFAULT_ACCOUNT_COLOR } from "../../lib/icons";
-import { AccountsScreen } from "./AccountsScreen";
-import { CategoriesScreen } from "./CategoriesScreen";
-import { ConnectScreen } from "./ConnectScreen";
-import { DoneScreen } from "./DoneScreen";
-import { SheetLocationScreen } from "./SheetLocationScreen";
-import type { CategoryInputs, LocationMode, ScreenMeta } from "./types";
+import '@khmyznikov/pwa-install';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Download } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSession, useWorkspace } from '../../app/providers';
+import { useAppPhase } from '../../hooks/useAppPhase';
+import { useOnboarding } from '../../hooks/useOnboarding';
+import { DEFAULT_CATEGORIES } from '../../lib/categories';
+import { DEFAULT_ACCOUNT_COLOR, DEFAULT_ACCOUNT_ICON } from '../../lib/icons';
+import type { AccountItem } from '../../lib/types';
+import { AccountsScreen } from './AccountsScreen';
+import { CategoriesScreen } from './CategoriesScreen';
+import { ConnectScreen } from './ConnectScreen';
+import { DoneScreen } from './DoneScreen';
+import { SheetLocationScreen } from './SheetLocationScreen';
+import type { CategoryInputs, LocationMode, ScreenMeta } from './types';
 
 type PWAInstallElement = HTMLElement & {
   showDialog: (open?: boolean) => void;
@@ -31,28 +25,27 @@ type PWAInstallElement = HTMLElement & {
   isUnderStandaloneMode?: boolean;
 };
 
-const PWA_DISMISS_KEY = "sheetlog:pwa-install-dismissed";
+const PWA_DISMISS_KEY = 'sheetlog:pwa-install-dismissed';
 
 interface OnboardingFlowProps {
   onToast: (message: string) => void;
 }
 
 export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
+  const manifestUrl = `${import.meta.env.BASE_URL}manifest.webmanifest`;
   const { accessToken, isConnecting, connect } = useSession();
   const { sheetId, ensureSheet } = useWorkspace();
   const { onboarding, updateOnboarding } = useOnboarding();
-  const { phase } = useAppPhase();
+  const { phase, accountsReady, categoriesReady } = useAppPhase();
   const [locationMode, setLocationMode] = useState<LocationMode>(
-    onboarding.sheetFolderId ? "folder" : "root"
+    onboarding.sheetFolderId ? 'folder' : 'root',
   );
-  const [folderIdInput, setFolderIdInput] = useState(
-    onboarding.sheetFolderId ?? ""
-  );
-  const [accountInput, setAccountInput] = useState("");
+  const [folderIdInput, setFolderIdInput] = useState(onboarding.sheetFolderId ?? '');
+  const [accountInput, setAccountInput] = useState('');
   const [_categoryInputs, _setCategoryInputs] = useState<CategoryInputs>({
-    expense: "",
-    income: "",
-    transfer: "",
+    expense: '',
+    income: '',
+    transfer: '',
   });
   const [isSettingUpSheet, setIsSettingUpSheet] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -63,55 +56,49 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   const [isStandaloneMode, setIsStandaloneMode] = useState(false);
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
   const hasCategories =
-    categories.expense.length > 0 &&
-    categories.income.length > 0 &&
-    categories.transfer.length > 0;
-  const accountsReady =
-    onboarding.accountsConfirmed && onboarding.accounts.length > 0;
-  const categoriesReady = onboarding.categoriesConfirmed && hasCategories;
+    categories.expense.length > 0 && categories.income.length > 0 && categories.transfer.length > 0;
   const stepIndex =
-    phase === "needs_sheet"
+    phase === 'needs_sheet'
       ? 1
-      : phase === "needs_accounts"
-      ? 2
-      : phase === "needs_categories"
-      ? 3
-      : phase === "ready"
-      ? 4
-      : 0;
+      : phase === 'needs_accounts'
+        ? 2
+        : phase === 'needs_categories'
+          ? 3
+          : phase === 'ready'
+            ? 4
+            : 0;
 
   useEffect(() => {
     if (onboarding.sheetFolderId) {
-      setLocationMode("folder");
+      setLocationMode('folder');
       setFolderIdInput(onboarding.sheetFolderId);
     }
   }, [onboarding.sheetFolderId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return;
     }
     const stored = window.localStorage.getItem(PWA_DISMISS_KEY);
-    if (stored === "true") {
+    if (stored === 'true') {
       setHasDismissedPwaPrompt(true);
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return;
     }
-    const mediaQuery = window.matchMedia("(display-mode: standalone)");
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const updateStandalone = () => {
       const isStandalone =
         mediaQuery.matches ||
-        (window.navigator as Navigator & { standalone?: boolean })
-          .standalone === true;
+        (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
       setIsStandaloneMode(isStandalone);
     };
     updateStandalone();
-    mediaQuery.addEventListener("change", updateStandalone);
-    return () => mediaQuery.removeEventListener("change", updateStandalone);
+    mediaQuery.addEventListener('change', updateStandalone);
+    return () => mediaQuery.removeEventListener('change', updateStandalone);
   }, []);
 
   const updatePwaAvailability = useCallback(() => {
@@ -130,12 +117,10 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === 'undefined') {
       return;
     }
-    const element = document.getElementById(
-      "pwa-install"
-    ) as PWAInstallElement | null;
+    const element = document.getElementById('pwa-install') as PWAInstallElement | null;
     if (!element) {
       return;
     }
@@ -144,51 +129,35 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     const handleInstalled = () => {
       setIsPwaPromptOpen(false);
       setHasDismissedPwaPrompt(true);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(PWA_DISMISS_KEY, "true");
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(PWA_DISMISS_KEY, 'true');
       }
     };
     const frame = window.requestAnimationFrame(updatePwaAvailability);
-    element.addEventListener("pwa-install-available-event", handleAvailable);
-    element.addEventListener("pwa-install-success-event", handleInstalled);
-    element.addEventListener("pwa-user-choice-result-event", handleInstalled);
+    element.addEventListener('pwa-install-available-event', handleAvailable);
+    element.addEventListener('pwa-install-success-event', handleInstalled);
+    element.addEventListener('pwa-user-choice-result-event', handleInstalled);
     return () => {
       window.cancelAnimationFrame(frame);
-      element.removeEventListener(
-        "pwa-install-available-event",
-        handleAvailable
-      );
-      element.removeEventListener("pwa-install-success-event", handleInstalled);
-      element.removeEventListener(
-        "pwa-user-choice-result-event",
-        handleInstalled
-      );
+      element.removeEventListener('pwa-install-available-event', handleAvailable);
+      element.removeEventListener('pwa-install-success-event', handleInstalled);
+      element.removeEventListener('pwa-user-choice-result-event', handleInstalled);
     };
   }, [updatePwaAvailability]);
 
   useEffect(() => {
-    if (
-      stepIndex !== 4 ||
-      isStandaloneMode ||
-      hasDismissedPwaPrompt ||
-      !isPwaInstallAvailable
-    ) {
+    if (stepIndex !== 4 || isStandaloneMode || hasDismissedPwaPrompt || !isPwaInstallAvailable) {
       setIsPwaPromptOpen(false);
       return;
     }
     setIsPwaPromptOpen(true);
-  }, [
-    stepIndex,
-    hasDismissedPwaPrompt,
-    isPwaInstallAvailable,
-    isStandaloneMode,
-  ]);
+  }, [stepIndex, hasDismissedPwaPrompt, isPwaInstallAvailable, isStandaloneMode]);
 
   const dismissPwaPrompt = useCallback(() => {
     setIsPwaPromptOpen(false);
     setHasDismissedPwaPrompt(true);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(PWA_DISMISS_KEY, "true");
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(PWA_DISMISS_KEY, 'true');
     }
   }, []);
 
@@ -199,21 +168,19 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
 
   const steps = useMemo(
     () => [
-      { label: "Connect", done: Boolean(accessToken) },
-      { label: "Sheet", done: Boolean(sheetId) },
-      { label: "Accounts", done: accountsReady },
-      { label: "Categories", done: categoriesReady },
+      { label: 'Connect', done: Boolean(accessToken) },
+      { label: 'Sheet', done: Boolean(sheetId) },
+      { label: 'Accounts', done: accountsReady },
+      { label: 'Categories', done: categoriesReady },
     ],
-    [accessToken, sheetId, accountsReady, categoriesReady]
+    [accessToken, sheetId, accountsReady, categoriesReady],
   );
   const totalSteps = steps.length;
   const isComplete = stepIndex >= totalSteps;
   const activeStepIndex = Math.min(stepIndex, totalSteps - 1);
   const currentStepNumber = Math.min(stepIndex + 1, totalSteps);
   const progressPercent = Math.round((currentStepNumber / totalSteps) * 100);
-  const activeStepLabel = isComplete
-    ? "Complete"
-    : steps[activeStepIndex]?.label ?? "Complete";
+  const activeStepLabel = isComplete ? 'Complete' : (steps[activeStepIndex]?.label ?? 'Complete');
   const screenMeta: ScreenMeta = {
     stepLabel: activeStepLabel,
     stepNumber: currentStepNumber,
@@ -225,25 +192,23 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     try {
       await connect();
     } catch (error) {
-      onToast(error instanceof Error ? error.message : "Failed to connect");
+      onToast(error instanceof Error ? error.message : 'Failed to connect');
     }
   }
 
   async function handleSheetSetup() {
-    if (locationMode === "folder" && !folderIdInput.trim()) {
-      onToast("Enter a Drive folder ID");
+    if (locationMode === 'folder' && !folderIdInput.trim()) {
+      onToast('Enter a Drive folder ID');
       return;
     }
-    const folderId = locationMode === "folder" ? folderIdInput.trim() : null;
+    const folderId = locationMode === 'folder' ? folderIdInput.trim() : null;
     setIsSettingUpSheet(true);
     try {
       await ensureSheet(folderId);
       await updateOnboarding({ sheetFolderId: folderId });
-      onToast("Sheet ready");
+      onToast('Sheet ready');
     } catch (error) {
-      onToast(
-        error instanceof Error ? error.message : "Failed to set up sheet"
-      );
+      onToast(error instanceof Error ? error.message : 'Failed to set up sheet');
     } finally {
       setIsSettingUpSheet(false);
     }
@@ -252,14 +217,14 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   async function addAccount() {
     const nextValue = accountInput.trim();
     if (!nextValue) {
-      onToast("Enter an account name");
+      onToast('Enter an account name');
       return;
     }
     const exists = onboarding.accounts.some(
-      (item) => item.name.toLowerCase() === nextValue.toLowerCase()
+      (item) => item.name.toLowerCase() === nextValue.toLowerCase(),
     );
     if (exists) {
-      onToast("Account already added");
+      onToast('Account already added');
       return;
     }
     try {
@@ -271,9 +236,9 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
       await updateOnboarding({
         accounts: [...onboarding.accounts, newAccount],
       });
-      setAccountInput("");
+      setAccountInput('');
     } catch {
-      onToast("Failed to add account");
+      onToast('Failed to add account');
     }
   }
 
@@ -282,20 +247,20 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
     try {
       await updateOnboarding({ accounts: next });
     } catch {
-      onToast("Failed to remove account");
+      onToast('Failed to remove account');
     }
   }
 
   async function confirmAccounts() {
     if (onboarding.accounts.length === 0) {
-      onToast("Add at least one account");
+      onToast('Add at least one account');
       return;
     }
     setIsSaving(true);
     try {
       await updateOnboarding({ accountsConfirmed: true });
     } catch (_error) {
-      onToast("Failed to save accounts to sheet");
+      onToast('Failed to save accounts to sheet');
     } finally {
       setIsSaving(false);
     }
@@ -303,14 +268,14 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
 
   async function confirmCategories() {
     if (!hasCategories) {
-      onToast("Add at least one category per type");
+      onToast('Add at least one category per type');
       return;
     }
     setIsSaving(true);
     try {
       await updateOnboarding({ categoriesConfirmed: true });
     } catch (_error) {
-      onToast("Failed to save categories to sheet");
+      onToast('Failed to save categories to sheet');
     } finally {
       setIsSaving(false);
     }
@@ -325,7 +290,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="h-full w-full"
           >
             <ConnectScreen
@@ -342,7 +307,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="h-full w-full"
           >
             <SheetLocationScreen
@@ -363,7 +328,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="h-full w-full"
           >
             <AccountsScreen
@@ -385,7 +350,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="h-full w-full"
           >
             <CategoriesScreen
@@ -394,7 +359,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
               isSaving={isSaving}
               onChange={(nextCategories) => {
                 updateOnboarding({ categories: nextCategories }).catch(() =>
-                  onToast("Failed to update categories")
+                  onToast('Failed to update categories'),
                 );
               }}
               onContinue={confirmCategories}
@@ -408,7 +373,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="h-full w-full"
           >
             <DoneScreen meta={screenMeta} />
@@ -418,7 +383,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
 
       <pwa-install
         id="pwa-install"
-        manifest-url="/manifest.webmanifest"
+        manifest-url={manifestUrl}
         manual-apple="true"
         manual-chrome="true"
       />
@@ -445,8 +410,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
                 <div className="space-y-1">
                   <h3 className="text-base font-semibold">Install SheetLog</h3>
                   <p className="text-sm text-muted-foreground">
-                    Save it to your home screen for faster access and offline
-                    logging.
+                    Save it to your home screen for faster access and offline logging.
                   </p>
                 </div>
               </div>

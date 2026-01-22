@@ -1,6 +1,6 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 
-export function ReloadPrompt() {
+function ReloadPromptProd() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
@@ -47,4 +47,11 @@ export function ReloadPrompt() {
       )}
     </div>
   );
+}
+
+export function ReloadPrompt() {
+  if (import.meta.env.DEV) {
+    return null;
+  }
+  return <ReloadPromptProd />;
 }

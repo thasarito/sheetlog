@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3100",
+    "dev": "node scripts/vite.js dev",
     "build": "vite build",
-    "preview": "vite preview --port 3100",
-    "start": "vite preview --port 3100",
+    "preview": "node scripts/vite.js preview",
+    "start": "node scripts/vite.js preview",
+    "worktree": "bash scripts/worktree.sh",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -32,6 +33,7 @@
     "react-dom": "^18.3.1",
     "sonner": "^1.5.0",
     "vaul": "^1.0.0",
+    "workbox-window": "^7.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

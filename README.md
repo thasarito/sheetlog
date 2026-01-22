@@ -1,6 +1,6 @@
 # SheetLog
 
-A mobile-first PWA for rapid financial logging directly into Google Sheets.
+An install-first PWA for lightning-fast logging to Google Sheets (Money tracker today; more trackers coming).
 
 ## Setup
 
@@ -14,6 +14,23 @@ cp .env.example .env.local
 ## Development
 
 ```bash
+npm install
+npm run dev
+```
+
+Landing page: `/`  
+App: `/app`
+
+`npm run dev` chooses a stable port based on the git worktree path (so multiple
+worktrees can run side-by-side). Override with `SHEETLOG_DEV_PORT`, or adjust
+`SHEETLOG_DEV_PORT_BASE` / `SHEETLOG_DEV_PORT_RANGE`.
+
+### Worktrees
+
+```bash
+# from the repo root
+npm run worktree -- my-branch
+cd ../worktrees/my-branch
 npm install
 npm run dev
 ```

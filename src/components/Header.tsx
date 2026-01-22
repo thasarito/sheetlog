@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Settings } from "lucide-react";
-import { AuthUserProfile } from "./AuthUserProfile";
-import { SettingsDrawer } from "./SettingsDrawer";
+import { Settings } from 'lucide-react';
+import { useState } from 'react';
+import { AuthUserProfile } from './AuthUserProfile';
+import { SettingsDrawer } from './SettingsDrawer';
 
 type HeaderProps = {
   showSettings?: boolean;
@@ -9,6 +9,8 @@ type HeaderProps = {
   isResyncing?: boolean;
   onToast?: (message: string) => void;
 };
+
+const iconUrl = `${import.meta.env.BASE_URL}icon.svg`;
 
 export function Header({
   showSettings = false,
@@ -22,7 +24,7 @@ export function Header({
     <header className="flex items-center justify-between px-4 py-3 shrink-0">
       {/* Logo and brand name */}
       <div className="flex items-center gap-2">
-        <img src="/icon.svg" alt="Sheetlog logo" className="w-8 h-8" />
+        <img src={iconUrl} alt="Sheetlog logo" className="w-8 h-8" />
         <span className="text-lg font-semibold text-foreground">Sheetlog</span>
       </div>
 
