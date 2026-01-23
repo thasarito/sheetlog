@@ -20,6 +20,7 @@ type DateTimeDrawerProps = {
   onOpenChange?: (open: boolean) => void;
   showTrigger?: boolean;
   onConfirm?: () => void;
+  container?: HTMLElement | null;
 };
 
 export function DateTimeDrawer({
@@ -30,12 +31,19 @@ export function DateTimeDrawer({
   onOpenChange,
   showTrigger = true,
   onConfirm,
+  container,
 }: DateTimeDrawerProps) {
   const dateLabel = format(value, "EEE, MMM d");
   const timeLabel = format(value, "HH:mm");
+  const isContained = Boolean(container);
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} defaultOpen={defaultOpen}>
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      defaultOpen={defaultOpen}
+      container={container}
+    >
       {showTrigger ? (
         <DrawerTrigger asChild>
           <button
@@ -54,7 +62,7 @@ export function DateTimeDrawer({
           </button>
         </DrawerTrigger>
       ) : null}
-      <DrawerContent>
+      <DrawerContent contained={isContained}>
         <DrawerHeader className="text-left">
           <DrawerTitle>Date & time</DrawerTitle>
           <DrawerDescription>
@@ -65,7 +73,11 @@ export function DateTimeDrawer({
           <DateScroller value={value} onChange={onChange} />
           <TimePicker value={value} onChange={onChange} />
         </div>
-        <DrawerFooter className="px-4 pb-6">
+        <DrawerFooter
+          className={
+            isContained ? "pb-[max(env(safe-area-inset-bottom),34px)]" : "pb-6"
+          }
+        >
           <DrawerClose asChild>
             <button
               type="button"

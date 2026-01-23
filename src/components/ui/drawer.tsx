@@ -7,14 +7,21 @@ const DrawerTrigger = DrawerPrimitive.Trigger;
 const DrawerPortal = DrawerPrimitive.Portal;
 const DrawerClose = DrawerPrimitive.Close;
 
+type DrawerOverlayProps = React.ComponentPropsWithoutRef<
+  typeof DrawerPrimitive.Overlay
+> & {
+  contained?: boolean;
+};
+
 const DrawerOverlay = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Overlay>
->(({ className, ...props }, ref) => (
+  DrawerOverlayProps
+>(({ className, contained, ...props }, ref) => (
   <DrawerPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-overlay/40 backdrop-blur-[2px]",
+      contained ? "absolute inset-0 z-50" : "fixed inset-0 z-50",
+      "bg-overlay/40 backdrop-blur-[2px]",
       className
     )}
     {...props}
@@ -22,16 +29,25 @@ const DrawerOverlay = React.forwardRef<
 ));
 DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 
+type DrawerContentProps = React.ComponentPropsWithoutRef<
+  typeof DrawerPrimitive.Content
+> & {
+  contained?: boolean;
+};
+
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DrawerContentProps
+>(({ className, children, contained, ...props }, ref) => (
   <DrawerPortal>
-    <DrawerOverlay />
+    <DrawerOverlay contained={contained} />
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[28px] border border-border bg-card",
+        contained
+          ? "absolute inset-x-0 bottom-0 z-50"
+          : "fixed inset-x-0 bottom-0 z-50",
+        "mt-24 flex h-auto flex-col rounded-t-[28px] border border-border bg-card",
         className
       )}
       {...props}

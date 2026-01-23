@@ -16,6 +16,7 @@ type StepCategoryProps = {
   form: TransactionFormApi;
   categoryGroups: Record<TransactionType, CategoryItem[]>;
   onConfirm: () => void;
+  drawerContainer?: HTMLElement | null;
 };
 
 const TYPE_META: Record<
@@ -42,7 +43,12 @@ const panelVariants = {
   exit: (dir: number) => ({ x: dir > 0 ? '-100%' : '100%' }),
 };
 
-export function StepCategory({ form, categoryGroups, onConfirm }: StepCategoryProps) {
+export function StepCategory({
+  form,
+  categoryGroups,
+  onConfirm,
+  drawerContainer,
+}: StepCategoryProps) {
   const { type, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
@@ -171,6 +177,7 @@ export function StepCategory({ form, categoryGroups, onConfirm }: StepCategoryPr
         open={isDrawerOpen}
         onOpenChange={setIsDrawerOpen}
         showTrigger={false}
+        container={drawerContainer}
         onConfirm={handleConfirm}
       />
 

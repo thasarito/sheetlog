@@ -19,9 +19,15 @@ import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
 
 type TopDashboardProps = {
   onEditTransaction?: (t: TransactionRecord) => void;
+  transactionsOverride?: TransactionRecord[];
+  isLoadingOverride?: boolean;
 };
 
-export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
+export function TopDashboard({
+  onEditTransaction,
+  transactionsOverride,
+  isLoadingOverride,
+}: TopDashboardProps) {
   const { queueCount, lastSyncAt } = useTransactions();
   const queryClient = useQueryClient();
   const [pendingTransactions, setPendingTransactions] = useState<
@@ -44,18 +50,26 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
   );
 
   // Fetch recent transactions from Google Sheet
-  const { data: sheetTransactions, isLoading } = useRecentTransactionsQuery();
+  const { data: sheetTransactions, isLoading: isSheetLoading } =
+    useRecentTransactionsQuery();
+  const isLoading = isLoadingOverride ?? isSheetLoading;
 
   // Invalidate query when sync completes
   useEffect(() => {
+    if (transactionsOverride) {
+      return;
+    }
     if (lastSyncAt) {
       void queryClient.invalidateQueries({ queryKey: ["recentTransactions"] });
     }
-  }, [lastSyncAt, queryClient]);
+  }, [lastSyncAt, queryClient, transactionsOverride]);
 
   // Fetch pending transactions from local DB
   // biome-ignore lint/correctness/useExhaustiveDependencies: queueCount is a trigger for re-fetching
   useEffect(() => {
+    if (transactionsOverride) {
+      return;
+    }
     async function loadPending() {
       const pending = await db.transactions
         .where("status")
@@ -65,13 +79,13 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
       setPendingTransactions(pending);
     }
     void loadPending();
-  }, [queueCount]);
+  }, [queueCount, transactionsOverride]);
 
   const transactions = useMemo(() => {
     const remote = sheetTransactions ?? [];
-    // Combine pending + remote.
-    // De-duplicate by ID just in case (though status separation should handle it)
-    const combined = [...pendingTransactions, ...remote];
+    const combined = transactionsOverride
+      ? transactionsOverride
+      : [...pendingTransactions, ...remote];
     const seen = new Set<string>();
     const unique: TransactionRecord[] = [];
 
@@ -87,7 +101,7 @@ export function TopDashboard({ onEditTransaction }: TopDashboardProps) {
       const caB = new Date(b.createdAt).getTime();
       return caB - caA;
     });
-  }, [pendingTransactions, sheetTransactions]);
+  }, [pendingTransactions, sheetTransactions, transactionsOverride]);
 
   const today = useMemo(() => new Date(), []);
 
