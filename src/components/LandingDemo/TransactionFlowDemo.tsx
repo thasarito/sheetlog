@@ -10,6 +10,7 @@ import { StepReceipt, type ReceiptData } from '../TransactionFlow/StepReceipt';
 import { TopDashboard } from '../TransactionFlow/TopDashboard';
 import { TYPE_OPTIONS } from '../TransactionFlow/constants';
 import { useTransactionForm } from '../TransactionFlow/useTransactionForm';
+import { useDemoContext } from './DemoContext';
 
 const DEMO_ACCOUNTS = ['Credit Card', 'Bank', 'Cash'];
 const SAVE_DELAY_MS = 450;
@@ -117,6 +118,7 @@ type TransactionFlowDemoProps = {
 };
 
 export function TransactionFlowDemo({ drawerContainer }: TransactionFlowDemoProps) {
+  const { addTransaction, scrollToSheet } = useDemoContext();
   const timersRef = useRef<number[]>([]);
   const startedAtRef = useRef<number | null>(null);
   const [step, setStep] = useState<DemoStep>(0);
@@ -273,15 +275,28 @@ export function TransactionFlowDemo({ drawerContainer }: TransactionFlowDemoProp
     setIsSaving(true);
     setIsSaved(false);
 
+    // Scroll to the spreadsheet preview
+    scrollToSheet();
+
     const saveTimer = window.setTimeout(() => {
       setIsSaving(false);
       setIsSaved(true);
+
+      // Notify the spreadsheet preview of the new transaction
+      addTransaction({
+        date: format(dateObject, 'yyyy-MM-dd'),
+        category: resolvedCategory,
+        amount: `$${parsedAmount.toFixed(2)}`,
+        account: resolvedAccount,
+      });
+
       scheduleAutoReset();
     }, SAVE_DELAY_MS);
 
     timersRef.current.push(saveTimer);
   }, [
     account,
+    addTransaction,
     amount,
     category,
     clearTimers,
@@ -291,6 +306,7 @@ export function TransactionFlowDemo({ drawerContainer }: TransactionFlowDemoProp
     isSaving,
     note,
     scheduleAutoReset,
+    scrollToSheet,
     type,
   ]);
 
