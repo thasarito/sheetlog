@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",

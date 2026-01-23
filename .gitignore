@@ -6,3 +6,5 @@ dev-dist
 .env.local
 .DS_Store
 .env
+playwright-report/
+test-results/
