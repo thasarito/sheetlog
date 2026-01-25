@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { format } from "date-fns";
-import { Check, ChevronLeft, FileText, Pencil, Trash2 } from "lucide-react";
+import { Check, ChevronLeft, FileText, Loader2, Pencil, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
@@ -196,6 +196,7 @@ export function StepAmount({
               )}
               onClick={onDelete}
               disabled={isSubmitting || isDeleting}
+              aria-label="Delete transaction"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -206,7 +207,11 @@ export function StepAmount({
             onClick={onSubmit}
             disabled={isSubmitting || isDeleting}
           >
-            <Check className="h-4 w-4" />
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
             {isSubmitting
               ? submitLabel
                 ? "Saving..."
