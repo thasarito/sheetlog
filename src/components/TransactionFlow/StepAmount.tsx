@@ -1,13 +1,13 @@
-import { useCallback, useMemo } from "react";
-import { format } from "date-fns";
-import { Check, ChevronLeft, FileText, Pencil, Trash2 } from "lucide-react";
-import { cn } from "../../lib/utils";
-import { CurrencyPicker } from "../CurrencyPicker";
-import { Keypad } from "../Keypad";
-import { InlinePicker } from "../ui/inline-picker";
-import { FOR_OPTIONS } from "./constants";
-import { STORAGE_KEYS } from "../../lib/constants";
-import type { TransactionFormApi } from "./useTransactionForm";
+import { format } from 'date-fns';
+import { Check, ChevronLeft, FileText, Pencil, Trash2 } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
+import { STORAGE_KEYS } from '../../lib/constants';
+import { cn } from '../../lib/utils';
+import { CurrencyPicker } from '../CurrencyPicker';
+import { Keypad } from '../Keypad';
+import { InlinePicker } from '../ui/inline-picker';
+import { FOR_OPTIONS } from './constants';
+import type { TransactionFormApi } from './useTransactionForm';
 
 type StepAmountProps = {
   form: TransactionFormApi;
@@ -40,33 +40,30 @@ export function StepAmount({
   customHeader,
   optionalAmount = false,
 }: StepAmountProps) {
-  const { type, category, amount, currency, account, forValue, note, dateObject } =
-    form.useStore((state) => state.values);
-  const isTransfer = type === "transfer";
-  const accountLabel = isTransfer ? "From" : "Account";
+  const { type, category, amount, currency, account, forValue, note, dateObject } = form.useStore(
+    (state) => state.values,
+  );
+  const isTransfer = type === 'transfer';
+  const accountLabel = isTransfer ? 'From' : 'Account';
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
   const handleAccountChange = useCallback(
     (value: string) => {
-      form.setFieldValue("account", value);
-      if (typeof window === "undefined") {
+      form.setFieldValue('account', value);
+      if (typeof window === 'undefined') {
         return;
       }
-      const accountCurrency = window.localStorage.getItem(
-        `${STORAGE_KEYS.LAST_CURRENCY}_${value}`
-      );
+      const accountCurrency = window.localStorage.getItem(`${STORAGE_KEYS.LAST_CURRENCY}_${value}`);
       if (accountCurrency) {
-        form.setFieldValue("currency", accountCurrency);
+        form.setFieldValue('currency', accountCurrency);
         return;
       }
-      const fallbackCurrency = window.localStorage.getItem(
-        STORAGE_KEYS.LAST_CURRENCY
-      );
+      const fallbackCurrency = window.localStorage.getItem(STORAGE_KEYS.LAST_CURRENCY);
       if (fallbackCurrency) {
-        form.setFieldValue("currency", fallbackCurrency);
+        form.setFieldValue('currency', fallbackCurrency);
       }
     },
-    [form]
+    [form],
   );
   const toAccountOptions = useMemo(() => {
     if (!isTransfer || !hasTransferAccounts) {
@@ -111,22 +108,22 @@ export function StepAmount({
                 className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors tabular-nums"
                 onClick={onDateClick}
               >
-                {format(dateObject, "dd MMM · HH:mm")}
+                {format(dateObject, 'dd MMM · HH:mm')}
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             ) : (
               <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                {format(dateObject, "dd MMM · HH:mm")}
+                {format(dateObject, 'dd MMM · HH:mm')}
               </span>
             )}
           </div>
         ) : null}
 
         <div className="flex flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
-          <span>{amount ? amount : "0"}</span>
+          <span>{amount ? amount : '0'}</span>
           <CurrencyPicker
             value={currency}
-            onChange={(value) => form.setFieldValue("currency", value)}
+            onChange={(value) => form.setFieldValue('currency', value)}
           />
         </div>
 
@@ -143,7 +140,7 @@ export function StepAmount({
               label="To"
               value={selectedFor}
               options={toAccountOptions}
-              onChange={(value) => form.setFieldValue("forValue", value)}
+              onChange={(value) => form.setFieldValue('forValue', value)}
               disabled={!hasTransferAccounts}
             />
           ) : (
@@ -151,7 +148,7 @@ export function StepAmount({
               label="For"
               value={selectedFor}
               options={FOR_OPTIONS}
-              onChange={(value) => form.setFieldValue("forValue", value)}
+              onChange={(value) => form.setFieldValue('forValue', value)}
             />
           )}
         </div>
@@ -163,9 +160,14 @@ export function StepAmount({
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
             placeholder="Add a note..."
             value={note}
-            onChange={(event) => form.setFieldValue("note", event.target.value)}
+            onChange={(event) => form.setFieldValue('note', event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && (amount || optionalAmount) && !isSubmitting && !isDeleting) {
+              if (
+                event.key === 'Enter' &&
+                (amount || optionalAmount) &&
+                !isSubmitting &&
+                !isDeleting
+              ) {
                 onSubmit();
               }
             }}
@@ -181,21 +183,19 @@ export function StepAmount({
       ) : null}
 
       <div className="flex flex-col gap-5 pb-6">
-        <Keypad
-          value={amount}
-          onChange={(value) => form.setFieldValue("amount", value)}
-        />
+        <Keypad value={amount} onChange={(value) => form.setFieldValue('amount', value)} />
 
         <div className="flex items-center gap-2">
           {onDelete && (
             <button
               type="button"
               className={cn(
-                "flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive",
-                (isSubmitting || isDeleting) && "opacity-60"
+                'flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive',
+                (isSubmitting || isDeleting) && 'opacity-60',
               )}
               onClick={onDelete}
               disabled={isSubmitting || isDeleting}
+              aria-label="Delete transaction"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -207,11 +207,7 @@ export function StepAmount({
             disabled={isSubmitting || isDeleting}
           >
             <Check className="h-4 w-4" />
-            {isSubmitting
-              ? submitLabel
-                ? "Saving..."
-                : "Submitting"
-              : submitLabel ?? "Submit"}
+            {isSubmitting ? (submitLabel ? 'Saving...' : 'Submitting') : (submitLabel ?? 'Submit')}
           </button>
         </div>
       </div>
