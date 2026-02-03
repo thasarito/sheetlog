@@ -1,0 +1,12 @@
+
+> sheetlog@0.1.0 dev /app
+> vite --port 3100
+
+
+  VITE v5.4.21  ready in 460 ms
+
+  ➜  Local:   http://localhost:3100/
+  ➜  Network: use --host to expose
+3:23:44 AM [vite] page reload src/router.tsx
+3:23:49 AM [vite] hmr update /src/routes/VerifyKeypad.tsx, /src/styles/globals.css
+3:23:49 AM [vite] page reload verify_keypad.py
