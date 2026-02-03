@@ -3,6 +3,7 @@ import { db } from '../lib/db';
 import type { QuickNote, QuickNotesConfig, TransactionType } from '../lib/types';
 
 const STORAGE_KEY = 'quickNotes';
+const DEFAULT_KEY_PREFIX = 'default';
 
 export const quickNotesKeys = {
   all: ['quickNotes'] as const,
@@ -36,6 +37,13 @@ export function buildQuickNotesKey(type: TransactionType, categoryName: string):
 }
 
 /**
+ * Build the key for a transaction type's default quick notes
+ */
+export function buildDefaultQuickNotesKey(type: TransactionType): string {
+  return `${DEFAULT_KEY_PREFIX}:${type}`;
+}
+
+/**
  * Query hook to read all quick notes config from IndexedDB
  */
 export function useQuickNotesQuery() {
@@ -54,9 +62,7 @@ export function useQuickNotesQuery() {
  */
 export function useQuickNotesForCategory(type: TransactionType, categoryName: string): QuickNote[] {
   const { data: config } = useQuickNotesQuery();
-  if (!config) return [];
-  const key = buildQuickNotesKey(type, categoryName);
-  return config[key] ?? [];
+  return getQuickNotesForCategory(config, type, categoryName);
 }
 
 /**
@@ -107,6 +113,51 @@ export function useUpdateQuickNotes() {
 }
 
 /**
+ * Mutation hook to update default quick notes for a transaction type
+ */
+export function useUpdateDefaultQuickNotes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      type,
+      notes,
+    }: {
+      type: TransactionType;
+      notes: QuickNote[];
+    }): Promise<QuickNotesConfig> => {
+      const current =
+        queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all) ?? {};
+      const key = buildDefaultQuickNotesKey(type);
+      const next = { ...current, [key]: notes };
+
+      await setQuickNotesConfig(next);
+      return next;
+    },
+    onMutate: async ({ type, notes }) => {
+      await queryClient.cancelQueries({ queryKey: quickNotesKeys.all });
+
+      const previous = queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all);
+      const key = buildDefaultQuickNotesKey(type);
+
+      if (previous) {
+        queryClient.setQueryData(quickNotesKeys.all, { ...previous, [key]: notes });
+      }
+
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(quickNotesKeys.all, context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: quickNotesKeys.all });
+    },
+  });
+}
+
+/**
  * Helper to get quick notes for a category from config
  */
 export function getQuickNotesForCategory(
@@ -115,6 +166,19 @@ export function getQuickNotesForCategory(
   categoryName: string
 ): QuickNote[] {
   if (!config) return [];
-  const key = buildQuickNotesKey(type, categoryName);
-  return config[key] ?? [];
+  const categoryKey = buildQuickNotesKey(type, categoryName);
+  const categoryNotes = config[categoryKey];
+  if (categoryNotes !== undefined) return categoryNotes;
+
+  const defaultKey = buildDefaultQuickNotesKey(type);
+  return config[defaultKey] ?? [];
+}
+
+export function getDefaultQuickNotes(
+  config: QuickNotesConfig | undefined,
+  type: TransactionType
+): QuickNote[] {
+  if (!config) return [];
+  const defaultKey = buildDefaultQuickNotesKey(type);
+  return config[defaultKey] ?? [];
 }

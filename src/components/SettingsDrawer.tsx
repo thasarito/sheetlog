@@ -17,7 +17,9 @@ import { useCategoryMutations } from '../hooks/useCategoryMutations';
 import { useOnboarding } from '../hooks/useOnboarding';
 import {
   getQuickNotesForCategory,
+  getDefaultQuickNotes,
   useQuickNotesQuery,
+  useUpdateDefaultQuickNotes,
   useUpdateQuickNotes,
 } from '../hooks/useQuickNotes';
 import {
@@ -48,7 +50,8 @@ type SettingsScreen =
   | { screen: 'categories' }
   | { screen: 'categoryCreate'; categoryType: TransactionType }
   | { screen: 'categoryDetail'; categoryName: string; categoryType: TransactionType }
-  | { screen: 'quickNotes'; categoryName: string; categoryType: TransactionType };
+  | { screen: 'quickNotes'; categoryName: string; categoryType: TransactionType }
+  | { screen: 'defaultQuickNotes'; categoryType: TransactionType };
 
 type EditingItem =
   | { type: 'account'; name: string }
@@ -132,6 +135,8 @@ function getScreenKey(screen: SettingsScreen): string {
       return `categoryDetail:${screen.categoryType}:${screen.categoryName}`;
     case 'quickNotes':
       return `quickNotes:${screen.categoryType}:${screen.categoryName}`;
+    case 'defaultQuickNotes':
+      return `defaultQuickNotes:${screen.categoryType}`;
   }
 }
 
@@ -153,6 +158,8 @@ function getScreenTitle(screen: SettingsScreen): string {
       return screen.categoryName;
     case 'quickNotes':
       return 'Quick Notes';
+    case 'defaultQuickNotes':
+      return 'Default Quick Notes';
   }
 }
 
@@ -372,6 +379,7 @@ export function SettingsDrawer({
   // Quick notes hooks
   const { data: quickNotesConfig } = useQuickNotesQuery();
   const updateQuickNotes = useUpdateQuickNotes();
+  const updateDefaultQuickNotes = useUpdateDefaultQuickNotes();
 
   // Navigation stack (iOS-style push navigation)
   const [stack, setStack] = useState<SettingsScreen[]>([{ screen: 'main' }]);
@@ -427,14 +435,19 @@ export function SettingsDrawer({
     });
   }, [categories.expense, categories.income, categories.transfer]);
 
-  // Quick notes for current category (when in quickNotes screen)
+  // Quick notes for current screen (category or defaults)
   const quickNotes = useMemo(() => {
-    if (currentScreen.screen !== 'quickNotes') return [];
-    return getQuickNotesForCategory(
-      quickNotesConfig,
-      currentScreen.categoryType,
-      currentScreen.categoryName,
-    );
+    if (currentScreen.screen === 'quickNotes') {
+      return getQuickNotesForCategory(
+        quickNotesConfig,
+        currentScreen.categoryType,
+        currentScreen.categoryName,
+      );
+    }
+    if (currentScreen.screen === 'defaultQuickNotes') {
+      return getDefaultQuickNotes(quickNotesConfig, currentScreen.categoryType);
+    }
+    return [];
   }, [quickNotesConfig, currentScreen]);
 
   const [localQuickNotes, setLocalQuickNotes] = useState<QuickNote[]>([]);
@@ -502,7 +515,12 @@ export function SettingsDrawer({
 
   // Close QuickNoteFlow if user navigates away from Quick Notes
   useEffect(() => {
-    if (currentScreen.screen === 'quickNotes' || !quickNoteEditMode.isOpen) return;
+    if (
+      currentScreen.screen === 'quickNotes' ||
+      currentScreen.screen === 'defaultQuickNotes' ||
+      !quickNoteEditMode.isOpen
+    )
+      return;
     setQuickNoteEditMode({ isOpen: false, note: null });
   }, [currentScreen.screen, quickNoteEditMode.isOpen]);
 
@@ -617,6 +635,19 @@ export function SettingsDrawer({
   }
 
   // Quick notes handlers
+  const isQuickNotesSaving = updateQuickNotes.isPending || updateDefaultQuickNotes.isPending;
+
+  const quickNotesTarget =
+    currentScreen.screen === 'quickNotes'
+      ? {
+          kind: 'category' as const,
+          type: currentScreen.categoryType,
+          categoryName: currentScreen.categoryName,
+        }
+      : currentScreen.screen === 'defaultQuickNotes'
+        ? { kind: 'default' as const, type: currentScreen.categoryType }
+        : null;
+
   function handleAddQuickNote() {
     if (!canAddMoreQuickNotes) {
       onToast(`Maximum ${MAX_QUICK_NOTES} quick notes per category`);
@@ -634,7 +665,7 @@ export function SettingsDrawer({
   }
 
   function handleSaveQuickNote(noteData: Omit<QuickNote, 'id'> & { id?: string }) {
-    if (currentScreen.screen !== 'quickNotes') return;
+    if (!quickNotesTarget) return;
     const isNew = !noteData.id;
     const newNote: QuickNote = {
       id: noteData.id ?? generateQuickNoteId(),
@@ -655,47 +686,63 @@ export function SettingsDrawer({
     }
 
     setLocalQuickNotes(updatedNotes);
-    updateQuickNotes.mutate({
-      type: currentScreen.categoryType,
-      categoryName: currentScreen.categoryName,
-      notes: updatedNotes,
-    });
+    if (quickNotesTarget.kind === 'category') {
+      updateQuickNotes.mutate({
+        type: quickNotesTarget.type,
+        categoryName: quickNotesTarget.categoryName,
+        notes: updatedNotes,
+      });
+    } else {
+      updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: updatedNotes });
+    }
     handleCloseQuickNoteEdit();
   }
 
   function handleDeleteQuickNote() {
-    if (!quickNoteEditMode.note || currentScreen.screen !== 'quickNotes') return;
+    if (!quickNoteEditMode.note || !quickNotesTarget) return;
     const noteId = quickNoteEditMode.note.id;
     const updatedNotes = localQuickNotes.filter((n) => n.id !== noteId);
     setLocalQuickNotes(updatedNotes);
-    updateQuickNotes.mutate({
-      type: currentScreen.categoryType,
-      categoryName: currentScreen.categoryName,
-      notes: updatedNotes,
-    });
+    if (quickNotesTarget.kind === 'category') {
+      updateQuickNotes.mutate({
+        type: quickNotesTarget.type,
+        categoryName: quickNotesTarget.categoryName,
+        notes: updatedNotes,
+      });
+    } else {
+      updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: updatedNotes });
+    }
     handleCloseQuickNoteEdit();
   }
 
   function handleRemoveQuickNote(noteId: string) {
-    if (currentScreen.screen !== 'quickNotes') return;
+    if (!quickNotesTarget) return;
     const updatedNotes = localQuickNotes.filter((n) => n.id !== noteId);
     setLocalQuickNotes(updatedNotes);
-    updateQuickNotes.mutate({
-      type: currentScreen.categoryType,
-      categoryName: currentScreen.categoryName,
-      notes: updatedNotes,
-    });
+    if (quickNotesTarget.kind === 'category') {
+      updateQuickNotes.mutate({
+        type: quickNotesTarget.type,
+        categoryName: quickNotesTarget.categoryName,
+        notes: updatedNotes,
+      });
+    } else {
+      updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: updatedNotes });
+    }
   }
 
   function handleQuickNoteReorderEnd() {
-    if (currentScreen.screen !== 'quickNotes') return;
+    if (!quickNotesTarget) return;
     const orderChanged = quickNotes.some((n, i) => n.id !== localQuickNotes[i]?.id);
     if (orderChanged) {
-      updateQuickNotes.mutate({
-        type: currentScreen.categoryType,
-        categoryName: currentScreen.categoryName,
-        notes: localQuickNotes,
-      });
+      if (quickNotesTarget.kind === 'category') {
+        updateQuickNotes.mutate({
+          type: quickNotesTarget.type,
+          categoryName: quickNotesTarget.categoryName,
+          notes: localQuickNotes,
+        });
+      } else {
+        updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: localQuickNotes });
+      }
     }
   }
 
@@ -793,7 +840,8 @@ export function SettingsDrawer({
                           >
                             {categoriesEditMode ? 'Done' : 'Edit'}
                           </button>
-                        ) : currentScreen.screen === 'quickNotes' ? (
+                        ) : currentScreen.screen === 'quickNotes' ||
+                          currentScreen.screen === 'defaultQuickNotes' ? (
                           <button
                             type="button"
                             onClick={() => setQuickNotesEditMode((v) => !v)}
@@ -1138,6 +1186,18 @@ export function SettingsDrawer({
                                     {label.toUpperCase()} ({list.length})
                                   </SettingsSectionLabel>
                                   <SettingsGroup>
+                                    <SettingsRow
+                                      icon={<Zap className="h-4 w-4" />}
+                                      iconBg="#FF9500"
+                                      title="Default Quick Notes"
+                                      detail={`${getDefaultQuickNotes(quickNotesConfig, key).length}/${MAX_QUICK_NOTES}`}
+                                      onPress={() => {
+                                        if (categoriesEditMode) return;
+                                        push({ screen: 'defaultQuickNotes', categoryType: key });
+                                      }}
+                                    />
+                                    <div className="ml-[56px] h-px bg-border/70" />
+
                                     {list.length > 0 ? (
                                       <Reorder.Group
                                         axis="y"
@@ -1409,20 +1469,22 @@ export function SettingsDrawer({
                         ) : null}
 
                         {/* Quick Notes */}
-                        {currentScreen.screen === 'quickNotes' ? (
+                        {currentScreen.screen === 'quickNotes' ||
+                        currentScreen.screen === 'defaultQuickNotes' ? (
                           <ScreenScroll
                             screenKey={getScreenKey(currentScreen)}
                             scrollPositions={scrollPositionsRef}
                           >
                             <div className="px-4 pt-4 pb-2">
                               <h2 className="text-[34px] font-bold leading-tight text-foreground">
-                                Quick Notes
+                                {getScreenTitle(currentScreen)}
                               </h2>
                             </div>
 
                             <div className="px-4 pb-2 text-[13px] text-muted-foreground">
-                              Long press on a category while logging to quickly add a pre-filled
-                              note. Max {MAX_QUICK_NOTES} per category.
+                              {currentScreen.screen === 'defaultQuickNotes'
+                                ? `Shown for any ${currentScreen.categoryType} category without custom quick notes. Max ${MAX_QUICK_NOTES}.`
+                                : `Long press on a category while logging to quickly add a pre-filled note. Max ${MAX_QUICK_NOTES} per category.`}
                             </div>
 
                             <SettingsGroup>
@@ -1437,12 +1499,12 @@ export function SettingsDrawer({
                                       key={note.id}
                                       value={note}
                                       reorderEnabled={quickNotesEditMode}
-                                      disabled={updateQuickNotes.isPending}
+                                      disabled={isQuickNotesSaving}
                                       onDragEnd={handleQuickNoteReorderEnd}
                                     >
                                       <SwipeableListItem
                                         onDelete={() => handleRemoveQuickNote(note.id)}
-                                        disabled={updateQuickNotes.isPending}
+                                        disabled={isQuickNotesSaving}
                                       >
                                         <button
                                           type="button"
@@ -1479,7 +1541,9 @@ export function SettingsDrawer({
                                 </Reorder.Group>
                               ) : (
                                 <div className="px-4 py-6 text-center text-[15px] text-muted-foreground">
-                                  No quick notes yet
+                                  {currentScreen.screen === 'defaultQuickNotes'
+                                    ? 'No default quick notes yet'
+                                    : 'No quick notes yet'}
                                 </div>
                               )}
 
@@ -1492,7 +1556,7 @@ export function SettingsDrawer({
                                     type="button"
                                     onClick={handleAddQuickNote}
                                     className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-2"
-                                    disabled={updateQuickNotes.isPending}
+                                    disabled={isQuickNotesSaving}
                                   >
                                     <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-primary">
                                       <Plus className="h-4 w-4 text-white" />
@@ -1539,7 +1603,9 @@ export function SettingsDrawer({
       />
 
       {/* Quick Note Flow (full-screen editor) */}
-      {quickNoteEditMode.isOpen && currentScreen.screen === 'quickNotes' && (
+      {quickNoteEditMode.isOpen &&
+        (currentScreen.screen === 'quickNotes' ||
+          currentScreen.screen === 'defaultQuickNotes') && (
         <QuickNoteFlow
           note={quickNoteEditMode.note}
           onSave={handleSaveQuickNote}

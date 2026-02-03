@@ -2,6 +2,8 @@ import { Reorder } from 'framer-motion';
 import { GripVertical, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  buildQuickNotesKey,
+  getDefaultQuickNotes,
   getQuickNotesForCategory,
   useQuickNotesQuery,
   useUpdateQuickNotes,
@@ -36,10 +38,23 @@ export function QuickNotesSettings({
   const { data: quickNotesConfig } = useQuickNotesQuery();
   const updateQuickNotes = useUpdateQuickNotes();
 
+  const categoryKey = useMemo(
+    () => buildQuickNotesKey(transactionType, categoryName),
+    [transactionType, categoryName],
+  );
+
+  const hasCategoryOverride = quickNotesConfig?.[categoryKey] !== undefined;
+  const defaultNotes = useMemo(
+    () => getDefaultQuickNotes(quickNotesConfig, transactionType),
+    [quickNotesConfig, transactionType],
+  );
+
   const notes = useMemo(
     () => getQuickNotesForCategory(quickNotesConfig, transactionType, categoryName),
     [quickNotesConfig, transactionType, categoryName],
   );
+
+  const isUsingDefaults = !hasCategoryOverride && defaultNotes.length > 0 && notes.length > 0;
 
   // Local state for optimistic reorder UI
   const [localNotes, setLocalNotes] = useState<QuickNote[]>(notes);
@@ -150,6 +165,7 @@ export function QuickNotesSettings({
             <p className="mb-3 text-xs text-muted-foreground">
               Long press on this category to quickly add a pre-filled note. Max {MAX_QUICK_NOTES}{' '}
               quick notes.
+              {isUsingDefaults ? ' Showing default quick notes for this category.' : null}
             </p>
 
             <div className="overflow-hidden rounded-xl border border-border">

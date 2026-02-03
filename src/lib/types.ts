@@ -69,5 +69,7 @@ export interface QuickNote {
   forValue?: string; // "for" (Me/Partner/etc.) or "to" account for transfers
 }
 
-// Key format: "{transactionType}:{categoryName}"
+// Key formats:
+// - Category: "{transactionType}:{categoryName}"
+// - Default: "default:{transactionType}"
 export type QuickNotesConfig = Record<string, QuickNote[]>;
