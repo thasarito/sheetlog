@@ -41,5 +41,11 @@ npm run dev
 npm run build
 ```
 
-The production build is emitted to `dist/`. Set `VITE_BASE_PATH` for
-GitHub Pages-style deployments.
+The production build is emitted to `dist/`.
+
+## Deployment (Cloudflare Pages)
+
+- **Build command**: `npm run build`
+- **Build output directory**: `dist`
+- **SPA routing**: handled via `public/_redirects`
+- **Env vars** (Cloudflare Pages project settings): `VITE_GOOGLE_CLIENT_ID` (and optionally `VITE_GOOGLE_CLIENT_SECRET`, `VITE_BASE_PATH`)

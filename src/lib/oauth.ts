@@ -113,7 +113,7 @@ function getOAuthConfig() {
 
 /**
  * Get the OAuth callback URL based on current location
- * Uses root URL to work with GitHub Pages (no SPA routing support)
+ * Uses the app entrypoint URL so the SPA can process OAuth params on load
  */
 export function getRedirectUri(): string {
   const baseUrl = window.location.origin;

@@ -12,7 +12,7 @@ Based on the Expert Panel decisions:
 - **Categorization**: Smart/Recent sorting.
 - **Tagging**: Toggle Chips for widespread tags (e.g., #Trip, #Business).
 - **Feedback**: Toast with Undo capability.
-- **Stack**: Vite + React (SPA build) on GitHub Pages.
+- **Stack**: Vite + React (SPA build) on Cloudflare Pages.
 - **Offline**: Queue & Sync strategy.
 - **Auth**: Long-term persistence for convenience.
 - **Data Model**: App-managed Sheet structure.
@@ -37,8 +37,8 @@ Based on the Expert Panel decisions:
 
 ### 3.2 Deployment Architecture
 
-- **Host**: GitHub Pages.
-- **CI/CD**: GitHub Actions (Vite Build -> Deploy to gh-pages branch).
+- **Host**: Cloudflare Pages.
+- **CI/CD**: Cloudflare Pages (build + deploy from Git) or `wrangler pages deploy`.
 - **Serverless**: None. Pure Client-Side SPA behavior.
 
 ### 3.3 Data Flow
@@ -92,7 +92,7 @@ Based on the Expert Panel decisions:
 
 ## 5. Security Model
 
-- **Credentials**: Use User's own Google Credentials. The App ID (ClientId) is public but restricted by Origin (GitHub Pages URL).
+- **Credentials**: Use User's own Google Credentials. The App ID (ClientId) is public but restricted by Origin (Cloudflare Pages URL / custom domain).
 - **Token Storage**: LocalStorage. Risk is acceptable per user choice "Maximum Convenience" for a personal finance tool.
 - **Privacy**: Zero data usage tracking. Direct communication User <-> Google.
 
