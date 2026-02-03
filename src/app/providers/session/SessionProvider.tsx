@@ -144,6 +144,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshTokenAvailable = typeof window !== "undefined" && hasRefreshToken();
+  const storedToken = getStoredToken();
 
   const {
     data: tokenData,
@@ -151,7 +152,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     isFetching,
   } = useQuery<TokenData | null>({
     queryKey: GOOGLE_TOKEN_QUERY_KEY,
-    initialData: getStoredToken() ?? null,
+    ...(storedToken ? { initialData: storedToken } : {}),
     queryFn: async () => {
       if (!refreshTokenAvailable) {
         return null;
