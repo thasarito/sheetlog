@@ -190,8 +190,9 @@ export function StepAmount({
           {onDelete && (
             <button
               type="button"
+              aria-label="Delete transaction"
               className={cn(
-                "flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive",
+                "flex touch-manipulation items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive transition-transform active:scale-95",
                 (isSubmitting || isDeleting) && "opacity-60"
               )}
               onClick={onDelete}
