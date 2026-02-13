@@ -1,0 +1,12 @@
+
+> sheetlog@0.1.0 dev /app
+> node scripts/vite.js dev
+
+
+  VITE v5.4.21  ready in 493 ms
+
+  ➜  Local:   http://localhost:6882/
+  ➜  Network: use --host to expose
+3:13:25 AM [vite] page reload verification/verify_keypad.py
+3:13:25 AM [vite] page reload verification/verify_keypad.py
+3:13:46 AM [vite] hmr update /src/router.tsx, /src/styles/globals.css
