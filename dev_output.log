@@ -1,0 +1,16 @@
+
+> sheetlog@0.1.0 dev /app
+> node scripts/vite.js dev
+
+
+  VITE v5.4.21  ready in 527 ms
+
+  ➜  Local:   http://localhost:6882/
+  ➜  Network: use --host to expose
+3:05:37 AM [vite] hmr update /src/components/Keypad.tsx, /src/styles/globals.css
+3:05:49 AM [vite] hmr update /src/components/TransactionFlow/StepAmount.tsx, /src/styles/globals.css
+3:06:29 AM [vite] hmr update /src/routes/PaletteTestPage.tsx, /src/styles/globals.css
+3:06:49 AM [vite] page reload verify_accessibility.py
+3:07:23 AM [vite] page reload src/router.tsx
+3:07:27 AM [vite] hmr update /src/routes/PaletteTestPage.tsx, /src/styles/globals.css
+3:07:27 AM [vite] page reload verify_accessibility.py
