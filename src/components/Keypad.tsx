@@ -31,6 +31,9 @@ export function Keypad({ value, onChange }: KeypadProps) {
         <button
           key={key}
           type="button"
+          aria-label={
+            key === "DEL" ? "Delete" : key === "." ? "Decimal point" : undefined
+          }
           className="flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface"
           onClick={() => handleKey(key)}
         >
