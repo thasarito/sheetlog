@@ -196,6 +196,7 @@ export function StepAmount({
               )}
               onClick={onDelete}
               disabled={isSubmitting || isDeleting}
+              aria-label="Delete transaction"
             >
               <Trash2 className="h-4 w-4" />
             </button>
