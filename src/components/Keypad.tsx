@@ -25,13 +25,20 @@ export function Keypad({ value, onChange }: KeypadProps) {
     onChange(`${value}${key}`.replace(/^0+(\d)/, "$1"));
   }
 
+  function getKeyLabel(key: string) {
+    if (key === "DEL") return "Delete";
+    if (key === ".") return "Decimal point";
+    return key;
+  }
+
   return (
     <div className="grid grid-cols-3 gap-3">
       {KEYS.map((key) => (
         <button
           key={key}
           type="button"
-          className="flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface"
+          aria-label={getKeyLabel(key)}
+          className="flex h-14 items-center justify-center rounded-2xl text-lg font-semibold text-foreground transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:scale-95 touch-manipulation"
           onClick={() => handleKey(key)}
         >
           {key === "DEL" ? <Delete className="h-5 w-5" /> : key}
