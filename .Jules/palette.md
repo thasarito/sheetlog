@@ -1,0 +1,3 @@
+## 2024-05-15 - [Standard Interaction Patterns for Custom Keypads]
+**Learning:** Custom input controls, like the Keypad component, need specific standard interaction patterns in this app for the best experience. The specific accessibility requirements include aria-labels (`Delete` for DEL and `Decimal point` for `.` buttons), visual focus indicators (`focus-visible:ring-2 focus-visible:ring-primary`), responsive sizing classes (`touch-manipulation`), consistent visual styles (`rounded-2xl` matching transaction buttons), and tactile feedback (`active:scale-95`).
+**Action:** Always apply `aria-label`, `rounded-2xl`, `touch-manipulation`, `active:scale-95`, and `focus-visible:ring-2` to new custom input buttons for accessibility and consistent UI/UX.
