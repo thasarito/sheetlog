@@ -1,0 +1,4 @@
+## 2024-12-05 - Standardized Keypad Button Interactions
+**Learning:** Adding standard touch interactions (`touch-manipulation`, `active:scale-95`) and explicit focus rings (`focus-visible:ring-2 focus-visible:ring-primary`) is important for accessibility and overall user experience, particularly for touch-heavy and frequently used components like the numeric keypad. Additionally, ensuring clear `aria-label`s for non-text or potentially ambiguous keys (like "DEL" and ".") provides necessary context for screen reader users.
+
+**Action:** Consistently apply `rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:outline-none`, `focus-visible:ring-2`, and `focus-visible:ring-primary` for prominent touch targets (like keypad buttons or main actions), while always providing explicit `aria-label`s for icon-only or non-obvious controls.
