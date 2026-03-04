@@ -12,8 +12,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run src/",
+    "test:watch": "vitest src/",
     "prepare": "husky"
   },
   "dependencies": {
