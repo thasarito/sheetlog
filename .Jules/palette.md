@@ -1,0 +1,3 @@
+## 2024-05-14 - Improve Keypad Accessibility and Interaction
+**Learning:** Custom keypads without proper focus management (`focus-visible:ring`) and tactile feedback (`active:scale-95`, `touch-manipulation`) feel sluggish and unresponsive to keyboard/mobile users. Additionally, symbols like `.` and custom delete icons lack context for screen readers if not given an `aria-label`.
+**Action:** When creating custom keyboard components, ensure every key has proper focus visible styles, touch manipulation enabled to prevent delay, active state scaling for feedback, and descriptive `aria-label`s for non-alphanumeric keys.
