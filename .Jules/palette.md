@@ -1,0 +1,3 @@
+## 2026-03-06 - [Keypad Accessibility]
+**Learning:** The keypad component has a delete button represented by a 'Delete' icon, but lacks an `aria-label`. Additionally, numeric keys lack focus states and touch manipulation settings which can hinder usage for keyboard navigation and screen reader users. The `.` key could also benefit from an aria-label. Adding standard interactions makes it feel more native.
+**Action:** Next time, review keypad and highly interactive gridded button components for missing `aria-label` attributes on icon-only buttons. Add standard interaction patterns such as focus rings and touch manipulation where needed.
