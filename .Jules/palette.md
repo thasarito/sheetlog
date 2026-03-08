@@ -1,0 +1,4 @@
+
+## 2024-05-18 - Standard Interaction Pattern for Large Touch Targets
+**Learning:** Found that large touch targets (like Keypad buttons and Transaction Flow action buttons) lack consistency in their interaction states. Adding a standard set of utility classes (`rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) significantly improves tactile feedback, consistency, and accessibility (keyboard focus and screen readers). Icon-only buttons or those with non-alphanumeric text (like `.` and `DEL`) also need `aria-label`s for screen reader users to understand their function.
+**Action:** When creating new components with large touch targets or icon-only buttons, consistently apply this pattern to ensure a snappy, native-like feel and proper accessibility.
