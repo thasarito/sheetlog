@@ -150,7 +150,7 @@ function CategoryButton({
   return (
     <button
       type="button"
-      className="flex flex-col items-center rounded-2xl px-2 py-3 text-center transition touch-none select-none"
+      className="flex flex-col items-center rounded-2xl px-2 py-3 text-center transition touch-none select-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

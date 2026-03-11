@@ -1,0 +1,3 @@
+## 2024-03-11 - [Focus Indicators for Category Buttons]
+**Learning:** The `CategoryButton` components within `CategoryGrid` lacked visual feedback when navigating via keyboard, making it impossible for keyboard users to know which category was currently focused.
+**Action:** Added `focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none` classes to the `button` element to provide a clear, accessible focus ring without affecting mouse/touch users.
