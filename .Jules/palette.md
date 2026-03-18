@@ -1,0 +1,3 @@
+## 2024-03-18 - Keypad Interaction & Accessibility Standards
+**Learning:** Custom keypads require explicit touch manipulation classes and standard button interaction states (`rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) to match the project's tactile feedback expectations on mobile devices. Non-alphanumeric keys like "DEL" and "." need explicit `aria-label` attributes for screen readers.
+**Action:** Always apply these standard interaction classes and explicit ARIA labels when building or modifying custom keypad or calculator-like components.
