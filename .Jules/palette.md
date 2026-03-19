@@ -1,0 +1,3 @@
+## 2024-05-24 - Keypad Accessibility and Tactile Feedback
+**Learning:** Custom keypads without explicit touch feedback classes (`touch-manipulation`, `active:scale-95`) can feel unresponsive on mobile PWAs. Additionally, icon-only keys (like 'DEL') or symbolic keys (like '.') must have explicit `aria-label`s for screen readers, while numbers usually don't need them. Large interactive elements also benefit from consistent visual treatments like `rounded-2xl` and clear focus rings (`focus-visible:ring-2 focus-visible:ring-primary`).
+**Action:** Always apply `touch-manipulation` and `active:scale-95` to custom numeric pad buttons for mobile-first PWAs. Ensure any key displaying an icon or ambiguous symbol has an `aria-label`. Use `rounded-2xl` for large actionable zones.
