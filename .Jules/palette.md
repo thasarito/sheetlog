@@ -1,0 +1,3 @@
+## 2024-03-20 - Keypad Interaction & Accessibility Enhancements
+**Learning:** The Keypad component maps a KEYS array to buttons, but it lacked proper visual interaction feedback (touch manipulation, scaling on active, focus states, and consistent border radius) as well as critical `aria-label` attributes for non-alphanumeric keys like "DEL" and ".". Ensuring tactile response and accessible labels makes the interface feel much more native and accessible to screen readers.
+**Action:** Always add standard interaction classes (`rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) to generic button grids and map specific key types to descriptive `aria-label` attributes (e.g., 'Delete' for 'DEL').
