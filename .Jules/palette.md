@@ -1,0 +1,3 @@
+## 2024-05-24 - [Keypad Accessibility]
+**Learning:** Custom interactive components like Keypad buttons often miss basic accessibility and tactile feedback because they are manually constructed with generic divs or basic buttons. Relying only on text content causes screen readers to misinterpret symbol-only keys (e.g. "." as "dot" instead of "Decimal point" and icon-only buttons as empty).
+**Action:** Always ensure that manually constructed interactive components include `aria-label` attributes for symbol-only or icon-only keys, and use standard interaction utility classes (`rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) to match the app's tactile and keyboard-friendly design language.
