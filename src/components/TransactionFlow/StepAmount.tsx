@@ -96,6 +96,7 @@ export function StepAmount({
             {onCategoryClick ? (
               <button
                 type="button"
+                aria-label={`Edit category, currently ${category}`}
                 className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-primary transition-colors"
                 onClick={onCategoryClick}
               >
@@ -108,6 +109,7 @@ export function StepAmount({
             {onDateClick ? (
               <button
                 type="button"
+                aria-label={`Edit date, currently ${format(dateObject, "dd MMM · HH:mm")}`}
                 className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors tabular-nums"
                 onClick={onDateClick}
               >
@@ -190,6 +192,7 @@ export function StepAmount({
           {onDelete && (
             <button
               type="button"
+              aria-label="Delete transaction"
               className={cn(
                 "flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive",
                 (isSubmitting || isDeleting) && "opacity-60"
