@@ -1,0 +1,3 @@
+## 2024-03-27 - Keypad Accessibility and Interaction Patterns
+**Learning:** Numeric keypads on mobile-first applications often miss essential interactivity styles out-of-the-box. Icons without labels (like a 'Delete' backspace icon) require `aria-label`s for screen readers. Furthermore, touch-centric elements benefit greatly from `touch-manipulation` to disable tap delays, `active:scale-95` to provide visual tap feedback, and proper focus rings (`focus-visible:ring-primary`, `focus:outline-none`) for keyboard navigability.
+**Action:** Always add interactive tactile classes (`touch-manipulation`, `active:scale-[...]`, focus rings) to large touch targets like keypads, and ensure non-alphanumeric icons map to explicit `aria-label`s.
