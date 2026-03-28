@@ -1,0 +1,3 @@
+## 2024-03-28 - Keypad Interaction & Accessibility
+**Learning:** Custom keypads without explicit button interaction states (touch-manipulation, active scaling) feel unresponsive on mobile devices. Icon-only and non-alphanumeric keys (like `DEL` and `.`) require explicit ARIA labels for screen reader compatibility, as their raw text values can be read inconsistently or omitted entirely.
+**Action:** When building custom input interfaces, enforce standard button interaction classes (`active:scale-95`, `touch-manipulation`, `focus-visible:ring-2`) and always verify that non-alphanumeric keys have clear `aria-label` attributes.
