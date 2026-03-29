@@ -1,6 +1,7 @@
 "use client";
 
 import { Delete } from "lucide-react";
+import { cn } from "../lib/utils";
 
 interface KeypadProps {
   value: string;
@@ -31,8 +32,18 @@ export function Keypad({ value, onChange }: KeypadProps) {
         <button
           key={key}
           type="button"
-          className="flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface"
+          className={cn(
+            "flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface",
+            "rounded-2xl touch-manipulation active:scale-95 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+          )}
           onClick={() => handleKey(key)}
+          aria-label={
+            key === "DEL"
+              ? "Delete last digit"
+              : key === "."
+                ? "Decimal point"
+                : undefined
+          }
         >
           {key === "DEL" ? <Delete className="h-5 w-5" /> : key}
         </button>
