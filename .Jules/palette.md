@@ -1,0 +1,3 @@
+## 2024-05-24 - [Accessible Keypad Improvements]
+**Learning:** Numeric keypads (like calculators or PIN entries) need robust standard interaction states (`rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) for tactile feedback and accessibility. Special keys like "DEL" and "." often lack implicit accessible names and require explicit `aria-label`s ("Delete", "Decimal point") for screen readers.
+**Action:** Always verify that custom numeric keypads or grids of buttons have appropriate standard interaction classes applied and `aria-label`s defined for any non-alphanumeric or icon-only buttons to ensure they are accessible.
