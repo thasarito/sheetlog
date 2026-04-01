@@ -1,0 +1,3 @@
+## 2025-04-01 - Keypad Accessibility
+**Learning:** Icon-only buttons (like DEL) and non-alphanumeric buttons (like .) in custom keypads often lack inherent screen reader context. Standard interaction classes (`touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) create a much more native-feeling and accessible experience on both mobile and desktop.
+**Action:** Always ensure custom keypads or numeric inputs explicitly declare `aria-label`s for non-standard keys and implement consistent focus/active states to provide tactile and visual feedback.
