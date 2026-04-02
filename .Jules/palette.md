@@ -1,0 +1,3 @@
+## 2026-04-02 - Keypad Accessibility & Tactile Feedback
+**Learning:** Icon-only custom keypad elements often miss basic ARIA labels ('Delete' for DEL, 'Decimal point' for '.'), making them opaque to screen readers. Furthermore, since keypads require rapid tapping, standard hover states aren't enough—they need 'touch-manipulation' for mobile responsiveness, 'active:scale-95' for immediate tactile feedback, and proper 'focus-visible' rings for keyboard navigation.
+**Action:** Always add ARIA labels to non-alphanumeric/icon-only keys and ensure custom keypad components use robust mobile touch and active state classes instead of just hover transitions.
