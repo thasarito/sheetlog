@@ -1,0 +1,3 @@
+## 2024-04-03 - Improve Keypad accessibility and tactile feedback
+**Learning:** Number pads and calculator-like interfaces greatly benefit from explicit `aria-label` attributes on non-alphanumeric keys (like 'DEL' or '.') to ensure screen readers provide correct context. In addition, providing proper tactile feedback (`active:scale-95`) and preparing for mobile (`touch-manipulation`) ensures the interaction feels natural. Standard interaction patterns (`rounded-2xl`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) must also be consistently applied.
+**Action:** Always verify custom keypad components have semantic labels for icon buttons and include standard tactile, mobile, and keyboard-focus utility classes.
