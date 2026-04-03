@@ -1,0 +1,3 @@
+## 2024-03-20 - Icon-only Keypad Buttons Need Context & Polish
+**Learning:** The Keypad component maps arbitrary array strings to buttons. While visually fine, numeric and symbolic arrays mapped directly to screen-reader content can lack intent, particularly for non-alphanumeric keys like "DEL" or ".".
+**Action:** Always add conditional `aria-label`s when mapping raw string arrays to interactive elements if the visual representation uses icons or ambiguous symbols. Combine this with mobile-first tactile feedback classes (`touch-manipulation`, `active:scale-95`) for frequent interaction components like numpads.
