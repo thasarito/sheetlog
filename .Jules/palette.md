@@ -1,0 +1,3 @@
+## 2024-04-04 - Keypad Accessibility and Interaction Refresh
+**Learning:** The `Keypad` component is a critical interaction point but lacked proper screen reader announcements for functional keys (like "." and "DEL") and standard tactile feedback patterns used elsewhere in the app. Numeric buttons also benefit from explicit `aria-label`s.
+**Action:** Applied comprehensive `aria-label`s to all keys in the `Keypad` grid. Added standard interaction utilities (`rounded-2xl touch-manipulation active:scale-95 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none`) to improve both accessibility and the mobile experience without introducing custom CSS.
