@@ -1,0 +1,3 @@
+## 2025-04-05 - Custom Numeric Keypad Accessibility
+**Learning:** Custom numeric keypads (like the `Keypad` component) require comprehensive `aria-label` attributes for all keys (e.g., mapping "DEL" to "Delete" and "." to "Decimal point") to be properly understood by screen readers. Furthermore, since they replace native mobile keyboards, they MUST mimic native input accessibility and feel using tactile feedback classes like `touch-manipulation` and `active:scale-95`, along with keyboard focus outlines (`focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`).
+**Action:** Always add explicit `aria-label`s, touch manipulation optimizations, tactile feedback, and focus ring styling when building or updating custom keypad components.
