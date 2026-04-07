@@ -1,0 +1,9 @@
+
+> sheetlog@0.1.0 dev /app
+> node scripts/vite.js dev
+
+
+  VITE v5.4.21  ready in 472 ms
+
+  ➜  Local:   http://localhost:6882/
+  ➜  Network: use --host to expose

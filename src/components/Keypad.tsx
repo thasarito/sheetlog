@@ -10,6 +10,12 @@ interface KeypadProps {
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "DEL"];
 
 export function Keypad({ value, onChange }: KeypadProps) {
+  function getAriaLabel(key: string) {
+    if (key === "DEL") return "Delete";
+    if (key === ".") return "Decimal point";
+    return key;
+  }
+
   function handleKey(key: string) {
     if (key === "DEL") {
       onChange(value.slice(0, -1));
@@ -31,7 +37,8 @@ export function Keypad({ value, onChange }: KeypadProps) {
         <button
           key={key}
           type="button"
-          className="flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface"
+          aria-label={getAriaLabel(key)}
+          className="flex h-14 items-center justify-center rounded-2xl text-lg font-semibold text-foreground transition-transform touch-manipulation hover:bg-surface active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           onClick={() => handleKey(key)}
         >
           {key === "DEL" ? <Delete className="h-5 w-5" /> : key}

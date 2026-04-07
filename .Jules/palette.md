@@ -1,0 +1,3 @@
+## 2025-05-16 - Add Standard Interaction Patterns to Keypad Component
+**Learning:** Large interactive elements, like keypad buttons, need touch optimization and tactile feedback. A keypad lacking these feels unresponsive. Using explicit `aria-label` tags specifically mapping non-alphanumeric keys like "DEL" to "Delete" or "." to "Decimal point" ensures clarity for screen readers. Using standard classes like `active:scale-95` provides needed tactile interaction feel.
+**Action:** Always include comprehensive `aria-label` attributes for keys mapping symbols or abbreviations to standard words, and apply tactile feedback utilities (e.g. `active:scale-95`), interaction bounds (`rounded-2xl`), and accessibility focus outlines (`focus-visible:ring-2`) to critical tap targets.
