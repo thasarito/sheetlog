@@ -1,0 +1,3 @@
+## 2024-05-18 - Keypad Interaction Styles
+**Learning:** Playwright's `.focus()` method does not reliably trigger `focus-visible` CSS states visually on Safari/Webkit in some headless contexts. To properly capture focus rings in verification screenshots, genuine keyboard interaction must be simulated via `page.keyboard.press('Tab')`. The `Keypad` buttons now have standard tactile feedback (`active:scale-95`), mobile optimization (`touch-manipulation`), and proper screen reader labeling for non-numeric keys.
+**Action:** Use simulated tab navigation in Playwright to verify `focus-visible` states, and always use existing Tailwind utility classes to ensure consistent interaction patterns across similar touch/click targets without adding custom CSS.
