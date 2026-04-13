@@ -1,0 +1,3 @@
+## 2026-04-13 - Keypad Accessibility and Interactivity Improvement
+**Learning:** The Keypad numeric keys and special keys like 'Delete' and 'Decimal point' lacked explicit `aria-label` attributes and basic interaction states (focus rings, touch feedback), making them inaccessible to screen readers and visually uncommunicative for keyboard or touch users.
+**Action:** Added explicit `aria-label` mappings for all `Keypad` buttons (especially handling 'DEL' and '.') and applied standard UI interaction classes (`rounded-2xl touch-manipulation active:scale-95 focus-visible:ring-2 focus-visible:ring-primary focus:outline-none`) to ensure proper accessibility and visual feedback.
