@@ -1,0 +1,3 @@
+## 2024-10-24 - Keypad Accessibility and Touch Feedback
+**Learning:** Custom numeric keypads require explicit `aria-label`s for non-alphanumeric keys (like "DEL" and ".") to ensure screen readers announce them correctly. Furthermore, keypad buttons must have tactile feedback (`active:scale-95`, `touch-manipulation`) to prevent touch delay on mobile devices and `focus-visible` styles for keyboard navigation.
+**Action:** Always provide explicit `aria-label` attributes for icon-only or punctuation keys in custom keypads. Apply `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, and `focus-visible:ring-primary` consistently to keypad buttons to support both mobile and keyboard users.
