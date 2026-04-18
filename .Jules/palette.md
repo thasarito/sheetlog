@@ -1,0 +1,3 @@
+## 2024-03-24 - Accessibility and Interaction for Standard Number Keypads
+**Learning:** Standard numeric keypads lack descriptive names for screen readers natively and need dynamic mappings for keys like `DEL` and `.`. Also, interaction patterns mapped to basic clicks feel unresponsive without touch manipulation and focus states mapped to system tokens.
+**Action:** Always add dynamic `aria-label` mappings to keypad elements (`DEL` -> "Delete", `.` -> "Decimal point") and enforce standard interactive styling (`rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`) so they feel like native platform elements.
