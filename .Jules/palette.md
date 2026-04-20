@@ -1,0 +1,3 @@
+## 2025-04-20 - Custom Keypad Accessibility & Interaction
+**Learning:** Custom keypads often lack standard button affordances. Explicitly adding tactile feedback (`active:scale-95`), mobile touch optimizations (`touch-manipulation`), and focus indicators (`focus-visible:ring-2`) is crucial. Furthermore, symbol keys like "DEL" and "." require explicit ARIA labels ("Delete", "Decimal point") to be properly understood by screen readers.
+**Action:** When implementing custom keypads or grids of interactive elements, always ensure each button has standard interaction states, rounded borders (`rounded-2xl`) for consistency, and appropriate `aria-label`s for any keys that use symbols or abbreviations.
