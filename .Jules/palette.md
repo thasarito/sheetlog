@@ -1,0 +1,3 @@
+## 2025-04-24 - Keypad Button Accessibility & Polish
+**Learning:** Icon-only buttons mapped from arrays (like "DEL" in the Keypad) often miss out on proper ARIA labeling by default, and custom keypad interactions benefit heavily from `touch-manipulation` to prevent double-tap zoom delays on mobile, and `active:scale-95` to provide much-needed tactile feedback without vibration APIs.
+**Action:** Always append exact conditional `aria-label`s for non-standard keys (like decimal points and deletes) and standardize on `touch-manipulation active:scale-95 focus-visible:ring-2` for full-surface tap targets in the design system.
