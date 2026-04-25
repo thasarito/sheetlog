@@ -1,0 +1,3 @@
+## 2024-05-18 - Keypad Interaction and Accessibility Enhancement
+**Learning:** Custom UI components like numeric keypads often lack default semantic meaning (ARIA roles/labels) and interaction feedback compared to native buttons, especially when using icons (like a delete icon instead of text). Focus rings are frequently missed on custom grid layouts.
+**Action:** Always map icon buttons in keypads to descriptive `aria-label`s (e.g., "Delete"). Standardize tactile feedback using `touch-manipulation` (to prevent mobile zoom delay) and `active:scale-95`. Ensure keyboard focus is visible using `focus-visible:ring-2 focus-visible:ring-primary focus:outline-none`.
