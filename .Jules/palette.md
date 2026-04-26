@@ -1,0 +1,3 @@
+## 2025-02-18 - Custom Keypad Enhancements
+**Learning:** Custom input controls like numeric keypads require explicit ARIA labels for non-alphanumeric keys (e.g., 'Delete', 'Decimal point') and robust visual/tactile feedback to mirror native device interactions. Screen readers often struggle with just icon contents or symbols like ".".
+**Action:** When building custom grid keypads, always apply touch-manipulation for responsive taps, active scaling (`active:scale-95`) for tactile feedback, and ensure strong keyboard focus rings (`focus-visible:ring-2 focus-visible:ring-primary`) combined with proper `aria-label` attributes.
