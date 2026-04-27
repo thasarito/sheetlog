@@ -1,0 +1,3 @@
+## 2024-05-24 - Interactive Button Accessibility
+**Learning:** Large interactive elements like numeric keypads need robust touch and focus states. Providing clear ARIA labels ("Delete", "Decimal point") and visible focus rings `focus-visible:ring-2 focus-visible:ring-primary focus:outline-none`, along with standard mobile tactile feedback (`touch-manipulation active:scale-95`), is essential for inclusive design.
+**Action:** Always include these classes and descriptive ARIA labels when implementing interactive keys/buttons in the design system.
