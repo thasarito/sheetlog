@@ -27,16 +27,23 @@ export function Keypad({ value, onChange }: KeypadProps) {
 
   return (
     <div className="grid grid-cols-3 gap-3">
-      {KEYS.map((key) => (
-        <button
-          key={key}
-          type="button"
-          className="flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface"
-          onClick={() => handleKey(key)}
-        >
-          {key === "DEL" ? <Delete className="h-5 w-5" /> : key}
-        </button>
-      ))}
+      {KEYS.map((key) => {
+        let ariaLabel = key;
+        if (key === "DEL") ariaLabel = "Delete";
+        else if (key === ".") ariaLabel = "Decimal point";
+
+        return (
+          <button
+            key={key}
+            type="button"
+            aria-label={ariaLabel}
+            className="flex h-14 items-center justify-center rounded-2xl text-lg font-semibold text-foreground transition hover:bg-surface active:scale-95 touch-manipulation focus-visible:ring-2 focus-visible:ring-primary focus:outline-none"
+            onClick={() => handleKey(key)}
+          >
+            {key === "DEL" ? <Delete className="h-5 w-5" /> : key}
+          </button>
+        );
+      })}
     </div>
   );
 }
