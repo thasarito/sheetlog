@@ -1,0 +1,3 @@
+## 2024-05-24 - Interactive Keypad UX & Accessibility
+**Learning:** Icon-only keys (like delete and decimal point) in custom keypads frequently lack accessible names. Furthermore, large touch targets on mobile-first designs require clear interaction feedback (`active:scale`, `focus-visible:ring`) to signal recognition.
+**Action:** Always verify that every custom keypad button includes an `aria-label` when it contains an icon instead of text, and ensure that tactile feedback tokens (`touch-manipulation`, `active:scale-95`, `focus-visible:ring`) are applied consistently across all interactive grid items.
