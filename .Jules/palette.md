@@ -1,0 +1,3 @@
+## 2024-05-05 - Keypad Accessibility and Mobile UX
+**Learning:** Custom keypads without explicit active/focus states provide poor tactile feedback on mobile devices, and screen readers fail to interpret custom mapped keys like '.' and 'DEL' without proper `aria-label`s. In addition, the lack of `touch-manipulation` makes rapid tapping unreliable on touch devices.
+**Action:** Always ensure that custom button grids (like numeric keypads) include `touch-manipulation` for better mobile responsiveness, `active:scale-95` for immediate tactile feedback, proper focus rings (`focus-visible:ring-2 focus-visible:ring-primary focus:outline-none`), and explicit `aria-label`s mapping symbols to descriptive text (e.g. '.' to 'Decimal point').
