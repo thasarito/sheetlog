@@ -1,0 +1,3 @@
+## 2026-05-06 - Improve Numeric Keypad Accessibility & Interaction
+**Learning:** Numeric keypads without proper interaction states (active scale, focus rings) and missing ARIA labels for non-numeric keys (like decimal points and delete) make touch interactions feel unresponsive and present accessibility barriers for screen readers.
+**Action:** Always ensure custom keypad buttons include standard interaction classes (`rounded-2xl`, `touch-manipulation`, `active:scale-95`, `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) and provide explicit `aria-label` attributes for all keys, especially icon-based or punctuation keys like 'DEL' and '.'.
