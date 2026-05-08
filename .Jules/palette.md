@@ -1,0 +1,3 @@
+## 2025-02-28 - Keypad ARIA and Interaction Improvements
+**Learning:** Number pads in React components often map over an array of numbers but neglect to add descriptive `aria-label`s for non-numeric keys (like "DEL" or "."), relying solely on the visual icon. Furthermore, tactile interaction features like scaling on active state and providing explicit focus rings are easily missed in generic mapping loops, decreasing usability for touch and keyboard users.
+**Action:** Always verify that mapped button arrays output descriptive `aria-label`s for icon/symbol buttons, and ensure standard tactile (`touch-manipulation`, `active:scale-95`) and focus (`focus-visible:ring-2`) classes are included inside the loop's output.
