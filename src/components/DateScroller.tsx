@@ -94,7 +94,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
             type="button"
             onClick={handleToday}
             disabled={isTodaySelected}
-            className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
               isTodaySelected
                 ? "border-border text-muted-foreground"
                 : "border-primary/30 text-primary hover:border-primary/50"

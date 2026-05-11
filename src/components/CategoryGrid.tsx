@@ -150,7 +150,7 @@ function CategoryButton({
   return (
     <button
       type="button"
-      className="flex flex-col items-center rounded-2xl px-2 py-3 text-center transition touch-none select-none"
+      className="flex flex-col items-center rounded-2xl px-2 py-3 text-center transition touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -162,6 +162,12 @@ function CategoryButton({
         handlePointerCancel(e);
       }}
       onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
     >
       <motion.span
         className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
