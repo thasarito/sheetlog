@@ -1,0 +1,3 @@
+## 2024-05-13 - Custom Numerical Input Pad Accessibility and Interactions
+**Learning:** Custom numerical input pads (like the `Keypad` component) require semantic `aria-label`s for non-numeric keys (like "DEL" or ".") and must utilize standard tactile interaction states (`touch-manipulation`, `active:scale-95`, visible focus rings, rounded-2xl) to match standard device expectations and be fully accessible.
+**Action:** When building custom keypads or button grids, always apply standard interaction classes and ensure every button has a meaningful ARIA label, especially icon-only or non-standard characters.
