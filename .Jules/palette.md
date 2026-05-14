@@ -1,0 +1,3 @@
+## 2024-05-14 - Custom Keypads need explicit aria-labels and tactile feedback
+**Learning:** Custom numerical input pads (like `Keypad.tsx` for transaction flows) inherently lack standard semantic meaning for non-numeric keys such as 'DEL' or the decimal point. Additionally, they often do not include built-in touch manipulation optimizations or standard focus rings.
+**Action:** Always include semantic `aria-label`s for non-numeric keys and apply tactile interaction states (`touch-manipulation`, `active:scale-95`, and visible focus rings `focus-visible:ring-2`, `focus-visible:ring-primary`, `focus:outline-none`) to match standard device expectations.
