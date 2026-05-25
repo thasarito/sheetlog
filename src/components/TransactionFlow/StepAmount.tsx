@@ -6,6 +6,7 @@ import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
 import { FOR_OPTIONS } from "./constants";
+import { NearbyPlaceChips } from "./NearbyPlaceChips";
 import { STORAGE_KEYS } from "../../lib/constants";
 import type { TransactionFormApi } from "./useTransactionForm";
 
@@ -24,6 +25,9 @@ type StepAmountProps = {
   // Quick note mode props
   customHeader?: React.ReactNode;
   optionalAmount?: boolean;
+  nearbyPlaceSuggestions?: string[];
+  isNearbyPlacesLoading?: boolean;
+  onNearbyPlaceSelect?: (placeName: string) => void;
 };
 
 export function StepAmount({
@@ -39,6 +43,9 @@ export function StepAmount({
   submitLabel,
   customHeader,
   optionalAmount = false,
+  nearbyPlaceSuggestions = [],
+  isNearbyPlacesLoading = false,
+  onNearbyPlaceSelect,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -46,6 +53,9 @@ export function StepAmount({
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
+  const shouldRenderNearbyPlaces =
+    Boolean(onNearbyPlaceSelect) &&
+    (isNearbyPlacesLoading || nearbyPlaceSuggestions.length > 0);
   const handleAccountChange = useCallback(
     (value: string) => {
       form.setFieldValue("account", value);
@@ -172,6 +182,14 @@ export function StepAmount({
             autoComplete="off"
           />
         </div>
+
+        {shouldRenderNearbyPlaces && onNearbyPlaceSelect ? (
+          <NearbyPlaceChips
+            suggestions={nearbyPlaceSuggestions}
+            isLoading={isNearbyPlacesLoading}
+            onSelect={onNearbyPlaceSelect}
+          />
+        ) : null}
       </div>
 
       {isTransfer && !hasTransferAccounts ? (
