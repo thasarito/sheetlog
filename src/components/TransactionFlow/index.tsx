@@ -26,6 +26,7 @@ import { CategoryGridDrawer } from "../CategoryGridDrawer";
 import { DateTimeDrawer } from "../DateTimeDrawer";
 import { useUpdateTransactionMutation } from "./useUpdateTransactionMutation";
 import { useDeleteTransactionMutation } from "./useDeleteTransactionMutation";
+import { useNearbyPlaceSuggestions } from "./useNearbyPlaceSuggestions";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -41,6 +42,7 @@ export function TransactionFlow() {
   const { isOnline } = useConnectivity();
   const [isResyncing, setIsResyncing] = useState(false);
   const [step, setStep] = useState(0);
+  const [placeSuggestionSessionId, setPlaceSuggestionSessionId] = useState(0);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<TransactionRecord | null>(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
@@ -64,6 +66,11 @@ export function TransactionFlow() {
     dateObject,
     note,
   } = form.useStore((state) => state.values);
+  const shouldFetchNearbyPlaces = step === 1 && editingTransaction === null;
+  const nearbyPlaces = useNearbyPlaceSuggestions({
+    enabled: shouldFetchNearbyPlaces,
+    sessionId: placeSuggestionSessionId,
+  });
   const receiptTimeoutRef = useRef<number | null>(null);
   const lastSyncErrorRef = useRef<string | null>(null);
 
@@ -261,6 +268,11 @@ export function TransactionFlow() {
     form.setFieldValue("dateObject", new Date());
   }, [mutation, updateMutation, form]);
 
+  const openCreateAmountStep = useCallback(() => {
+    setPlaceSuggestionSessionId((current) => current + 1);
+    setStep(1);
+  }, []);
+
   const handleEditTransaction = useCallback(async (t: TransactionRecord) => {
     // Ensure transaction exists in IndexedDB for update/delete to work
     // (Recent transactions come from Google Sheets, not IndexedDB)
@@ -448,7 +460,7 @@ export function TransactionFlow() {
         <StepCategory
           form={form}
           categoryGroups={categoryGroups}
-          onConfirm={() => setStep(1)}
+          onConfirm={openCreateAmountStep}
         />
       ),
     },
@@ -474,6 +486,17 @@ export function TransactionFlow() {
           onCategoryClick={editingTransaction ? () => setCategoryDrawerOpen(true) : undefined}
           onDateClick={editingTransaction ? () => setDateDrawerOpen(true) : undefined}
           submitLabel={editingTransaction ? "Save" : undefined}
+          nearbyPlaceSuggestions={
+            shouldFetchNearbyPlaces ? nearbyPlaces.suggestions : []
+          }
+          isNearbyPlacesLoading={
+            shouldFetchNearbyPlaces ? nearbyPlaces.isLoading : false
+          }
+          onNearbyPlaceSelect={
+            shouldFetchNearbyPlaces
+              ? (placeName) => form.setFieldValue("note", placeName)
+              : undefined
+          }
         />
       ),
     },
