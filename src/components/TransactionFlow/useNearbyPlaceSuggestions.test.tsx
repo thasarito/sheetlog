@@ -1,16 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getCurrentCoordinates,
   getNearbyPlaceNames,
+  hasGoogleMapsApiKey,
 } from "../../lib/googlePlaces";
 import { useNearbyPlaceSuggestions } from "./useNearbyPlaceSuggestions";
 
 vi.mock("../../lib/googlePlaces", () => ({
   getCurrentCoordinates: vi.fn(),
   getNearbyPlaceNames: vi.fn(),
+  hasGoogleMapsApiKey: vi.fn(),
 }));
 
 function createWrapper() {
@@ -31,6 +33,10 @@ function createWrapper() {
 }
 
 describe("useNearbyPlaceSuggestions", () => {
+  beforeEach(() => {
+    vi.mocked(hasGoogleMapsApiKey).mockReturnValue(true);
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -79,5 +85,22 @@ describe("useNearbyPlaceSuggestions", () => {
     });
     expect(result.current.suggestions).toEqual([]);
     expect(result.current.shouldShowAttribution).toBe(false);
+  });
+
+  it("does not request location when the Google Maps API key is missing", async () => {
+    vi.mocked(hasGoogleMapsApiKey).mockReturnValue(false);
+
+    const { result } = renderHook(
+      () => useNearbyPlaceSuggestions({ enabled: true, sessionId: 4 }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.shouldShowAttribution).toBe(false);
+    expect(getCurrentCoordinates).not.toHaveBeenCalled();
+    expect(getNearbyPlaceNames).not.toHaveBeenCalled();
   });
 });

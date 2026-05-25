@@ -20,6 +20,10 @@ export class MissingGoogleMapsApiKeyError extends Error {
   }
 }
 
+export function hasGoogleMapsApiKey(explicitApiKey?: string) {
+  return Boolean(explicitApiKey ?? import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
+}
+
 export function getCurrentCoordinates(): Promise<Coordinates> {
   if (typeof navigator === "undefined" || !navigator.geolocation) {
     return Promise.reject(new Error("Geolocation is not available"));

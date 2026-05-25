@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getCurrentCoordinates,
   getNearbyPlaceNames,
+  hasGoogleMapsApiKey,
 } from "../../lib/googlePlaces";
 
 export const nearbyPlaceSuggestionKeys = {
@@ -25,6 +26,9 @@ export function useNearbyPlaceSuggestions({
     gcTime: 1000 * 30,
     queryFn: async () => {
       try {
+        if (!hasGoogleMapsApiKey()) {
+          return [];
+        }
         const coordinates = await getCurrentCoordinates();
         return await getNearbyPlaceNames(coordinates);
       } catch {
