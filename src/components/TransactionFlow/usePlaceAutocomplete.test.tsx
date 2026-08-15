@@ -420,6 +420,7 @@ describe("usePlaceAutocomplete", () => {
     resolveSession?.(deferredSession);
     await Promise.resolve();
     unmount();
+    await flushQueries();
 
     expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(deferredSession);
   });
@@ -485,5 +486,31 @@ describe("usePlaceAutocomplete", () => {
     expect(queryClient.getQueryData(["placeAutocompleteSession", "second"])).toBe(
       secondSession
     );
+  });
+
+  it("keeps a usable session through the Strict Mode effect probe and cleans its queries on real unmount", async () => {
+    const strictSession = { token: {} as GoogleAutocompleteSessionToken };
+    vi.mocked(createPlaceAutocompleteSession).mockResolvedValue(strictSession);
+    const { Wrapper, queryClient } = createTestHarness();
+    const { result, unmount } = renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "strict-mode" }),
+      { wrapper: Wrapper, reactStrictMode: true }
+    );
+
+    await flushQueries();
+    expect(queryClient.getQueryData(["placeAutocompleteSession", "strict-mode"])).toBe(
+      strictSession
+    );
+    await enterSearch(result, "coffee");
+    await flushQueries();
+    expect(result.current.suggestions).toEqual([firstSuggestion]);
+
+    unmount();
+    await flushQueries();
+    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(strictSession);
+    expect(queryClient.getQueryData(["placeAutocompleteSession", "strict-mode"])).toBeUndefined();
+    expect(
+      queryClient.getQueryData(["placeAutocomplete", "strict-mode", "suggestions", "coffee"])
+    ).toBeUndefined();
   });
 });

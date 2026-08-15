@@ -17,6 +17,12 @@ import {
 
 const INPUT_DEBOUNCE_MS = 250;
 
+type SessionScope = {
+  mounted: boolean;
+  sessionId: string;
+  cleanupTimer?: number;
+};
+
 export const placeAutocompleteKeys = {
   session: (sessionId: string) =>
     ["placeAutocompleteSession", sessionId] as const,
@@ -52,7 +58,7 @@ export function usePlaceAutocomplete({
   const openRef = useRef(open);
   const enabledRef = useRef(enabled);
   const sessionIdRef = useRef(sessionId);
-  const scopeRef = useRef({ mounted: true, sessionId });
+  const scopeRef = useRef<SessionScope>({ mounted: true, sessionId });
   if (scopeRef.current.sessionId !== sessionId) {
     scopeRef.current = { mounted: true, sessionId };
   }
@@ -171,21 +177,33 @@ export function usePlaceAutocomplete({
   }, [open, reset]);
 
   useEffect(() => {
+    if (scope.cleanupTimer !== undefined) {
+      window.clearTimeout(scope.cleanupTimer);
+      scope.cleanupTimer = undefined;
+    }
+
     return () => {
-      scope.mounted = false;
-      const activeSession = activeSessionRef.current;
-      if (activeSession?.sessionId === scope.sessionId) {
-        endPlaceAutocompleteSession(activeSession.session);
-        activeSessionRef.current = undefined;
-      }
-      queryClient.removeQueries({
-        queryKey: placeAutocompleteKeys.suggestionsForSession(scope.sessionId),
-        exact: false,
-      });
-      queryClient.removeQueries({
-        queryKey: placeAutocompleteKeys.session(scope.sessionId),
-        exact: true,
-      });
+      const cleanupTimer = window.setTimeout(() => {
+        if (scope.cleanupTimer !== cleanupTimer) {
+          return;
+        }
+        scope.cleanupTimer = undefined;
+        scope.mounted = false;
+        const activeSession = activeSessionRef.current;
+        if (activeSession?.sessionId === scope.sessionId) {
+          endPlaceAutocompleteSession(activeSession.session);
+          activeSessionRef.current = undefined;
+        }
+        queryClient.removeQueries({
+          queryKey: placeAutocompleteKeys.suggestionsForSession(scope.sessionId),
+          exact: false,
+        });
+        queryClient.removeQueries({
+          queryKey: placeAutocompleteKeys.session(scope.sessionId),
+          exact: true,
+        });
+      }, 0);
+      scope.cleanupTimer = cleanupTimer;
     };
   }, [queryClient, scope]);
 
