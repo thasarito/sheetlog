@@ -212,13 +212,30 @@ known stale writes, but two devices submitting at the same instant can still rac
 is acceptable for this personal, single-user workflow and must not be represented as a strict
 cross-device guarantee.
 
-Same-origin browser contexts use Web Locks when available. The IndexedDB fallback is a renewable,
-sheet-and-user-scoped lease with ownership checks immediately before each remote mutation and local
-status commit. Because a suspended browser context can outlive an expired lease and Google Sheets
+Same-origin browser contexts use a Sheet-scoped Web Lock when available. The IndexedDB fallback is
+a renewable, Sheet-scoped lease with ownership checks immediately before each remote mutation and
+local status commit. Queue selection and ownership remain separately scoped to the verified Google
+account, but the lock cannot include that account because every account with access mutates the
+same Sheet rows. Because a suspended browser context can outlive an expired lease and Google Sheets
 does not accept a fencing token, the fallback is best-effort rather than an absolute remote fence:
 detected ownership loss stops subsequent work and local commits, while a request that already
 completed remotely is reconciled by stable column-K ID on retry. This is not a cross-browser or
 cross-device atomicity guarantee.
+
+The earlier lock namespace included the user ID. A tab still running that older PWA build does not
+share either the new Web Lock name or the new IndexedDB lease key, and legacy Web Locks cannot be
+enumerated safely. Deployment of the Sheet-scoped namespace therefore requires all open clients to
+reload to the same build before relying on same-browser serialization. As a best-effort fallback
+bridge, the new IndexedDB lock waits for an already-active legacy per-user lease and fails closed if
+one appears during a guarded operation. This cannot eliminate the check-then-acquire race with an
+old client, so legacy records are not migrated or treated as proof of shared-lock ownership; they
+normally release or expire in their original namespace.
+
+If a pending edit of an existing column-K row is removed locally while its Sheet update is in
+flight, sync re-resolves the stable ID after the request and restores the authoritative pre-edit
+row at its current position. A newer in-scope local revision is left pending instead, and an exact
+reimbursement delete intent remains an exact delete intent. Duplicate K IDs stop reconciliation
+with the existing actionable integrity error rather than choosing an arbitrary row.
 
 Editing a linked reimbursement preserves its relationship, type, category, and currency. Its
 maximum editable amount is the source expense amount minus all other linked reimbursements.

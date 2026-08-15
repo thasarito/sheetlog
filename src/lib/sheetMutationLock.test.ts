@@ -8,7 +8,40 @@ import {
 } from "./sheetMutationLock";
 
 const SCOPE = { sheetId: "sheet/a", userId: "user:a" };
-const LEASE_KEY = "sheetlog.sheet-mutation:sheet%2Fa:user%3Aa";
+const LEASE_KEY = "sheetlog.sheet-mutation:sheet%2Fa";
+const LEGACY_LEASE_KEY = `${LEASE_KEY}:user%3Aa`;
+
+function serializingLockManager() {
+  const tails = new Map<string, Promise<void>>();
+  const request = vi.fn(
+    async <Result,>(
+      name: string,
+      _options: LockOptions,
+      callback: (lock: Lock | null) => Promise<Result>,
+    ): Promise<Result> => {
+      const previous = tails.get(name) ?? Promise.resolve();
+      let release!: () => void;
+      const current = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const tail = previous.then(() => current);
+      tails.set(name, tail);
+      await previous;
+      try {
+        return await callback(null);
+      } finally {
+        release();
+        if (tails.get(name) === tail) {
+          tails.delete(name);
+        }
+      }
+    },
+  );
+  return {
+    manager: { request } as unknown as Pick<LockManager, "request">,
+    request,
+  };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -37,7 +70,7 @@ describe("sheet mutation lock", () => {
     await db.settings.clear();
   });
 
-  it("uses a sheet-and-user-scoped Web Lock when the browser provides it", async () => {
+  it("uses a Sheet-scoped Web Lock when the browser provides it", async () => {
     const request = vi.fn(
       async (
         _name: string,
@@ -60,6 +93,45 @@ describe("sheet mutation lock", () => {
       expect.any(Function),
     );
     expect(await db.settings.get(LEASE_KEY)).toBeUndefined();
+  });
+
+  it("serializes Web Lock callers for the same Sheet even when their users differ", async () => {
+    const { manager, request } = serializingLockManager();
+    const firstContext = createSheetMutationLock({ lockManager: manager });
+    const secondContext = createSheetMutationLock({ lockManager: manager });
+    const firstEntered = deferred<void>();
+    const releaseFirst = deferred<void>();
+    let secondEntered = false;
+
+    const first = firstContext(SCOPE, async () => {
+      firstEntered.resolve();
+      await releaseFirst.promise;
+    });
+    await firstEntered.promise;
+    const second = secondContext(
+      { ...SCOPE, userId: "other-user" },
+      async () => {
+        secondEntered = true;
+      },
+    );
+
+    await expect(
+      secondContext(
+        { sheetId: "other-sheet", userId: "other-user" },
+        async () => "other sheet",
+      ),
+    ).resolves.toBe("other sheet");
+    await delay(20);
+    const secondEnteredBeforeRelease = secondEntered;
+    releaseFirst.resolve();
+    await Promise.all([first, second]);
+
+    expect(secondEnteredBeforeRelease).toBe(false);
+    expect(request.mock.calls.map(([name]) => name)).toEqual([
+      "sheetlog.sheet-mutation:sheet%2Fa",
+      "sheetlog.sheet-mutation:sheet%2Fa",
+      "sheetlog.sheet-mutation:other-sheet",
+    ]);
   });
 
   it("serializes fallback callers for one scope and releases after success", async () => {
@@ -101,6 +173,84 @@ describe("sheet mutation lock", () => {
       "second entered",
     ]);
     expect(await firstDatabase.settings.get(LEASE_KEY)).toBeUndefined();
+    firstDatabase.close();
+    secondDatabase.close();
+    await Dexie.delete(databaseName);
+  });
+
+  it("serializes fallback callers from independent connections for the same Sheet across users", async () => {
+    const databaseName = `SheetMutationLock-${Date.now()}-${Math.random()}`;
+    const firstDatabase = new SheetLogDB(databaseName);
+    const secondDatabase = new SheetLogDB(databaseName);
+    const firstContext = createSheetMutationLock({
+      database: firstDatabase,
+      lockManager: null,
+      retryDelayMs: 2,
+    });
+    const secondContext = createSheetMutationLock({
+      database: secondDatabase,
+      lockManager: null,
+      retryDelayMs: 2,
+    });
+    const firstEntered = deferred<void>();
+    const releaseFirst = deferred<void>();
+    let secondEntered = false;
+
+    const first = firstContext(SCOPE, async () => {
+      firstEntered.resolve();
+      await releaseFirst.promise;
+    });
+    await firstEntered.promise;
+    const second = secondContext(
+      { ...SCOPE, userId: "other-user" },
+      async () => {
+        secondEntered = true;
+      },
+    );
+
+    await delay(20);
+    const secondEnteredBeforeRelease = secondEntered;
+    releaseFirst.resolve();
+    await Promise.all([first, second]);
+
+    expect(secondEnteredBeforeRelease).toBe(false);
+    firstDatabase.close();
+    secondDatabase.close();
+    await Dexie.delete(databaseName);
+  });
+
+  it("lets fallback callers from independent connections mutate different Sheets concurrently", async () => {
+    const databaseName = `SheetMutationLock-${Date.now()}-${Math.random()}`;
+    const firstDatabase = new SheetLogDB(databaseName);
+    const secondDatabase = new SheetLogDB(databaseName);
+    const firstContext = createSheetMutationLock({
+      database: firstDatabase,
+      lockManager: null,
+      retryDelayMs: 2,
+    });
+    const secondContext = createSheetMutationLock({
+      database: secondDatabase,
+      lockManager: null,
+      retryDelayMs: 2,
+    });
+    const firstEntered = deferred<void>();
+    const releaseFirst = deferred<void>();
+
+    const first = firstContext(SCOPE, async () => {
+      firstEntered.resolve();
+      await releaseFirst.promise;
+    });
+    await firstEntered.promise;
+
+    await expect(
+      secondContext(
+        { sheetId: "other-sheet", userId: "other-user" },
+        async () => "other sheet",
+      ),
+    ).resolves.toBe("other sheet");
+
+    releaseFirst.resolve();
+    await first;
     firstDatabase.close();
     secondDatabase.close();
     await Dexie.delete(databaseName);
@@ -150,6 +300,59 @@ describe("sheet mutation lock", () => {
     ).resolves.toBe("recovered");
 
     expect(await db.settings.get(LEASE_KEY)).toBeUndefined();
+  });
+
+  it("waits for an already-active legacy fallback lease during a rolling update", async () => {
+    const legacyRecord = {
+      key: LEGACY_LEASE_KEY,
+      value: JSON.stringify({
+        ownerId: "old-build-tab",
+        expiresAt: Date.now() + 60_000,
+      }),
+      updatedAt: new Date().toISOString(),
+    };
+    await db.settings.put(legacyRecord);
+    const withFastRetry = createSheetMutationLock({
+      lockManager: null,
+      retryDelayMs: 2,
+    });
+    let entered = false;
+
+    const operation = withFastRetry(SCOPE, async () => {
+      entered = true;
+      return "new shared lock";
+    });
+    await delay(20);
+    const enteredBeforeLegacyRelease = entered;
+    await db.settings.delete(LEGACY_LEASE_KEY);
+
+    await expect(operation).resolves.toBe("new shared lock");
+    expect(enteredBeforeLegacyRelease).toBe(false);
+    expect(await db.settings.get(LEASE_KEY)).toBeUndefined();
+  });
+
+  it("fails closed when a legacy fallback lease appears during guarded work", async () => {
+    let guardedWorkRan = false;
+
+    await expect(
+      withSheetMutationLock(SCOPE, async (guard) => {
+        await db.settings.put({
+          key: LEGACY_LEASE_KEY,
+          value: JSON.stringify({
+            ownerId: "old-build-tab",
+            expiresAt: Date.now() + 60_000,
+          }),
+          updatedAt: new Date().toISOString(),
+        });
+        await guard.assertOwnership();
+        guardedWorkRan = true;
+      }),
+    ).rejects.toThrow(
+      "Sheet mutation lock was lost before the operation completed",
+    );
+
+    expect(guardedWorkRan).toBe(false);
+    expect(await db.settings.get(LEGACY_LEASE_KEY)).toBeDefined();
   });
 
   it("renews a fallback lease while a slow remote operation is still active", async () => {
@@ -265,7 +468,7 @@ describe("sheet mutation lock", () => {
     expect(retryDelays.some((value) => value > retryDelays[0])).toBe(true);
   });
 
-  it("lets unrelated sheet or user scopes proceed concurrently", async () => {
+  it("lets an unrelated Sheet scope proceed concurrently", async () => {
     const releaseFirst = deferred<void>();
     const firstEntered = deferred<void>();
     const first = withSheetMutationLock(SCOPE, async () => {
@@ -275,17 +478,11 @@ describe("sheet mutation lock", () => {
     await firstEntered.promise;
 
     await expect(
-      Promise.all([
-        withSheetMutationLock(
-          { sheetId: "other-sheet", userId: SCOPE.userId },
-          async () => "other sheet",
-        ),
-        withSheetMutationLock(
-          { sheetId: SCOPE.sheetId, userId: "other-user" },
-          async () => "other user",
-        ),
-      ]),
-    ).resolves.toEqual(["other sheet", "other user"]);
+      withSheetMutationLock(
+        { sheetId: "other-sheet", userId: SCOPE.userId },
+        async () => "other sheet",
+      ),
+    ).resolves.toBe("other sheet");
 
     releaseFirst.resolve();
     await first;

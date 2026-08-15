@@ -304,6 +304,24 @@ async function rollbackDeletedAppend(
   await deleteRow(accessToken, sheetId, tabId, currentRow);
 }
 
+async function rollbackDeletedUpdate(
+  accessToken: string,
+  sheetId: string,
+  original: TransactionRecord,
+  mutationGuard: SheetMutationGuard,
+): Promise<void> {
+  const currentIds = await readTransactionIdMap(accessToken, sheetId);
+  const currentRow = currentIds.get(original.id);
+  if (currentRow === undefined) {
+    return;
+  }
+  await mutationGuard.assertOwnership();
+  await updateRow(accessToken, sheetId, currentRow, {
+    ...original,
+    sheetRow: currentRow,
+  });
+}
+
 async function syncPendingTransactionsUnlocked(
   accessToken: string,
   sheetId: string,
@@ -404,7 +422,11 @@ async function syncPendingTransactionsUnlocked(
             );
           }
         }
-        if (!hasSameTransactionContent(remote, itemForWrite)) {
+        const didUpdateRemote = !hasSameTransactionContent(
+          remote,
+          itemForWrite,
+        );
+        if (didUpdateRemote) {
           await mutationGuard.assertOwnership();
           await updateRow(accessToken, sheetId, currentRow, itemForWrite);
         }
@@ -424,6 +446,19 @@ async function syncPendingTransactionsUnlocked(
         }, mutationGuard);
         if (didMarkSynced) {
           syncedCount += 1;
+        } else if (didUpdateRemote) {
+          const current = await db.transactions.get(item.id);
+          if (
+            !current ||
+            !isTransactionInSheetScope(current, sheetId, userId)
+          ) {
+            await rollbackDeletedUpdate(
+              accessToken,
+              sheetId,
+              remote,
+              mutationGuard,
+            );
+          }
         }
         continue;
       }

@@ -41,8 +41,13 @@ export interface SheetMutationLockOptions {
   retryDelayMs?: number;
 }
 
-function scopeKey({ sheetId, userId }: SheetMutationScope): string {
-  return `sheetlog.sheet-mutation:${encodeURIComponent(sheetId)}:${encodeURIComponent(userId)}`;
+// Google Sheet row positions are shared by every account that can access the
+// Sheet, so the remote mutation lock must not be partitioned by local queue
+// ownership. Legacy builds used a trailing user segment; those records are a
+// different namespace and cannot confer shared-lock ownership, but an active
+// legacy fallback lease still blocks or fails closed during a rolling update.
+function scopeKey({ sheetId }: SheetMutationScope): string {
+  return `sheetlog.sheet-mutation:${encodeURIComponent(sheetId)}`;
 }
 
 function ownerId(): string {
@@ -68,6 +73,21 @@ function readLease(record: SettingRecord | undefined): Lease | null {
   }
 }
 
+async function hasActiveLegacyLease(
+  settings: Table<SettingRecord, string>,
+  sharedKey: string,
+  now: number,
+): Promise<boolean> {
+  const legacyPrefix = `${sharedKey}:`;
+  const legacyRecords = await settings
+    .filter((record) => record.key.startsWith(legacyPrefix))
+    .toArray();
+  return legacyRecords.some((record) => {
+    const lease = readLease(record);
+    return lease !== null && lease.expiresAt > now;
+  });
+}
+
 async function tryAcquireLease(
   store: LeaseStore,
   key: string,
@@ -76,6 +96,9 @@ async function tryAcquireLease(
 ): Promise<boolean> {
   return store.transaction("rw", store.settings, async () => {
     const now = Date.now();
+    if (await hasActiveLegacyLease(store.settings, key, now)) {
+      return false;
+    }
     const current = readLease(await store.settings.get(key));
     if (current && current.expiresAt > now) {
       return false;
@@ -116,7 +139,8 @@ async function renewLease(
     const current = readLease(await store.settings.get(key));
     if (
       current?.ownerId !== leaseOwnerId ||
-      current.expiresAt <= now
+      current.expiresAt <= now ||
+      await hasActiveLegacyLease(store.settings, key, now)
     ) {
       return false;
     }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db";
 import { DuplicateTransactionIdError } from "./google";
 import { syncPendingTransactions } from "./sync";
+import { parseTransactionRow } from "./transactionRows";
 import type { TransactionRecord } from "./types";
 
 const googleMocks = vi.hoisted(() => ({
@@ -201,6 +202,90 @@ describe("syncPendingTransactions concurrency", () => {
     });
   });
 
+  it("serializes different users on one Sheet so a row shift cannot stale the later update", async () => {
+    const removal = reimbursementDeleteIntent(
+      "user-a-removal",
+      "source-a",
+      { sheetRow: 5 },
+    );
+    const pendingEdit = transaction("user-b-edit", {
+      note: "Edited by B",
+      targetUserId: "user-b",
+      updatedAt: "2026-08-15T10:00:00.000Z",
+    });
+    const remoteBeforeEdit = transaction(pendingEdit.id, {
+      note: "Original remote value",
+      targetUserId: undefined,
+      status: "synced",
+      sheetId: "sheet-a",
+      sheetRow: 8,
+    });
+    const deleteStarted = deferred<void>();
+    const releaseDelete = deferred<void>();
+    const laterUpdateStarted = deferred<void>();
+    let deleteFinished = false;
+    let laterUpdateEntered = false;
+    await db.transactions.bulkAdd([removal, pendingEdit]);
+    googleMocks.readTransactionIdMap.mockImplementation(async () =>
+      new Map([
+        [removal.id, 5],
+        [pendingEdit.id, deleteFinished ? 7 : 8],
+      ]),
+    );
+    googleMocks.deleteRow.mockImplementationOnce(async () => {
+      deleteStarted.resolve();
+      await releaseDelete.promise;
+      deleteFinished = true;
+    });
+    googleMocks.readTransactionById.mockImplementation(
+      async (_token: string, _sheetId: string, id: string) =>
+        id === pendingEdit.id
+          ? { ...remoteBeforeEdit, sheetRow: deleteFinished ? 7 : 8 }
+          : null,
+    );
+    googleMocks.updateRow.mockImplementationOnce(async () => {
+      laterUpdateEntered = true;
+      laterUpdateStarted.resolve();
+    });
+
+    const userASync = syncPendingTransactions(
+      "access-token-a",
+      "sheet-a",
+      "user-a",
+    );
+    await deleteStarted.promise;
+    const userBSync = syncPendingTransactions(
+      "access-token-b",
+      "sheet-a",
+      "user-b",
+    );
+    await Promise.race([
+      laterUpdateStarted.promise,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 50);
+      }),
+    ]);
+    const updateEnteredBeforeDeleteReleased = laterUpdateEntered;
+    releaseDelete.resolve();
+
+    await expect(Promise.all([userASync, userBSync])).resolves.toEqual([1, 1]);
+    expect(updateEnteredBeforeDeleteReleased).toBe(false);
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token-b",
+      "sheet-a",
+      7,
+      expect.objectContaining({
+        id: pendingEdit.id,
+        note: "Edited by B",
+      }),
+    );
+    expect(await db.transactions.get(removal.id)).toBeUndefined();
+    expect(await db.transactions.get(pendingEdit.id)).toMatchObject({
+      status: "synced",
+      sheetRow: 7,
+    });
+  });
+
   it("fails closed before append when the fallback lock loses ownership", async () => {
     const pending = transaction("lock-lost-before-append");
     const idReadStarted = deferred<void>();
@@ -218,7 +303,7 @@ describe("syncPendingTransactions concurrency", () => {
     );
     await idReadStarted.promise;
     await db.settings.put({
-      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      key: "sheetlog.sheet-mutation:sheet-a",
       value: JSON.stringify({
         ownerId: "successor-tab",
         expiresAt: Date.now() + 60_000,
@@ -251,7 +336,7 @@ describe("syncPendingTransactions concurrency", () => {
     );
     await appendStarted.promise;
     await db.settings.put({
-      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      key: "sheetlog.sheet-mutation:sheet-a",
       value: JSON.stringify({
         ownerId: "successor-tab",
         expiresAt: Date.now() + 60_000,
@@ -432,6 +517,66 @@ describe("syncPendingTransactions concurrency", () => {
     expect(googleMocks.deleteRow).toHaveBeenCalledTimes(1);
   });
 
+  it("restores an existing K row when another context deletes its pending edit mid-update", async () => {
+    const pending = transaction("deleted-during-existing-update", {
+      note: "Edited locally",
+      updatedAt: "2026-08-15T10:00:00.000Z",
+    });
+    const remoteBeforeEdit = transaction(pending.id, {
+      note: "Original remote value",
+      status: "synced",
+      sheetId: "sheet-a",
+      sheetRow: 8,
+    });
+    const updateStarted = deferred<void>();
+    const releaseUpdate = deferred<void>();
+    let updateCount = 0;
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap
+      .mockResolvedValueOnce(new Map([[pending.id, 8]]))
+      .mockResolvedValueOnce(new Map([[pending.id, 11]]));
+    googleMocks.readTransactionById.mockResolvedValue(remoteBeforeEdit);
+    googleMocks.updateRow.mockImplementation(async () => {
+      updateCount += 1;
+      if (updateCount === 1) {
+        updateStarted.resolve();
+        await releaseUpdate.promise;
+      }
+    });
+
+    const activeSync = syncPendingTransactions(
+      "access-token",
+      "sheet-a",
+      "user-a",
+    );
+    await updateStarted.promise;
+    await db.transactions.delete(pending.id);
+    releaseUpdate.resolve();
+
+    expect(await activeSync).toBe(0);
+    expect(googleMocks.updateRow).toHaveBeenNthCalledWith(
+      1,
+      "access-token",
+      "sheet-a",
+      8,
+      expect.objectContaining({
+        id: pending.id,
+        note: "Edited locally",
+      }),
+    );
+    expect(googleMocks.updateRow).toHaveBeenNthCalledWith(
+      2,
+      "access-token",
+      "sheet-a",
+      11,
+      expect.objectContaining({
+        id: pending.id,
+        note: "Original remote value",
+      }),
+    );
+    expect(await db.transactions.get(pending.id)).toBeUndefined();
+  });
+
   it("leaves an edit made during append pending, then updates its current K row", async () => {
     const pending = transaction("edited-during-append");
     const remoteBeforeEdit = transaction(pending.id, {
@@ -535,6 +680,83 @@ describe("syncPendingTransactions concurrency", () => {
       currency: "THB",
       category: "Reimbursement",
       for: "Me",
+      reimbursesTransactionId: "source-authoritative",
+    });
+  });
+
+  it("never adopts or rewrites a numeric Sheet timestamp during an authoritative linked update", async () => {
+    const dateSerial = 46249 + (9 * 60 + 30) / (24 * 60);
+    const createdAtSerial =
+      46249 + (10 * 60 * 60 + 45 * 60 + 30) / (24 * 60 * 60);
+    const normalizedDate = new Date(2026, 7, 15, 9, 30, 0).toISOString();
+    const normalizedCreatedAt = new Date(
+      2026,
+      7,
+      15,
+      10,
+      45,
+      30,
+    ).toISOString();
+    const id = "serial-authoritative-child";
+    const pending = transaction(id, {
+      type: "expense",
+      amount: 25,
+      currency: "USD",
+      category: "Tampered",
+      for: "Someone else",
+      note: "Allowed metadata",
+      date: normalizedDate,
+      createdAt: normalizedCreatedAt,
+      updatedAt: "2026-08-16T11:00:00.000Z",
+    });
+    const remote = {
+      ...parseTransactionRow(
+        [
+          dateSerial,
+          "income",
+          25,
+          "Reimbursement",
+          "Before",
+          createdAtSerial,
+          "PWA",
+          "THB",
+          "Bank",
+          "Me",
+          id,
+          "source-authoritative",
+        ],
+        18,
+      ),
+      sheetId: "sheet-a",
+    };
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap.mockResolvedValue(new Map([[id, 18]]));
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+
+    expect(
+      await syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).toBe(1);
+
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      18,
+      expect.objectContaining({
+        id,
+        date: normalizedDate,
+        createdAt: normalizedCreatedAt,
+        reimbursesTransactionId: "source-authoritative",
+      }),
+    );
+    expect(googleMocks.updateRow).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ createdAt: String(createdAtSerial) }),
+    );
+    expect(await db.transactions.get(id)).toMatchObject({
+      status: "synced",
+      createdAt: normalizedCreatedAt,
       reimbursesTransactionId: "source-authoritative",
     });
   });
