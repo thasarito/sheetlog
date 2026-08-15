@@ -1,5 +1,184 @@
-import { expect, test, type Page } from '@playwright/test';
-import * as path from 'node:path';
+import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
+
+type ScrollSurfaceMetrics = {
+  clientHeight: number;
+  footerBottom: number;
+  scrollHeight: number;
+};
+
+function readPngDimensions(screenshot: Buffer) {
+  if (screenshot.length < 24 || screenshot.toString('ascii', 1, 4) !== 'PNG') {
+    throw new Error('Expected a PNG screenshot');
+  }
+  return {
+    width: screenshot.readUInt32BE(16),
+    height: screenshot.readUInt32BE(20),
+  };
+}
+
+async function waitForLandingAssets(page: Page) {
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(
+    'Log transactions to Google Sheets in seconds',
+  );
+  await expect(page.locator('footer')).toContainText('Privacy');
+
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(
+      Array.from(document.images).map(async (image) => {
+        if (!image.complete) {
+          await new Promise<void>((resolve, reject) => {
+            const cleanup = () => {
+              image.removeEventListener('load', handleLoad);
+              image.removeEventListener('error', handleError);
+            };
+            const handleLoad = () => {
+              cleanup();
+              resolve();
+            };
+            const handleError = () => {
+              cleanup();
+              reject(new Error(`Failed to load image: ${image.currentSrc || image.src}`));
+            };
+            image.addEventListener('load', handleLoad, { once: true });
+            image.addEventListener('error', handleError, { once: true });
+            if (image.complete) {
+              if (image.naturalWidth > 0) {
+                handleLoad();
+              } else {
+                handleError();
+              }
+            }
+          });
+        }
+        if (image.naturalWidth === 0) {
+          throw new Error(`Failed to decode image: ${image.currentSrc || image.src}`);
+        }
+        await image.decode();
+      }),
+    );
+  });
+}
+
+async function waitForTwoAnimationFrames(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
+async function revealLandingSections(page: Page, landingSurface: Locator) {
+  const scrollRange = await landingSurface.evaluate((surface) => ({
+    clientHeight: surface.clientHeight,
+    maxScrollTop: surface.scrollHeight - surface.clientHeight,
+  }));
+  const scrollStep = Math.max(1, Math.floor(scrollRange.clientHeight * 0.75));
+  for (let scrollTop = 0; scrollTop < scrollRange.maxScrollTop; scrollTop += scrollStep) {
+    await landingSurface.evaluate((surface, nextScrollTop) => {
+      surface.scrollTop = nextScrollTop;
+    }, scrollTop);
+    await waitForTwoAnimationFrames(page);
+  }
+  await landingSurface.evaluate((surface, maxScrollTop) => {
+    surface.scrollTop = maxScrollTop;
+  }, scrollRange.maxScrollTop);
+  await waitForTwoAnimationFrames(page);
+  await landingSurface.evaluate((surface) => {
+    surface.scrollTop = 0;
+    surface.scrollLeft = 0;
+  });
+  await waitForTwoAnimationFrames(page);
+}
+
+async function measureLandingSurface(landingSurface: Locator): Promise<ScrollSurfaceMetrics> {
+  return landingSurface.evaluate((surface) => {
+    const footer = surface.querySelector('footer');
+    if (!footer) {
+      throw new Error('Landing footer is missing from the scroll surface');
+    }
+    const surfaceRect = surface.getBoundingClientRect();
+    const footerRect = footer.getBoundingClientRect();
+    return {
+      clientHeight: surface.clientHeight,
+      footerBottom: footerRect.bottom - surfaceRect.top + surface.scrollTop,
+      scrollHeight: surface.scrollHeight,
+    };
+  });
+}
+
+async function captureExpandedLandingSurface(
+  landingSurface: Locator,
+  screenshotPath: string,
+  targetHeight: number,
+) {
+  const styleSnapshot = await landingSurface.evaluate((surface, expandedHeight) => {
+    const root = document.getElementById('root');
+    if (!root) {
+      throw new Error('Missing root element');
+    }
+    const snapshot = {
+      bodyStyle: document.body.getAttribute('style'),
+      htmlStyle: document.documentElement.getAttribute('style'),
+      rootStyle: root.getAttribute('style'),
+      surfaceScrollLeft: surface.scrollLeft,
+      surfaceScrollTop: surface.scrollTop,
+      surfaceStyle: surface.getAttribute('style'),
+      windowScrollX: window.scrollX,
+      windowScrollY: window.scrollY,
+    };
+
+    document.documentElement.style.height = 'auto';
+    document.documentElement.style.overflow = 'visible';
+    document.body.style.position = 'static';
+    document.body.style.inset = 'auto';
+    document.body.style.height = 'auto';
+    document.body.style.overflow = 'visible';
+    root.style.height = 'auto';
+    surface.style.height = `${expandedHeight}px`;
+    surface.style.maxHeight = 'none';
+    surface.style.overflowX = 'hidden';
+    surface.style.overflowY = 'visible';
+
+    return snapshot;
+  }, Math.ceil(targetHeight));
+
+  try {
+    await expect
+      .poll(() => landingSurface.evaluate((surface) => surface.getBoundingClientRect().height))
+      .toBeGreaterThanOrEqual(Math.floor(targetHeight));
+    return await landingSurface.screenshot({
+      path: screenshotPath,
+      animations: 'disabled',
+    });
+  } finally {
+    await landingSurface.evaluate((surface, snapshot) => {
+      const root = document.getElementById('root');
+      if (!root) {
+        throw new Error('Missing root element');
+      }
+      const restoreStyle = (element: HTMLElement, style: string | null) => {
+        if (style === null) {
+          element.removeAttribute('style');
+        } else {
+          element.setAttribute('style', style);
+        }
+      };
+      restoreStyle(document.documentElement, snapshot.htmlStyle);
+      restoreStyle(document.body, snapshot.bodyStyle);
+      restoreStyle(root, snapshot.rootStyle);
+      restoreStyle(surface, snapshot.surfaceStyle);
+      surface.scrollLeft = snapshot.surfaceScrollLeft;
+      surface.scrollTop = snapshot.surfaceScrollTop;
+      window.scrollTo(snapshot.windowScrollX, snapshot.windowScrollY);
+    }, styleSnapshot);
+  }
+}
+
+function artifactSuffix(testInfo: TestInfo) {
+  return testInfo.project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
 
 function getVisibleIphoneFrame(page: Page) {
   return page
@@ -149,24 +328,67 @@ test.describe('Landing Page - Speed and Visual Elements', () => {
     await expect(headline).toContainText('Google Sheets');
   });
 
-  test('captures landing page screenshot for visual review', async ({ page }) => {
+  test('captures landing page screenshot for visual review', async ({ page }, testInfo) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await waitForLandingAssets(page);
 
     const hero = page.locator('main section').first();
+    const landingSurface = page.getByRole('main').locator('..');
     await expect(hero).toBeVisible();
+    await revealLandingSections(page, landingSurface);
+    const detailsOpacity = await page
+      .getByText('What SheetLog does', { exact: true })
+      .evaluate((element) => {
+        let current: Element | null = element;
+        let effectiveOpacity = 1;
+        while (current && current !== document.body) {
+          effectiveOpacity *= Number.parseFloat(getComputedStyle(current).opacity);
+          current = current.parentElement;
+        }
+        return effectiveOpacity;
+      });
+    expect(detailsOpacity).toBeGreaterThan(0);
 
-    // Take full page screenshot
-    await page.screenshot({
-      path: path.join('test-results', 'landing-page-full.png'),
-      fullPage: true,
-      animations: 'disabled',
+    const surfaceMetrics = await measureLandingSurface(landingSurface);
+    const suffix = artifactSuffix(testInfo);
+    const fullScreenshotPath = testInfo.outputPath(`landing-page-full-${suffix}.png`);
+    const heroScreenshotPath = testInfo.outputPath(`landing-page-hero-${suffix}.png`);
+
+    // Expand the app's internal scroll surface before capturing it.
+    const fullScreenshot = await captureExpandedLandingSurface(
+      landingSurface,
+      fullScreenshotPath,
+      surfaceMetrics.scrollHeight,
+    );
+    const devicePixelRatio = await page.evaluate(() => window.devicePixelRatio);
+    const viewport = page.viewportSize();
+    if (!viewport) {
+      throw new Error('Landing screenshot requires a viewport');
+    }
+    const fullDimensions = readPngDimensions(fullScreenshot);
+    const screenshotHeight = fullDimensions.height / devicePixelRatio;
+    expect(surfaceMetrics.scrollHeight).toBeGreaterThan(surfaceMetrics.clientHeight);
+    expect(surfaceMetrics.footerBottom).toBeGreaterThan(surfaceMetrics.clientHeight);
+    expect(fullDimensions.height).toBeGreaterThan(viewport.height * devicePixelRatio);
+    expect(screenshotHeight).toBeGreaterThanOrEqual(surfaceMetrics.scrollHeight - 1);
+    expect(screenshotHeight).toBeGreaterThanOrEqual(surfaceMetrics.footerBottom - 1);
+    testInfo.annotations.push({
+      type: 'screenshot-dimensions',
+      description: `${fullDimensions.width}x${fullDimensions.height}px (${surfaceMetrics.scrollHeight}px scroll surface)`,
+    });
+    await testInfo.attach('landing-page-full', {
+      path: fullScreenshotPath,
+      contentType: 'image/png',
     });
 
-    // Take hero section screenshot
-    await hero.screenshot({
-      path: path.join('test-results', 'landing-page-hero.png'),
+    const heroScreenshot = await hero.screenshot({
+      path: heroScreenshotPath,
       animations: 'disabled',
+    });
+    expect(readPngDimensions(heroScreenshot).height).toBeGreaterThan(0);
+    await testInfo.attach('landing-page-hero', {
+      path: heroScreenshotPath,
+      contentType: 'image/png',
     });
   });
 });
