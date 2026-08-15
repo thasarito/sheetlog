@@ -10,7 +10,7 @@ vi.mock("../components/LegalLayout", () => ({
 }));
 
 describe("Places legal disclosures", () => {
-  it("explains what Google receives and what SheetLog stores", () => {
+  it("explains what Google receives and what SheetLog persists", () => {
     render(<PrivacyPolicyPage />);
 
     const copy = document.body.textContent ?? "";
@@ -24,6 +24,14 @@ describe("Places legal disclosures", () => {
     expect(copy).toContain("raw coordinates");
     expect(copy).toContain("location history");
     expect(copy).toContain("unselected place suggestions");
+    expect(copy).toContain(
+      "temporarily processes raw coordinates, place-search text, and returned suggestions in browser memory",
+    );
+    expect(copy).toContain(
+      "clears them when the Places session closes or shortly afterward",
+    );
+    expect(copy).toContain("does not persist");
+    expect(copy).toContain("IP address");
     expect(copy).toContain("browser's location permission prompt");
 
     expect(screen.getByRole("link", { name: "Google Privacy Policy" })).toHaveAttribute(
@@ -38,6 +46,7 @@ describe("Places legal disclosures", () => {
     const copy = document.body.textContent ?? "";
     expect(copy).toContain("Effective date: 2026-08-15");
     expect(copy).toContain("Google Maps content");
+    expect(copy).toContain("subject to both");
     expect(copy).toContain("accuracy or availability");
 
     expect(
@@ -45,5 +54,9 @@ describe("Places legal disclosures", () => {
         name: "Google Maps/Google Earth Additional Terms of Service",
       }),
     ).toHaveAttribute("href", "https://maps.google.com/help/terms_maps/");
+    expect(screen.getByRole("link", { name: "Google Privacy Policy" })).toHaveAttribute(
+      "href",
+      "https://policies.google.com/privacy",
+    );
   });
 });

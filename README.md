@@ -9,7 +9,7 @@ An install-first PWA for lightning-fast logging to Google Sheets (Money tracker 
    client with PKCE; never give it an OAuth client secret. If the selected OAuth
    client requires a secret, perform the code and refresh-token exchanges in a
    server-side service instead.
-2. In a Google Maps Platform project with billing enabled, enable only the
+2. In a Google Maps Platform project with billing enabled, enable the
    **Maps JavaScript API** and **Places API (New)** for the Places picker.
 3. Create a browser API key. Set its application restriction to **Websites** and
    allow only the exact HTTP referrers the app uses, for example

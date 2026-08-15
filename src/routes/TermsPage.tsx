@@ -31,12 +31,20 @@ export function TermsPage() {
         <h2 className="text-lg font-semibold text-foreground">Google Maps</h2>
         <p>
           Google Maps content used for nearby places and place search is
-          provided by Google and is subject to the{" "}
+          provided by Google. Your use of that content is subject to both the{" "}
           <a
             className="underline underline-offset-2"
             href="https://maps.google.com/help/terms_maps/"
           >
             Google Maps/Google Earth Additional Terms of Service
+          </a>
+          {" "}
+          and the{" "}
+          <a
+            className="underline underline-offset-2"
+            href="https://policies.google.com/privacy"
+          >
+            Google Privacy Policy
           </a>
           .
         </p>

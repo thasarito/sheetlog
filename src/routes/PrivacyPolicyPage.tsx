@@ -61,7 +61,9 @@ export function PrivacyPolicyPage() {
         </h2>
         <p>
           Google processes the location and search information used for nearby
-          places and autocomplete under the{" "}
+          places and autocomplete. Google also receives ordinary network data,
+          including your IP address, with these requests. Google handles this
+          information under the{" "}
           <a
             className="underline underline-offset-2"
             href="https://policies.google.com/privacy"
@@ -72,11 +74,17 @@ export function PrivacyPolicyPage() {
           SheetLog does not add a separate in-app location consent flow.
         </p>
         <p>
+          SheetLog temporarily processes raw coordinates, place-search text,
+          and returned suggestions in browser memory. It clears them when the
+          Places session closes or shortly afterward. SheetLog does not persist
+          raw coordinates, location history, autocomplete history, or unselected
+          place suggestions.
+        </p>
+        <p>
           When you select a place, SheetLog copies the selected place display
-          name into your transaction note and Google Sheet. SheetLog does not
-          store raw coordinates, location history, autocomplete history, or
-          unselected place suggestions. These statements describe SheetLog&apos;s
-          storage; Google&apos;s handling is governed by its own policy.
+          name into your transaction note and Google Sheet. These statements
+          describe SheetLog&apos;s processing and persistence; Google&apos;s handling is
+          governed by its own policy.
         </p>
       </section>
 
