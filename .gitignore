@@ -8,3 +8,4 @@ dev-dist
 .env
 playwright-report/
 test-results/
+.worktrees/
