@@ -51,9 +51,9 @@ const unrelatedLatestTransaction: StoredTransaction = {
   date: "2026-08-15T13:00:00.000Z",
   note: "Unrelated latest row",
   status: "synced",
-  createdAt: "2026-08-15T13:00:00.000Z",
-  updatedAt: "2026-08-15T13:00:00.000Z",
-  sheetRow: 3,
+  createdAt: "2999-01-01T00:00:00.000Z",
+  updatedAt: "2999-01-01T00:00:00.000Z",
+  sheetRow: 4,
   sheetId: "mock-sheet-id-dev",
   sheetRowValid: true,
 };
@@ -105,6 +105,60 @@ async function replaceKeypadAmount(page: Page, amount: string) {
   }
 }
 
+async function appendTransactionToMockStores(page: Page, transaction: StoredTransaction) {
+  await page.evaluate(
+    async ({ key, row }) => {
+      const rows = JSON.parse(window.localStorage.getItem(key) ?? "[]") as StoredTransaction[];
+      rows.push(row);
+      window.localStorage.setItem(key, JSON.stringify(rows));
+
+      await new Promise<void>((resolve, reject) => {
+        const openRequest = window.indexedDB.open("SheetLogDB");
+        openRequest.onerror = () => reject(openRequest.error);
+        openRequest.onsuccess = () => {
+          const database = openRequest.result;
+          const writeTransaction = database.transaction("transactions", "readwrite");
+          writeTransaction.objectStore("transactions").put(row);
+          writeTransaction.onerror = () => reject(writeTransaction.error);
+          writeTransaction.oncomplete = () => {
+            database.close();
+            resolve();
+          };
+        };
+      });
+    },
+    { key: MOCK_TRANSACTIONS_KEY, row: transaction },
+  );
+}
+
+async function readMockStoreState(page: Page) {
+  return page.evaluate(async (key) => {
+    const localRows = JSON.parse(window.localStorage.getItem(key) ?? "[]") as StoredTransaction[];
+    const indexedDbRows = await new Promise<StoredTransaction[]>((resolve, reject) => {
+      const openRequest = window.indexedDB.open("SheetLogDB");
+      openRequest.onerror = () => reject(openRequest.error);
+      openRequest.onsuccess = () => {
+        const database = openRequest.result;
+        const transaction = database.transaction("transactions", "readonly");
+        const getAllRequest = transaction.objectStore("transactions").getAll();
+        getAllRequest.onerror = () => reject(getAllRequest.error);
+        getAllRequest.onsuccess = () => resolve(getAllRequest.result as StoredTransaction[]);
+        transaction.oncomplete = () => database.close();
+      };
+    });
+    const newestId = (rows: StoredTransaction[]) =>
+      [...rows].sort((left, right) => left.createdAt.localeCompare(right.createdAt)).at(-1)?.id ??
+      null;
+
+    return {
+      localIds: localRows.map((row) => row.id).sort(),
+      localNewestId: newestId(localRows),
+      indexedDbIds: indexedDbRows.map((row) => row.id).sort(),
+      indexedDbNewestId: newestId(indexedDbRows),
+    };
+  }, MOCK_TRANSACTIONS_KEY);
+}
+
 async function installGoogleMapsStub(page: Page) {
   await page.route(/^https:\/\/maps\.googleapis\.com\/maps\/api\/js\?/, async (route) => {
     await route.fulfill({
@@ -122,6 +176,8 @@ async function installGoogleMapsStub(page: Page) {
 
           class AutocompleteSessionToken {}
 
+          window.__sheetlogMapsAutocompleteInputs = [];
+
           const placesLibrary = {
             Place: {
               searchNearby: async () => ({ places: nearbyPlaces }),
@@ -129,26 +185,29 @@ async function installGoogleMapsStub(page: Page) {
             SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
             AutocompleteSessionToken,
             AutocompleteSuggestion: {
-              fetchAutocompleteSuggestions: async ({ input }) => ({
-                suggestions: input
-                  ? [
-                      {
-                        placePrediction: {
-                          placeId: "central-cafe",
-                          mainText: "Central Cafe",
-                          secondaryText: "123 Test Street",
-                          text: "Central Cafe, 123 Test Street",
-                          types: ["establishment", "cafe"],
-                          toPlace: () => ({
-                            fetchFields: async () => ({
-                              place: { displayName: "Central Cafe" },
+              fetchAutocompleteSuggestions: async ({ input }) => {
+                window.__sheetlogMapsAutocompleteInputs.push(input);
+                return {
+                  suggestions: input
+                    ? [
+                        {
+                          placePrediction: {
+                            placeId: "central-cafe",
+                            mainText: "Central Cafe",
+                            secondaryText: "123 Test Street",
+                            text: "Central Cafe, 123 Test Street",
+                            types: ["establishment", "cafe"],
+                            toPlace: () => ({
+                              fetchFields: async () => ({
+                                place: { displayName: "Central Cafe" },
+                              }),
                             }),
-                          }),
+                          },
                         },
-                      },
-                    ]
-                  : [],
-              }),
+                      ]
+                    : [],
+                };
+              },
             },
           };
 
@@ -170,6 +229,7 @@ async function installGoogleMapsStub(page: Page) {
 
 test.describe("Transaction flow - linked reimbursements", () => {
   test("creates partial and remaining reimbursements from a source expense", async ({ page }) => {
+    await page.clock.install({ time: new Date("2026-08-15T10:00:00.000Z") });
     await seedTransactions(page, [sourceExpense]);
     await page.goto("/app");
 
@@ -191,6 +251,12 @@ test.describe("Transaction flow - linked reimbursements", () => {
     await expect(page.getByTestId("receipt-timed-progress")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Undo reimbursement" })).toBeVisible();
+    await page.clock.pauseAt(new Date("2026-08-15T10:10:00.000Z"));
+    await page.clock.fastForward(2_200);
+    await expect(page.getByText("Reimbursement recorded")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Undo reimbursement" })).toBeVisible();
+    await page.clock.resume();
     await page.getByRole("button", { name: "Done" }).click();
 
     await openSourceExpense(page);
@@ -238,7 +304,7 @@ test.describe("Transaction flow - linked reimbursements", () => {
   });
 
   test("Undo reimbursement removes only the child created by that receipt", async ({ page }) => {
-    await seedTransactions(page, [sourceExpense, unrelatedLatestTransaction]);
+    await seedTransactions(page, [sourceExpense]);
     await page.goto("/app");
 
     await openSourceExpense(page);
@@ -254,30 +320,29 @@ test.describe("Transaction flow - linked reimbursements", () => {
       },
       { key: MOCK_TRANSACTIONS_KEY, sourceId: SOURCE_ID },
     );
-    expect(createdChildId).not.toBeNull();
+    if (!createdChildId) {
+      throw new Error("Expected the reimbursement child to be persisted before Undo");
+    }
+
+    await appendTransactionToMockStores(page, unrelatedLatestTransaction);
+    expect(await readMockStoreState(page)).toEqual({
+      localIds: [SOURCE_ID, createdChildId, unrelatedLatestTransaction.id].sort(),
+      localNewestId: unrelatedLatestTransaction.id,
+      indexedDbIds: [SOURCE_ID, createdChildId, unrelatedLatestTransaction.id].sort(),
+      indexedDbNewestId: unrelatedLatestTransaction.id,
+    });
 
     await page.getByRole("button", { name: "Undo reimbursement" }).click();
     await expect(
       page.getByRole("button", { name: /Dining Out.*Dinner with friends/ }),
     ).toBeVisible();
 
-    await expect
-      .poll(() =>
-        page.evaluate(
-          ({ key, childId }) => {
-            const rows = JSON.parse(window.localStorage.getItem(key) ?? "[]") as StoredTransaction[];
-            return {
-              childExists: rows.some((row) => row.id === childId),
-              ids: rows.map((row) => row.id).sort(),
-            };
-          },
-          { key: MOCK_TRANSACTIONS_KEY, childId: createdChildId },
-        ),
-      )
-      .toEqual({
-        childExists: false,
-        ids: [SOURCE_ID, unrelatedLatestTransaction.id].sort(),
-      });
+    await expect.poll(() => readMockStoreState(page)).toEqual({
+      localIds: [SOURCE_ID, unrelatedLatestTransaction.id].sort(),
+      localNewestId: unrelatedLatestTransaction.id,
+      indexedDbIds: [SOURCE_ID, unrelatedLatestTransaction.id].sort(),
+      indexedDbNewestId: unrelatedLatestTransaction.id,
+    });
   });
 });
 
@@ -286,6 +351,7 @@ test.describe("Transaction flow - Places", () => {
     context,
     page,
   }) => {
+    await page.clock.install({ time: new Date("2026-08-15T10:00:00.000Z") });
     await seedTransactions(page, []);
     await context.grantPermissions(["geolocation"], {
       origin: "http://localhost:5174",
@@ -310,13 +376,33 @@ test.describe("Transaction flow - Places", () => {
     await searchButton.click();
     const searchInput = page.getByRole("searchbox", { name: "Search places" });
     await expect(searchInput).toBeFocused();
+    await page.clock.pauseAt(new Date("2026-08-15T10:10:00.000Z"));
+    await searchInput.fill("ce");
     await searchInput.fill("central");
+
+    const autocompleteInputs = () =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __sheetlogMapsAutocompleteInputs: string[];
+            }
+          ).__sheetlogMapsAutocompleteInputs,
+      );
+    expect(await autocompleteInputs()).toEqual([]);
+    await page.clock.runFor(249);
+    expect(await autocompleteInputs()).toEqual([]);
+    await page.clock.runFor(1);
+    await expect.poll(autocompleteInputs).toEqual(["central"]);
+    // TanStack Query batches resolved-query notifications on a zero-delay timer.
+    await page.clock.runFor(1);
 
     const autocompleteResult = page.getByRole("button", {
       name: /Central Cafe.*123 Test Street/,
     });
     await expect(autocompleteResult).toBeVisible();
     await expect(page.getByText("123 Test Street", { exact: true })).toBeVisible();
+    await page.clock.resume();
     await autocompleteResult.click();
 
     await expect(page.getByRole("dialog", { name: "Search places" })).toHaveAttribute(
