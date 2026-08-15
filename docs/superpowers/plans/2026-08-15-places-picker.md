@@ -147,16 +147,16 @@ git commit -m "feat: extend google places browser client"
 Cover these calls explicitly:
 
 ```ts
-useNearbyPlaceSuggestions({ enabled: true, isOnline: false, sessionId: 1 });
+useNearbyPlaceSuggestions({ enabled: true, isOnline: false, sessionId: "expense-a" });
 expect(getCurrentCoordinates).not.toHaveBeenCalled();
 
-useNearbyPlaceSuggestions({ enabled: true, isOnline: true, sessionId: 2 });
+useNearbyPlaceSuggestions({ enabled: true, isOnline: true, sessionId: "expense-b" });
 window.dispatchEvent(new Event("focus"));
 window.dispatchEvent(new Event("online"));
 expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
 ```
 
-Assert that successful data includes both `suggestions` and the coordinates used for location bias.
+Assert that successful data includes both `suggestions` and the coordinates used for location bias. With one shared QueryClient, change to a new UUID session and assert exactly one additional lookup; then remount with another UUID and prove it cannot reuse the first mount's fresh cache entry. Use a deferred geolocation promise to assert `isLoading` transitions from true to false.
 
 - [ ] **Step 2: Run the hook test and verify failure**
 
@@ -166,7 +166,7 @@ Expected: FAIL because the hook lacks `isOnline`, returns strings, and can refet
 
 - [ ] **Step 3: Implement the exact TanStack query policy**
 
-Use this query shape:
+Use a collision-free UUID string generated for every logical expense-entry session; a component-local numeric counter can collide with the global QueryClient's still-fresh cache after remount. Use this query shape:
 
 ```ts
 useQuery({
@@ -247,7 +247,7 @@ export function usePlaceAutocomplete({
 }: {
   open: boolean;
   enabled: boolean;
-  sessionId: number;
+  sessionId: string;
   locationBias?: Coordinates;
 }): {
   input: string;
@@ -403,7 +403,7 @@ Expected: FAIL because the predicate is absent.
 
 In the current flow, map state into the predicate as `mode: editingTransaction ? "edit" : "create"` and `hasReceipt: step === 2 || receiptData !== null`. Always call nearby/autocomplete hooks, but pass `enabled: false` outside eligibility; never conditionally call a hook. Search enablement is also gated by `isOnline && hasGoogleMapsApiKey()`, so opening/closed state cannot load Maps while offline or unconfigured.
 
-Keep a separate `placeSearchOpen` plus incrementing `placeSearchSessionId` and a ref to the Search chip. Render `PlaceSearchDrawer` at the flow root. A nearby selection writes `suggestion.name`; an autocomplete selection first calls the hook's `selectSuggestion(suggestion)` so `fetchFields()` completes the provider session, then writes the resolved display name and closes:
+Keep a separate `placeSearchOpen`, generate a fresh UUID string for the nearby transaction session and each opened place-search session, and retain a ref to the Search chip. Render `PlaceSearchDrawer` at the flow root. A nearby selection writes `suggestion.name`; an autocomplete selection first calls the hook's `selectSuggestion(suggestion)` so `fetchFields()` completes the provider session, then writes the resolved display name and closes:
 
 ```ts
 const displayName = await placeAutocomplete.selectSuggestion(suggestion);
