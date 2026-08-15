@@ -1,5 +1,24 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import * as path from 'node:path';
+
+function getVisibleIphoneFrame(page: Page) {
+  return page
+    .getByRole('img', { name: 'iPhone 17 frame' })
+    .filter({ visible: true });
+}
+
+async function activateVisibleDemo(page: Page) {
+  const iphoneFrame = getVisibleIphoneFrame(page);
+  await expect(iphoneFrame).toBeVisible();
+
+  const activateButton = iphoneFrame.getByRole('button', { name: 'Activate demo' });
+  await expect(activateButton).toBeVisible();
+  await activateButton.click();
+
+  const transactionDemo = iphoneFrame.getByTestId('transaction-flow-demo');
+  await expect(transactionDemo).toBeVisible();
+  return transactionDemo;
+}
 
 test.describe('Landing Page', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,36 +27,31 @@ test.describe('Landing Page', () => {
 
   test('displays hero section with key messaging', async ({ page }) => {
     // Check main headline emphasizes speed
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Lightning-fast');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      'Log transactions to Google Sheets in seconds',
+    );
 
     // Check Google Sheets integration is mentioned
     await expect(page.getByText(/Google Sheet/i).first()).toBeVisible();
   });
 
   test('shows the interactive iPhone demo', async ({ page }) => {
-    const iphoneFrame = page.locator('[aria-label="iPhone 17 frame"]');
+    const iphoneFrame = getVisibleIphoneFrame(page);
     await expect(iphoneFrame).toBeVisible();
   });
 
   test('demo can be activated and shows transaction flow', async ({ page }) => {
-    // Find and click the tap to activate button
-    const activateButton = page.getByRole('button', { name: /activate demo/i });
-
-    if (await activateButton.isVisible()) {
-      await activateButton.click();
-    }
-
-    // Check that the transaction demo is visible
-    const transactionDemo = page.getByTestId('transaction-flow-demo');
-    await expect(transactionDemo).toBeVisible();
+    await activateVisibleDemo(page);
   });
 
   test('has navigation to app', async ({ page }) => {
-    const continueLink = page.getByRole('link', { name: /continue/i });
+    const continueLink = page.getByRole('link', { name: 'Continue in browser' });
     await expect(continueLink).toBeVisible();
+    await expect(continueLink).toHaveAttribute('href', '/app');
 
-    const browserLink = page.getByRole('link', { name: /use in browser/i });
+    const browserLink = page.getByRole('link', { name: 'Try in browser' });
     await expect(browserLink).toBeVisible();
+    await expect(browserLink).toHaveAttribute('href', '/app');
   });
 
   test('shows install tips for mobile platforms', async ({ page }) => {
@@ -62,21 +76,23 @@ test.describe('Landing Page - Rapid Logging Demo', () => {
   test('demo shows timing badge after transaction completes', async ({ page }) => {
     await page.goto('/');
 
-    // Activate the demo
-    const activateButton = page.getByRole('button', { name: /activate demo/i });
-    if (await activateButton.isVisible()) {
-      await activateButton.click();
-    }
+    const transactionDemo = await activateVisibleDemo(page);
+    await transactionDemo
+      .getByRole('button', { name: 'Coffee & Snacks', exact: true })
+      .click();
 
-    // Wait for demo to be ready
-    const transactionDemo = page.getByTestId('transaction-flow-demo');
-    await expect(transactionDemo).toBeVisible();
+    const dateDrawer = getVisibleIphoneFrame(page).getByRole('dialog', {
+      name: 'Date & time',
+    });
+    await expect(dateDrawer).toBeVisible();
+    await dateDrawer.getByRole('button', { name: 'Done' }).click();
 
-    // Select a category (e.g., Coffee)
-    const categoryButton = page.locator('[data-testid="transaction-flow-demo"]').getByText(/coffee/i).first();
-    if (await categoryButton.isVisible({ timeout: 5000 })) {
-      await categoryButton.click();
-    }
+    const keypad = transactionDemo.getByRole('group', { name: 'Amount keypad' });
+    await keypad.getByRole('button', { name: '1', exact: true }).click();
+    await transactionDemo.getByRole('button', { name: 'Submit', exact: true }).click();
+
+    await expect(transactionDemo.getByText('Payment Successful')).toBeVisible();
+    await expect(transactionDemo.getByText(/^\d+\.\d+s$/)).toBeVisible();
   });
 });
 
@@ -120,9 +136,9 @@ test.describe('Landing Page - Speed and Visual Elements', () => {
     await page.goto('/');
 
     // Check for the three main value props
-    await expect(page.getByText(/Blazing fast entry/i)).toBeVisible();
-    await expect(page.getByText(/Your data in Google Sheets/i)).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Works offline/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Lightning fast' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your data in Google Sheets' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Works offline' })).toBeVisible();
   });
 
   test('displays Google Sheets icon with gradient branding', async ({ page }) => {
@@ -137,19 +153,20 @@ test.describe('Landing Page - Speed and Visual Elements', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Wait for animations to settle
-    await page.waitForTimeout(1500);
+    const hero = page.locator('main section').first();
+    await expect(hero).toBeVisible();
 
     // Take full page screenshot
     await page.screenshot({
       path: path.join('test-results', 'landing-page-full.png'),
       fullPage: true,
+      animations: 'disabled',
     });
 
     // Take hero section screenshot
-    const hero = page.locator('section').first();
     await hero.screenshot({
       path: path.join('test-results', 'landing-page-hero.png'),
+      animations: 'disabled',
     });
   });
 });
@@ -160,12 +177,14 @@ test.describe('Landing Page - Spreadsheet Preview', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/');
 
-    // Wait for animations
-    await page.waitForTimeout(1000);
-
     // Check for live sync text (only visible on lg screens)
-    const syncText = page.getByText(/Live sync to your Google Sheet/i);
+    const syncText = page
+      .getByText('Syncing to Google Sheets', { exact: true })
+      .filter({ visible: true });
     await expect(syncText).toBeVisible();
+    await expect(
+      page.getByText('Real-time sync', { exact: true }).filter({ visible: true }),
+    ).toBeVisible();
   });
 
   test('shows spreadsheet preview on mobile', async ({ page }) => {
@@ -174,6 +193,15 @@ test.describe('Landing Page - Spreadsheet Preview', () => {
     await page.goto('/');
 
     // On mobile, the spreadsheet preview should be in a dedicated section
-    await expect(page.getByText(/Live sync to Google Sheets/i)).toBeVisible();
+    await expect(
+      page
+        .getByText('SheetLog Transactions', { exact: true })
+        .filter({ visible: true }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByText('Appears in your Google Sheet', { exact: true })
+        .filter({ visible: true }),
+    ).toBeVisible();
   });
 });
