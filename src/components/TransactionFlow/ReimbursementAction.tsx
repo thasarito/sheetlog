@@ -69,11 +69,19 @@ export function ReimbursementAction({
       </fieldset>
 
       {isChecking ? (
-        <p className="text-[10px] text-muted-foreground">
+        <output
+          className="text-[10px] text-muted-foreground"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           Checking reimbursements...
-        </p>
+        </output>
       ) : isError ? (
-        <p className="flex items-center gap-1 text-[10px] text-danger">
+        <div
+          role="alert"
+          aria-atomic="true"
+          className="flex items-center gap-1 text-[10px] text-danger"
+        >
           Unable to check reimbursements.
           <button
             type="button"
@@ -82,19 +90,35 @@ export function ReimbursementAction({
           >
             Retry
           </button>
-        </p>
+        </div>
       ) : hasCurrencyMismatch ? (
-        <p className="text-[10px] text-danger">
+        <output
+          className="text-[10px] text-danger"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           Currency mismatch in linked reimbursements
-        </p>
+        </output>
       ) : isOverReimbursed ? (
-        <p className="text-[10px] text-danger">
+        <output
+          className="text-[10px] text-danger"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           Over-reimbursed by {currency} {formatAmount(summary.overReimbursed)}
-        </p>
+        </output>
+      ) : isFullyReimbursed ? (
+        <output className="sr-only" aria-live="polite" aria-atomic="true">
+          Fully reimbursed
+        </output>
       ) : needsOnlineVerification ? (
-        <p className="text-[10px] text-muted-foreground">
+        <output
+          className="text-[10px] text-muted-foreground"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           Balance will be verified when online
-        </p>
+        </output>
       ) : null}
 
       <button

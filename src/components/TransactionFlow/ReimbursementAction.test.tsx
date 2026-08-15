@@ -73,6 +73,8 @@ describe("ReimbursementAction", () => {
     });
 
     expect(screen.getByText("Checking reimbursements...")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
     const action = screen.getByRole("button", { name: "Reimburse" });
     expect(action).toBeDisabled();
     await user.click(action);
@@ -85,7 +87,11 @@ describe("ReimbursementAction", () => {
     const onReimburse = vi.fn();
     renderAction({ isError: true, onRetry, onReimburse });
 
-    await user.click(screen.getByRole("button", { name: "Retry" }));
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveAttribute("aria-atomic", "true");
+    expect(alert).not.toHaveAttribute("aria-live");
+    expect(within(alert).queryByRole("status")).not.toBeInTheDocument();
+    await user.click(within(alert).getByRole("button", { name: "Retry" }));
 
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Reimburse" })).toBeDisabled();
@@ -100,6 +106,8 @@ describe("ReimbursementAction", () => {
     expect(
       screen.getByText("Balance will be verified when online")
     ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
     await user.click(screen.getByRole("button", { name: "Reimburse" }));
 
     expect(onReimburse).toHaveBeenCalledTimes(1);
@@ -115,6 +123,8 @@ describe("ReimbursementAction", () => {
     expect(
       screen.getByRole("button", { name: "Fully reimbursed" })
     ).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Fully reimbursed");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
     expect(onReimburse).not.toHaveBeenCalled();
   });
 
@@ -126,6 +136,7 @@ describe("ReimbursementAction", () => {
     expect(
       screen.getByText("Currency mismatch in linked reimbursements")
     ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
     expect(screen.getByRole("button", { name: "Reimburse" })).toBeDisabled();
   });
 
@@ -140,6 +151,7 @@ describe("ReimbursementAction", () => {
     });
 
     expect(screen.getByText("Over-reimbursed by THB 10")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
     expect(screen.getByRole("button", { name: "Reimburse" })).toBeDisabled();
   });
 

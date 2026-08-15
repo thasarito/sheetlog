@@ -29,9 +29,11 @@ describe("StepReceipt", () => {
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
     expect(screen.getByTestId("receipt-timed-progress")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
   });
 
-  it("shows saving copy while a reimbursement mutation is pending", () => {
+  it("gives pending precedence over a stale success flag", () => {
     render(
       <StepReceipt
         {...receipt}
@@ -48,6 +50,34 @@ describe("StepReceipt", () => {
       screen.getByText("Hang tight while we record this reimbursement.")
     ).toBeInTheDocument();
     expect(screen.queryByText("Reimbursement recorded")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Check")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Undo reimbursement" })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("gives pending precedence over a stale error flag", () => {
+    const { container } = render(
+      <StepReceipt
+        {...receipt}
+        variant="reimbursement"
+        isPending
+        isSuccess={false}
+        isError
+        errorMessage="Stale failure"
+      />
+    );
+
+    expect(screen.getByText("Saving reimbursement")).toBeInTheDocument();
+    expect(screen.queryByText("Reimbursement failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale failure")).not.toBeInTheDocument();
+    expect(container.querySelector(".lucide-circle-x")).not.toBeInTheDocument();
+    expect(container.querySelector(".lucide-loader-circle")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("describes a pending reimbursement as queued locally", async () => {
@@ -127,6 +157,54 @@ describe("StepReceipt", () => {
     expect(
       screen.getByText("Amount exceeds remaining reimbursement balance")
     ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveAttribute("aria-atomic", "true");
+    expect(screen.getByRole("alert")).not.toHaveAttribute("aria-live");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("keeps visuals, announcements, and actions aligned across state transitions", () => {
+    const { rerender } = render(
+      <StepReceipt
+        {...receipt}
+        variant="reimbursement"
+        isPending
+        isSuccess={false}
+        isError={false}
+      />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Saving reimbursement");
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
+
+    rerender(
+      <StepReceipt
+        {...receipt}
+        variant="reimbursement"
+        syncStatus="synced"
+        isPending={false}
+        isSuccess
+        isError={false}
+      />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Reimbursement recorded");
+    expect(screen.getByTitle("Check")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+
+    rerender(
+      <StepReceipt
+        {...receipt}
+        variant="reimbursement"
+        isPending={false}
+        isSuccess={false}
+        isError
+        errorMessage="Could not save"
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Reimbursement failed");
+    expect(screen.queryByTitle("Check")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
   });
 
   it("supports focused action labels and an explicit progress override", () => {

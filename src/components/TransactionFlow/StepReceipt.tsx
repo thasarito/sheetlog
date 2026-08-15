@@ -69,6 +69,8 @@ export function StepReceipt({
     : isError
     ? "error"
     : "loading";
+  const isStatusSuccess = normalizedStatus === "success";
+  const isStatusError = normalizedStatus === "error";
   const isReimbursement = variant === "reimbursement";
   let statusTitle: string;
   let statusDescription: string;
@@ -105,10 +107,10 @@ export function StepReceipt({
   const checkIconRef = useRef<CircleCheckIconHandle | null>(null);
 
   useEffect(() => {
-    if (isSuccess) {
+    if (isStatusSuccess) {
       checkIconRef.current?.startAnimation();
     }
-  }, [isSuccess]);
+  }, [isStatusSuccess]);
 
   const summaryRows = useMemo(
     () => [
@@ -139,10 +141,13 @@ export function StepReceipt({
     <div className="flex h-full flex-col justify-between gap-6 pb-6 px-4">
       <div className="space-y-6">
         <div
+          role={isStatusError ? "alert" : "status"}
+          aria-live={isStatusError ? undefined : "polite"}
+          aria-atomic="true"
           className={
-            isSuccess
+            isStatusSuccess
               ? "rounded-[28px] border border-success/20 bg-gradient-to-b from-success/15 via-background to-background p-5"
-              : isError
+              : isStatusError
               ? "rounded-[28px] border border-danger/20 bg-card p-5"
               : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5"
           }
@@ -150,20 +155,21 @@ export function StepReceipt({
           <div className="flex items-start gap-4">
             <span
               className={
-                isSuccess
+                isStatusSuccess
                   ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-success/15 text-success"
-                  : isError
+                  : isStatusError
                   ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-danger/10 text-danger"
                   : "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-card text-muted-foreground"
               }
+              aria-hidden="true"
             >
-              {isSuccess ? (
+              {isStatusSuccess ? (
                 <CircleCheckIcon
                   ref={checkIconRef}
                   size={22}
                   className="text-success"
                 />
-              ) : isError ? (
+              ) : isStatusError ? (
                 <XCircle className="h-5 w-5 text-danger" />
               ) : (
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -175,14 +181,14 @@ export function StepReceipt({
               </p>
               <p
                 className={
-                  isSuccess
+                  isStatusSuccess
                     ? "text-2xl font-semibold text-success"
                     : "text-xl font-semibold text-foreground"
                 }
               >
                 {amountDisplay}
               </p>
-              {isSuccess && !isReimbursement ? null : (
+              {isStatusSuccess && !isReimbursement ? null : (
                 <p className="text-xs text-muted-foreground">
                   {statusDescription}
                 </p>
@@ -218,7 +224,7 @@ export function StepReceipt({
         </div>
       </div>
 
-      {isSuccess ? (
+      {isStatusSuccess ? (
         <div className="space-y-3">
           <button
             type="button"
