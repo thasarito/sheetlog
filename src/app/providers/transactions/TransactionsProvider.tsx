@@ -138,6 +138,7 @@ type TransactionsState = {
   isSyncing: boolean;
   lastSyncError: string | null;
   lastSyncErrorAt: string | null;
+  lastSyncErrorScope: ActiveTransactionScope | null;
   lastSyncAt: string | null;
 };
 
@@ -166,7 +167,13 @@ type TransactionsAction =
   | { type: "set_recent"; recentCategories: RecentCategories }
   | { type: "sync_start" }
   | { type: "sync_end" }
-  | { type: "sync_error"; message: string; at: string }
+  | {
+      type: "sync_error";
+      message: string;
+      at: string;
+      scope: ActiveTransactionScope;
+    }
+  | { type: "clear_stale_sync_error"; activeScope: ActiveTransactionScope }
   | { type: "sync_success"; at: string };
 
 function transactionsReducer(
@@ -190,12 +197,27 @@ function transactionsReducer(
         ...state,
         lastSyncError: action.message,
         lastSyncErrorAt: action.at,
+        lastSyncErrorScope: action.scope,
+      };
+    case "clear_stale_sync_error":
+      if (
+        !state.lastSyncErrorScope ||
+        isSameActiveScope(state.lastSyncErrorScope, action.activeScope)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        lastSyncError: null,
+        lastSyncErrorAt: null,
+        lastSyncErrorScope: null,
       };
     case "sync_success":
       return {
         ...state,
         lastSyncError: null,
         lastSyncErrorAt: null,
+        lastSyncErrorScope: null,
         lastSyncAt: action.at,
       };
     default:
@@ -215,6 +237,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     isSyncing: false,
     lastSyncError: null,
     lastSyncErrorAt: null,
+    lastSyncErrorScope: null,
     lastSyncAt: null,
   });
   const syncingRef = useRef(state.isSyncing);
@@ -229,6 +252,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     syncingRef.current = state.isSyncing;
   }, [state.isSyncing]);
+
+  useEffect(() => {
+    dispatch({
+      type: "clear_stale_sync_error",
+      activeScope: { accessToken, sheetId, userId },
+    });
+  }, [accessToken, sheetId, userId]);
 
   const refreshStats = useCallback(async () => {
     const requestedScope = { accessToken, sheetId, userId };
@@ -321,6 +351,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           type: "sync_error",
           message: info.message,
           at: new Date().toISOString(),
+          scope: requestedScope,
         });
       }
     } finally {
@@ -690,6 +721,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             type: "sync_error",
             message: info.message,
             at: new Date().toISOString(),
+            scope: requestedScope,
           });
         }
       }
@@ -840,6 +872,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               type: "sync_error",
               message: info.message,
               at: new Date().toISOString(),
+              scope: requestedScope,
             });
           }
         }
@@ -979,12 +1012,20 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     [deleteTransactionUnlocked, runExclusive],
   );
 
+  const hasCurrentSyncError =
+    state.lastSyncErrorScope !== null &&
+    isSameActiveScope(state.lastSyncErrorScope, {
+      accessToken,
+      sheetId,
+      userId,
+    });
+
   const value = useMemo<TransactionsContextValue>(
     () => ({
       queueCount: state.queueCount,
       recentCategories: state.recentCategories,
-      lastSyncError: state.lastSyncError,
-      lastSyncErrorAt: state.lastSyncErrorAt,
+      lastSyncError: hasCurrentSyncError ? state.lastSyncError : null,
+      lastSyncErrorAt: hasCurrentSyncError ? state.lastSyncErrorAt : null,
       lastSyncAt: state.lastSyncAt,
       addTransaction,
       updateTransaction,
@@ -999,6 +1040,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       state.lastSyncError,
       state.lastSyncErrorAt,
       state.lastSyncAt,
+      hasCurrentSyncError,
       addTransaction,
       updateTransaction,
       deleteTransaction,

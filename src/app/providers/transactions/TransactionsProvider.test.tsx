@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../../lib/db";
 import { GoogleApiError } from "../../../lib/google";
@@ -158,14 +159,26 @@ function transaction(
   };
 }
 
-function createProviderHarness() {
+function createProviderHarness(
+  onSyncError?: (message: string, at: string) => void,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   let context: TransactionsContextValue | null = null;
+  let captureKey = 0;
 
   function CaptureContext() {
-    context = useTransactions();
+    const capturedContext = useTransactions();
+    const { lastSyncError, lastSyncErrorAt } = capturedContext;
+    context = capturedContext;
+
+    useEffect(() => {
+      if (lastSyncError && lastSyncErrorAt) {
+        onSyncError?.(lastSyncError, lastSyncErrorAt);
+      }
+    }, [lastSyncError, lastSyncErrorAt, onSyncError]);
+
     return null;
   }
 
@@ -173,7 +186,7 @@ function createProviderHarness() {
     return (
       <QueryClientProvider client={queryClient}>
         <TransactionsProvider>
-          <CaptureContext />
+          <CaptureContext key={captureKey} />
         </TransactionsProvider>
       </QueryClientProvider>
     );
@@ -184,7 +197,10 @@ function createProviderHarness() {
   return {
     queryClient,
     rendered,
-    rerender() {
+    rerender({ remountConsumer = false } = {}) {
+      if (remountConsumer) {
+        captureKey += 1;
+      }
       rendered.rerender(tree());
     },
     getContext() {
@@ -350,6 +366,58 @@ describe("TransactionsProvider", () => {
     expect(providerState.signOut).toHaveBeenCalledWith("access-token");
     expect(harness.getContext().queueCount).toBe(0);
     expect(harness.getContext().lastSyncError).toBeNull();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not replay account A's recorded sync error when account B remounts the flow", async () => {
+    const observedErrors: string[] = [];
+    vi.mocked(syncPendingTransactions).mockRejectedValue(
+      new TypeError("Account A is offline"),
+    );
+    const harness = createProviderHarness((message) => {
+      observedErrors.push(message);
+    });
+
+    await act(async () => {
+      await harness.getContext().syncNow();
+    });
+    expect(harness.getContext().lastSyncError).toBe(
+      "Network error while syncing.",
+    );
+    expect(harness.getContext().lastSyncErrorAt).not.toBeNull();
+    expect(observedErrors).toEqual(["Network error while syncing."]);
+
+    await db.transactions.add(
+      transaction("account-b-pending", {
+        status: "pending",
+        sheetId: undefined,
+        sheetRow: undefined,
+        targetSheetId: "sheet-b",
+        targetUserId: "user-b",
+      }),
+    );
+    observedErrors.length = 0;
+    providerState.accessToken = "access-token-b";
+    providerState.userId = "user-b";
+    providerState.sheetId = "sheet-b";
+    harness.rerender({ remountConsumer: true });
+
+    await waitFor(() => {
+      expect(harness.getContext().queueCount).toBe(1);
+    });
+    expect(observedErrors).toEqual([]);
+    expect(harness.getContext().lastSyncError).toBeNull();
+    expect(harness.getContext().lastSyncErrorAt).toBeNull();
+
+    await act(async () => {
+      await harness.getContext().syncNow();
+    });
+    expect(observedErrors).toEqual(["Network error while syncing."]);
+    expect(harness.getContext().lastSyncError).toBe(
+      "Network error while syncing.",
+    );
 
     harness.rendered.unmount();
     harness.queryClient.clear();
