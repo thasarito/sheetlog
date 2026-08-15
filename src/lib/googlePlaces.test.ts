@@ -2,9 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GEOLOCATION_OPTIONS,
   MissingGoogleMapsApiKeyError,
+  createPlaceAutocompleteSession,
   getCurrentCoordinates,
-  getNearbyPlaceNames,
+  getNearbyPlaces,
   resetGooglePlacesLoaderForTests,
+  resolvePlaceSuggestionName,
+  searchPlaceSuggestions,
+  endPlaceAutocompleteSession,
 } from "./googlePlaces";
 
 function installGeolocationMock(
@@ -79,7 +83,7 @@ describe("getCurrentCoordinates", () => {
   });
 });
 
-describe("getNearbyPlaceNames", () => {
+describe("Google Places browser client", () => {
   afterEach(() => {
     resetGooglePlacesLoaderForTests();
     vi.restoreAllMocks();
@@ -89,16 +93,22 @@ describe("getNearbyPlaceNames", () => {
 
   it("throws a typed error when the API key is missing", async () => {
     await expect(
-      getNearbyPlaceNames({ lat: 13.7563, lng: 100.5018 }, { apiKey: "" })
+      getNearbyPlaces({ lat: 13.7563, lng: 100.5018 }, { apiKey: "" })
     ).rejects.toBeInstanceOf(MissingGoogleMapsApiKeyError);
   });
 
-  it("requests only displayName and returns place names", async () => {
+  it("returns up to five unique, well-formed nearby suggestions", async () => {
     const searchNearby = vi.fn(async () => ({
       places: [
-        { displayName: "Starbucks" },
-        { displayName: { text: "7-Eleven" } },
-        { displayName: "" },
+        { id: "starbucks", displayName: "Starbucks", formattedAddress: "Bangkok" },
+        { id: "seven-eleven", displayName: { text: "7-Eleven" } },
+        { id: "starbucks", displayName: "Duplicate", formattedAddress: "Other" },
+        { id: "missing-name", formattedAddress: "Bangkok" },
+        { displayName: "Missing id" },
+        { id: "cafe-amazon", displayName: "Cafe Amazon" },
+        { id: "dunkin", displayName: "Dunkin" },
+        { id: "kfc", displayName: "KFC" },
+        { id: "pizza", displayName: "Pizza" },
       ],
     }));
 
@@ -111,14 +121,20 @@ describe("getNearbyPlaceNames", () => {
       },
     };
 
-    const names = await getNearbyPlaceNames(
+    const suggestions = await getNearbyPlaces(
       { lat: 13.7563, lng: 100.5018 },
       { apiKey: "test-key" }
     );
 
-    expect(names).toEqual(["Starbucks", "7-Eleven"]);
+    expect(suggestions).toEqual([
+      { placeId: "starbucks", name: "Starbucks", secondaryText: "Bangkok" },
+      { placeId: "seven-eleven", name: "7-Eleven" },
+      { placeId: "cafe-amazon", name: "Cafe Amazon" },
+      { placeId: "dunkin", name: "Dunkin" },
+      { placeId: "kfc", name: "KFC" },
+    ]);
     expect(searchNearby).toHaveBeenCalledWith({
-      fields: ["displayName"],
+      fields: ["id", "displayName", "formattedAddress"],
       locationRestriction: {
         center: { lat: 13.7563, lng: 100.5018 },
         radius: 100,
@@ -130,10 +146,10 @@ describe("getNearbyPlaceNames", () => {
 
   it("loads the Maps JavaScript API when the importer is missing", async () => {
     const searchNearby = vi.fn(async () => ({
-      places: [{ displayName: "Cafe Amazon" }],
+      places: [{ id: "cafe-amazon", displayName: "Cafe Amazon" }],
     }));
 
-    const promise = getNearbyPlaceNames(
+    const promise = getNearbyPlaces(
       { lat: 13.7563, lng: 100.5018 },
       { apiKey: "browser-key" }
     );
@@ -157,6 +173,146 @@ describe("getNearbyPlaceNames", () => {
     };
     script.dispatchEvent(new Event("load"));
 
-    await expect(promise).resolves.toEqual(["Cafe Amazon"]);
+    await expect(promise).resolves.toEqual([
+      { placeId: "cafe-amazon", name: "Cafe Amazon" },
+    ]);
+  });
+
+  it("uses one autocomplete session and maps prediction names with address text", async () => {
+    class AutocompleteSessionToken {}
+    const fetchAutocompleteSuggestions = vi.fn(async () => ({
+      suggestions: [
+        {
+          placePrediction: {
+            placeId: "cafe-amazon",
+            structuredFormat: {
+              mainText: { text: "Cafe Amazon" },
+              secondaryText: { text: "Sukhumvit, Bangkok" },
+            },
+            toPlace: vi.fn(),
+          },
+        },
+        { placePrediction: { placeId: "missing-name" } },
+      ],
+    }));
+
+    window.google = {
+      maps: {
+        importLibrary: vi.fn(async () => ({
+          AutocompleteSessionToken,
+          AutocompleteSuggestion: { fetchAutocompleteSuggestions },
+          Place: { searchNearby: vi.fn() },
+          SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
+        })),
+      },
+    };
+
+    const session = await createPlaceAutocompleteSession({ apiKey: "test-key" });
+    const suggestions = await searchPlaceSuggestions(
+      "cafe",
+      session,
+      { lat: 13.7563, lng: 100.5018 }
+    );
+
+    expect(suggestions).toEqual([
+      {
+        placeId: "cafe-amazon",
+        name: "Cafe Amazon",
+        secondaryText: "Sukhumvit, Bangkok",
+      },
+    ]);
+    expect(fetchAutocompleteSuggestions).toHaveBeenCalledWith({
+      input: "cafe",
+      includedPrimaryTypes: ["establishment"],
+      sessionToken: session.token,
+      locationBias: {
+        center: { lat: 13.7563, lng: 100.5018 },
+        radius: 5000,
+      },
+    });
+  });
+
+  it("resolves a selected prediction name and forgets it when the session ends", async () => {
+    class AutocompleteSessionToken {}
+    const fetchFields = vi.fn(async () => ({
+      displayName: { text: "Resolved Cafe" },
+    }));
+    const toPlace = vi.fn(() => ({ fetchFields }));
+
+    window.google = {
+      maps: {
+        importLibrary: vi.fn(async () => ({
+          AutocompleteSessionToken,
+          AutocompleteSuggestion: {
+            fetchAutocompleteSuggestions: vi.fn(async () => ({
+              suggestions: [
+                {
+                  placePrediction: {
+                    placeId: "resolved-cafe",
+                    structuredFormat: { mainText: { text: "Predicted Cafe" } },
+                    toPlace,
+                  },
+                },
+              ],
+            })),
+          },
+          Place: { searchNearby: vi.fn() },
+          SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
+        })),
+      },
+    };
+
+    const session = await createPlaceAutocompleteSession({ apiKey: "test-key" });
+    const [suggestion] = await searchPlaceSuggestions("cafe", session);
+
+    await expect(resolvePlaceSuggestionName(suggestion, session)).resolves.toBe(
+      "Resolved Cafe"
+    );
+    expect(fetchFields).toHaveBeenCalledWith({ fields: ["displayName"] });
+
+    endPlaceAutocompleteSession(session);
+    await expect(resolvePlaceSuggestionName(suggestion, session)).rejects.toThrow(
+      "Place suggestion is no longer available"
+    );
+  });
+
+  it("retries script loading with a fresh script after a load failure", async () => {
+    const firstRequest = getNearbyPlaces(
+      { lat: 13.7563, lng: 100.5018 },
+      { apiKey: "browser-key" }
+    );
+    const failedScript = document.getElementById(
+      "google-maps-js-api"
+    ) as HTMLScriptElement;
+    failedScript.dispatchEvent(new Event("error"));
+
+    await expect(firstRequest).rejects.toThrow("Failed to load Google Maps");
+    expect(document.getElementById("google-maps-js-api")).toBeNull();
+
+    const searchNearby = vi.fn(async () => ({
+      places: [{ id: "fresh-cafe", displayName: "Fresh Cafe" }],
+    }));
+    const secondRequest = getNearbyPlaces(
+      { lat: 13.7563, lng: 100.5018 },
+      { apiKey: "browser-key" }
+    );
+    const freshScript = document.getElementById(
+      "google-maps-js-api"
+    ) as HTMLScriptElement;
+    expect(freshScript).not.toBe(failedScript);
+
+    window.google = {
+      maps: {
+        importLibrary: vi.fn(async () => ({
+          Place: { searchNearby },
+          SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
+        })),
+      },
+    };
+    freshScript.dispatchEvent(new Event("load"));
+
+    await expect(secondRequest).resolves.toEqual([
+      { placeId: "fresh-cafe", name: "Fresh Cafe" },
+    ]);
   });
 });
