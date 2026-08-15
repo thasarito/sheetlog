@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getCurrentCoordinates,
   getNearbyPlaces,
@@ -23,6 +24,7 @@ export function useNearbyPlaceSuggestions({
   sessionId: string;
 }) {
   const canSearch = enabled && isOnline && hasGoogleMapsApiKey();
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: nearbyPlaceSuggestionKeys.session(sessionId),
     enabled: canSearch,
@@ -31,27 +33,46 @@ export function useNearbyPlaceSuggestions({
     gcTime: 1000 * 30,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       let coordinates: Coordinates;
       try {
         coordinates = await getCurrentCoordinates();
       } catch {
+        signal.throwIfAborted();
         return { coordinates: undefined, suggestions: [] };
       }
+      signal.throwIfAborted();
 
       try {
+        const suggestions = await getNearbyPlaces(coordinates);
+        signal.throwIfAborted();
         return {
           coordinates,
-          suggestions: await getNearbyPlaces(coordinates),
+          suggestions,
         };
       } catch {
+        signal.throwIfAborted();
         return { coordinates, suggestions: [] };
       }
     },
   });
 
+  useEffect(() => {
+    const queryKey = nearbyPlaceSuggestionKeys.session(sessionId);
+    const clearSession = () => {
+      void queryClient.cancelQueries({ queryKey, exact: true });
+      queryClient.removeQueries({ queryKey, exact: true });
+    };
+
+    if (!canSearch) {
+      clearSession();
+    }
+
+    return clearSession;
+  }, [canSearch, queryClient, sessionId]);
+
   const data: { suggestions: PlaceSuggestion[]; coordinates?: Coordinates } =
-    query.data ?? { suggestions: [] };
+    canSearch ? (query.data ?? { suggestions: [] }) : { suggestions: [] };
 
   return {
     suggestions: data.suggestions,

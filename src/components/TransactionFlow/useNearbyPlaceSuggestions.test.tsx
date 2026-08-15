@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,7 +7,10 @@ import {
   getNearbyPlaces,
   hasGoogleMapsApiKey,
 } from "../../lib/googlePlaces";
-import { useNearbyPlaceSuggestions } from "./useNearbyPlaceSuggestions";
+import {
+  nearbyPlaceSuggestionKeys,
+  useNearbyPlaceSuggestions,
+} from "./useNearbyPlaceSuggestions";
 
 vi.mock("../../lib/googlePlaces", () => ({
   getCurrentCoordinates: vi.fn(),
@@ -35,9 +38,12 @@ const sessionIds = {
   lifecycleB: "0198b949-5f77-7d98-a53a-bce26d004a32",
   lifecycleC: "0198b949-5f77-7d98-a53a-bce26d004a33",
   deferred: "0198b949-5f77-7d98-a53a-bce26d004a34",
+  disabledAfterSuccess: "0198b949-5f77-7d98-a53a-bce26d004a35",
+  deferredGeolocation: "0198b949-5f77-7d98-a53a-bce26d004a36",
+  deferredPlaces: "0198b949-5f77-7d98-a53a-bce26d004a37",
 };
 
-function createWrapper() {
+function createHarness() {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -47,11 +53,18 @@ function createWrapper() {
     },
   });
 
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
+  return {
+    queryClient,
+    wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      );
+    },
   };
+}
+
+function createWrapper() {
+  return createHarness().wrapper;
 }
 
 describe("useNearbyPlaceSuggestions", () => {
@@ -289,5 +302,120 @@ describe("useNearbyPlaceSuggestions", () => {
       expect(result.current.isLoading).toBe(false);
     });
     expect(result.current.suggestions).toEqual(suggestions);
+  });
+
+  it("clears coordinates, suggestions, and the session cache when disabled", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    vi.mocked(getNearbyPlaces).mockResolvedValue(suggestions);
+    const { queryClient, wrapper } = createHarness();
+    const queryKey = nearbyPlaceSuggestionKeys.session(
+      sessionIds.disabledAfterSuccess,
+    );
+    const { result, rerender } = renderHook(
+      ({ enabled }) =>
+        useNearbyPlaceSuggestions({
+          enabled,
+          isOnline: true,
+          sessionId: sessionIds.disabledAfterSuccess,
+        }),
+      { initialProps: { enabled: true }, wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.suggestions).toEqual(suggestions);
+    });
+    expect(queryClient.getQueryData(queryKey)).toEqual({
+      coordinates,
+      suggestions,
+    });
+
+    rerender({ enabled: false });
+
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.coordinates).toBeUndefined();
+    await waitFor(() => {
+      expect(queryClient.getQueryData(queryKey)).toBeUndefined();
+    });
+  });
+
+  it("does not start Places or cache coordinates when disabled during geolocation", async () => {
+    let resolveCoordinates: ((value: typeof coordinates) => void) | undefined;
+    vi.mocked(getCurrentCoordinates).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCoordinates = resolve;
+        }),
+    );
+    vi.mocked(getNearbyPlaces).mockResolvedValue(suggestions);
+    const { queryClient, wrapper } = createHarness();
+    const queryKey = nearbyPlaceSuggestionKeys.session(
+      sessionIds.deferredGeolocation,
+    );
+    const { result, rerender } = renderHook(
+      ({ enabled }) =>
+        useNearbyPlaceSuggestions({
+          enabled,
+          isOnline: true,
+          sessionId: sessionIds.deferredGeolocation,
+        }),
+      { initialProps: { enabled: true }, wrapper },
+    );
+
+    await waitFor(() => {
+      expect(getCurrentCoordinates).toHaveBeenCalledTimes(1);
+    });
+    rerender({ enabled: false });
+    if (!resolveCoordinates) {
+      throw new Error("Geolocation request did not start");
+    }
+    const finishGeolocation = resolveCoordinates;
+    await act(async () => {
+      finishGeolocation(coordinates);
+      await Promise.resolve();
+    });
+
+    expect(getNearbyPlaces).not.toHaveBeenCalled();
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.coordinates).toBeUndefined();
+    expect(queryClient.getQueryData(queryKey)).toBeUndefined();
+  });
+
+  it("does not cache a Places result that completes after the session closes", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    let resolveNearbyPlaces: ((value: typeof suggestions) => void) | undefined;
+    vi.mocked(getNearbyPlaces).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveNearbyPlaces = resolve;
+        }),
+    );
+    const { queryClient, wrapper } = createHarness();
+    const queryKey = nearbyPlaceSuggestionKeys.session(sessionIds.deferredPlaces);
+    const { result, rerender } = renderHook(
+      ({ enabled }) =>
+        useNearbyPlaceSuggestions({
+          enabled,
+          isOnline: true,
+          sessionId: sessionIds.deferredPlaces,
+        }),
+      { initialProps: { enabled: true }, wrapper },
+    );
+
+    await waitFor(() => {
+      expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
+    });
+    rerender({ enabled: false });
+    if (!resolveNearbyPlaces) {
+      throw new Error("Nearby Places request did not start");
+    }
+    const finishNearbyPlaces = resolveNearbyPlaces;
+    await act(async () => {
+      finishNearbyPlaces(suggestions);
+      await Promise.resolve();
+    });
+
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.coordinates).toBeUndefined();
+    expect(queryClient.getQueryData(queryKey)).toBeUndefined();
   });
 });
