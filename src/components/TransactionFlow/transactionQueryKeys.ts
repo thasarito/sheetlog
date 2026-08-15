@@ -1,6 +1,6 @@
 export const transactionQueryKeys = {
-  recent: (sheetId: string | null, limit = 50) =>
-    ["recentTransactions", sheetId, limit] as const,
+  recent: (sheetId: string | null, userId: string | null, limit = 50) =>
+    ["recentTransactions", sheetId, userId, limit] as const,
   local: ["localTransactions"] as const,
   localForSheet: (
     sheetId: string | null,
@@ -9,9 +9,15 @@ export const transactionQueryKeys = {
   reimbursements: ["reimbursementSummary"] as const,
   reimbursement: (sheetId: string | null, sourceId: string) =>
     ["reimbursementSummary", sheetId, sourceId] as const,
-  transaction: (sheetId: string | null, id: string) =>
-    ["transactionById", sheetId, id] as const,
+  transaction: (
+    sheetId: string | null,
+    userId: string | null,
+    id: string,
+  ) => ["transactionById", sheetId, userId, id] as const,
   // Keep fallback beneath the remote-only key so one prefix invalidation refreshes both.
-  transactionFallback: (sheetId: string | null, id: string) =>
-    ["transactionById", sheetId, id, "fallback"] as const,
+  transactionFallback: (
+    sheetId: string | null,
+    userId: string | null,
+    id: string,
+  ) => ["transactionById", sheetId, userId, id, "fallback"] as const,
 };

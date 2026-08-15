@@ -31,6 +31,16 @@ It is not a secret; referrer and API restrictions are required to limit its use.
 All `VITE_*` values are embedded in the browser bundle. Never put an OAuth
 client secret in a Vite environment file or another browser build variable.
 
+### Local account isolation
+
+The selected Sheet is stored locally under the verified Google account subject,
+so switching accounts never reuses another account's workspace or offline
+transaction queue. Older unscoped `sheetlog.sheetId` and
+`sheetlog.sheetTabId` values are deliberately discarded instead of guessed to
+belong to the next signed-in account. After upgrading, an existing user may
+therefore need to select their Sheet once; subsequent selections are restored
+only for that verified account.
+
 ## Development
 
 ```bash

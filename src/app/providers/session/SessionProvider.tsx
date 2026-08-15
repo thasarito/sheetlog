@@ -1,5 +1,5 @@
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { STORAGE_KEYS } from "../../../lib/constants";
@@ -13,6 +13,7 @@ import {
   GOOGLE_TOKEN_QUERY_KEY,
   MIN_REFETCH_INTERVAL_MS,
   REFRESH_BUFFER_MS,
+  USER_PROFILE_QUERY_KEY,
 } from "./session.constants";
 import type {
   SessionContextValue,
@@ -23,7 +24,7 @@ import type {
 import { SessionContext } from "./SessionContext";
 
 const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
-const USER_PROFILE_QUERY_KEY = ["userProfile"] as const;
+let nextProfileSessionId = 0;
 
 type UserInfoResponse = {
   sub?: string;
@@ -32,29 +33,6 @@ type UserInfoResponse = {
   family_name?: string;
   picture?: string;
 };
-
-function readStoredProfile(): UserProfile | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-  if (!raw) {
-    return null;
-  }
-  try {
-    const stored = JSON.parse(raw) as Partial<UserProfile>;
-    if (!stored.name || typeof stored.name !== "string") {
-      return null;
-    }
-    return {
-      id: typeof stored.id === "string" ? stored.id : null,
-      name: stored.name,
-      picture: typeof stored.picture === "string" ? stored.picture : null,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function persistProfile(profile: UserProfile | null) {
   if (typeof window === "undefined") {
@@ -154,6 +132,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [isInitialized, setIsInitialized] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const profileSessionIdRef = useRef<number | null>(null);
+  const profileTokenRef = useRef<string | null>(null);
+  const profileTokenVersionRef = useRef(0);
+
+  if (profileSessionIdRef.current === null) {
+    nextProfileSessionId += 1;
+    profileSessionIdRef.current = nextProfileSessionId;
+  }
 
   useEffect(() => {
     setIsInitialized(true);
@@ -193,12 +179,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tokenData]);
 
+  const activeToken = tokenData?.access_token ?? null;
+  if (profileTokenRef.current !== activeToken) {
+    profileTokenRef.current = activeToken;
+    profileTokenVersionRef.current += 1;
+  }
+  const profileQueryKey = activeToken
+    ? [
+        ...USER_PROFILE_QUERY_KEY,
+        profileSessionIdRef.current,
+        profileTokenVersionRef.current,
+      ] as const
+    : ["inactiveUserProfile", profileSessionIdRef.current] as const;
+
   const { data: userProfile } = useQuery({
-    queryKey: USER_PROFILE_QUERY_KEY,
+    queryKey: profileQueryKey,
     queryFn: ({ signal }) =>
-      fetchUserProfile(tokenData?.access_token ?? "", signal),
-    enabled: Boolean(tokenData?.access_token) && isInitialized,
-    placeholderData: readStoredProfile(),
+      fetchUserProfile(activeToken ?? "", signal),
+    enabled: Boolean(activeToken) && isInitialized,
     staleTime: 1000 * 60 * 10,
     retry: false,
   });
@@ -207,14 +205,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!isInitialized) {
       return;
     }
-    if (!tokenData?.access_token) {
-      persistProfile(null);
-      return;
-    }
-    if (userProfile) {
-      persistProfile(userProfile);
-    }
-  }, [userProfile, tokenData?.access_token, isInitialized]);
+    persistProfile(activeToken && userProfile ? userProfile : null);
+  }, [userProfile, activeToken, isInitialized]);
 
   const signOut = useCallback(() => {
     localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -224,7 +216,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
-    queryClient.setQueryData(USER_PROFILE_QUERY_KEY, null);
     queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
   }, [queryClient]);
 
@@ -266,7 +257,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     return {
       accessToken: !isExpired ? tokenData?.access_token ?? null : null,
-      userProfile: userProfile ?? null,
+      userProfile: activeToken ? userProfile ?? null : null,
       isConnecting: isConnecting || (isFetching && !tokenData),
       isInitialized,
       status,
@@ -276,6 +267,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
   }, [
     tokenData,
+    activeToken,
     userProfile,
     isConnecting,
     isFetching,

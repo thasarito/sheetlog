@@ -9,6 +9,9 @@ export const MIN_REFETCH_INTERVAL_MS = 1000;
 /** React Query key for Google token */
 export const GOOGLE_TOKEN_QUERY_KEY = ["googleToken"] as const;
 
+/** Prefix for token-bound, verified Google user profiles. */
+export const USER_PROFILE_QUERY_KEY = ["userProfile"] as const;
+
 /** User-friendly status messages for each auth state */
 export const SESSION_STATUS_MESSAGES: Record<SessionStatus, string> = {
   initializing: "Checking authentication...",
@@ -24,4 +27,3 @@ export const SCOPES = [
   "https://www.googleapis.com/auth/drive.metadata.readonly",
   "https://www.googleapis.com/auth/userinfo.profile",
 ];
-

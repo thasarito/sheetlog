@@ -3,7 +3,11 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { exchangeCodeForTokens } from "../lib/oauth";
 import { STORAGE_KEYS } from "../lib/constants";
-import { GOOGLE_TOKEN_QUERY_KEY } from "../app/providers/session";
+import {
+  GOOGLE_TOKEN_QUERY_KEY,
+  USER_PROFILE_QUERY_KEY,
+} from "../app/providers/session";
+import { useWorkspace } from "../app/providers/workspace/workspace.hooks";
 
 type OAuthSearchParams = {
   code?: string;
@@ -24,6 +28,7 @@ interface OAuthCallbackState {
 export function useOAuthCallback(): OAuthCallbackState {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { suspendWorkspace } = useWorkspace();
   const search = useSearch({ strict: false }) as OAuthSearchParams;
   const [state, setState] = useState<OAuthCallbackState>({
     isProcessing: false,
@@ -73,6 +78,15 @@ export function useOAuthCallback(): OAuthCallbackState {
         // Exchange code for tokens
         const tokenData = await exchangeCodeForTokens(code, oauthState);
 
+        // Retire all account-A identity and workspace state before token B is
+        // observable by transaction consumers.
+        await queryClient.cancelQueries({ queryKey: USER_PROFILE_QUERY_KEY });
+        queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
+        localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+        localStorage.removeItem(STORAGE_KEYS.SHEET_ID);
+        localStorage.removeItem(STORAGE_KEYS.SHEET_TAB_ID);
+        suspendWorkspace();
+
         // Store tokens in localStorage
         localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, tokenData.access_token);
         localStorage.setItem(
@@ -101,7 +115,7 @@ export function useOAuthCallback(): OAuthCallbackState {
     }
 
     handleCallback();
-  }, [search, navigate, queryClient]);
+  }, [search, navigate, queryClient, suspendWorkspace]);
 
   return state;
 }

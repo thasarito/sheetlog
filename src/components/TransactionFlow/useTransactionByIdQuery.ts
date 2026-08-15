@@ -27,9 +27,12 @@ function isAuthoritativeLocalSource(
 function findRecentTransaction(
   queryClient: ReturnType<typeof useQueryClient>,
   sheetId: string | null,
+  userId: string | null,
   id: string,
 ): TransactionRecord | undefined {
-  const recentPrefix = transactionQueryKeys.recent(sheetId).slice(0, 2);
+  const recentPrefix = transactionQueryKeys
+    .recent(sheetId, userId)
+    .slice(0, 3);
   const recentQueries = queryClient.getQueriesData<TransactionRecord[]>({
     queryKey: recentPrefix,
   });
@@ -50,9 +53,15 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
   const sourceId = id ?? "";
-  const queryKey = transactionQueryKeys.transaction(sheetId, sourceId);
+  const userId = userProfile?.id ?? null;
+  const queryKey = transactionQueryKeys.transaction(
+    sheetId,
+    userId,
+    sourceId,
+  );
   const fallbackQueryKey = transactionQueryKeys.transactionFallback(
     sheetId,
+    userId,
     sourceId,
   );
 
@@ -71,6 +80,7 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
       const recentTransaction = findRecentTransaction(
         queryClient,
         sheetId,
+        userId,
         id,
       );
       const localTransaction = await db.transactions.get(id);
@@ -79,7 +89,7 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
         isTransactionInSheetScope(
           localTransaction,
           sheetId,
-          userProfile?.id,
+          userId,
         )
           ? localTransaction
           : undefined;
@@ -95,6 +105,7 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
       isOnline &&
       accessToken &&
       sheetId &&
+      userId &&
       fallbackQuery.isSuccess &&
       !fallbackIsLocalOnly,
   );
@@ -141,6 +152,7 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
       isOnline &&
       accessToken &&
       sheetId &&
+      userId &&
       !refreshedFallbackIsLocalOnly
     ) {
       await remoteQuery.refetch();

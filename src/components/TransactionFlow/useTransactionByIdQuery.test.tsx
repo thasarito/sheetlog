@@ -157,12 +157,16 @@ describe("useTransactionByIdQuery", () => {
     );
     expect(
       queryClient.getQueryData(
-        transactionQueryKeys.transaction("sheet-a", "expense-1"),
+        transactionQueryKeys.transaction("sheet-a", "user-a", "expense-1"),
       ),
     ).toEqual(currentRemote);
     expect(
       queryClient.getQueryData(
-        transactionQueryKeys.transactionFallback("sheet-a", "expense-1"),
+        transactionQueryKeys.transactionFallback(
+          "sheet-a",
+          "user-a",
+          "expense-1",
+        ),
       ),
     ).toEqual(staleDexieSource);
   });
@@ -176,7 +180,7 @@ describe("useTransactionByIdQuery", () => {
     });
     vi.mocked(readTransactionById).mockResolvedValue(currentRemote);
     const { queryClient, wrapper } = createHarness();
-    queryClient.setQueryData(transactionQueryKeys.recent("sheet-a"), [
+    queryClient.setQueryData(transactionQueryKeys.recent("sheet-a", "user-a"), [
       cachedSource,
     ]);
 
@@ -270,12 +274,56 @@ describe("useTransactionByIdQuery", () => {
     expect(readTransactionById).not.toHaveBeenCalled();
   });
 
+  it("does not read a transaction before the Google account identity is verified", async () => {
+    providerState.userId = null;
+    vi.mocked(readTransactionById).mockResolvedValue(
+      transaction("unverified-source"),
+    );
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("unverified-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.data).toBeNull();
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("drops account A's mounted local source when account B uses the same sheet", async () => {
+    providerState.isOnline = false;
+    onlineManager.setOnline(false);
+    const accountASource = localOnly("same-sheet-source", "pending");
+    await db.transactions.put(accountASource);
+    const { wrapper } = createHarness({ gcTime: 60_000 });
+
+    const { result, rerender } = renderHook(
+      () => useTransactionByIdQuery(accountASource.id),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.data).toEqual(accountASource);
+    });
+
+    providerState.userId = "user-b";
+    rerender();
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.data).toBeNull();
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
   it("uses the recent query cache offline when Dexie has no source", async () => {
     providerState.isOnline = false;
     onlineManager.setOnline(false);
     const cachedSource = transaction("recent-source");
     const { queryClient, wrapper } = createHarness();
-    queryClient.setQueryData(transactionQueryKeys.recent("sheet-a"), [
+    queryClient.setQueryData(transactionQueryKeys.recent("sheet-a", "user-a"), [
       cachedSource,
     ]);
 
@@ -305,13 +353,14 @@ describe("useTransactionByIdQuery", () => {
     });
     expect(
       queryClient.getQueryData(
-        transactionQueryKeys.transaction("sheet-a", "mounted-sync"),
+        transactionQueryKeys.transaction("sheet-a", "user-a", "mounted-sync"),
       ),
     ).toBeUndefined();
     expect(
       queryClient.getQueryData(
         transactionQueryKeys.transactionFallback(
           "sheet-a",
+          "user-a",
           "mounted-sync",
         ),
       ),
@@ -334,6 +383,7 @@ describe("useTransactionByIdQuery", () => {
       invalidation = queryClient.invalidateQueries({
         queryKey: transactionQueryKeys.transaction(
           "sheet-a",
+          "user-a",
           "mounted-sync",
         ),
       });
@@ -371,6 +421,7 @@ describe("useTransactionByIdQuery", () => {
       await queryClient.invalidateQueries({
         queryKey: transactionQueryKeys.transaction(
           "sheet-a",
+          "user-a",
           "mounted-delete",
         ),
       });
@@ -436,6 +487,7 @@ describe("useTransactionByIdQuery", () => {
     queryClient.setQueryData(
       transactionQueryKeys.transactionFallback(
         "sheet-a",
+        "user-a",
         "fallback-provenance",
       ),
       staleFallback,
@@ -459,7 +511,11 @@ describe("useTransactionByIdQuery", () => {
     await db.transactions.put(staleSource);
     const { queryClient, wrapper } = createHarness();
     queryClient.setQueryData(
-      transactionQueryKeys.transaction("sheet-a", "deleted-source"),
+      transactionQueryKeys.transaction(
+        "sheet-a",
+        "user-a",
+        "deleted-source",
+      ),
       null,
     );
 
@@ -489,6 +545,7 @@ describe("useTransactionByIdQuery", () => {
     queryClient.setQueryData(
       transactionQueryKeys.transaction(
         "sheet-a",
+        "user-a",
         "cached-current-source",
       ),
       currentRemote,
@@ -621,6 +678,7 @@ describe("useTransactionByIdQuery", () => {
     queryClient.setQueryData(
       transactionQueryKeys.transaction(
         "sheet-a",
+        "user-a",
         "cached-in-flight-reconnect",
       ),
       cachedSource,
@@ -666,6 +724,7 @@ describe("useTransactionByIdQuery", () => {
     queryClient.setQueryData(
       transactionQueryKeys.transaction(
         "sheet-a",
+        "user-a",
         "cached-in-flight-auth",
       ),
       cachedSource,
@@ -730,11 +789,11 @@ describe("useTransactionByIdQuery", () => {
     providerState.isOnline = false;
     const { queryClient, wrapper } = createHarness();
     queryClient.setQueryData(
-      transactionQueryKeys.transaction("sheet-b", "expense-1"),
+      transactionQueryKeys.transaction("sheet-b", "user-a", "expense-1"),
       transaction("expense-1", { amount: 70 }),
     );
     queryClient.setQueryData(
-      transactionQueryKeys.transaction("sheet-a", "expense-2"),
+      transactionQueryKeys.transaction("sheet-a", "user-a", "expense-2"),
       transaction("expense-2", { amount: 60 }),
     );
 
