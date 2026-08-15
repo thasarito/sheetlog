@@ -50,12 +50,16 @@ export function usePlaceAutocomplete({
   }>();
   const selectionPromiseRef = useRef<Promise<string>>();
   const openRef = useRef(open);
+  const enabledRef = useRef(enabled);
+  const sessionIdRef = useRef(sessionId);
   const scopeRef = useRef({ mounted: true, sessionId });
   if (scopeRef.current.sessionId !== sessionId) {
     scopeRef.current = { mounted: true, sessionId };
   }
   const scope = scopeRef.current;
   openRef.current = open;
+  enabledRef.current = enabled;
+  sessionIdRef.current = sessionId;
 
   const normalizedInput = normalizeInput(input);
   const canLoad = open && enabled;
@@ -78,19 +82,20 @@ export function usePlaceAutocomplete({
     refetchOnReconnect: false,
     queryFn: async () => {
       const placeSession = await createPlaceAutocompleteSession();
-      if (!openRef.current || !scope.mounted || scopeRef.current !== scope) {
+      if (
+        !openRef.current ||
+        !enabledRef.current ||
+        sessionIdRef.current !== sessionId ||
+        !scope.mounted ||
+        scopeRef.current !== scope
+      ) {
         endPlaceAutocompleteSession(placeSession);
         throw new Error("Place autocomplete session is no longer active");
       }
+      activeSessionRef.current = { sessionId, session: placeSession };
       return placeSession;
     },
   });
-
-  useEffect(() => {
-    if (canLoad && sessionQuery.data && scopeRef.current === scope) {
-      activeSessionRef.current = { sessionId, session: sessionQuery.data };
-    }
-  }, [canLoad, scope, sessionId, sessionQuery.data]);
 
   const suggestionQuery = useQuery({
     queryKey: placeAutocompleteKeys.suggestions(sessionId, debouncedInput),
@@ -126,6 +131,9 @@ export function usePlaceAutocomplete({
 
   const setInput = useCallback(
     (nextInput: string) => {
+      if (selectionPromiseRef.current) {
+        return;
+      }
       selection.reset();
       setInputValue(nextInput);
     },

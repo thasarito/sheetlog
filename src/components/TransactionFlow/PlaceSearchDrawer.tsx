@@ -78,6 +78,7 @@ export function PlaceSearchDrawer({
             id="place-search-input"
             type="search"
             value={input}
+            disabled={isSelecting}
             onChange={(event) => onInputChange(event.target.value)}
             placeholder="Search places"
             className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40"

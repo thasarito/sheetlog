@@ -73,6 +73,7 @@ describe("PlaceSearchDrawer", () => {
 
     rerender(<PlaceSearchDrawer {...props} isSelecting />);
     expect(screen.getByRole("button", { name: /Coffee House.*123 Main Street/i })).toBeDisabled();
+    expect(screen.getByRole("searchbox", { name: "Search places" })).toBeDisabled();
   });
 
   it("does not dismiss while a selection is pending", () => {

@@ -230,6 +230,38 @@ describe("usePlaceAutocomplete", () => {
     expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(session);
   });
 
+  it("ignores input changes while a selection is still pending", async () => {
+    let resolveName: ((value: string) => void) | undefined;
+    vi.mocked(resolvePlaceSuggestionName).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveName = resolve;
+        })
+    );
+    const { result } = renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "selection-input-race" }),
+      { wrapper: createWrapper() }
+    );
+    await flushQueries();
+
+    let selectionPromise: Promise<string> | undefined;
+    act(() => {
+      selectionPromise = result.current.selectSuggestion(firstSuggestion);
+    });
+    await flushQueries();
+    expect(result.current.isSelecting).toBe(true);
+
+    act(() => result.current.setInput("tea"));
+    expect(result.current.input).toBe("");
+    expect(result.current.isSelecting).toBe(true);
+
+    resolveName?.("Coffee House");
+    await expect(selectionPromise).resolves.toBe("Coffee House");
+    await flushQueries();
+    act(() => result.current.setInput("tea"));
+    expect(result.current.input).toBe("tea");
+  });
+
   it("keeps query errors separate from a failed selection and lets the user tap again", async () => {
     vi.mocked(resolvePlaceSuggestionName)
       .mockRejectedValueOnce(new Error("selection unavailable"))
@@ -368,6 +400,51 @@ describe("usePlaceAutocomplete", () => {
     expect(
       queryClient.getQueryData(["placeAutocompleteSession", "deferred-unmount"])
     ).toBeUndefined();
+  });
+
+  it("ends a newly resolved session when unmounted before its passive registration effect", async () => {
+    const deferredSession = { token: {} as GoogleAutocompleteSessionToken };
+    let resolveSession: ((value: typeof deferredSession) => void) | undefined;
+    vi.mocked(createPlaceAutocompleteSession).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        })
+    );
+    const { unmount } = renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "sync-registration" }),
+      { wrapper: createWrapper() }
+    );
+    await flushQueries();
+
+    resolveSession?.(deferredSession);
+    await Promise.resolve();
+    unmount();
+
+    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(deferredSession);
+  });
+
+  it("ends a deferred session when autocomplete is disabled before creation resolves", async () => {
+    const deferredSession = { token: {} as GoogleAutocompleteSessionToken };
+    let resolveSession: ((value: typeof deferredSession) => void) | undefined;
+    vi.mocked(createPlaceAutocompleteSession).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        })
+    );
+    const { rerender } = renderHook(
+      ({ enabled }) =>
+        usePlaceAutocomplete({ open: true, enabled, sessionId: "disabled-before-create" }),
+      { initialProps: { enabled: true }, wrapper: createWrapper() }
+    );
+    await flushQueries();
+
+    rerender({ enabled: false });
+    resolveSession?.(deferredSession);
+    await flushQueries();
+
+    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(deferredSession);
   });
 
   it("cleans up old session caches on close and creates a distinct token for a new session", async () => {
