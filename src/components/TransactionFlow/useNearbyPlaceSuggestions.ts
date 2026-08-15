@@ -9,7 +9,7 @@ import {
 
 export const nearbyPlaceSuggestionKeys = {
   all: ["nearbyPlaceSuggestions"] as const,
-  session: (sessionId: number) =>
+  session: (sessionId: string) =>
     [...nearbyPlaceSuggestionKeys.all, sessionId] as const,
 };
 
@@ -20,7 +20,7 @@ export function useNearbyPlaceSuggestions({
 }: {
   enabled: boolean;
   isOnline: boolean;
-  sessionId: number;
+  sessionId: string;
 }) {
   const canSearch = enabled && isOnline && hasGoogleMapsApiKey();
   const query = useQuery({
@@ -36,7 +36,7 @@ export function useNearbyPlaceSuggestions({
       try {
         coordinates = await getCurrentCoordinates();
       } catch {
-        return { suggestions: [] };
+        return { coordinates: undefined, suggestions: [] };
       }
 
       try {

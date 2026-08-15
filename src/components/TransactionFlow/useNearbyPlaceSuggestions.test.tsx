@@ -23,6 +23,19 @@ const suggestions = [
     secondaryText: "Bangkok",
   },
 ];
+const sessionIds = {
+  disabled: "0198b949-5f77-7d98-a53a-bce26d004a2a",
+  missingKey: "0198b949-5f77-7d98-a53a-bce26d004a2b",
+  offline: "0198b949-5f77-7d98-a53a-bce26d004a2c",
+  success: "0198b949-5f77-7d98-a53a-bce26d004a2d",
+  geolocationFailure: "0198b949-5f77-7d98-a53a-bce26d004a2e",
+  placesFailure: "0198b949-5f77-7d98-a53a-bce26d004a2f",
+  oneLookup: "0198b949-5f77-7d98-a53a-bce26d004a30",
+  lifecycleA: "0198b949-5f77-7d98-a53a-bce26d004a31",
+  lifecycleB: "0198b949-5f77-7d98-a53a-bce26d004a32",
+  lifecycleC: "0198b949-5f77-7d98-a53a-bce26d004a33",
+  deferred: "0198b949-5f77-7d98-a53a-bce26d004a34",
+};
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -56,7 +69,7 @@ describe("useNearbyPlaceSuggestions", () => {
         useNearbyPlaceSuggestions({
           enabled: false,
           isOnline: true,
-          sessionId: 1,
+          sessionId: sessionIds.disabled,
         }),
       { wrapper: createWrapper() }
     );
@@ -76,7 +89,7 @@ describe("useNearbyPlaceSuggestions", () => {
         useNearbyPlaceSuggestions({
           enabled: true,
           isOnline: true,
-          sessionId: 2,
+          sessionId: sessionIds.missingKey,
         }),
       { wrapper: createWrapper() }
     );
@@ -93,7 +106,7 @@ describe("useNearbyPlaceSuggestions", () => {
         useNearbyPlaceSuggestions({
           enabled: true,
           isOnline: false,
-          sessionId: 3,
+          sessionId: sessionIds.offline,
         }),
       { wrapper: createWrapper() }
     );
@@ -113,7 +126,7 @@ describe("useNearbyPlaceSuggestions", () => {
         useNearbyPlaceSuggestions({
           enabled: true,
           isOnline: true,
-          sessionId: 4,
+          sessionId: sessionIds.success,
         }),
       { wrapper: createWrapper() }
     );
@@ -135,7 +148,7 @@ describe("useNearbyPlaceSuggestions", () => {
         useNearbyPlaceSuggestions({
           enabled: true,
           isOnline: true,
-          sessionId: 5,
+          sessionId: sessionIds.geolocationFailure,
         }),
       { wrapper: createWrapper() }
     );
@@ -144,7 +157,7 @@ describe("useNearbyPlaceSuggestions", () => {
       expect(result.current.isLoading).toBe(false);
     });
     expect(result.current.suggestions).toEqual([]);
-    expect(result.current.coordinates).toBeUndefined();
+    expect(result.current).toMatchObject({ coordinates: undefined });
     expect(result.current.canSearch).toBe(true);
     expect(getNearbyPlaces).not.toHaveBeenCalled();
   });
@@ -158,7 +171,7 @@ describe("useNearbyPlaceSuggestions", () => {
         useNearbyPlaceSuggestions({
           enabled: true,
           isOnline: true,
-          sessionId: 6,
+          sessionId: sessionIds.placesFailure,
         }),
       { wrapper: createWrapper() }
     );
@@ -180,7 +193,7 @@ describe("useNearbyPlaceSuggestions", () => {
         useNearbyPlaceSuggestions({
           enabled: true,
           isOnline: true,
-          sessionId: 7,
+          sessionId: sessionIds.oneLookup,
         }),
       { wrapper: createWrapper() }
     );
@@ -196,5 +209,85 @@ describe("useNearbyPlaceSuggestions", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 20));
     expect(getCurrentCoordinates).toHaveBeenCalledTimes(1);
     expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses separate cache entries for each session lifecycle", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    vi.mocked(getNearbyPlaces).mockResolvedValue(suggestions);
+    const wrapper = createWrapper();
+    const { result, rerender, unmount } = renderHook(
+      ({ sessionId }) =>
+        useNearbyPlaceSuggestions({
+          enabled: true,
+          isOnline: true,
+          sessionId,
+        }),
+      {
+        initialProps: { sessionId: sessionIds.lifecycleA },
+        wrapper,
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.suggestions).toEqual(suggestions);
+    });
+    expect(getCurrentCoordinates).toHaveBeenCalledTimes(1);
+
+    rerender({ sessionId: sessionIds.lifecycleB });
+    await waitFor(() => {
+      expect(getCurrentCoordinates).toHaveBeenCalledTimes(2);
+    });
+
+    unmount();
+    const remounted = renderHook(
+      () =>
+        useNearbyPlaceSuggestions({
+          enabled: true,
+          isOnline: true,
+          sessionId: sessionIds.lifecycleC,
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => {
+      expect(remounted.result.current.suggestions).toEqual(suggestions);
+      expect(getCurrentCoordinates).toHaveBeenCalledTimes(3);
+    });
+    expect(getNearbyPlaces).toHaveBeenCalledTimes(3);
+  });
+
+  it("changes isLoading from true to false when a nearby request resolves", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    let resolveNearbyPlaces: ((value: typeof suggestions) => void) | undefined;
+    vi.mocked(getNearbyPlaces).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveNearbyPlaces = resolve;
+        })
+    );
+
+    const { result } = renderHook(
+      () =>
+        useNearbyPlaceSuggestions({
+          enabled: true,
+          isOnline: true,
+          sessionId: sessionIds.deferred,
+        }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(true);
+    });
+
+    if (!resolveNearbyPlaces) {
+      throw new Error("Nearby Places request did not start");
+    }
+    resolveNearbyPlaces(suggestions);
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(result.current.suggestions).toEqual(suggestions);
   });
 });
