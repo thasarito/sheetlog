@@ -23,11 +23,28 @@ const TRANSACTION_TYPES: readonly TransactionType[] = [
 ];
 
 function finiteNumber(value: unknown): number | null {
-  try {
-    const numberValue = typeof value === "number" ? value : Number(value);
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const numberValue = Number(value);
     return Number.isFinite(numberValue) ? numberValue : null;
+  }
+
+  return null;
+}
+
+function parseSheetDate(value: unknown, fallback: string): string {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return fallback;
+  }
+
+  try {
+    const parsed = parseDate(value);
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : fallback;
   } catch {
-    return null;
+    return fallback;
   }
 }
 
@@ -89,10 +106,7 @@ export function parseTransactionRow(
 
   return {
     id: stableId || `row-${rowIndex}`,
-    date:
-      typeof date === "string" || typeof date === "number"
-        ? parseDate(date).toISOString()
-        : now,
+    date: parseSheetDate(date, now),
     type: typeIsValid ? (typeRaw as TransactionType) : "expense",
     amount: amount ?? 0,
     category: String(category || "Uncategorized"),

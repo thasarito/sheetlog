@@ -100,6 +100,36 @@ describe("transaction Sheet rows", () => {
     });
   });
 
+  it.each([
+    ["an empty string", ""],
+    ["whitespace", "   "],
+    ["null", null],
+    ["true", true],
+    ["false", false],
+  ])("rejects %s instead of coercing it into a valid amount", (_name, amount) => {
+    expect(parseTransactionRow(legacyRowWith(2, amount), 5)).toMatchObject({
+      amount: 0,
+      sheetRowValid: false,
+    });
+  });
+
+  it("accepts a non-empty finite numeric amount string", () => {
+    expect(parseTransactionRow(legacyRowWith(2, " 42.5 "), 5)).toMatchObject({
+      amount: 42.5,
+      sheetRowValid: true,
+    });
+  });
+
+  it("falls back safely for a finite numeric date outside the JavaScript Date range", () => {
+    const parsed = parseTransactionRow(
+      legacyRowWith(0, Number.MAX_VALUE),
+      5,
+    );
+
+    expect(Number.isFinite(new Date(parsed.date).getTime())).toBe(true);
+    expect(parsed.sheetRowValid).toBe(true);
+  });
+
   it("treats only exact transaction type values as valid", () => {
     const parsed = parseTransactionRow(legacyRowWith(1, "EXPENSE"), 5);
 
