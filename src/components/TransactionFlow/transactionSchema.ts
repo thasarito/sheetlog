@@ -7,8 +7,8 @@ export const transactionSchema = z.object({
     .string()
     .refine(
       (value) => {
-        const parsed = Number.parseFloat(value);
-        return !Number.isNaN(parsed) && parsed > 0;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed > 0;
       },
       "Enter valid amount"
     ),

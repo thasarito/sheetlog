@@ -31,6 +31,18 @@ import { hasGoogleMapsApiKey, type PlaceSuggestion } from "../../lib/googlePlace
 import { PlaceSearchDrawer } from "./PlaceSearchDrawer";
 import { usePlaceAutocomplete } from "./usePlaceAutocomplete";
 import { isPlacesEligible, type PlacesFlowMode } from "./placesEligibility";
+import {
+  getReimbursementFormDefaults,
+  reimbursementFieldsLocked,
+  type TransactionFlowMode,
+} from "./flowMode";
+import { useCreateReimbursementMutation } from "./useCreateReimbursementMutation";
+import { useReimbursementSummary } from "./useReimbursementSummary";
+import { ReimbursementAction } from "./ReimbursementAction";
+import {
+  isReimbursableExpense,
+  REIMBURSEMENT_CATEGORY,
+} from "../../lib/reimbursements";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -74,7 +86,11 @@ export function TransactionFlow() {
   );
   const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
-  const [editingTransaction, setEditingTransaction] = useState<TransactionRecord | null>(null);
+  const [flowMode, setFlowMode] = useState<TransactionFlowMode>({
+    kind: "create",
+  });
+  const [createdReimbursement, setCreatedReimbursement] =
+    useState<TransactionRecord | null>(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -87,27 +103,63 @@ export function TransactionFlow() {
   const mutation = useAddTransactionMutation();
   const updateMutation = useUpdateTransactionMutation();
   const deleteMutation = useDeleteTransactionMutation();
+  const reimbursementMutation = useCreateReimbursementMutation();
+  const reimbursementSubmissionRef = useRef(false);
+  const reimbursementUndoRef = useRef(false);
   const form = useTransactionForm({
     onSubmit: async (values) => {
       await handleSubmit(values);
     },
   });
+  const reimbursementForm = useTransactionForm({
+    onSubmit: async (values) => {
+      await handleReimbursementSubmit(values);
+    },
+  });
   const {
-    type,
-    category,
-    amount,
-    currency,
-    account,
-    forValue,
-    dateObject,
-    note,
+    type: formType,
+    category: formCategory,
+    amount: formAmount,
+    currency: formCurrency,
+    account: formAccount,
+    forValue: formForValue,
+    dateObject: formDateObject,
+    note: formNote,
   } = form.useStore((state) => state.values);
-  const reimbursementFieldsLocked = Boolean(
-    editingTransaction?.reimbursesTransactionId
+  const reimbursementValues = reimbursementForm.useStore(
+    (state) => state.values,
   );
-  const reimbursementFieldsLockedRef = useRef(reimbursementFieldsLocked);
-  reimbursementFieldsLockedRef.current = reimbursementFieldsLocked;
-  const placesMode: PlacesFlowMode = editingTransaction ? "edit" : "create";
+  const activeValues =
+    flowMode.kind === "reimburse"
+      ? reimbursementValues
+      : {
+          type: formType,
+          category: formCategory,
+          amount: formAmount,
+          currency: formCurrency,
+          account: formAccount,
+          forValue: formForValue,
+          dateObject: formDateObject,
+          note: formNote,
+        };
+  const { type, category, amount, currency, account, forValue, dateObject, note } =
+    activeValues;
+  const activeForm =
+    flowMode.kind === "reimburse" ? reimbursementForm : form;
+  const fieldsLocked = reimbursementFieldsLocked(flowMode);
+  const reimbursementFieldsLockedRef = useRef(fieldsLocked);
+  reimbursementFieldsLockedRef.current = fieldsLocked;
+  const reimbursementSource =
+    flowMode.kind === "reimburse"
+      ? flowMode.source
+      : flowMode.kind === "edit" &&
+          isReimbursableExpense(flowMode.transaction)
+        ? flowMode.transaction
+        : null;
+  const reimbursementSummary = useReimbursementSummary({
+    source: reimbursementSource,
+  });
+  const placesMode: PlacesFlowMode = flowMode.kind;
   const shouldFetchNearbyPlaces = isPlacesEligible({
     step,
     type,
@@ -247,7 +299,10 @@ export function TransactionFlow() {
   }, [canSearchPlaces, closePlaceSearch, invalidatePlaceSearch]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (
+      typeof window === "undefined" ||
+      reimbursementFieldsLockedRef.current
+    ) {
       return;
     }
     if (account) {
@@ -260,14 +315,14 @@ export function TransactionFlow() {
       lastAccount &&
       onboarding.accounts.some((a) => a.name === lastAccount)
     ) {
-      form.setFieldValue("account", lastAccount);
+      activeForm.setFieldValue("account", lastAccount);
       return;
     }
     // Default to first account if only one exists
     if (onboarding.accounts.length === 1) {
-      form.setFieldValue("account", onboarding.accounts[0].name);
+      activeForm.setFieldValue("account", onboarding.accounts[0].name);
     }
-  }, [account, form, onboarding.accounts]);
+  }, [account, activeForm, onboarding.accounts]);
 
   useEffect(() => {
     if (
@@ -301,35 +356,41 @@ export function TransactionFlow() {
       `${STORAGE_KEYS.LAST_CURRENCY}_${account}`
     );
     if (lastCurrencyForAccount) {
-      form.setFieldValue("currency", lastCurrencyForAccount);
+      activeForm.setFieldValue("currency", lastCurrencyForAccount);
     }
-  }, [account, form]);
+  }, [account, activeForm]);
 
   useEffect(() => {
+    if (reimbursementFieldsLockedRef.current) {
+      return;
+    }
     if (type === "transfer" && forValue) {
       const isAccountValue = onboarding.accounts.some(
         (a) => a.name === forValue
       );
       if (!isAccountValue) {
-        form.setFieldValue("forValue", "");
+        activeForm.setFieldValue("forValue", "");
       }
     }
-  }, [type, forValue, form, onboarding.accounts]);
+  }, [type, forValue, activeForm, onboarding.accounts]);
 
   useEffect(() => {
-    if (type === "transfer" && account && forValue === account) {
-      form.setFieldValue("forValue", "");
+    if (reimbursementFieldsLockedRef.current) {
+      return;
     }
-  }, [type, account, forValue, form]);
+    if (type === "transfer" && account && forValue === account) {
+      activeForm.setFieldValue("forValue", "");
+    }
+  }, [type, account, forValue, activeForm]);
 
   useEffect(() => {
     if (type === "transfer" || reimbursementFieldsLockedRef.current) {
       return;
     }
     if (!forValue || !FOR_OPTIONS.includes(forValue)) {
-      form.setFieldValue("forValue", "Me");
+      activeForm.setFieldValue("forValue", "Me");
     }
-  }, [type, forValue, form]);
+  }, [type, forValue, activeForm]);
 
   const handleToast = useCallback((message: string, action?: ToastAction) => {
     if (action) {
@@ -359,7 +420,7 @@ export function TransactionFlow() {
       handleToast(result.error.issues[0]?.message ?? "Complete all fields");
       return;
     }
-    void form.handleSubmit();
+    void activeForm.handleSubmit();
   }
 
   useEffect(() => {
@@ -421,19 +482,39 @@ export function TransactionFlow() {
     setPlaceSuggestionSessionId(createPlaceSessionId());
     setPlaceSearchSessionId(createPlaceSessionId());
     setReceiptData(null);
-    setEditingTransaction(null);
+    setCreatedReimbursement(null);
+    setFlowMode({ kind: "create" });
     setShowDeleteConfirm(false);
+    setCategoryDrawerOpen(false);
+    setDateDrawerOpen(false);
+    reimbursementSubmissionRef.current = false;
+    reimbursementUndoRef.current = false;
     mutation.reset();
     updateMutation.reset();
+    reimbursementMutation.reset();
     form.setFieldValue("type", TYPE_OPTIONS[0]);
     form.setFieldValue("category", "");
     form.setFieldValue("amount", "");
     form.setFieldValue("forValue", "Me");
     form.setFieldValue("note", "");
     form.setFieldValue("dateObject", new Date());
-  }, [mutation, updateMutation, form, invalidatePlaceSearch]);
+    reimbursementForm.setFieldValue("type", "income");
+    reimbursementForm.setFieldValue("category", "");
+    reimbursementForm.setFieldValue("amount", "");
+    reimbursementForm.setFieldValue("forValue", "Me");
+    reimbursementForm.setFieldValue("note", "");
+    reimbursementForm.setFieldValue("dateObject", new Date());
+  }, [
+    mutation,
+    updateMutation,
+    reimbursementMutation,
+    form,
+    reimbursementForm,
+    invalidatePlaceSearch,
+  ]);
 
   const openCreateAmountStep = useCallback(() => {
+    setFlowMode({ kind: "create" });
     setPlaceSuggestionSessionId(createPlaceSessionId());
     setStep(1);
   }, []);
@@ -454,12 +535,15 @@ export function TransactionFlow() {
     form.setFieldValue("forValue", t.for);
     form.setFieldValue("dateObject", parseDate(t.date));
     form.setFieldValue("note", t.note ?? "");
-    setEditingTransaction(t);
+    setFlowMode({ kind: "edit", transaction: t });
+    setCreatedReimbursement(null);
+    setReceiptData(null);
+    setShowDeleteConfirm(false);
     setStep(1);
   }, [form]);
 
   const handleDelete = useCallback(() => {
-    if (!editingTransaction) return;
+    if (flowMode.kind !== "edit") return;
     if (!showDeleteConfirm) {
       setShowDeleteConfirm(true);
       toast("Tap delete again to confirm", {
@@ -468,7 +552,7 @@ export function TransactionFlow() {
       });
       return;
     }
-    deleteMutation.mutate(editingTransaction.id, {
+    deleteMutation.mutate(flowMode.transaction.id, {
       onSuccess: () => {
         resetFlow();
       },
@@ -476,14 +560,16 @@ export function TransactionFlow() {
         toast.error("Failed to delete transaction");
       },
     });
-  }, [editingTransaction, showDeleteConfirm, deleteMutation, resetFlow]);
+  }, [flowMode, showDeleteConfirm, deleteMutation, resetFlow]);
 
   function clearReceiptStep() {
     setStep(0);
     setReceiptData(null);
-    setEditingTransaction(null);
+    setCreatedReimbursement(null);
+    setFlowMode({ kind: "create" });
     mutation.reset();
     updateMutation.reset();
+    reimbursementMutation.reset();
   }
 
   function handleReceiptDone() {
@@ -493,6 +579,25 @@ export function TransactionFlow() {
 
   async function handleReceiptUndo() {
     clearReceiptTransition();
+    if (flowMode.kind === "reimburse" && createdReimbursement) {
+      if (reimbursementUndoRef.current) {
+        return;
+      }
+      reimbursementUndoRef.current = true;
+      try {
+        await deleteMutation.mutateAsync(createdReimbursement.id);
+        resetFlow();
+      } catch (error) {
+        handleToast(
+          error instanceof Error
+            ? error.message
+            : "Failed to undo reimbursement",
+        );
+      } finally {
+        reimbursementUndoRef.current = false;
+      }
+      return;
+    }
     await handleUndo();
     resetFlow();
   }
@@ -500,6 +605,111 @@ export function TransactionFlow() {
   async function handleUndo() {
     const result = await undoLast();
     handleToast(result.message);
+  }
+
+  function enterReimbursement() {
+    if (
+      flowMode.kind !== "edit" ||
+      !isReimbursableExpense(flowMode.transaction) ||
+      reimbursementSummary.isChecking ||
+      reimbursementSummary.isError ||
+      reimbursementSummary.summary.currencyMismatchIds.length > 0 ||
+      reimbursementSummary.summary.overReimbursed > 0 ||
+      !Number.isFinite(reimbursementSummary.summary.remaining) ||
+      reimbursementSummary.summary.remaining <= 0
+    ) {
+      return;
+    }
+
+    const source = flowMode.transaction;
+    const defaults = getReimbursementFormDefaults(
+      source,
+      reimbursementSummary.summary.remaining,
+    );
+    reimbursementForm.setFieldValue("type", defaults.type);
+    reimbursementForm.setFieldValue("category", defaults.category);
+    reimbursementForm.setFieldValue("amount", defaults.amount);
+    reimbursementForm.setFieldValue("currency", defaults.currency);
+    reimbursementForm.setFieldValue("account", defaults.account);
+    reimbursementForm.setFieldValue("forValue", defaults.forValue);
+    reimbursementForm.setFieldValue("dateObject", defaults.dateObject);
+    reimbursementForm.setFieldValue("note", defaults.note);
+    reimbursementMutation.reset();
+    reimbursementSubmissionRef.current = false;
+    setCreatedReimbursement(null);
+    setReceiptData(null);
+    setCategoryDrawerOpen(false);
+    setDateDrawerOpen(false);
+    setFlowMode({ kind: "reimburse", source });
+    setStep(1);
+  }
+
+  function handleAmountBack() {
+    if (flowMode.kind === "reimburse") {
+      if (
+        reimbursementSubmissionRef.current ||
+        reimbursementMutation.isPending
+      ) {
+        return;
+      }
+      setFlowMode({ kind: "edit", transaction: flowMode.source });
+      setCreatedReimbursement(null);
+      setReceiptData(null);
+      setDateDrawerOpen(false);
+      reimbursementMutation.reset();
+      setStep(1);
+      return;
+    }
+
+    if (flowMode.kind === "edit") {
+      setFlowMode({ kind: "create" });
+      setShowDeleteConfirm(false);
+    }
+    setStep(0);
+  }
+
+  async function handleReimbursementSubmit(values: TransactionFormValues) {
+    if (
+      flowMode.kind !== "reimburse" ||
+      reimbursementSubmissionRef.current ||
+      reimbursementMutation.isPending
+    ) {
+      return;
+    }
+
+    const source = flowMode.source;
+    const nextReceipt: ReceiptData = {
+      type: "income",
+      category: REIMBURSEMENT_CATEGORY,
+      amount: values.amount,
+      currency: source.currency,
+      account: values.account,
+      forValue: source.for,
+      dateObject: values.dateObject,
+      note: values.note.trim(),
+    };
+    reimbursementSubmissionRef.current = true;
+    try {
+      const record = await reimbursementMutation.mutateAsync({
+        source,
+        amount: values.amount,
+        remaining: reimbursementSummary.summary.remaining,
+        account: values.account,
+        date: values.dateObject,
+        note: values.note,
+      });
+      setCreatedReimbursement(record);
+      setReceiptData(nextReceipt);
+      setStep(2);
+    } catch (error) {
+      handleToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to save reimbursement",
+      );
+    } finally {
+      reimbursementSubmissionRef.current = false;
+    }
   }
 
   async function handleSubmit(values: TransactionFormValues) {
@@ -510,8 +720,8 @@ export function TransactionFlow() {
       handleToast("Complete all fields");
       return;
     }
-    const parsedAmount = Number.parseFloat(values.amount);
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    const parsedAmount = Number(values.amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       handleToast("Enter a valid amount");
       return;
     }
@@ -538,7 +748,7 @@ export function TransactionFlow() {
     const resolvedFor = trimmedFor || values.forValue;
 
     // Handle update mode
-    if (editingTransaction) {
+    if (flowMode.kind === "edit") {
       const nextReceipt: ReceiptData = {
         type: values.type,
         category: values.category,
@@ -553,7 +763,7 @@ export function TransactionFlow() {
       setStep(2);
       try {
         await updateMutation.mutateAsync({
-          id: editingTransaction.id,
+          id: flowMode.transaction.id,
           input: {
             type: values.type,
             category: values.category,
@@ -635,22 +845,28 @@ export function TransactionFlow() {
       className: "space-y-5 h-full",
       content: (
         <StepAmount
-          form={form}
+          form={activeForm}
           accounts={onboarding.accounts.map((a) => a.name)}
-          onBack={() => {
-            if (editingTransaction) {
-              setEditingTransaction(null);
-              setShowDeleteConfirm(false);
-            }
-            setStep(0);
-          }}
+          onBack={handleAmountBack}
           onSubmit={handleFormSubmit}
-          isSubmitting={mutation.isPending || updateMutation.isPending}
-          onDelete={editingTransaction ? handleDelete : undefined}
+          isSubmitting={
+            flowMode.kind === "reimburse"
+              ? reimbursementMutation.isPending
+              : mutation.isPending || updateMutation.isPending
+          }
+          onDelete={flowMode.kind === "edit" ? handleDelete : undefined}
           isDeleting={deleteMutation.isPending}
-          onCategoryClick={editingTransaction ? () => setCategoryDrawerOpen(true) : undefined}
-          onDateClick={editingTransaction ? () => setDateDrawerOpen(true) : undefined}
-          submitLabel={editingTransaction ? "Save" : undefined}
+          onCategoryClick={
+            flowMode.kind === "edit" && !fieldsLocked
+              ? () => setCategoryDrawerOpen(true)
+              : undefined
+          }
+          onDateClick={
+            flowMode.kind === "create"
+              ? undefined
+              : () => setDateDrawerOpen(true)
+          }
+          submitLabel={flowMode.kind === "edit" ? "Save" : undefined}
           nearbyPlaceSuggestions={
             shouldFetchNearbyPlaces ? nearbyPlaces.suggestions : []
           }
@@ -666,9 +882,25 @@ export function TransactionFlow() {
           onSearchPlaces={canSearchPlaces ? openPlaceSearch : undefined}
           searchButtonRef={placeSearchButtonRef}
           noteInputRef={noteInputRef}
-          currencyLocked={reimbursementFieldsLocked}
-          forLocked={reimbursementFieldsLocked}
-          preserveCurrencyOnAccountChange={reimbursementFieldsLocked}
+          currencyLocked={fieldsLocked}
+          forLocked={fieldsLocked}
+          preserveCurrencyOnAccountChange={fieldsLocked}
+          middleAction={
+            flowMode.kind === "edit" &&
+            isReimbursableExpense(flowMode.transaction) ? (
+              <ReimbursementAction
+                summary={reimbursementSummary.summary}
+                currency={flowMode.transaction.currency}
+                isChecking={reimbursementSummary.isChecking}
+                isError={reimbursementSummary.isError}
+                needsOnlineVerification={
+                  reimbursementSummary.needsOnlineVerification
+                }
+                onRetry={() => void reimbursementSummary.retry()}
+                onReimburse={enterReimbursement}
+              />
+            ) : undefined
+          }
         />
       ),
     },
@@ -677,22 +909,43 @@ export function TransactionFlow() {
       label: "Receipt",
       className: "space-y-6 h-full",
       content: (() => {
-        const activeMutation = editingTransaction ? updateMutation : mutation;
+        if (flowMode.kind === "reimburse") {
+          return (
+            <StepReceipt
+              {...receiptSnapshot}
+              isPending={
+                reimbursementMutation.isPending && !createdReimbursement
+              }
+              isSuccess={Boolean(createdReimbursement)}
+              isError={false}
+              variant="reimbursement"
+              syncStatus={createdReimbursement?.status}
+              showTimedProgress={false}
+              onDone={handleReceiptDone}
+              onUndo={handleReceiptUndo}
+            />
+          );
+        }
+
+        const ordinaryMutation =
+          flowMode.kind === "edit" ? updateMutation : mutation;
         return (
           <StepReceipt
             {...receiptSnapshot}
-            isPending={activeMutation.isPending}
-            isSuccess={activeMutation.isSuccess}
-            isError={activeMutation.isError}
+            isPending={ordinaryMutation.isPending}
+            isSuccess={ordinaryMutation.isSuccess}
+            isError={ordinaryMutation.isError}
             errorMessage={
-              activeMutation.error instanceof Error
-                ? activeMutation.error.message
-                : activeMutation.isError
+              ordinaryMutation.error instanceof Error
+                ? ordinaryMutation.error.message
+                : ordinaryMutation.isError
                 ? "Failed to save transaction"
                 : undefined
             }
             onDone={handleReceiptDone}
-            onUndo={editingTransaction ? undefined : handleReceiptUndo}
+            onUndo={
+              flowMode.kind === "edit" ? undefined : handleReceiptUndo
+            }
           />
         );
       })(),
@@ -741,32 +994,33 @@ export function TransactionFlow() {
         </div>
       </div>
 
-      {editingTransaction && (
-        <>
-          <DateTimeDrawer
-            value={dateObject}
-            onChange={(date) => form.setFieldValue("dateObject", date)}
-            open={dateDrawerOpen}
-            onOpenChange={setDateDrawerOpen}
-            showTrigger={false}
-          />
-          <CategoryGridDrawer
-            type={type}
-            onTypeChange={(newType) => {
-              form.setFieldValue("type", newType);
-              form.setFieldValue("category", "");
-            }}
-            categories={categoryGroups[type] ?? []}
-            onSelect={(cat) => {
-              form.setFieldValue("category", cat);
-              setCategoryDrawerOpen(false);
-            }}
-            open={categoryDrawerOpen}
-            onOpenChange={setCategoryDrawerOpen}
-            layoutId="editTransactionCategory"
-          />
-        </>
-      )}
+      {flowMode.kind !== "create" ? (
+        <DateTimeDrawer
+          value={dateObject}
+          onChange={(date) => activeForm.setFieldValue("dateObject", date)}
+          open={dateDrawerOpen}
+          onOpenChange={setDateDrawerOpen}
+          showTrigger={false}
+        />
+      ) : null}
+
+      {flowMode.kind === "edit" && !fieldsLocked ? (
+        <CategoryGridDrawer
+          type={formType}
+          onTypeChange={(newType) => {
+            form.setFieldValue("type", newType);
+            form.setFieldValue("category", "");
+          }}
+          categories={categoryGroups[formType] ?? []}
+          onSelect={(cat) => {
+            form.setFieldValue("category", cat);
+            setCategoryDrawerOpen(false);
+          }}
+          open={categoryDrawerOpen}
+          onOpenChange={setCategoryDrawerOpen}
+          layoutId="editTransactionCategory"
+        />
+      ) : null}
 
       <PlaceSearchDrawer
         open={placeSearchOpen}

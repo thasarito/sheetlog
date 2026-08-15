@@ -7,6 +7,7 @@ export function useDeleteTransactionMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    networkMode: "always",
     mutationFn: async (id: string) => {
       const result = await deleteTransaction(id);
       if (!result.ok) {

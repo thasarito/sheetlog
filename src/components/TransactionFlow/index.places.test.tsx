@@ -56,6 +56,14 @@ const mocks = vi.hoisted(() => ({
     isPending: false,
     mutate: vi.fn(),
   },
+  reimbursementMutation: {
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    error: null,
+    mutateAsync: vi.fn(),
+    reset: vi.fn(),
+  },
 }));
 
 vi.mock("../../app/providers", () => ({
@@ -130,6 +138,26 @@ vi.mock("./useUpdateTransactionMutation", () => ({
 
 vi.mock("./useDeleteTransactionMutation", () => ({
   useDeleteTransactionMutation: () => mocks.deleteMutation,
+}));
+
+vi.mock("./useCreateReimbursementMutation", () => ({
+  useCreateReimbursementMutation: () => mocks.reimbursementMutation,
+}));
+
+vi.mock("./useReimbursementSummary", () => ({
+  useReimbursementSummary: ({ source }: { source: TransactionRecord | null }) => ({
+    summary: {
+      confirmed: 0,
+      queued: 0,
+      remaining: source?.amount ?? 0,
+      overReimbursed: 0,
+      currencyMismatchIds: [],
+    },
+    isChecking: false,
+    isError: false,
+    retry: vi.fn(async () => undefined),
+    needsOnlineVerification: false,
+  }),
 }));
 
 vi.mock("../Header", () => ({ Header: () => <header>SheetLog</header> }));
@@ -303,6 +331,8 @@ beforeEach(() => {
   mocks.updateMutation.mutateAsync.mockReset();
   mocks.updateMutation.reset.mockReset();
   mocks.deleteMutation.mutate.mockReset();
+  mocks.reimbursementMutation.mutateAsync.mockReset();
+  mocks.reimbursementMutation.reset.mockReset();
 
   let tokenNumber = 0;
   mocks.createSession.mockImplementation(async () => ({
