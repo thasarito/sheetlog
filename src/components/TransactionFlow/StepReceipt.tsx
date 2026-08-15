@@ -31,6 +31,7 @@ type StepReceiptProps = ReceiptData & {
   doneLabel?: string;
   undoLabel?: string;
   showTimedProgress?: boolean;
+  actionsDisabled?: boolean;
 };
 
 const TYPE_LABELS: Record<TransactionType, string> = {
@@ -59,6 +60,7 @@ export function StepReceipt({
   doneLabel,
   undoLabel,
   showTimedProgress,
+  actionsDisabled = false,
 }: StepReceiptProps) {
   const amountLabel = amount ? amount : "0";
   const amountDisplay = `${currency} ${amountLabel}`;
@@ -228,8 +230,9 @@ export function StepReceipt({
         <div className="space-y-3">
           <button
             type="button"
-            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground"
+            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60"
             onClick={onDone}
+            disabled={actionsDisabled}
           >
             <span className="relative z-10">{resolvedDoneLabel}</span>
             {shouldShowTimedProgress ? (
@@ -245,8 +248,9 @@ export function StepReceipt({
           </button>
           <button
             type="button"
-            className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground"
+            className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
             onClick={onUndo}
+            disabled={actionsDisabled}
           >
             {resolvedUndoLabel}
           </button>

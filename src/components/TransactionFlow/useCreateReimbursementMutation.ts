@@ -6,7 +6,7 @@ import {
   REIMBURSEMENT_CATEGORY,
   validateReimbursementAmount,
 } from "../../lib/reimbursements";
-import type { TransactionRecord } from "../../lib/types";
+import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 
 export type CreateReimbursementVariables = {
@@ -18,6 +18,53 @@ export type CreateReimbursementVariables = {
   note: string;
 };
 
+export class ReimbursementRecordError extends Error {
+  readonly record: TransactionRecord;
+
+  constructor(message: string, record: TransactionRecord) {
+    super(message);
+    this.name = "ReimbursementRecordError";
+    this.record = record;
+  }
+}
+
+export function buildReimbursementInput({
+  source,
+  amount: amountValue,
+  remaining,
+  account,
+  date,
+  note,
+}: CreateReimbursementVariables): TransactionInput {
+  if (!isReimbursableExpense(source)) {
+    throw new Error("Original expense is no longer reimbursable");
+  }
+
+  const amount = Number(amountValue);
+  const validationError = validateReimbursementAmount(amount, {
+    confirmed: 0,
+    queued: 0,
+    remaining,
+    overReimbursed: 0,
+    currencyMismatchIds: [],
+  });
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  return {
+    type: "income",
+    category: REIMBURSEMENT_CATEGORY,
+    amount,
+    currency: source.currency,
+    account,
+    for: source.for,
+    date: format(date, "yyyy-MM-dd'T'HH:mm:ss"),
+    note: note.trim() || undefined,
+    reimbursesTransactionId: source.id,
+  };
+}
+
 export function useCreateReimbursementMutation() {
   const { addTransaction } = useTransactions();
   const { sheetId } = useWorkspace();
@@ -25,46 +72,14 @@ export function useCreateReimbursementMutation() {
 
   return useMutation({
     networkMode: "always",
-    mutationFn: async ({
-      source,
-      amount: amountValue,
-      remaining,
-      account,
-      date,
-      note,
-    }: CreateReimbursementVariables) => {
-      if (!isReimbursableExpense(source)) {
-        throw new Error("Original expense is no longer reimbursable");
-      }
-
-      const amount = Number(amountValue);
-      const validationError = validateReimbursementAmount(amount, {
-        confirmed: 0,
-        queued: 0,
-        remaining,
-        overReimbursed: 0,
-        currencyMismatchIds: [],
-      });
-      if (validationError) {
-        throw new Error(validationError);
-      }
-
-      const record = await addTransaction({
-        type: "income",
-        category: REIMBURSEMENT_CATEGORY,
-        amount,
-        currency: source.currency,
-        account,
-        for: source.for,
-        date: format(date, "yyyy-MM-dd'T'HH:mm:ss"),
-        note: note.trim() || undefined,
-        reimbursesTransactionId: source.id,
-      });
+    mutationFn: async (variables: CreateReimbursementVariables) => {
+      const record = await addTransaction(buildReimbursementInput(variables));
 
       if (record.status === "error") {
-        throw new Error(
+        throw new ReimbursementRecordError(
           record.error ??
             "Reimbursement could not be synced. Retry or delete it.",
+          record,
         );
       }
 

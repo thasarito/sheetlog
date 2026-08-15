@@ -121,8 +121,9 @@ export function StepAmount({
             <button
               type="button"
               aria-label="Go back"
-              className="rounded-full p-2 hover:bg-muted transition-colors -ml-2"
+              className="rounded-full p-2 hover:bg-muted transition-colors -ml-2 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={onBack}
+              disabled={isDeleting}
             >
               <ChevronLeft className="h-5 w-5" />
             </button>

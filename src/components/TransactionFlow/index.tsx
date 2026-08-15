@@ -36,13 +36,18 @@ import {
   reimbursementFieldsLocked,
   type TransactionFlowMode,
 } from "./flowMode";
-import { useCreateReimbursementMutation } from "./useCreateReimbursementMutation";
+import {
+  buildReimbursementInput,
+  ReimbursementRecordError,
+  useCreateReimbursementMutation,
+} from "./useCreateReimbursementMutation";
 import { useReimbursementSummary } from "./useReimbursementSummary";
 import { ReimbursementAction } from "./ReimbursementAction";
 import {
   isReimbursableExpense,
   REIMBURSEMENT_CATEGORY,
 } from "../../lib/reimbursements";
+import { createFlowGeneration } from "./flowGeneration";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -72,6 +77,18 @@ function createPlaceSessionId() {
   )}-${hexadecimal.slice(20)}`;
 }
 
+function editFlowKey(transactionId: string) {
+  return `edit:${transactionId}`;
+}
+
+function reimbursementFlowKey(sourceId: string) {
+  return `reimburse:${sourceId}`;
+}
+
+function receiptFlowKey(transactionId: string) {
+  return `receipt:${transactionId}`;
+}
+
 export function TransactionFlow() {
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { onboarding, refreshOnboarding } = useOnboarding();
@@ -94,6 +111,9 @@ export function TransactionFlow() {
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [flowGeneration] = useState(() =>
+    createFlowGeneration("dashboard"),
+  );
   const placeSearchButtonRef = useRef<HTMLButtonElement>(null);
   const noteInputRef = useRef<HTMLInputElement>(null);
   const placeSearchGenerationRef = useRef(0);
@@ -104,9 +124,9 @@ export function TransactionFlow() {
   const updateMutation = useUpdateTransactionMutation();
   const deleteMutation = useDeleteTransactionMutation();
   const reimbursementMutation = useCreateReimbursementMutation();
-  const reimbursementSubmissionRef = useRef(false);
-  const reimbursementUndoRef = useRef(false);
-  const sourceDeletionRef = useRef(false);
+  const reimbursementSubmissionRef = useRef<string | null>(null);
+  const reimbursementUndoRef = useRef<string | null>(null);
+  const sourceDeletionRef = useRef<string | null>(null);
   const form = useTransactionForm({
     onSubmit: async (values) => {
       await handleSubmit(values);
@@ -159,6 +179,11 @@ export function TransactionFlow() {
         : null;
   const reimbursementSummary = useReimbursementSummary({
     source: reimbursementSource,
+    excludeChildId:
+      flowMode.kind === "reimburse" &&
+      createdReimbursement?.status === "error"
+        ? createdReimbursement.id
+        : undefined,
   });
   const placesMode: PlacesFlowMode = flowMode.kind;
   const shouldFetchNearbyPlaces = isPlacesEligible({
@@ -407,6 +432,12 @@ export function TransactionFlow() {
   }, []);
 
   function handleFormSubmit() {
+    if (
+      deleteMutation.isPending ||
+      sourceDeletionRef.current !== null
+    ) {
+      return;
+    }
     const result = transactionSchema.safeParse({
       type,
       category,
@@ -477,6 +508,7 @@ export function TransactionFlow() {
   }
 
   const resetFlow = useCallback(() => {
+    flowGeneration.transition("dashboard");
     invalidatePlaceSearch();
     setStep(0);
     setPlaceSearchOpen(false);
@@ -488,9 +520,9 @@ export function TransactionFlow() {
     setShowDeleteConfirm(false);
     setCategoryDrawerOpen(false);
     setDateDrawerOpen(false);
-    reimbursementSubmissionRef.current = false;
-    reimbursementUndoRef.current = false;
-    sourceDeletionRef.current = false;
+    reimbursementSubmissionRef.current = null;
+    reimbursementUndoRef.current = null;
+    sourceDeletionRef.current = null;
     mutation.reset();
     updateMutation.reset();
     reimbursementMutation.reset();
@@ -513,105 +545,185 @@ export function TransactionFlow() {
     form,
     reimbursementForm,
     invalidatePlaceSearch,
+    flowGeneration,
   ]);
 
   const openCreateAmountStep = useCallback(() => {
+    flowGeneration.transition("create");
     setFlowMode({ kind: "create" });
-    setPlaceSuggestionSessionId(createPlaceSessionId());
-    setStep(1);
-  }, []);
-
-  const handleEditTransaction = useCallback(async (t: TransactionRecord) => {
-    // Ensure transaction exists in IndexedDB for update/delete to work
-    // (Recent transactions come from Google Sheets, not IndexedDB)
-    const existingTx = await db.transactions.get(t.id);
-    if (!existingTx) {
-      await db.transactions.put(t);
-    }
-
-    form.setFieldValue("type", t.type);
-    form.setFieldValue("category", t.category);
-    form.setFieldValue("amount", String(t.amount));
-    form.setFieldValue("currency", t.currency);
-    form.setFieldValue("account", t.account);
-    form.setFieldValue("forValue", t.for);
-    form.setFieldValue("dateObject", parseDate(t.date));
-    form.setFieldValue("note", t.note ?? "");
-    setFlowMode({ kind: "edit", transaction: t });
     setCreatedReimbursement(null);
     setReceiptData(null);
     setShowDeleteConfirm(false);
+    setPlaceSuggestionSessionId(createPlaceSessionId());
     setStep(1);
-  }, [form]);
+  }, [flowGeneration]);
+
+  const handleEditTransaction = useCallback(
+    async (transaction: TransactionRecord) => {
+      if (
+        deleteMutation.isPending ||
+        sourceDeletionRef.current !== null
+      ) {
+        return;
+      }
+      const flowKey = editFlowKey(transaction.id);
+      const token = flowGeneration.transition(flowKey);
+
+      // Ensure transaction exists in IndexedDB for update/delete to work
+      // (Recent transactions come from Google Sheets, not IndexedDB).
+      const existingTransaction = await db.transactions.get(transaction.id);
+      if (!flowGeneration.isCurrent(token, flowKey)) {
+        return;
+      }
+      if (!existingTransaction) {
+        await db.transactions.put(transaction);
+        if (!flowGeneration.isCurrent(token, flowKey)) {
+          return;
+        }
+      }
+
+      form.setFieldValue("type", transaction.type);
+      form.setFieldValue("category", transaction.category);
+      form.setFieldValue("amount", String(transaction.amount));
+      form.setFieldValue("currency", transaction.currency);
+      form.setFieldValue("account", transaction.account);
+      form.setFieldValue("forValue", transaction.for);
+      form.setFieldValue("dateObject", parseDate(transaction.date));
+      form.setFieldValue("note", transaction.note ?? "");
+      setFlowMode({ kind: "edit", transaction });
+      setCreatedReimbursement(null);
+      setReceiptData(null);
+      setShowDeleteConfirm(false);
+      setStep(1);
+    },
+    [deleteMutation.isPending, flowGeneration, form],
+  );
 
   const handleDelete = useCallback(() => {
     if (flowMode.kind !== "edit") return;
+    const sourceId = flowMode.transaction.id;
+    const flowKey = editFlowKey(sourceId);
     if (!showDeleteConfirm) {
+      const confirmationToken = flowGeneration.capture();
       setShowDeleteConfirm(true);
       toast("Tap delete again to confirm", {
         duration: 3000,
-        onAutoClose: () => setShowDeleteConfirm(false),
+        onAutoClose: () => {
+          if (flowGeneration.isCurrent(confirmationToken, flowKey)) {
+            setShowDeleteConfirm(false);
+          }
+        },
       });
       return;
     }
-    if (deleteMutation.isPending || sourceDeletionRef.current) {
+    if (
+      deleteMutation.isPending ||
+      sourceDeletionRef.current !== null
+    ) {
       return;
     }
-    sourceDeletionRef.current = true;
-    deleteMutation.mutate(flowMode.transaction.id, {
+    const deletionToken = flowGeneration.capture();
+    if (!flowGeneration.isCurrent(deletionToken, flowKey)) {
+      return;
+    }
+    const deletionId = `${sourceId}:${deletionToken.generation}`;
+    sourceDeletionRef.current = deletionId;
+    deleteMutation.mutate(sourceId, {
       onSuccess: () => {
-        resetFlow();
+        if (flowGeneration.isCurrent(deletionToken, flowKey)) {
+          resetFlow();
+        }
       },
       onError: () => {
-        toast.error("Failed to delete transaction");
+        if (flowGeneration.isCurrent(deletionToken, flowKey)) {
+          toast.error("Failed to delete transaction");
+        }
       },
       onSettled: () => {
-        sourceDeletionRef.current = false;
-        setShowDeleteConfirm(false);
+        if (sourceDeletionRef.current === deletionId) {
+          sourceDeletionRef.current = null;
+        }
+        if (flowGeneration.isCurrent(deletionToken, flowKey)) {
+          setShowDeleteConfirm(false);
+        }
       },
     });
-  }, [flowMode, showDeleteConfirm, deleteMutation, resetFlow]);
+  }, [
+    flowMode,
+    showDeleteConfirm,
+    deleteMutation,
+    flowGeneration,
+    resetFlow,
+  ]);
 
   function clearReceiptStep() {
+    flowGeneration.transition("dashboard");
     setStep(0);
     setReceiptData(null);
     setCreatedReimbursement(null);
     setFlowMode({ kind: "create" });
     setShowDeleteConfirm(false);
-    sourceDeletionRef.current = false;
+    reimbursementSubmissionRef.current = null;
+    reimbursementUndoRef.current = null;
+    sourceDeletionRef.current = null;
     mutation.reset();
     updateMutation.reset();
     reimbursementMutation.reset();
   }
 
   function handleReceiptDone() {
+    if (deleteMutation.isPending || reimbursementUndoRef.current !== null) {
+      return;
+    }
     clearReceiptTransition();
     resetFlow();
   }
 
   async function handleReceiptUndo() {
-    clearReceiptTransition();
     if (flowMode.kind === "reimburse" && createdReimbursement) {
-      if (reimbursementUndoRef.current) {
+      if (
+        deleteMutation.isPending ||
+        reimbursementUndoRef.current !== null
+      ) {
         return;
       }
-      reimbursementUndoRef.current = true;
+      const childId = createdReimbursement.id;
+      const flowKey = receiptFlowKey(childId);
+      const undoToken = flowGeneration.capture();
+      if (!flowGeneration.isCurrent(undoToken, flowKey)) {
+        return;
+      }
+      const undoId = `${childId}:${undoToken.generation}`;
+      reimbursementUndoRef.current = undoId;
       try {
-        await deleteMutation.mutateAsync(createdReimbursement.id);
-        resetFlow();
+        await deleteMutation.mutateAsync(childId);
+        if (flowGeneration.isCurrent(undoToken, flowKey)) {
+          resetFlow();
+        }
       } catch (error) {
-        handleToast(
-          error instanceof Error
-            ? error.message
-            : "Failed to undo reimbursement",
-        );
+        if (flowGeneration.isCurrent(undoToken, flowKey)) {
+          handleToast(
+            error instanceof Error
+              ? error.message
+              : "Failed to undo reimbursement",
+          );
+        }
       } finally {
-        reimbursementUndoRef.current = false;
+        if (reimbursementUndoRef.current === undoId) {
+          reimbursementUndoRef.current = null;
+        }
       }
       return;
     }
+    if (deleteMutation.isPending) {
+      return;
+    }
+    const undoToken = flowGeneration.capture();
+    clearReceiptTransition();
     await handleUndo();
-    resetFlow();
+    if (flowGeneration.isCurrent(undoToken)) {
+      resetFlow();
+    }
   }
 
   async function handleUndo() {
@@ -624,7 +736,7 @@ export function TransactionFlow() {
       flowMode.kind !== "edit" ||
       !isReimbursableExpense(flowMode.transaction) ||
       deleteMutation.isPending ||
-      sourceDeletionRef.current ||
+      sourceDeletionRef.current !== null ||
       reimbursementSummary.isChecking ||
       reimbursementSummary.isError ||
       reimbursementSummary.summary.currencyMismatchIds.length > 0 ||
@@ -649,37 +761,49 @@ export function TransactionFlow() {
     reimbursementForm.setFieldValue("dateObject", defaults.dateObject);
     reimbursementForm.setFieldValue("note", defaults.note);
     reimbursementMutation.reset();
-    reimbursementSubmissionRef.current = false;
+    updateMutation.reset();
+    reimbursementSubmissionRef.current = null;
+    reimbursementUndoRef.current = null;
     setCreatedReimbursement(null);
     setReceiptData(null);
     setShowDeleteConfirm(false);
     setCategoryDrawerOpen(false);
     setDateDrawerOpen(false);
+    flowGeneration.transition(reimbursementFlowKey(source.id));
     setFlowMode({ kind: "reimburse", source });
     setStep(1);
   }
 
   function handleAmountBack() {
+    if (deleteMutation.isPending || sourceDeletionRef.current !== null) {
+      return;
+    }
     if (flowMode.kind === "reimburse") {
       if (
-        reimbursementSubmissionRef.current ||
-        reimbursementMutation.isPending
+        reimbursementSubmissionRef.current !== null ||
+        reimbursementMutation.isPending ||
+        updateMutation.isPending
       ) {
         return;
       }
+      flowGeneration.transition(editFlowKey(flowMode.source.id));
       setFlowMode({ kind: "edit", transaction: flowMode.source });
       setCreatedReimbursement(null);
       setReceiptData(null);
       setShowDeleteConfirm(false);
       setDateDrawerOpen(false);
       reimbursementMutation.reset();
+      updateMutation.reset();
       setStep(1);
       return;
     }
 
     if (flowMode.kind === "edit") {
+      flowGeneration.transition("dashboard");
       setFlowMode({ kind: "create" });
       setShowDeleteConfirm(false);
+    } else {
+      flowGeneration.transition("dashboard");
     }
     setStep(0);
   }
@@ -688,14 +812,23 @@ export function TransactionFlow() {
     if (
       flowMode.kind !== "reimburse" ||
       deleteMutation.isPending ||
-      sourceDeletionRef.current ||
-      reimbursementSubmissionRef.current ||
-      reimbursementMutation.isPending
+      sourceDeletionRef.current !== null ||
+      reimbursementSubmissionRef.current !== null ||
+      reimbursementMutation.isPending ||
+      updateMutation.isPending ||
+      (createdReimbursement !== null &&
+        createdReimbursement.status !== "error")
     ) {
       return;
     }
 
     const source = flowMode.source;
+    const flowKey = reimbursementFlowKey(source.id);
+    const submissionToken = flowGeneration.capture();
+    if (!flowGeneration.isCurrent(submissionToken, flowKey)) {
+      return;
+    }
+    const submissionId = `${source.id}:${submissionToken.generation}`;
     const nextReceipt: ReceiptData = {
       type: "income",
       category: REIMBURSEMENT_CATEGORY,
@@ -706,32 +839,63 @@ export function TransactionFlow() {
       dateObject: values.dateObject,
       note: values.note.trim(),
     };
-    reimbursementSubmissionRef.current = true;
+    const variables = {
+      source,
+      amount: values.amount,
+      remaining: reimbursementSummary.summary.remaining,
+      account: values.account,
+      date: values.dateObject,
+      note: values.note,
+    };
+    reimbursementSubmissionRef.current = submissionId;
     try {
-      const record = await reimbursementMutation.mutateAsync({
-        source,
-        amount: values.amount,
-        remaining: reimbursementSummary.summary.remaining,
-        account: values.account,
-        date: values.dateObject,
-        note: values.note,
-      });
+      const record =
+        createdReimbursement?.status === "error"
+          ? await updateMutation.mutateAsync({
+              id: createdReimbursement.id,
+              input: buildReimbursementInput(variables),
+            })
+          : await reimbursementMutation.mutateAsync(variables);
+      if (!flowGeneration.isCurrent(submissionToken, flowKey)) {
+        return;
+      }
+      if (record.status === "error") {
+        throw new ReimbursementRecordError(
+          record.error ??
+            "Reimbursement could not be synced. Retry or delete it.",
+          record,
+        );
+      }
       setCreatedReimbursement(record);
       setReceiptData(nextReceipt);
+      flowGeneration.transition(receiptFlowKey(record.id));
       setStep(2);
     } catch (error) {
-      handleToast(
-        error instanceof Error
-          ? error.message
-          : "Failed to save reimbursement",
-      );
+      if (flowGeneration.isCurrent(submissionToken, flowKey)) {
+        if (error instanceof ReimbursementRecordError) {
+          setCreatedReimbursement(error.record);
+        }
+        handleToast(
+          error instanceof Error
+            ? error.message
+            : "Failed to save reimbursement",
+        );
+      }
     } finally {
-      reimbursementSubmissionRef.current = false;
+      if (reimbursementSubmissionRef.current === submissionId) {
+        reimbursementSubmissionRef.current = null;
+      }
     }
   }
 
   async function handleSubmit(values: TransactionFormValues) {
-    if (mutation.isPending || updateMutation.isPending) {
+    if (
+      flowMode.kind === "reimburse" ||
+      mutation.isPending ||
+      updateMutation.isPending ||
+      deleteMutation.isPending ||
+      sourceDeletionRef.current !== null
+    ) {
       return;
     }
     if (!values.type || !values.category || !values.amount) {
@@ -767,6 +931,8 @@ export function TransactionFlow() {
 
     // Handle update mode
     if (flowMode.kind === "edit") {
+      const receiptKey = receiptFlowKey(flowMode.transaction.id);
+      const submissionToken = flowGeneration.transition(receiptKey);
       const nextReceipt: ReceiptData = {
         type: values.type,
         category: values.category,
@@ -793,17 +959,33 @@ export function TransactionFlow() {
             note: trimmedNote || undefined,
           },
         });
-        scheduleReceiptTransition(() => resetFlow(), 2000);
+        if (!flowGeneration.isCurrent(submissionToken, receiptKey)) {
+          return;
+        }
+        scheduleReceiptTransition(() => {
+          if (flowGeneration.isCurrent(submissionToken, receiptKey)) {
+            resetFlow();
+          }
+        }, 2000);
       } catch (error) {
+        if (!flowGeneration.isCurrent(submissionToken, receiptKey)) {
+          return;
+        }
         const message =
           error instanceof Error ? error.message : "Failed to update transaction";
         handleToast(message);
-        scheduleReceiptTransition(() => clearReceiptStep(), 2000);
+        scheduleReceiptTransition(() => {
+          if (flowGeneration.isCurrent(submissionToken, receiptKey)) {
+            clearReceiptStep();
+          }
+        }, 2000);
       }
       return;
     }
 
     // Handle create mode
+    const receiptKey = receiptFlowKey("create");
+    const submissionToken = flowGeneration.transition(receiptKey);
     const nextReceipt: ReceiptData = {
       type: values.type,
       category: values.category,
@@ -822,13 +1004,25 @@ export function TransactionFlow() {
         forValue: resolvedFor,
         note: trimmedNote,
       });
-      scheduleReceiptTransition(() => resetFlow(), 2000);
+      if (!flowGeneration.isCurrent(submissionToken, receiptKey)) {
+        return;
+      }
+      scheduleReceiptTransition(() => {
+        if (flowGeneration.isCurrent(submissionToken, receiptKey)) {
+          resetFlow();
+        }
+      }, 2000);
     } catch (error) {
+      if (!flowGeneration.isCurrent(submissionToken, receiptKey)) {
+        return;
+      }
       const message =
         error instanceof Error ? error.message : "Failed to save transaction";
       handleToast(message);
       scheduleReceiptTransition(() => {
-        clearReceiptStep();
+        if (flowGeneration.isCurrent(submissionToken, receiptKey)) {
+          clearReceiptStep();
+        }
       }, 2000);
     }
   }
@@ -869,20 +1063,34 @@ export function TransactionFlow() {
           onSubmit={handleFormSubmit}
           isSubmitting={
             flowMode.kind === "reimburse"
-              ? reimbursementMutation.isPending
+              ? reimbursementMutation.isPending || updateMutation.isPending
               : mutation.isPending || updateMutation.isPending
           }
           onDelete={flowMode.kind === "edit" ? handleDelete : undefined}
           isDeleting={deleteMutation.isPending}
           onCategoryClick={
             flowMode.kind === "edit" && !fieldsLocked
-              ? () => setCategoryDrawerOpen(true)
+              ? () => {
+                  if (
+                    !deleteMutation.isPending &&
+                    sourceDeletionRef.current === null
+                  ) {
+                    setCategoryDrawerOpen(true);
+                  }
+                }
               : undefined
           }
           onDateClick={
             flowMode.kind === "create"
               ? undefined
-              : () => setDateDrawerOpen(true)
+              : () => {
+                  if (
+                    !deleteMutation.isPending &&
+                    sourceDeletionRef.current === null
+                  ) {
+                    setDateDrawerOpen(true);
+                  }
+                }
           }
           submitLabel={flowMode.kind === "edit" ? "Save" : undefined}
           nearbyPlaceSuggestions={
@@ -940,6 +1148,10 @@ export function TransactionFlow() {
               variant="reimbursement"
               syncStatus={createdReimbursement?.status}
               showTimedProgress={false}
+              actionsDisabled={
+                deleteMutation.isPending ||
+                reimbursementUndoRef.current !== null
+              }
               onDone={handleReceiptDone}
               onUndo={handleReceiptUndo}
             />

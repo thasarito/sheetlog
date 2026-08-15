@@ -1522,6 +1522,34 @@ describe("transaction mutations", () => {
     queryClient.clear();
   });
 
+  it("rejects a missing update provider result instead of reporting success", async () => {
+    mutationContextState.value = mutationContext({
+      updateTransaction: vi.fn().mockResolvedValue(undefined),
+    });
+    const { queryClient, wrapper } = createMutationHarness();
+    const { result } = renderHook(() => useUpdateTransactionMutation(), {
+      wrapper,
+    });
+
+    let failure: unknown;
+    await act(async () => {
+      try {
+        await result.current.mutateAsync({
+          id: "missing-row",
+          input: { note: "Updated" },
+        });
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "Transaction no longer exists. Refresh and try again.",
+    );
+    queryClient.clear();
+  });
+
   it("returns the delete provider result and invalidates every prefix", async () => {
     const deleted = { ok: true, message: "Removed synced entry" };
     const deleteTransaction = vi.fn().mockResolvedValue(deleted);

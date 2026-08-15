@@ -226,4 +226,33 @@ describe("StepReceipt", () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId("receipt-timed-progress")).not.toBeInTheDocument();
   });
+
+  it("disables both receipt actions while a destructive action is pending", async () => {
+    const user = userEvent.setup();
+    const onDone = vi.fn();
+    const onUndo = vi.fn();
+    render(
+      <StepReceipt
+        {...receipt}
+        variant="reimbursement"
+        syncStatus="synced"
+        isPending={false}
+        isSuccess
+        isError={false}
+        actionsDisabled
+        onDone={onDone}
+        onUndo={onUndo}
+      />
+    );
+
+    const done = screen.getByRole("button", { name: "Done" });
+    const undo = screen.getByRole("button", { name: "Undo reimbursement" });
+    expect(done).toBeDisabled();
+    expect(undo).toBeDisabled();
+
+    await user.click(done);
+    await user.click(undo);
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onUndo).not.toHaveBeenCalled();
+  });
 });

@@ -16,6 +16,9 @@ export function useUpdateTransactionMutation() {
       input: Partial<TransactionInput>;
     }) => {
       const record = await updateTransaction(id, input);
+      if (!record) {
+        throw new Error("Transaction no longer exists. Refresh and try again.");
+      }
       if (record?.status === "error") {
         throw new Error(
           record.error ?? "Transaction could not be synced. Retry or delete it.",

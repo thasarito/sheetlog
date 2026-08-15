@@ -9,7 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { REIMBURSEMENT_CATEGORY } from "../../lib/reimbursements";
 import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { transactionQueryKeys } from "./transactionQueryKeys";
-import { useCreateReimbursementMutation } from "./useCreateReimbursementMutation";
+import {
+  ReimbursementRecordError,
+  useCreateReimbursementMutation,
+} from "./useCreateReimbursementMutation";
 
 const providerMocks = vi.hoisted(() => ({
   addTransaction: vi.fn(),
@@ -197,9 +200,22 @@ describe("useCreateReimbursementMutation", () => {
       wrapper,
     });
 
-    await expect(result.current.mutateAsync(validVariables())).rejects.toThrow(
+    let failure: unknown;
+    try {
+      await result.current.mutateAsync(validVariables());
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(ReimbursementRecordError);
+    expect((failure as ReimbursementRecordError).message).toBe(
       "Amount exceeds remaining reimbursement balance",
     );
+    expect((failure as ReimbursementRecordError).record).toMatchObject({
+      id: "child-1",
+      status: "error",
+      reimbursesTransactionId: "expense-1",
+    });
     expect(providerMocks.addTransaction).toHaveBeenCalledTimes(1);
   });
 

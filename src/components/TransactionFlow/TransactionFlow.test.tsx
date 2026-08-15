@@ -14,6 +14,13 @@ const mocks = vi.hoisted(() => ({
   undoLast: vi.fn(),
   retrySummary: vi.fn(),
   nearbyCalls: [] as Array<{ enabled: boolean }>,
+  summaryCalls: [] as Array<{
+    source: TransactionRecord | null;
+    excludeChildId?: string;
+  }>,
+  dbGet: vi.fn(),
+  dbPut: vi.fn(),
+  dashboardEdit: null as ((transaction: TransactionRecord) => void) | null,
   expense: {
     id: "expense-1",
     type: "expense",
@@ -27,6 +34,21 @@ const mocks = vi.hoisted(() => ({
     status: "synced",
     createdAt: "2026-08-15T08:00:00.000Z",
     updatedAt: "2026-08-15T08:00:00.000Z",
+    sheetRowValid: true,
+  } as TransactionRecord,
+  expenseB: {
+    id: "expense-2",
+    type: "expense",
+    amount: 55,
+    currency: "USD",
+    account: "Bank",
+    for: "Me",
+    category: "Food",
+    date: "2026-08-14T12:00:00.000Z",
+    note: "Dinner",
+    status: "synced",
+    createdAt: "2026-08-14T12:00:00.000Z",
+    updatedAt: "2026-08-14T12:00:00.000Z",
     sheetRowValid: true,
   } as TransactionRecord,
   income: {
@@ -133,8 +155,8 @@ vi.mock("../../lib/googlePlaces", async (importOriginal) => {
 vi.mock("../../lib/db", () => ({
   db: {
     transactions: {
-      get: vi.fn(async () => undefined),
-      put: vi.fn(async () => undefined),
+      get: mocks.dbGet,
+      put: mocks.dbPut,
     },
   },
 }));
@@ -169,10 +191,16 @@ vi.mock("./usePlaceAutocomplete", () => ({
 vi.mock("./PlaceSearchDrawer", () => ({ PlaceSearchDrawer: () => null }));
 
 vi.mock("./useReimbursementSummary", () => ({
-  useReimbursementSummary: () => ({
-    ...mocks.summaryState,
-    retry: mocks.retrySummary,
-  }),
+  useReimbursementSummary: (options: {
+    source: TransactionRecord | null;
+    excludeChildId?: string;
+  }) => {
+    mocks.summaryCalls.push(options);
+    return {
+      ...mocks.summaryState,
+      retry: mocks.retrySummary,
+    };
+  },
 }));
 
 vi.mock("./useAddTransactionMutation", () => ({
@@ -215,10 +243,15 @@ vi.mock("./TopDashboard", () => ({
     onEditTransaction,
   }: {
     onEditTransaction: (transaction: TransactionRecord) => void;
-  }) => (
-    <div>
+  }) => {
+    mocks.dashboardEdit = onEditTransaction;
+    return (
+      <div>
       <button type="button" onClick={() => onEditTransaction(mocks.expense)}>
         Edit expense
+      </button>
+      <button type="button" onClick={() => onEditTransaction(mocks.expenseB)}>
+        Edit expense B
       </button>
       <button type="button" onClick={() => onEditTransaction(mocks.income)}>
         Edit income
@@ -235,8 +268,9 @@ vi.mock("./TopDashboard", () => ({
       >
         Edit malformed expense
       </button>
-    </div>
-  ),
+      </div>
+    );
+  },
 }));
 
 vi.mock("../DateTimeDrawer", () => ({
@@ -310,16 +344,22 @@ async function enterReimbursement(user: ReturnType<typeof userEvent.setup>) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((nextResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve;
+    reject = nextReject;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 beforeEach(() => {
   vi.restoreAllMocks();
   window.localStorage.clear();
   mocks.nearbyCalls.length = 0;
+  mocks.summaryCalls.length = 0;
+  mocks.dbGet.mockReset();
+  mocks.dbPut.mockReset();
+  mocks.dashboardEdit = null;
   mocks.addTransaction.mockReset();
   mocks.deleteTransaction.mockReset();
   mocks.undoLast.mockReset();
@@ -345,6 +385,8 @@ beforeEach(() => {
   mocks.addTransaction.mockImplementation(async (input: TransactionInput) =>
     createChild(input),
   );
+  mocks.dbGet.mockResolvedValue(undefined);
+  mocks.dbPut.mockResolvedValue(undefined);
   mocks.deleteTransaction.mockResolvedValue({ ok: true, message: "Removed" });
   mocks.undoLast.mockResolvedValue({ ok: true, message: "Undone" });
   mocks.addMutation.mutateAsync.mockResolvedValue(undefined);
@@ -352,6 +394,50 @@ beforeEach(() => {
 });
 
 describe("TransactionFlow reimbursement entry", () => {
+  it("ignores late editor hydration when a newer transaction was selected", async () => {
+    const expenseARead = deferred<TransactionRecord | undefined>();
+    const expenseBRead = deferred<TransactionRecord | undefined>();
+    mocks.dbGet.mockImplementation((id: string) =>
+      id === mocks.expense.id ? expenseARead.promise : expenseBRead.promise,
+    );
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Edit expense" }));
+    await user.click(screen.getByRole("button", { name: "Edit expense B" }));
+    await act(async () => {
+      expenseBRead.resolve(undefined);
+      await expenseBRead.promise;
+    });
+    expect(await screen.findByDisplayValue("Dinner")).toBeInTheDocument();
+
+    await act(async () => {
+      expenseARead.resolve(undefined);
+      await expenseARead.promise;
+    });
+    expect(screen.getByDisplayValue("Dinner")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Lunch")).not.toBeInTheDocument();
+    expect(screen.getByText("55")).toBeInTheDocument();
+  });
+
+  it("ignores late editor hydration after starting a new create flow", async () => {
+    const expenseRead = deferred<TransactionRecord | undefined>();
+    mocks.dbGet.mockReturnValue(expenseRead.promise);
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Edit expense" }));
+    await user.click(screen.getByRole("button", { name: "Start expense" }));
+    expect(screen.getByPlaceholderText("Add a note...")).toHaveValue("");
+
+    await act(async () => {
+      expenseRead.resolve(undefined);
+      await expenseRead.promise;
+    });
+    expect(screen.getByPlaceholderText("Add a note...")).toHaveValue("");
+    expect(screen.queryByDisplayValue("Lunch")).not.toBeInTheDocument();
+  });
+
   it("shows Reimburse only for parsed positive expenses in Delete, Reimburse, Save order", async () => {
     const user = userEvent.setup();
     renderFlow();
@@ -466,7 +552,42 @@ describe("TransactionFlow reimbursement entry", () => {
     });
 
     expect(reimburse).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Go back" })).toBeDisabled();
     expect(screen.queryByText("Reimbursement")).not.toBeInTheDocument();
+    expect(screen.getByText("Food")).toBeInTheDocument();
+
+    await act(async () => {
+      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      await deletion.promise;
+    });
+  });
+
+  it("blocks same-tick Back and Save after a confirmed source deletion starts", async () => {
+    const deletion = deferred<{ ok: boolean; message: string }>();
+    mocks.deleteTransaction.mockReturnValue(deletion.promise);
+    const user = userEvent.setup();
+    renderFlow();
+    await openExpenseEditor(user);
+
+    const deleteButton = screen.getByRole("button", {
+      name: "Delete transaction",
+    });
+    const backButton = screen.getByRole("button", { name: "Go back" });
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    await user.click(deleteButton);
+    act(() => {
+      deleteButton.click();
+      backButton.click();
+      saveButton.click();
+      mocks.dashboardEdit?.(mocks.expenseB);
+    });
+
+    await waitFor(() => {
+      expect(mocks.deleteTransaction).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.updateMutation.mutateAsync).not.toHaveBeenCalled();
+    expect(mocks.dbGet).not.toHaveBeenCalledWith("expense-2");
+    expect(screen.queryByRole("button", { name: "Start expense" })).not.toBeInTheDocument();
     expect(screen.getByText("Food")).toBeInTheDocument();
 
     await act(async () => {
@@ -666,6 +787,116 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
     expect(screen.getByRole("button", { name: "Edit expense" })).toBeVisible();
   });
 
+  it("locks Done and Undo to a single exact-child deletion and preserves retry after failure", async () => {
+    const deletion = deferred<{ ok: boolean; message: string }>();
+    mocks.deleteTransaction.mockReturnValueOnce(deletion.promise);
+    const user = userEvent.setup();
+    renderFlow();
+    await enterReimbursement(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await screen.findByText("Reimbursement recorded");
+
+    const done = screen.getByRole("button", { name: "Done" });
+    const undo = screen.getByRole("button", { name: "Undo reimbursement" });
+    await user.click(undo);
+    await waitFor(() => {
+      expect(done).toBeDisabled();
+      expect(undo).toBeDisabled();
+    });
+    act(() => {
+      done.click();
+      undo.click();
+    });
+    expect(mocks.deleteTransaction).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteTransaction).toHaveBeenCalledWith("child-exact");
+    expect(screen.queryByRole("button", { name: "Edit expense" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      deletion.reject(new Error("Could not remove reimbursement"));
+      try {
+        await deletion.promise;
+      } catch {
+        // The flow owns the surfaced failure.
+      }
+    });
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith("Could not remove reimbursement");
+      expect(screen.getByRole("button", { name: "Done" })).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Undo reimbursement" }),
+      ).toBeEnabled();
+    });
+    expect(screen.getByText("Reimbursement recorded")).toBeInTheDocument();
+
+    mocks.deleteTransaction.mockResolvedValueOnce({
+      ok: true,
+      message: "Removed synced entry",
+    });
+    await user.click(
+      screen.getByRole("button", { name: "Undo reimbursement" }),
+    );
+    await waitFor(() => {
+      expect(mocks.deleteTransaction).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.deleteTransaction).toHaveBeenLastCalledWith("child-exact");
+    expect(screen.getByRole("button", { name: "Edit expense" })).toBeVisible();
+  });
+
+  it("does not let Done reset the flow while exact reimbursement Undo succeeds", async () => {
+    const deletion = deferred<{ ok: boolean; message: string }>();
+    mocks.deleteTransaction.mockReturnValue(deletion.promise);
+    const user = userEvent.setup();
+    renderFlow();
+    await enterReimbursement(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await screen.findByText("Reimbursement recorded");
+
+    const undo = screen.getByRole("button", { name: "Undo reimbursement" });
+    await user.click(undo);
+    const done = screen.getByRole("button", { name: "Done" });
+    await waitFor(() => expect(done).toBeDisabled());
+    act(() => done.click());
+    expect(screen.getByText("Reimbursement recorded")).toBeInTheDocument();
+
+    await act(async () => {
+      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      await deletion.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit expense" })).toBeVisible();
+    });
+    expect(mocks.deleteTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a late exact-Undo success after an unrelated editor takes ownership", async () => {
+    const deletion = deferred<{ ok: boolean; message: string }>();
+    mocks.deleteTransaction.mockReturnValue(deletion.promise);
+    const user = userEvent.setup();
+    renderFlow();
+    await enterReimbursement(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await screen.findByText("Reimbursement recorded");
+
+    await user.click(
+      screen.getByRole("button", { name: "Undo reimbursement" }),
+    );
+    await waitFor(() => {
+      expect(mocks.deleteTransaction).toHaveBeenCalledWith("child-exact");
+    });
+
+    await act(async () => {
+      mocks.dashboardEdit?.(mocks.expenseB);
+    });
+    expect(await screen.findByDisplayValue("Dinner")).toBeInTheDocument();
+
+    await act(async () => {
+      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      await deletion.promise;
+    });
+    expect(screen.getByDisplayValue("Dinner")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start expense" })).not.toBeInTheDocument();
+  });
+
   it("keeps the amount form open and shows no receipt when provider validation returns an error row", async () => {
     mocks.addTransaction.mockImplementation(async (input: TransactionInput) =>
       createChild(input, {
@@ -689,5 +920,68 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
     expect(
       screen.queryByText("Reimbursement failed"),
     ).not.toBeInTheDocument();
+  });
+
+  it("retries a persisted error reimbursement by updating the same child ID", async () => {
+    let errorChild!: TransactionRecord;
+    mocks.addTransaction.mockImplementation(async (input: TransactionInput) => {
+      errorChild = createChild(input, {
+        status: "error",
+        error: "Temporary reimbursement failure",
+      });
+      return errorChild;
+    });
+    mocks.updateMutation.mutateAsync
+      .mockRejectedValueOnce(new Error("Still unable to sync reimbursement"))
+      .mockImplementationOnce(async ({ input }) => ({
+        ...errorChild,
+        ...input,
+        status: "pending",
+        error: undefined,
+      }));
+    const user = userEvent.setup();
+    renderFlow();
+    await enterReimbursement(user);
+
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith("Temporary reimbursement failure");
+    });
+    expect(mocks.addTransaction).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.summaryCalls.some((call) => call.excludeChildId === "child-exact"),
+    ).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        "Still unable to sync reimbursement",
+      );
+    });
+    expect(screen.getByText("Reimbursement")).toBeInTheDocument();
+    expect(mocks.addTransaction).toHaveBeenCalledTimes(1);
+    expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mocks.updateMutation.mutateAsync).toHaveBeenLastCalledWith({
+      id: "child-exact",
+      input: {
+        type: "income",
+        category: "Reimbursement",
+        amount: 60,
+        currency: "THB",
+        account: "Wallet",
+        for: "Family",
+        date: expect.any(String),
+        note: "Lunch",
+        reimbursesTransactionId: "expense-1",
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    expect(await screen.findByText("Reimbursement queued")).toBeInTheDocument();
+    expect(mocks.addTransaction).toHaveBeenCalledTimes(1);
+    expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledTimes(2);
+    expect(mocks.updateMutation.mutateAsync.mock.calls[1]?.[0]).toMatchObject({
+      id: "child-exact",
+    });
   });
 });
