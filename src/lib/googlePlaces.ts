@@ -103,15 +103,26 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
       | null;
     const mapsScript = script ?? document.createElement("script");
 
-    const fail = () => {
+    function cleanup() {
+      mapsScript.removeEventListener("load", succeed);
+      mapsScript.removeEventListener("error", fail);
+    }
+
+    function succeed() {
+      cleanup();
+      resolve();
+    }
+
+    function fail() {
+      cleanup();
       if (mapsScriptPromise === loaderPromise) {
         mapsScriptPromise = null;
       }
       mapsScript.remove();
       reject(new Error("Failed to load Google Maps"));
-    };
+    }
 
-    mapsScript.addEventListener("load", () => resolve(), { once: true });
+    mapsScript.addEventListener("load", succeed, { once: true });
     mapsScript.addEventListener("error", fail, { once: true });
 
     if (script) {
@@ -193,6 +204,11 @@ export async function getNearbyPlaces(
   coordinates: Coordinates,
   options: NearbyPlacesOptions = {}
 ): Promise<PlaceSuggestion[]> {
+  const maxResultCount = limitNearbyResults(options.maxResultCount);
+  if (maxResultCount === 0) {
+    return [];
+  }
+
   const placesLibrary = await getPlacesLibrary(getApiKey(options.apiKey));
   const searchNearby = placesLibrary.Place?.searchNearby;
   const popularity = placesLibrary.SearchNearbyRankPreference?.POPULARITY;
@@ -200,7 +216,6 @@ export async function getNearbyPlaces(
     throw new Error("Google Places nearby search is not available");
   }
 
-  const maxResultCount = limitNearbyResults(options.maxResultCount);
   const response = await searchNearby({
     fields: ["id", "displayName", "formattedAddress"],
     locationRestriction: {
@@ -246,6 +261,15 @@ export async function createPlaceAutocompleteSession(
   return { token, apiKey: options.apiKey };
 }
 
+function isPlacePredictionForVenue(prediction: GooglePlacePrediction) {
+  return (
+    Array.isArray(prediction.types) &&
+    prediction.types.some(
+      (type) => type === "establishment" || type === "point_of_interest"
+    )
+  );
+}
+
 export async function searchPlaceSuggestions(
   input: string,
   session: PlaceAutocompleteSession,
@@ -265,7 +289,6 @@ export async function searchPlaceSuggestions(
 
   const response = await fetchAutocompleteSuggestions({
     input,
-    includedPrimaryTypes: ["establishment"],
     sessionToken: session.token,
     ...(locationBias
       ? {
@@ -283,11 +306,12 @@ export async function searchPlaceSuggestions(
     const prediction = autocompleteSuggestion.placePrediction;
     const suggestion = createPlaceSuggestion(
       prediction?.placeId,
-      prediction?.structuredFormat?.mainText ?? prediction?.text,
-      prediction?.structuredFormat?.secondaryText
+      prediction?.mainText ?? prediction?.text,
+      prediction?.secondaryText
     );
     if (
       !prediction ||
+      !isPlacePredictionForVenue(prediction) ||
       !suggestion ||
       responsePlaceIds.has(suggestion.placeId)
     ) {

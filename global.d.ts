@@ -14,10 +14,9 @@ declare global {
   type GooglePlacePrediction = {
     placeId?: string;
     text?: GooglePlaceDisplayName;
-    structuredFormat?: {
-      mainText?: GooglePlaceDisplayName;
-      secondaryText?: GooglePlaceDisplayName;
-    };
+    mainText?: GooglePlaceDisplayName;
+    secondaryText?: GooglePlaceDisplayName;
+    types: string[];
     toPlace?: () => GooglePlace;
   };
 
@@ -52,7 +51,6 @@ declare global {
     AutocompleteSuggestion?: {
       fetchAutocompleteSuggestions: (request: {
         input: string;
-        includedPrimaryTypes: string[];
         sessionToken: GoogleAutocompleteSessionToken;
         locationBias?: {
           center: { lat: number; lng: number };

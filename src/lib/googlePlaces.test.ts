@@ -144,7 +144,26 @@ describe("Google Places browser client", () => {
     });
   });
 
-  it("normalizes nearby result counts to integers from zero through five", async () => {
+  it("returns an empty nearby result before loading Maps when the normalized limit is zero", async () => {
+    const searchNearby = vi.fn();
+    const importLibrary = vi.fn(async () => ({
+      Place: { searchNearby },
+      SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
+    }));
+    window.google = { maps: { importLibrary } };
+
+    await expect(
+      getNearbyPlaces(
+        { lat: 13.7563, lng: 100.5018 },
+        { apiKey: "", maxResultCount: 0 }
+      )
+    ).resolves.toEqual([]);
+    expect(importLibrary).not.toHaveBeenCalled();
+    expect(searchNearby).not.toHaveBeenCalled();
+    expect(document.getElementById("google-maps-js-api")).toBeNull();
+  });
+
+  it("normalizes nearby result counts to integers through five", async () => {
     const searchNearby = vi.fn(async () => ({
       places: [
         { id: "one", displayName: "One" },
@@ -166,10 +185,6 @@ describe("Google Places browser client", () => {
     };
 
     const coordinates = { lat: 13.7563, lng: 100.5018 };
-    const noResults = await getNearbyPlaces(coordinates, {
-      apiKey: "test-key",
-      maxResultCount: 0,
-    });
     const fractionalResults = await getNearbyPlaces(coordinates, {
       apiKey: "test-key",
       maxResultCount: 2.8,
@@ -179,19 +194,14 @@ describe("Google Places browser client", () => {
       maxResultCount: 99,
     });
 
-    expect(noResults).toHaveLength(0);
     expect(fractionalResults).toHaveLength(2);
     expect(oversizedResults).toHaveLength(5);
     expect(searchNearby).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ maxResultCount: 0 })
-    );
-    expect(searchNearby).toHaveBeenNthCalledWith(
-      2,
       expect.objectContaining({ maxResultCount: 2 })
     );
     expect(searchNearby).toHaveBeenNthCalledWith(
-      3,
+      2,
       expect.objectContaining({ maxResultCount: 5 })
     );
   });
@@ -214,6 +224,7 @@ describe("Google Places browser client", () => {
     expect(script.src).toContain("key=browser-key");
     expect(script.src).toContain("loading=async");
     expect(script.src).toContain("v=weekly");
+    const removeEventListener = vi.spyOn(script, "removeEventListener");
 
     window.google = {
       maps: {
@@ -228,6 +239,14 @@ describe("Google Places browser client", () => {
     await expect(promise).resolves.toEqual([
       { placeId: "cafe-amazon", name: "Cafe Amazon" },
     ]);
+    expect(removeEventListener).toHaveBeenCalledWith(
+      "load",
+      expect.any(Function)
+    );
+    expect(removeEventListener).toHaveBeenCalledWith(
+      "error",
+      expect.any(Function)
+    );
   });
 
   it("uses one autocomplete session and maps prediction names with address text", async () => {
@@ -237,14 +256,26 @@ describe("Google Places browser client", () => {
         {
           placePrediction: {
             placeId: "cafe-amazon",
-            structuredFormat: {
-              mainText: { text: "Cafe Amazon" },
-              secondaryText: { text: "Sukhumvit, Bangkok" },
-            },
+            mainText: { text: "Cafe Amazon" },
+            secondaryText: { text: "Sukhumvit, Bangkok" },
+            types: ["cafe", "point_of_interest"],
             toPlace: vi.fn(),
           },
         },
-        { placePrediction: { placeId: "missing-name" } },
+        {
+          placePrediction: {
+            placeId: "fallback-cafe",
+            text: { text: "Fallback Cafe" },
+            types: ["cafe", "establishment"],
+          },
+        },
+        {
+          placePrediction: {
+            placeId: "bangkok-region",
+            mainText: { text: "Bangkok" },
+            types: ["locality", "political"],
+          },
+        },
       ],
     }));
 
@@ -272,10 +303,10 @@ describe("Google Places browser client", () => {
         name: "Cafe Amazon",
         secondaryText: "Sukhumvit, Bangkok",
       },
+      { placeId: "fallback-cafe", name: "Fallback Cafe" },
     ]);
     expect(fetchAutocompleteSuggestions).toHaveBeenCalledWith({
       input: "cafe",
-      includedPrimaryTypes: ["establishment"],
       sessionToken: session.token,
       locationBias: {
         center: { lat: 13.7563, lng: 100.5018 },
@@ -306,7 +337,8 @@ describe("Google Places browser client", () => {
                 {
                   placePrediction: {
                     placeId: "resolved-cafe",
-                    structuredFormat: { mainText: { text: "Predicted Cafe" } },
+                    mainText: { text: "Predicted Cafe" },
+                    types: ["cafe", "establishment"],
                     toPlace,
                   },
                 },
@@ -344,7 +376,8 @@ describe("Google Places browser client", () => {
               {
                 placePrediction: {
                   placeId: "older-cafe",
-                  structuredFormat: { mainText: { text: "Older Cafe" } },
+                  mainText: { text: "Older Cafe" },
+                  types: ["cafe", "establishment"],
                 },
               },
             ],
@@ -368,7 +401,8 @@ describe("Google Places browser client", () => {
           {
             placePrediction: {
               placeId: "newer-cafe",
-              structuredFormat: { mainText: { text: "Newer Cafe" } },
+              mainText: { text: "Newer Cafe" },
+              types: ["cafe", "establishment"],
               toPlace: () => selectedPlace,
             },
           },
@@ -405,10 +439,22 @@ describe("Google Places browser client", () => {
     const failedScript = document.getElementById(
       "google-maps-js-api"
     ) as HTMLScriptElement;
+    const removeEventListener = vi.spyOn(
+      failedScript,
+      "removeEventListener"
+    );
     failedScript.dispatchEvent(new Event("error"));
 
     await expect(firstRequest).rejects.toThrow("Failed to load Google Maps");
     expect(document.getElementById("google-maps-js-api")).toBeNull();
+    expect(removeEventListener).toHaveBeenCalledWith(
+      "load",
+      expect.any(Function)
+    );
+    expect(removeEventListener).toHaveBeenCalledWith(
+      "error",
+      expect.any(Function)
+    );
 
     const searchNearby = vi.fn(async () => ({
       places: [{ id: "fresh-cafe", displayName: "Fresh Cafe" }],
