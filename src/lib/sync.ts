@@ -67,6 +67,9 @@ function orderPendingTransactions(
   const dependencyCount = pending.map(() => 0);
 
   pending.forEach((transaction, childIndex) => {
+    if (transaction.deleteIntent) {
+      return;
+    }
     const sourceId = transaction.reimbursesTransactionId;
     if (!sourceId) {
       return;
@@ -128,6 +131,7 @@ function hasSameTransactionContent(
     left.date === right.date &&
     left.createdAt === right.createdAt &&
     (left.note ?? '') === (right.note ?? '') &&
+    Boolean(left.deleteIntent) === Boolean(right.deleteIntent) &&
     (left.reimbursesTransactionId ?? '') ===
       (right.reimbursesTransactionId ?? '')
   );
@@ -180,6 +184,22 @@ async function updatePendingRevision(
       return false;
     }
     await db.transactions.update(attempted.id, updates);
+    return true;
+  });
+}
+
+async function deletePendingRevision(
+  attempted: TransactionRecord,
+): Promise<boolean> {
+  return db.transaction('rw', db.transactions, async () => {
+    const current = await db.transactions.get(attempted.id);
+    if (
+      !current?.deleteIntent ||
+      !isSamePendingRevision(current, attempted)
+    ) {
+      return false;
+    }
+    await db.transactions.delete(attempted.id);
     return true;
   });
 }
@@ -295,7 +315,7 @@ async function syncPendingTransactionsUnlocked(
   let syncedCount = 0;
   let syncFailure: unknown = null;
   let reimbursementHeaderReady = false;
-  const existingIds = await readTransactionIdMap(accessToken, sheetId);
+  let existingIds = await readTransactionIdMap(accessToken, sheetId);
 
   const ensureLinkedHeader = async () => {
     if (reimbursementHeaderReady) {
@@ -312,6 +332,36 @@ async function syncPendingTransactionsUnlocked(
     }
 
     try {
+      if (item.deleteIntent) {
+        const currentIds = await readTransactionIdMap(accessToken, sheetId);
+        const currentRow = currentIds.get(item.id);
+        existingIds = currentIds;
+        if (currentRow !== undefined) {
+          const tabId = await getSheetTabId(accessToken, sheetId);
+          if (tabId === null) {
+            throw new Error(
+              'Transactions sheet tab unavailable for reimbursement removal',
+            );
+          }
+          item = await getPendingRevision(item.id, sheetId, userId);
+          if (!item?.deleteIntent) {
+            continue;
+          }
+          await deleteRow(accessToken, sheetId, tabId, currentRow);
+          existingIds.delete(item.id);
+          for (const [existingId, rowIndex] of existingIds) {
+            if (rowIndex > currentRow) {
+              existingIds.set(existingId, rowIndex - 1);
+            }
+          }
+        }
+        const didDelete = await deletePendingRevision(item);
+        if (didDelete) {
+          syncedCount += 1;
+        }
+        continue;
+      }
+
       const existingRow = existingIds.get(item.id);
       if (existingRow !== undefined) {
         const remote = await readTransactionById(accessToken, sheetId, item.id);

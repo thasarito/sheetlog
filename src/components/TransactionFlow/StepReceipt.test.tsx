@@ -255,4 +255,60 @@ describe("StepReceipt", () => {
     expect(onDone).not.toHaveBeenCalled();
     expect(onUndo).not.toHaveBeenCalled();
   });
+
+  it("keeps a queued exact undo visible and explains the conservative balance", () => {
+    render(
+      <StepReceipt
+        {...receipt}
+        variant="reimbursement"
+        syncStatus="synced"
+        undoOutcome="pending"
+        isPending={false}
+        isSuccess
+        isError={false}
+        onDone={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Undo queued");
+    expect(
+      screen.getByText(
+        "This reimbursement stays counted until it is removed from Google Sheets.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Undo reimbursement" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Retry undo" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows an exact undo failure with a retry action", async () => {
+    const user = userEvent.setup();
+    const onUndo = vi.fn();
+    render(
+      <StepReceipt
+        {...receipt}
+        variant="reimbursement"
+        syncStatus="synced"
+        undoOutcome="error"
+        undoErrorMessage="Reconnect to Google to finish undoing this reimbursement."
+        isPending={false}
+        isSuccess
+        isError={false}
+        onDone={vi.fn()}
+        onUndo={onUndo}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Undo failed");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Reconnect to Google to finish undoing this reimbursement.",
+    );
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry undo" }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
 });

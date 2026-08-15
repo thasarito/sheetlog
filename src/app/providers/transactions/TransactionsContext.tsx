@@ -9,6 +9,7 @@ import type {
 export interface UndoResult {
   ok: boolean;
   message: string;
+  outcome: "deleted" | "pending" | "error";
 }
 
 export interface TransactionsContextValue {

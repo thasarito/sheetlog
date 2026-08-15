@@ -505,8 +505,16 @@ beforeEach(() => {
   );
   mocks.dbGet.mockResolvedValue(undefined);
   mocks.dbPut.mockResolvedValue(undefined);
-  mocks.deleteTransaction.mockResolvedValue({ ok: true, message: "Removed" });
-  mocks.undoLast.mockResolvedValue({ ok: true, message: "Undone" });
+  mocks.deleteTransaction.mockResolvedValue({
+    ok: true,
+    outcome: "deleted",
+    message: "Removed",
+  });
+  mocks.undoLast.mockResolvedValue({
+    ok: true,
+    outcome: "deleted",
+    message: "Undone",
+  });
   mocks.addMutation.mutateAsync.mockResolvedValue(undefined);
   mocks.updateMutation.mutateAsync.mockResolvedValue(undefined);
 });
@@ -665,7 +673,11 @@ describe("TransactionFlow reimbursement entry", () => {
   });
 
   it("blocks reimbursement while source deletion is in flight", async () => {
-    const deletion = deferred<{ ok: boolean; message: string }>();
+    const deletion = deferred<{
+      ok: boolean;
+      outcome: "deleted";
+      message: string;
+    }>();
     mocks.deleteTransaction.mockReturnValue(deletion.promise);
     const user = userEvent.setup();
     renderFlow();
@@ -690,13 +702,21 @@ describe("TransactionFlow reimbursement entry", () => {
     expect(screen.getByText("Food")).toBeInTheDocument();
 
     await act(async () => {
-      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      deletion.resolve({
+        ok: true,
+        outcome: "deleted",
+        message: "Removed synced entry",
+      });
       await deletion.promise;
     });
   });
 
   it("blocks same-tick Back and Save after a confirmed source deletion starts", async () => {
-    const deletion = deferred<{ ok: boolean; message: string }>();
+    const deletion = deferred<{
+      ok: boolean;
+      outcome: "deleted";
+      message: string;
+    }>();
     mocks.deleteTransaction.mockReturnValue(deletion.promise);
     const user = userEvent.setup();
     renderFlow();
@@ -724,7 +744,11 @@ describe("TransactionFlow reimbursement entry", () => {
     expect(screen.getByText("Food")).toBeInTheDocument();
 
     await act(async () => {
-      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      deletion.resolve({
+        ok: true,
+        outcome: "deleted",
+        message: "Removed synced entry",
+      });
       await deletion.promise;
     });
   });
@@ -1320,8 +1344,44 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
     expect(screen.getByRole("button", { name: "Edit expense" })).toBeVisible();
   });
 
+  it("keeps an exact reimbursement undo on the receipt while its deletion is queued", async () => {
+    mocks.deleteTransaction.mockResolvedValueOnce({
+      ok: true,
+      message: "Undo queued",
+      outcome: "pending",
+    });
+    const user = userEvent.setup();
+    renderFlow();
+    await enterReimbursement(user);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await screen.findByText("Reimbursement recorded");
+
+    await user.click(
+      screen.getByRole("button", { name: "Undo reimbursement" }),
+    );
+
+    expect(await screen.findByText("Undo queued")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This reimbursement stays counted until it is removed from Google Sheets.",
+      ),
+    ).toBeInTheDocument();
+    expect(mocks.deleteTransaction).toHaveBeenCalledWith("child-exact");
+    expect(screen.getByRole("button", { name: "Done" })).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: /undo reimbursement|retry undo/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Edit expense" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("locks Done and Undo to a single exact-child deletion and preserves retry after failure", async () => {
-    const deletion = deferred<{ ok: boolean; message: string }>();
+    const deletion = deferred<{
+      ok: boolean;
+      outcome: "deleted";
+      message: string;
+    }>();
     mocks.deleteTransaction.mockReturnValueOnce(deletion.promise);
     const user = userEvent.setup();
     renderFlow();
@@ -1356,17 +1416,19 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
       expect(toastMock).toHaveBeenCalledWith("Could not remove reimbursement");
       expect(screen.getByRole("button", { name: "Done" })).toBeEnabled();
       expect(
-        screen.getByRole("button", { name: "Undo reimbursement" }),
+        screen.getByRole("button", { name: "Retry undo" }),
       ).toBeEnabled();
     });
-    expect(screen.getByText("Reimbursement recorded")).toBeInTheDocument();
+    expect(screen.getByText("Undo failed")).toBeInTheDocument();
+    expect(screen.getByText("Could not remove reimbursement")).toBeInTheDocument();
 
     mocks.deleteTransaction.mockResolvedValueOnce({
       ok: true,
       message: "Removed synced entry",
+      outcome: "deleted",
     });
     await user.click(
-      screen.getByRole("button", { name: "Undo reimbursement" }),
+      screen.getByRole("button", { name: "Retry undo" }),
     );
     await waitFor(() => {
       expect(mocks.deleteTransaction).toHaveBeenCalledTimes(2);
@@ -1376,7 +1438,11 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
   });
 
   it("does not let Done reset the flow while exact reimbursement Undo succeeds", async () => {
-    const deletion = deferred<{ ok: boolean; message: string }>();
+    const deletion = deferred<{
+      ok: boolean;
+      outcome: "deleted";
+      message: string;
+    }>();
     mocks.deleteTransaction.mockReturnValue(deletion.promise);
     const user = userEvent.setup();
     renderFlow();
@@ -1392,7 +1458,11 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
     expect(screen.getByText("Reimbursement recorded")).toBeInTheDocument();
 
     await act(async () => {
-      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      deletion.resolve({
+        ok: true,
+        outcome: "deleted",
+        message: "Removed synced entry",
+      });
       await deletion.promise;
     });
     await waitFor(() => {
@@ -1402,7 +1472,11 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
   });
 
   it("ignores a late exact-Undo success after an unrelated editor takes ownership", async () => {
-    const deletion = deferred<{ ok: boolean; message: string }>();
+    const deletion = deferred<{
+      ok: boolean;
+      outcome: "deleted";
+      message: string;
+    }>();
     mocks.deleteTransaction.mockReturnValue(deletion.promise);
     const user = userEvent.setup();
     renderFlow();
@@ -1423,7 +1497,11 @@ describe("TransactionFlow reimbursement submission and receipt", () => {
     expect(await screen.findByDisplayValue("Dinner")).toBeInTheDocument();
 
     await act(async () => {
-      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      deletion.resolve({
+        ok: true,
+        outcome: "deleted",
+        message: "Removed synced entry",
+      });
       await deletion.promise;
     });
     expect(screen.getByDisplayValue("Dinner")).toBeInTheDocument();

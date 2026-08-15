@@ -166,6 +166,10 @@ export function TransactionFlow() {
   });
   const [createdReimbursement, setCreatedReimbursement] =
     useState<TransactionRecord | null>(null);
+  const [reimbursementUndoState, setReimbursementUndoState] = useState<{
+    outcome: "pending" | "error";
+    message?: string;
+  } | null>(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -647,6 +651,7 @@ export function TransactionFlow() {
     setPlaceSearchSessionId(createPlaceSessionId());
     setReceiptData(null);
     setCreatedReimbursement(null);
+    setReimbursementUndoState(null);
     setFlowMode({ kind: "create" });
     setShowDeleteConfirm(false);
     setCategoryDrawerOpen(false);
@@ -683,6 +688,7 @@ export function TransactionFlow() {
     flowGeneration.transition("create");
     setFlowMode({ kind: "create" });
     setCreatedReimbursement(null);
+    setReimbursementUndoState(null);
     setReceiptData(null);
     setShowDeleteConfirm(false);
     setPlaceSuggestionSessionId(createPlaceSessionId());
@@ -731,6 +737,7 @@ export function TransactionFlow() {
       form.setFieldValue("note", transaction.note ?? "");
       setFlowMode({ kind: "edit", transaction });
       setCreatedReimbursement(null);
+      setReimbursementUndoState(null);
       setReceiptData(null);
       setShowDeleteConfirm(false);
       setStep(1);
@@ -806,6 +813,7 @@ export function TransactionFlow() {
     setStep(0);
     setReceiptData(null);
     setCreatedReimbursement(null);
+    setReimbursementUndoState(null);
     setFlowMode({ kind: "create" });
     setShowDeleteConfirm(false);
     reimbursementSubmissionRef.current = null;
@@ -841,17 +849,28 @@ export function TransactionFlow() {
       const undoId = `${childId}:${undoToken.generation}`;
       reimbursementUndoRef.current = undoId;
       try {
-        await deleteMutation.mutateAsync(childId);
+        const result = await deleteMutation.mutateAsync(childId);
         if (flowGeneration.isCurrent(undoToken, flowKey)) {
-          resetFlow();
+          if (result.outcome === "pending") {
+            setReimbursementUndoState({ outcome: "pending" });
+          } else if (result.outcome === "error") {
+            setReimbursementUndoState({
+              outcome: "error",
+              message: result.message,
+            });
+            handleToast(result.message);
+          } else {
+            resetFlow();
+          }
         }
       } catch (error) {
         if (flowGeneration.isCurrent(undoToken, flowKey)) {
-          handleToast(
+          const message =
             error instanceof Error
               ? error.message
-              : "Failed to undo reimbursement",
-          );
+              : "Failed to undo reimbursement";
+          setReimbursementUndoState({ outcome: "error", message });
+          handleToast(message);
         }
       } finally {
         if (reimbursementUndoRef.current === undoId) {
@@ -910,6 +929,7 @@ export function TransactionFlow() {
     reimbursementSubmissionRef.current = null;
     reimbursementUndoRef.current = null;
     setCreatedReimbursement(null);
+    setReimbursementUndoState(null);
     setReceiptData(null);
     setShowDeleteConfirm(false);
     setCategoryDrawerOpen(false);
@@ -934,6 +954,7 @@ export function TransactionFlow() {
       flowGeneration.transition(editFlowKey(flowMode.source.id));
       setFlowMode({ kind: "edit", transaction: flowMode.source });
       setCreatedReimbursement(null);
+      setReimbursementUndoState(null);
       setReceiptData(null);
       setShowDeleteConfirm(false);
       setDateDrawerOpen(false);
@@ -995,6 +1016,7 @@ export function TransactionFlow() {
         return;
       }
       setCreatedReimbursement(record);
+      setReimbursementUndoState(null);
       setReceiptData(receiptDataFromRecord(record));
       flowGeneration.transition(receiptFlowKey(record.id));
       setStep(2);
@@ -1088,6 +1110,7 @@ export function TransactionFlow() {
       }
       setFlowMode({ kind: "edit", transaction: record });
       setCreatedReimbursement(record);
+      setReimbursementUndoState(null);
       setReceiptData(receiptDataFromRecord(record));
       flowGeneration.transition(receiptFlowKey(record.id));
       setStep(2);
@@ -1416,6 +1439,8 @@ export function TransactionFlow() {
               isError={false}
               variant="reimbursement"
               syncStatus={createdReimbursement?.status}
+              undoOutcome={reimbursementUndoState?.outcome}
+              undoErrorMessage={reimbursementUndoState?.message}
               showTimedProgress={false}
               actionsDisabled={
                 deleteMutation.isPending ||

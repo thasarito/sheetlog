@@ -100,6 +100,24 @@ describe("reimbursement domain", () => {
     expect(summary).toMatchObject({ queued: 25, remaining: 75 });
   });
 
+  it("conservatively reserves a reimbursement while its stable-ID delete is pending", () => {
+    const deleteIntent = {
+      ...ledgerRow("deleting", 25, { status: "pending" }),
+      deleteIntent: true,
+    };
+    const summary = calculateReimbursementSummary(
+      source,
+      [ledgerRow("deleting", 25)],
+      [deleteIntent],
+    );
+
+    expect(summary).toMatchObject({
+      confirmed: 0,
+      queued: 25,
+      remaining: 75,
+    });
+  });
+
   it("excludes the current child while calculating an editable maximum", () => {
     const summary = calculateReimbursementSummary(
       source,

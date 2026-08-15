@@ -16,6 +16,8 @@ export interface TransactionInput {
 export interface TransactionRecord extends TransactionInput {
   id: string;
   status: TransactionStatus;
+  /** Durable request to remove this exact stable ID from Google Sheets. */
+  deleteIntent?: boolean;
   createdAt: string;
   updatedAt: string;
   /** Immutable local queue destination. Never serialized to Google Sheets. */

@@ -77,6 +77,17 @@ function reimbursement(
   });
 }
 
+function reimbursementDeleteIntent(
+  id: string,
+  sourceId: string,
+  overrides: Partial<TransactionRecord> = {},
+) {
+  return {
+    ...reimbursement(id, sourceId, overrides),
+    deleteIntent: true as const,
+  };
+}
+
 function linkedLedgerRow(record: TransactionRecord) {
   return {
     id: record.id,
@@ -454,6 +465,151 @@ describe("syncPendingTransactions reimbursement validation", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await db.transactions.clear();
+  });
+
+  it("deletes a stable-ID intent from its fresh K row with tab zero and no source validation", async () => {
+    const intent = reimbursementDeleteIntent(
+      "delete-exact-child",
+      "missing-source",
+    );
+    await db.transactions.add(intent);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[intent.id, 17]]),
+    );
+    googleMocks.readTransactionById.mockRejectedValue(
+      new Error("delete intents must not read their source or remote child"),
+    );
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(1);
+
+    expect(googleMocks.deleteRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      0,
+      17,
+    );
+    expect(googleMocks.readTransactionById).not.toHaveBeenCalled();
+    expect(googleMocks.readLinkedReimbursements).not.toHaveBeenCalled();
+    expect(googleMocks.ensureReimbursementHeader).not.toHaveBeenCalled();
+    expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(await db.transactions.get(intent.id)).toBeUndefined();
+  });
+
+  it("completes a stable-ID delete intent already absent from K without resolving a tab or source", async () => {
+    const intent = reimbursementDeleteIntent(
+      "already-deleted-child",
+      "missing-source",
+    );
+    await db.transactions.add(intent);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(1);
+
+    expect(googleMocks.getSheetTabId).not.toHaveBeenCalled();
+    expect(googleMocks.deleteRow).not.toHaveBeenCalled();
+    expect(googleMocks.readTransactionById).not.toHaveBeenCalled();
+    expect(googleMocks.readLinkedReimbursements).not.toHaveBeenCalled();
+    expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
+    expect(await db.transactions.get(intent.id)).toBeUndefined();
+  });
+
+  it("keeps a stable-ID delete intent pending after a retryable row deletion failure", async () => {
+    const intent = reimbursementDeleteIntent(
+      "retry-delete-child",
+      "missing-source",
+    );
+    const networkError = new TypeError("offline");
+    await db.transactions.add(intent);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[intent.id, 18]]),
+    );
+    googleMocks.deleteRow.mockRejectedValue(networkError);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).rejects.toBe(networkError);
+
+    expect(googleMocks.deleteRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      0,
+      18,
+    );
+    expect(googleMocks.readTransactionById).not.toHaveBeenCalled();
+    expect(await db.transactions.get(intent.id)).toMatchObject({
+      id: intent.id,
+      amount: intent.amount,
+      reimbursesTransactionId: intent.reimbursesTransactionId,
+      deleteIntent: true,
+      status: "pending",
+      error: "Network error while syncing.",
+    });
+  });
+
+  it("retains a failed stable-ID delete intent as an actionable error", async () => {
+    const intent = reimbursementDeleteIntent(
+      "failed-delete-child",
+      "missing-source",
+    );
+    await db.transactions.add(intent);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[intent.id, 19]]),
+    );
+    googleMocks.deleteRow.mockRejectedValue(new Error("Deletion rejected"));
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(0);
+
+    expect(googleMocks.readTransactionById).not.toHaveBeenCalled();
+    expect(await db.transactions.get(intent.id)).toMatchObject({
+      id: intent.id,
+      deleteIntent: true,
+      status: "error",
+      error: "Deletion rejected",
+    });
+  });
+
+  it("updates later K positions after deleting an earlier stable-ID intent", async () => {
+    const first = reimbursementDeleteIntent("delete-first", "source", {
+      createdAt: "2026-08-15T08:00:00.000Z",
+      updatedAt: "2026-08-15T08:00:00.000Z",
+    });
+    const second = reimbursementDeleteIntent("delete-second", "source", {
+      createdAt: "2026-08-15T09:00:00.000Z",
+      updatedAt: "2026-08-15T09:00:00.000Z",
+    });
+    await db.transactions.bulkAdd([first, second]);
+    const remoteIds = [first.id, second.id];
+    googleMocks.readTransactionIdMap.mockImplementation(async () =>
+      new Map(remoteIds.map((id, index) => [id, index + 5])),
+    );
+    googleMocks.deleteRow.mockImplementation(
+      async (
+        _token: string,
+        _sheetId: string,
+        _tabId: number,
+        rowIndex: number,
+      ) => {
+        remoteIds.splice(rowIndex - 5, 1);
+      },
+    );
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(2);
+
+    expect(googleMocks.deleteRow.mock.calls).toEqual([
+      ["access-token", "sheet-a", 0, 5],
+      ["access-token", "sheet-a", 0, 5],
+    ]);
+    expect(googleMocks.readTransactionIdMap).toHaveBeenCalledTimes(3);
+    expect(remoteIds).toEqual([]);
+    expect(await db.transactions.count()).toBe(0);
   });
 
   it("syncs a pending source before its child while preserving unrelated createdAt order", async () => {

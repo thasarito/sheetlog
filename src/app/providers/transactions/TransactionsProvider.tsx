@@ -65,6 +65,9 @@ class ReimbursementValidationError extends Error {}
 
 class TransactionScopeError extends Error {}
 
+const LINKED_CURRENCY_MISMATCH =
+  "Linked reimbursement currency mismatch";
+
 function requireTransactionScope(
   transaction: TransactionRecord,
   sheetId: string | null,
@@ -353,6 +356,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       const transaction = await db.transactions.get(id);
       if (!transaction) return;
       requireTransactionScope(transaction, sheetId, userId);
+      if (transaction.deleteIntent) {
+        throw new ReimbursementValidationError(
+          "Reimbursement removal is pending; retry undo instead",
+        );
+      }
 
       const now = new Date().toISOString();
       let safeInput = transaction.reimbursesTransactionId
@@ -464,6 +472,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                   localRows,
                   remoteChild.id,
                 );
+                if (summary.currencyMismatchIds.length > 0) {
+                  throw new ReimbursementValidationError(
+                    LINKED_CURRENCY_MISMATCH,
+                  );
+                }
                 const amountError = validateReimbursementAmount(
                   updatedRecord.amount,
                   summary,
@@ -563,7 +576,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       )
       .first();
     if (!last) {
-      return { ok: false, message: "Nothing to undo" };
+      return { ok: false, outcome: "error", message: "Nothing to undo" };
     }
 
     if (last.status === "pending" || last.status === "error") {
@@ -571,6 +584,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       await refreshMutationState();
       return {
         ok: true,
+        outcome: "deleted",
         message:
           last.status === "error"
             ? "Removed failed entry"
@@ -627,7 +641,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
     if (directDeleteMessage) {
       await refreshMutationState();
-      return { ok: true, message: directDeleteMessage };
+      return {
+        ok: true,
+        outcome: "deleted",
+        message: directDeleteMessage,
+      };
     }
 
     const now = new Date().toISOString();
@@ -654,7 +672,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     if (isOnline && accessToken && sheetId) {
       await performSync().catch(() => undefined);
     }
-    return { ok: true, message: "Undo queued as compensating entry" };
+    return {
+      ok: true,
+      outcome: "pending",
+      message: "Undo queued as compensating entry",
+    };
   }, [
     accessToken,
     sheetId,
@@ -670,7 +692,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     async (id: string): Promise<UndoResult> => {
       const transaction = await db.transactions.get(id);
       if (!transaction) {
-        return { ok: false, message: "Transaction not found" };
+        return {
+          ok: false,
+          outcome: "error",
+          message: "Transaction not found",
+        };
       }
 
       const isLegacyRecovery = canDeleteAsLegacyRecovery(
@@ -681,11 +707,18 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         requireTransactionScope(transaction, sheetId, userId);
       }
 
-      if (transaction.status === "pending" || transaction.status === "error") {
+      const isLinkedDelete = Boolean(
+        transaction.reimbursesTransactionId || transaction.deleteIntent,
+      );
+      if (
+        !isLinkedDelete &&
+        (transaction.status === "pending" || transaction.status === "error")
+      ) {
         await db.transactions.delete(id);
         await refreshMutationState();
         return {
           ok: true,
+          outcome: "deleted",
           message:
             transaction.status === "error"
               ? "Removed failed entry"
@@ -747,7 +780,65 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
       if (directDeleteMessage) {
         await refreshMutationState();
-        return { ok: true, message: directDeleteMessage };
+        return {
+          ok: true,
+          outcome: "deleted",
+          message: directDeleteMessage,
+        };
+      }
+
+      if (isLinkedDelete) {
+        const latest = await db.transactions.get(id);
+        if (!latest) {
+          return {
+            ok: true,
+            outcome: "deleted",
+            message: "Reimbursement removed",
+          };
+        }
+        if (!canDeleteAsLegacyRecovery(latest, sheetId)) {
+          requireTransactionScope(latest, sheetId, userId);
+        }
+        await db.transactions.put({
+          ...latest,
+          reimbursesTransactionId:
+            latest.reimbursesTransactionId ??
+            transaction.reimbursesTransactionId,
+          deleteIntent: true,
+          status: "pending",
+          updatedAt: new Date().toISOString(),
+          sheetRow: undefined,
+          targetSheetId: latest.targetSheetId ?? sheetId ?? undefined,
+          targetUserId: latest.targetUserId ?? userId ?? undefined,
+          error: undefined,
+        });
+        await refreshMutationState();
+        if (isOnline && accessToken && sheetId) {
+          await performSync().catch(() => undefined);
+        }
+
+        const remaining = await db.transactions.get(id);
+        if (!remaining) {
+          return {
+            ok: true,
+            outcome: "deleted",
+            message: "Reimbursement removed",
+          };
+        }
+        if (remaining.deleteIntent && remaining.status === "error") {
+          return {
+            ok: false,
+            outcome: "error",
+            message:
+              remaining.error ||
+              "Failed to remove reimbursement from Google Sheets",
+          };
+        }
+        return {
+          ok: true,
+          outcome: "pending",
+          message: "Reimbursement removal queued",
+        };
       }
 
       const now = new Date().toISOString();
@@ -776,7 +867,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       if (isOnline && accessToken && sheetId) {
         await performSync().catch(() => undefined);
       }
-      return { ok: true, message: "Delete queued as compensating entry" };
+      return {
+        ok: true,
+        outcome: "pending",
+        message: "Delete queued as compensating entry",
+      };
     },
     [
       accessToken,

@@ -416,7 +416,11 @@ describe("TransactionsProvider", () => {
       result = await harness.getContext().deleteTransaction("legacy-delete");
     });
 
-    expect(result).toEqual({ ok: true, message: "Removed pending entry" });
+    expect(result).toEqual({
+      ok: true,
+      outcome: "deleted",
+      message: "Removed pending entry",
+    });
     expect(await db.transactions.get("legacy-delete")).toBeUndefined();
     expect(syncPendingTransactions).not.toHaveBeenCalled();
 
@@ -512,7 +516,11 @@ describe("TransactionsProvider", () => {
       result = await harness.getContext().deleteTransaction("shifted");
     });
 
-    expect(result).toEqual({ ok: true, message: "Removed synced entry" });
+    expect(result).toEqual({
+      ok: true,
+      outcome: "deleted",
+      message: "Removed synced entry",
+    });
     expect(googleMocks.deleteRow).toHaveBeenCalledWith(
       "access-token",
       "sheet-a",
@@ -563,6 +571,7 @@ describe("TransactionsProvider", () => {
 
     expect(result).toEqual({
       ok: true,
+      outcome: "deleted",
       message: "Removed entry already absent from Sheets",
     });
     expect(await db.transactions.get("remote-missing")).toBeUndefined();
@@ -623,7 +632,11 @@ describe("TransactionsProvider", () => {
       result = await harness.getContext().undoLast();
     });
 
-    expect(result).toEqual({ ok: true, message: "Removed last synced entry" });
+    expect(result).toEqual({
+      ok: true,
+      outcome: "deleted",
+      message: "Removed last synced entry",
+    });
     expect(googleMocks.deleteRow).toHaveBeenCalledWith(
       "access-token",
       "sheet-a",
@@ -864,6 +877,68 @@ describe("TransactionsProvider", () => {
     harness.queryClient.clear();
   });
 
+  it("rejects a direct linked amount edit when a sibling currency mismatches", async () => {
+    const child = transaction("child-mismatch", {
+      type: "income",
+      amount: 40,
+      category: "Reimbursement",
+      reimbursesTransactionId: "source-mismatch",
+      sheetRow: 6,
+    });
+    const source = transaction("source-mismatch", {
+      amount: 100,
+      sheetRow: 3,
+    });
+    await db.transactions.add(child);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[child.id, 6]]),
+    );
+    googleMocks.readTransactionById.mockImplementation(
+      async (_token: string, _sheetId: string, id: string) =>
+        id === child.id ? child : id === source.id ? source : null,
+    );
+    googleMocks.readLinkedReimbursements.mockResolvedValue([
+      {
+        id: child.id,
+        type: "income",
+        amount: child.amount,
+        currency: "THB",
+        reimbursesTransactionId: source.id,
+        status: "synced",
+      },
+      {
+        id: "foreign-sibling",
+        type: "income",
+        amount: 10,
+        currency: "USD",
+        reimbursesTransactionId: source.id,
+        status: "synced",
+      },
+    ]);
+    const harness = createProviderHarness();
+
+    let failure: unknown;
+    await act(async () => {
+      try {
+        await harness.getContext().updateTransaction(child.id, {
+          amount: 45,
+        });
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "Linked reimbursement currency mismatch",
+    );
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(await db.transactions.get(child.id)).toEqual(child);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
   it("does not reserve a direct linked edit against pending rows from another scope", async () => {
     const child = transaction("child-current-scope", {
       type: "income",
@@ -1088,7 +1163,7 @@ describe("TransactionsProvider", () => {
     harness.queryClient.clear();
   });
 
-  it("preserves a linked relation on a compensating delete row", async () => {
+  it("queues an offline linked delete as a stable-ID tombstone", async () => {
     const child = transaction("compensated-child", {
       type: "income",
       amount: 25,
@@ -1103,21 +1178,134 @@ describe("TransactionsProvider", () => {
     googleMocks.deleteRow.mockRejectedValue(new TypeError("offline"));
     const harness = createProviderHarness();
 
+    let result!: Awaited<
+      ReturnType<TransactionsContextValue["deleteTransaction"]>
+    >;
     await act(async () => {
-      await harness.getContext().deleteTransaction(child.id);
+      result = await harness.getContext().deleteTransaction(child.id);
     });
 
+    expect(result).toEqual({
+      ok: true,
+      outcome: "pending",
+      message: "Reimbursement removal queued",
+    });
     const remaining = await db.transactions.toArray();
     expect(remaining).toHaveLength(1);
     expect(remaining[0]).toMatchObject({
+      id: child.id,
       type: "income",
-      amount: -25,
+      amount: 25,
       reimbursesTransactionId: "compensated-source",
+      deleteIntent: true,
       status: "pending",
       targetSheetId: "sheet-a",
       targetUserId: "user-a",
     });
-    expect(remaining[0].id).not.toBe(child.id);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("retries an errored linked tombstone with the same ID", async () => {
+    providerState.isOnline = true;
+    const harness = createProviderHarness();
+    await waitFor(() => {
+      expect(harness.getContext().lastSyncAt).not.toBeNull();
+    });
+    vi.mocked(syncPendingTransactions).mockReset();
+    const child = {
+      ...transaction("retry-linked-delete", {
+        type: "income",
+        amount: 25,
+        category: "Reimbursement",
+        reimbursesTransactionId: "deleted-source",
+        status: "error",
+        sheetRow: undefined,
+        error: "Sheet not found. Reconnect to create a new one.",
+      }),
+      deleteIntent: true,
+    };
+    await db.transactions.add(child);
+    vi.mocked(syncPendingTransactions).mockImplementation(async () => {
+      const retry = await db.transactions.get(child.id);
+      expect(retry).toMatchObject({
+        id: child.id,
+        deleteIntent: true,
+        status: "pending",
+        error: undefined,
+      });
+      await db.transactions.delete(child.id);
+      return 1;
+    });
+
+    let result!: Awaited<
+      ReturnType<TransactionsContextValue["deleteTransaction"]>
+    >;
+    await act(async () => {
+      result = await harness.getContext().deleteTransaction(child.id);
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      outcome: "deleted",
+      message: "Reimbursement removed",
+    });
+    expect(syncPendingTransactions).toHaveBeenCalledTimes(1);
+    expect(await db.transactions.get(child.id)).toBeUndefined();
+    expect(await db.transactions.count()).toBe(0);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("returns an actionable error while retaining a failed linked tombstone", async () => {
+    providerState.isOnline = true;
+    const harness = createProviderHarness();
+    await waitFor(() => {
+      expect(harness.getContext().lastSyncAt).not.toBeNull();
+    });
+    vi.mocked(syncPendingTransactions).mockReset();
+    const child = transaction("failed-linked-delete", {
+      type: "income",
+      amount: 25,
+      category: "Reimbursement",
+      reimbursesTransactionId: "deleted-source",
+      sheetRow: 15,
+    });
+    await db.transactions.add(child);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[child.id, 15]]),
+    );
+    googleMocks.deleteRow.mockRejectedValue(new TypeError("offline"));
+    vi.mocked(syncPendingTransactions).mockImplementation(async () => {
+      await db.transactions.update(child.id, {
+        status: "error",
+        error: "Sheet not found. Reconnect to create a new one.",
+      });
+      return 0;
+    });
+
+    let result!: Awaited<
+      ReturnType<TransactionsContextValue["deleteTransaction"]>
+    >;
+    await act(async () => {
+      result = await harness.getContext().deleteTransaction(child.id);
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      outcome: "error",
+      message: "Sheet not found. Reconnect to create a new one.",
+    });
+    expect(await db.transactions.get(child.id)).toMatchObject({
+      id: child.id,
+      amount: 25,
+      reimbursesTransactionId: "deleted-source",
+      deleteIntent: true,
+      status: "error",
+    });
+    expect(await db.transactions.count()).toBe(1);
 
     harness.rendered.unmount();
     harness.queryClient.clear();
@@ -1141,6 +1329,7 @@ describe("TransactionsProvider", () => {
 
     expect(result).toEqual({
       ok: true,
+      outcome: "pending",
       message: "Delete queued as compensating entry",
     });
     const remaining = await db.transactions.toArray();
@@ -1222,7 +1411,11 @@ describe("TransactionsProvider", () => {
       result = await deletePromise;
     });
 
-    expect(result).toEqual({ ok: true, message: "Removed synced entry" });
+    expect(result).toEqual({
+      ok: true,
+      outcome: "deleted",
+      message: "Removed synced entry",
+    });
     expect(googleMocks.deleteRow).toHaveBeenCalledWith(
       "access-token",
       "sheet-a",
@@ -1367,7 +1560,11 @@ describe("TransactionsProvider", () => {
       [deleted, updated] = await Promise.all([deletePromise, updatePromise]);
     });
 
-    expect(deleted).toEqual({ ok: true, message: "Removed synced entry" });
+    expect(deleted).toEqual({
+      ok: true,
+      outcome: "deleted",
+      message: "Removed synced entry",
+    });
     expect(updated).toBeUndefined();
     expect(await db.transactions.get(transactionToDelete.id)).toBeUndefined();
     expect(googleMocks.updateRow).not.toHaveBeenCalled();
@@ -1530,7 +1727,11 @@ describe("TransactionsProvider", () => {
       result = await harness.getContext().deleteTransaction(synced.id);
     });
 
-    expect(result).toEqual({ ok: true, message: "Removed synced entry" });
+    expect(result).toEqual({
+      ok: true,
+      outcome: "deleted",
+      message: "Removed synced entry",
+    });
     expect(googleMocks.deleteRow).toHaveBeenCalledTimes(1);
     expect(googleMocks.deleteRow).toHaveBeenCalledWith(
       "access-token",
@@ -2015,7 +2216,11 @@ describe("transaction mutations", () => {
   });
 
   it("returns the delete provider result and invalidates every prefix", async () => {
-    const deleted = { ok: true, message: "Removed synced entry" };
+    const deleted = {
+      ok: true,
+      outcome: "deleted" as const,
+      message: "Removed synced entry",
+    };
     const deleteTransaction = vi.fn().mockResolvedValue(deleted);
     mutationContextState.value = mutationContext({ deleteTransaction });
     const { queryClient, wrapper } = createMutationHarness();
@@ -2024,7 +2229,9 @@ describe("transaction mutations", () => {
       wrapper,
     });
 
-    let returned!: typeof deleted;
+    let returned!: Awaited<
+      ReturnType<TransactionsContextValue["deleteTransaction"]>
+    >;
     await act(async () => {
       returned = await result.current.mutateAsync("delete-by-hook");
     });
@@ -2045,6 +2252,7 @@ describe("transaction mutations", () => {
     mutationContextState.value = mutationContext({
       deleteTransaction: vi.fn().mockResolvedValue({
         ok: false,
+        outcome: "error",
         message: "Transaction not found",
       }),
     });

@@ -41,7 +41,8 @@ describe("useDeleteTransactionMutation", () => {
     providerMocks.deleteTransaction.mockReset();
     providerMocks.deleteTransaction.mockResolvedValue({
       ok: true,
-      message: "Removed pending entry",
+      outcome: "pending",
+      message: "Reimbursement removal queued",
     });
   });
 
@@ -63,6 +64,10 @@ describe("useDeleteTransactionMutation", () => {
     expect(providerMocks.deleteTransaction).toHaveBeenCalledWith(
       "child-exact",
     );
-    expect(record).toMatchObject({ ok: true });
+    expect(record).toEqual({
+      ok: true,
+      outcome: "pending",
+      message: "Reimbursement removal queued",
+    });
   });
 });

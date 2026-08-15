@@ -32,6 +32,8 @@ type StepReceiptProps = ReceiptData & {
   undoLabel?: string;
   showTimedProgress?: boolean;
   actionsDisabled?: boolean;
+  undoOutcome?: "pending" | "error";
+  undoErrorMessage?: string;
 };
 
 const TYPE_LABELS: Record<TransactionType, string> = {
@@ -61,6 +63,8 @@ export function StepReceipt({
   undoLabel,
   showTimedProgress,
   actionsDisabled = false,
+  undoOutcome,
+  undoErrorMessage,
 }: StepReceiptProps) {
   const amountLabel = amount ? amount : "0";
   const amountDisplay = `${currency} ${amountLabel}`;
@@ -71,13 +75,29 @@ export function StepReceipt({
     : isError
     ? "error"
     : "loading";
-  const isStatusSuccess = normalizedStatus === "success";
-  const isStatusError = normalizedStatus === "error";
   const isReimbursement = variant === "reimbursement";
+  const isUndoPending = isReimbursement && undoOutcome === "pending";
+  const isUndoError = isReimbursement && undoOutcome === "error";
+  const presentationStatus = isUndoPending
+    ? "loading"
+    : isUndoError
+    ? "error"
+    : normalizedStatus;
+  const isStatusSuccess = presentationStatus === "success";
+  const isStatusError = presentationStatus === "error";
+  const hasSuccessfulReceipt = normalizedStatus === "success";
   let statusTitle: string;
   let statusDescription: string;
 
-  if (normalizedStatus === "loading") {
+  if (isUndoPending) {
+    statusTitle = "Undo queued";
+    statusDescription =
+      "This reimbursement stays counted until it is removed from Google Sheets.";
+  } else if (isUndoError) {
+    statusTitle = "Undo failed";
+    statusDescription =
+      undoErrorMessage || "Retry when Google Sheets is available.";
+  } else if (normalizedStatus === "loading") {
     statusTitle = isReimbursement
       ? "Saving reimbursement"
       : "Saving transaction";
@@ -101,7 +121,12 @@ export function StepReceipt({
 
   const resolvedDoneLabel = doneLabel ?? "Done";
   const resolvedUndoLabel =
-    undoLabel ?? (isReimbursement ? "Undo reimbursement" : "Undo");
+    undoLabel ??
+    (isUndoError
+      ? "Retry undo"
+      : isReimbursement
+      ? "Undo reimbursement"
+      : "Undo");
   const shouldShowTimedProgress =
     showTimedProgress ?? variant === "transaction";
   const accountLabel = type === "transfer" ? "From" : "Account";
@@ -226,7 +251,7 @@ export function StepReceipt({
         </div>
       </div>
 
-      {isStatusSuccess ? (
+      {hasSuccessfulReceipt ? (
         <div className="space-y-3">
           <button
             type="button"
@@ -246,14 +271,16 @@ export function StepReceipt({
               />
             ) : null}
           </button>
-          <button
-            type="button"
-            className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={onUndo}
-            disabled={actionsDisabled}
-          >
-            {resolvedUndoLabel}
-          </button>
+          {isUndoPending ? null : (
+            <button
+              type="button"
+              className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onUndo}
+              disabled={actionsDisabled}
+            >
+              {resolvedUndoLabel}
+            </button>
+          )}
         </div>
       ) : null}
     </div>
