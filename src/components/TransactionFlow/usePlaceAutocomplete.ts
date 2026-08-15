@@ -20,7 +20,9 @@ const INPUT_DEBOUNCE_MS = 250;
 type SessionScope = {
   mounted: boolean;
   sessionId: string;
+  session?: PlaceAutocompleteSession;
   cleanupTimer?: number;
+  cleanupGeneration: number;
 };
 
 export const placeAutocompleteKeys = {
@@ -58,9 +60,13 @@ export function usePlaceAutocomplete({
   const openRef = useRef(open);
   const enabledRef = useRef(enabled);
   const sessionIdRef = useRef(sessionId);
-  const scopeRef = useRef<SessionScope>({ mounted: true, sessionId });
+  const scopeRef = useRef<SessionScope>({
+    mounted: true,
+    sessionId,
+    cleanupGeneration: 0,
+  });
   if (scopeRef.current.sessionId !== sessionId) {
-    scopeRef.current = { mounted: true, sessionId };
+    scopeRef.current = { mounted: true, sessionId, cleanupGeneration: 0 };
   }
   const scope = scopeRef.current;
   openRef.current = open;
@@ -98,6 +104,7 @@ export function usePlaceAutocomplete({
         endPlaceAutocompleteSession(placeSession);
         throw new Error("Place autocomplete session is no longer active");
       }
+      scope.session = placeSession;
       activeSessionRef.current = { sessionId, session: placeSession };
       return placeSession;
     },
@@ -128,6 +135,9 @@ export function usePlaceAutocomplete({
     }) => {
       const displayName = await resolvePlaceSuggestionName(suggestion, placeSession);
       endPlaceAutocompleteSession(placeSession);
+      if (scope.session === placeSession) {
+        scope.session = undefined;
+      }
       if (activeSessionRef.current?.session === placeSession) {
         activeSessionRef.current = undefined;
       }
@@ -155,6 +165,9 @@ export function usePlaceAutocomplete({
     const activeSession = activeSessionRef.current?.session;
     if (activeSession) {
       endPlaceAutocompleteSession(activeSession);
+      if (scope.session === activeSession) {
+        scope.session = undefined;
+      }
       activeSessionRef.current = undefined;
     }
 
@@ -166,7 +179,7 @@ export function usePlaceAutocomplete({
       queryKey: placeAutocompleteKeys.session(sessionId),
       exact: true,
     });
-  }, [queryClient, selection, sessionId]);
+  }, [queryClient, scope, selection, sessionId]);
 
   const wasOpenRef = useRef(open);
   useEffect(() => {
@@ -177,6 +190,8 @@ export function usePlaceAutocomplete({
   }, [open, reset]);
 
   useEffect(() => {
+    const cleanupGeneration = scope.cleanupGeneration + 1;
+    scope.cleanupGeneration = cleanupGeneration;
     if (scope.cleanupTimer !== undefined) {
       window.clearTimeout(scope.cleanupTimer);
       scope.cleanupTimer = undefined;
@@ -184,11 +199,22 @@ export function usePlaceAutocomplete({
 
     return () => {
       const cleanupTimer = window.setTimeout(() => {
-        if (scope.cleanupTimer !== cleanupTimer) {
+        if (
+          scope.cleanupTimer !== cleanupTimer ||
+          scope.cleanupGeneration !== cleanupGeneration
+        ) {
           return;
         }
         scope.cleanupTimer = undefined;
         scope.mounted = false;
+        const scopedSession = scope.session;
+        if (scopedSession) {
+          endPlaceAutocompleteSession(scopedSession);
+          scope.session = undefined;
+          if (activeSessionRef.current?.session === scopedSession) {
+            activeSessionRef.current = undefined;
+          }
+        }
         const activeSession = activeSessionRef.current;
         if (activeSession?.sessionId === scope.sessionId) {
           endPlaceAutocompleteSession(activeSession.session);

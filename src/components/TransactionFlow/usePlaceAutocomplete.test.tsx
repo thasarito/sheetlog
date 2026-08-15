@@ -449,8 +449,12 @@ describe("usePlaceAutocomplete", () => {
   });
 
   it("cleans up old session caches on close and creates a distinct token for a new session", async () => {
-    const firstSession = { token: {} as GoogleAutocompleteSessionToken };
-    const secondSession = { token: {} as GoogleAutocompleteSessionToken };
+    const firstSession = {
+      token: { id: "A" } as unknown as GoogleAutocompleteSessionToken,
+    };
+    const secondSession = {
+      token: { id: "B" } as unknown as GoogleAutocompleteSessionToken,
+    };
     vi.mocked(createPlaceAutocompleteSession)
       .mockResolvedValueOnce(firstSession)
       .mockResolvedValueOnce(secondSession);
@@ -488,9 +492,64 @@ describe("usePlaceAutocomplete", () => {
     );
   });
 
+  it("ends session A when B replaces it before A's scheduled cleanup runs", async () => {
+    const firstSession = {
+      token: { id: "A" } as unknown as GoogleAutocompleteSessionToken,
+    };
+    const secondSession = {
+      token: { id: "B" } as unknown as GoogleAutocompleteSessionToken,
+    };
+    vi.mocked(createPlaceAutocompleteSession)
+      .mockResolvedValueOnce(firstSession)
+      .mockResolvedValueOnce(secondSession);
+    const { Wrapper, queryClient } = createTestHarness();
+    const { result, rerender } = renderHook(
+      ({ sessionId }) => usePlaceAutocomplete({ open: true, enabled: true, sessionId }),
+      { initialProps: { sessionId: "A" }, wrapper: Wrapper }
+    );
+    await flushQueries();
+    expect(result.current.isError).toBe(false);
+
+    const cleanupCallbacks: Array<() => void> = [];
+    const nativeSetTimeout = window.setTimeout;
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockImplementation(
+      (callback, timeout, ...args) => {
+        if (timeout === 0) {
+          if (typeof callback === "function") {
+            cleanupCallbacks.push(() => callback(...args));
+          }
+          return 1;
+        }
+        return nativeSetTimeout(callback, timeout, ...args);
+      }
+    );
+    rerender({ sessionId: "B" });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(createPlaceAutocompleteSession).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryData(["placeAutocompleteSession", "B"])).toBe(
+      secondSession
+    );
+    expect(endPlaceAutocompleteSession).not.toHaveBeenCalledWith(firstSession);
+
+    act(() => {
+      for (const cleanupCallback of cleanupCallbacks) {
+        cleanupCallback();
+      }
+    });
+    setTimeoutSpy.mockRestore();
+    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(firstSession);
+  });
+
   it("keeps a usable session through the Strict Mode effect probe and cleans its queries on real unmount", async () => {
-    const strictSession = { token: {} as GoogleAutocompleteSessionToken };
-    vi.mocked(createPlaceAutocompleteSession).mockResolvedValue(strictSession);
+    const createdSessions: { token: GoogleAutocompleteSessionToken }[] = [];
+    vi.mocked(createPlaceAutocompleteSession).mockImplementation(async () => {
+      const strictSession = { token: {} as GoogleAutocompleteSessionToken };
+      createdSessions.push(strictSession);
+      return strictSession;
+    });
     const { Wrapper, queryClient } = createTestHarness();
     const { result, unmount } = renderHook(
       () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "strict-mode" }),
@@ -498,8 +557,9 @@ describe("usePlaceAutocomplete", () => {
     );
 
     await flushQueries();
+    expect(createdSessions).toHaveLength(1);
     expect(queryClient.getQueryData(["placeAutocompleteSession", "strict-mode"])).toBe(
-      strictSession
+      createdSessions[0]
     );
     await enterSearch(result, "coffee");
     await flushQueries();
@@ -507,7 +567,9 @@ describe("usePlaceAutocomplete", () => {
 
     unmount();
     await flushQueries();
-    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(strictSession);
+    for (const strictSession of createdSessions) {
+      expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(strictSession);
+    }
     expect(queryClient.getQueryData(["placeAutocompleteSession", "strict-mode"])).toBeUndefined();
     expect(
       queryClient.getQueryData(["placeAutocomplete", "strict-mode", "suggestions", "coffee"])
