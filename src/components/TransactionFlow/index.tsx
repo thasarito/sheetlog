@@ -102,6 +102,11 @@ export function TransactionFlow() {
     dateObject,
     note,
   } = form.useStore((state) => state.values);
+  const reimbursementFieldsLocked = Boolean(
+    editingTransaction?.reimbursesTransactionId
+  );
+  const reimbursementFieldsLockedRef = useRef(reimbursementFieldsLocked);
+  reimbursementFieldsLockedRef.current = reimbursementFieldsLocked;
   const placesMode: PlacesFlowMode = editingTransaction ? "edit" : "create";
   const shouldFetchNearbyPlaces = isPlacesEligible({
     step,
@@ -265,7 +270,10 @@ export function TransactionFlow() {
   }, [account, form, onboarding.accounts]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (
+      typeof window === "undefined" ||
+      reimbursementFieldsLockedRef.current
+    ) {
       return;
     }
     // Always update global fallback
@@ -282,7 +290,11 @@ export function TransactionFlow() {
 
   // Restore currency when account changes
   useEffect(() => {
-    if (typeof window === "undefined" || !account) {
+    if (
+      typeof window === "undefined" ||
+      !account ||
+      reimbursementFieldsLockedRef.current
+    ) {
       return;
     }
     const lastCurrencyForAccount = window.localStorage.getItem(
@@ -311,7 +323,7 @@ export function TransactionFlow() {
   }, [type, account, forValue, form]);
 
   useEffect(() => {
-    if (type === "transfer") {
+    if (type === "transfer" || reimbursementFieldsLockedRef.current) {
       return;
     }
     if (!forValue || !FOR_OPTIONS.includes(forValue)) {
@@ -654,6 +666,9 @@ export function TransactionFlow() {
           onSearchPlaces={canSearchPlaces ? openPlaceSearch : undefined}
           searchButtonRef={placeSearchButtonRef}
           noteInputRef={noteInputRef}
+          currencyLocked={reimbursementFieldsLocked}
+          forLocked={reimbursementFieldsLocked}
+          preserveCurrencyOnAccountChange={reimbursementFieldsLocked}
         />
       ),
     },

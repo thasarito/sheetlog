@@ -2,7 +2,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type { PlaceSuggestion } from "../../lib/googlePlaces";
 import type { TransactionRecord, TransactionType } from "../../lib/types";
 import { TransactionFlow } from "./index";
@@ -62,7 +70,7 @@ vi.mock("../../app/providers", () => ({
 vi.mock("../../hooks/useOnboarding", () => ({
   useOnboarding: () => ({
     onboarding: {
-      accounts: [{ name: "Wallet" }],
+      accounts: [{ name: "Wallet" }, { name: "Bank" }],
       categories: {
         expense: [{ name: "Coffee" }],
         income: [{ name: "Salary" }],
@@ -176,15 +184,39 @@ const editableExpense: TransactionRecord = {
   updatedAt: "2026-08-15T08:00:00",
 };
 
+const linkedReimbursement: TransactionRecord = {
+  id: "reimbursement-1",
+  type: "income",
+  amount: 40,
+  currency: "THB",
+  account: "Wallet",
+  for: "Household",
+  category: "Reimbursement",
+  date: "2026-08-15T09:00:00",
+  note: "Coffee repayment",
+  reimbursesTransactionId: "expense-1",
+  status: "synced",
+  createdAt: "2026-08-15T09:00:00",
+  updatedAt: "2026-08-15T09:00:00",
+};
+
 vi.mock("./TopDashboard", () => ({
   TopDashboard: ({
     onEditTransaction,
   }: {
     onEditTransaction: (transaction: TransactionRecord) => void;
   }) => (
-    <button type="button" onClick={() => onEditTransaction(editableExpense)}>
-      Edit expense
-    </button>
+    <div>
+      <button type="button" onClick={() => onEditTransaction(editableExpense)}>
+        Edit expense
+      </button>
+      <button
+        type="button"
+        onClick={() => onEditTransaction(linkedReimbursement)}
+      >
+        Edit linked reimbursement
+      </button>
+    </div>
   ),
 }));
 
@@ -250,7 +282,12 @@ beforeAll(() => {
   });
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 beforeEach(() => {
+  window.localStorage.clear();
   mocks.isOnline = true;
   mocks.hasMapsKey = true;
   mocks.nearbySuggestions = [];
@@ -485,5 +522,121 @@ describe("TransactionFlow Places integration", () => {
     const reopenedInput = screen.getByRole("searchbox", { name: "Search places" });
     expect(reopenedInput).toHaveValue("");
     await waitFor(() => expect(mocks.createSession).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("TransactionFlow linked reimbursement field effects", () => {
+  it("locks linked currency and For controls while leaving account editable", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(
+      screen.getByRole("button", { name: "Edit linked reimbursement" })
+    );
+
+    expect(await screen.findByDisplayValue("Coffee repayment")).toBeVisible();
+    expect(screen.getByRole("button", { name: "USD" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Work" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Bank" })).toBeEnabled();
+  });
+
+  it("preserves linked currency and For when its editable account changes", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("sheetlog.lastCurrency", "USD");
+    window.localStorage.setItem("sheetlog.lastCurrency_Wallet", "USD");
+    window.localStorage.setItem("sheetlog.lastCurrency_Bank", "EUR");
+    renderFlow();
+
+    await user.click(
+      screen.getByRole("button", { name: "Edit linked reimbursement" })
+    );
+    await user.click(await screen.findByRole("button", { name: "Bank" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "reimbursement-1",
+        input: expect.objectContaining({
+          account: "Bank",
+          currency: "THB",
+          for: "Household",
+        }),
+      });
+    });
+  });
+
+  it("does not persist linked currency as an account or global preference", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("sheetlog.lastCurrency", "USD");
+    window.localStorage.setItem("sheetlog.lastCurrency_Wallet", "USD");
+    window.localStorage.setItem("sheetlog.lastCurrency_Bank", "EUR");
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    renderFlow();
+    await waitFor(() => {
+      expect(setItem).toHaveBeenCalledWith("sheetlog.lastCurrency", "USD");
+    });
+    setItem.mockClear();
+
+    await user.click(
+      screen.getByRole("button", { name: "Edit linked reimbursement" })
+    );
+    await screen.findByDisplayValue("Coffee repayment");
+
+    expect(
+      setItem.mock.calls.filter(([key]) =>
+        String(key).startsWith("sheetlog.lastCurrency")
+      )
+    ).toEqual([]);
+
+    await user.click(await screen.findByRole("button", { name: "Bank" }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("sheetlog.lastCurrency")).toBe("USD");
+      expect(
+        window.localStorage.getItem("sheetlog.lastCurrency_Wallet")
+      ).toBe("USD");
+      expect(
+        window.localStorage.getItem("sheetlog.lastCurrency_Bank")
+      ).toBe("EUR");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Go back" }));
+    await screen.findByRole("button", { name: "Edit linked reimbursement" });
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("sheetlog.lastCurrency")).toBe("USD");
+      expect(
+        window.localStorage.getItem("sheetlog.lastCurrency_Wallet")
+      ).toBe("USD");
+      expect(
+        window.localStorage.getItem("sheetlog.lastCurrency_Bank")
+      ).toBe("EUR");
+    });
+  });
+
+  it("keeps per-account restoration and persistence for ordinary create", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("sheetlog.lastCurrency", "USD");
+    window.localStorage.setItem("sheetlog.lastCurrency_Bank", "EUR");
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Start expense" }));
+    await user.click(screen.getByRole("button", { name: "1" }));
+    await user.click(screen.getByRole("button", { name: "Bank" }));
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => {
+      expect(mocks.addMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          account: "Bank",
+          currency: "EUR",
+          forValue: "Me",
+        })
+      );
+      expect(window.localStorage.getItem("sheetlog.lastCurrency")).toBe("EUR");
+      expect(
+        window.localStorage.getItem("sheetlog.lastCurrency_Bank")
+      ).toBe("EUR");
+    });
   });
 });
