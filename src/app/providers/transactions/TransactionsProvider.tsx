@@ -144,6 +144,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     lastSyncAt: null,
   });
   const syncingRef = useRef(state.isSyncing);
+  const operationTailRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     syncingRef.current = state.isSyncing;
@@ -171,6 +172,22 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     ]);
   }, [queryClient]);
 
+  const refreshMutationState = useCallback(async () => {
+    await Promise.allSettled([invalidateTransactions(), refreshStats()]);
+  }, [invalidateTransactions, refreshStats]);
+
+  const runExclusive = useCallback(
+    <Result,>(operation: () => Promise<Result>): Promise<Result> => {
+      const result = operationTailRef.current.then(operation, operation);
+      operationTailRef.current = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    },
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function loadRecents() {
@@ -189,8 +206,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     void refreshStats();
   }, [refreshStats]);
 
-  const syncNow = useCallback(async () => {
-    if (!accessToken || !sheetId || syncingRef.current) {
+  const performSync = useCallback(async () => {
+    if (!accessToken || !sheetId) {
       return;
     }
     syncingRef.current = true;
@@ -209,12 +226,23 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         at: new Date().toISOString(),
       });
     } finally {
-      await refreshStats();
-      await invalidateTransactions();
-      dispatch({ type: "sync_end" });
-      syncingRef.current = false;
+      try {
+        await refreshStats();
+      } finally {
+        try {
+          await invalidateTransactions();
+        } finally {
+          dispatch({ type: "sync_end" });
+          syncingRef.current = false;
+        }
+      }
     }
   }, [accessToken, sheetId, refreshStats, invalidateTransactions, signOut]);
+
+  const syncNow = useCallback(
+    () => runExclusive(performSync),
+    [performSync, runExclusive],
+  );
 
   useEffect(() => {
     if (isOnline && accessToken && sheetId) {
@@ -230,7 +258,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     []
   );
 
-  const addTransaction = useCallback(
+  const addTransactionLocally = useCallback(
     async (input: TransactionInput) => {
       const now = new Date().toISOString();
       const id =
@@ -245,26 +273,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         updatedAt: now,
       };
       await db.transactions.add(record);
-      await invalidateTransactions();
-      await refreshStats();
-      await markRecentCategory(input.type, input.category);
-      if (isOnline && accessToken && sheetId) {
-        await syncNow();
-      }
+      await Promise.allSettled([
+        refreshMutationState(),
+        markRecentCategory(input.type, input.category),
+      ]);
       return (await db.transactions.get(id)) ?? record;
     },
-    [
-      accessToken,
-      isOnline,
-      sheetId,
-      invalidateTransactions,
-      refreshStats,
-      markRecentCategory,
-      syncNow,
-    ]
+    [markRecentCategory, refreshMutationState]
   );
 
-  const updateTransaction = useCallback(
+  const updateTransactionUnlocked = useCallback(
     async (id: string, input: Partial<TransactionInput>) => {
       const transaction = await db.transactions.get(id);
       if (!transaction) return;
@@ -285,84 +303,74 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           const currentRow = idMap.get(transaction.id);
 
           if (currentRow !== undefined) {
-            let rowToUpdate = currentRow;
-            let updatedRecord: TransactionRecord = {
-              ...prospectiveRecord,
-              sheetRow: currentRow,
+            const remoteChild = await readTransactionById(
+              accessToken,
+              sheetId,
+              transaction.id,
+            );
+
+            if (!remoteChild) {
+              throw new TypeError("Current transaction row could not be read");
+            }
+
+            safeInput = remoteChild.reimbursesTransactionId
+              ? lockLinkedInput(input, remoteChild)
+              : { ...input, reimbursesTransactionId: undefined };
+            const rowToUpdate = remoteChild.sheetRow ?? currentRow;
+            const updatedRecord: TransactionRecord = {
+              ...transaction,
+              ...remoteChild,
+              ...safeInput,
+              id: transaction.id,
+              status: "synced",
+              sheetId,
+              sheetRow: rowToUpdate,
+              updatedAt: now,
+              error: undefined,
             };
             prospectiveRecord = updatedRecord;
 
-            if (transaction.reimbursesTransactionId) {
-              const remoteChild = await readTransactionById(
-                accessToken,
-                sheetId,
-                transaction.id,
-              );
+            if (
+              remoteChild.reimbursesTransactionId &&
+              updatedRecord.amount !== remoteChild.amount
+            ) {
+              const sourceId = remoteChild.reimbursesTransactionId;
+              const source = sourceId
+                ? await readTransactionById(accessToken, sheetId, sourceId)
+                : null;
 
-              if (!remoteChild) {
-                throw new TypeError("Current transaction row could not be read");
+              if (!source) {
+                throw new ReimbursementValidationError(
+                  "Original expense unavailable",
+                );
+              }
+              if (!isReimbursableExpense(source)) {
+                throw new ReimbursementValidationError(
+                  "Original expense is no longer reimbursable",
+                );
+              }
+              if (source.currency !== remoteChild.currency) {
+                throw new ReimbursementValidationError(
+                  "Reimbursement currency no longer matches original expense",
+                );
               }
 
-              const authoritativeChild: TransactionRecord = {
-                ...remoteChild,
-                reimbursesTransactionId:
-                  remoteChild.reimbursesTransactionId ??
-                  transaction.reimbursesTransactionId,
-              };
-              safeInput = lockLinkedInput(input, authoritativeChild);
-              rowToUpdate = remoteChild.sheetRow ?? currentRow;
-              updatedRecord = {
-                ...transaction,
-                ...authoritativeChild,
-                ...safeInput,
-                id: transaction.id,
-                status: "synced",
-                sheetId,
-                sheetRow: rowToUpdate,
-                updatedAt: now,
-                error: undefined,
-              };
-              prospectiveRecord = updatedRecord;
-
-              if (updatedRecord.amount !== authoritativeChild.amount) {
-                const sourceId = authoritativeChild.reimbursesTransactionId;
-                const source = sourceId
-                  ? await readTransactionById(accessToken, sheetId, sourceId)
-                  : null;
-
-                if (!source) {
-                  throw new ReimbursementValidationError(
-                    "Original expense unavailable",
-                  );
-                }
-                if (!isReimbursableExpense(source)) {
-                  throw new ReimbursementValidationError(
-                    "Original expense is no longer reimbursable",
-                  );
-                }
-                if (source.currency !== authoritativeChild.currency) {
-                  throw new ReimbursementValidationError(
-                    "Reimbursement currency no longer matches original expense",
-                  );
-                }
-
-                const [remoteRows, localRows] = await Promise.all([
-                  readLinkedReimbursements(accessToken, sheetId, source.id),
-                  db.transactions.toArray(),
-                ]);
-                const summary = calculateReimbursementSummary(
-                  source,
-                  remoteRows,
-                  localRows,
-                  authoritativeChild.id,
-                );
-                const amountError = validateReimbursementAmount(
-                  updatedRecord.amount,
-                  summary,
-                );
-                if (amountError) {
-                  throw new ReimbursementValidationError(amountError);
-                }
+              const [remoteRows, localRows] = await Promise.all([
+                readLinkedReimbursements(accessToken, sheetId, source.id),
+                db.transactions.toArray(),
+              ]);
+              const summary = calculateReimbursementSummary(
+                source,
+                remoteRows,
+                localRows,
+                remoteChild.id,
+              );
+              const amountError = validateReimbursementAmount(
+                updatedRecord.amount,
+                summary,
+              );
+              if (amountError) {
+                throw new ReimbursementValidationError(amountError);
               }
             }
 
@@ -375,13 +383,14 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               sheetRow: rowToUpdate,
               error: undefined,
             });
-            await invalidateTransactions();
-            await refreshStats();
+            await refreshMutationState();
             if (input.type || input.category) {
-              await markRecentCategory(
-                updatedRecord.type,
-                updatedRecord.category,
-              );
+              await Promise.allSettled([
+                markRecentCategory(
+                  updatedRecord.type,
+                  updatedRecord.category,
+                ),
+              ]);
             }
             return await db.transactions.get(id);
           }
@@ -404,19 +413,20 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         sheetRow: undefined,
         error: undefined,
       });
-      await invalidateTransactions();
-      await refreshStats();
+      await refreshMutationState();
       if (input.type || input.category) {
         const pendingRecord = await db.transactions.get(id);
         if (pendingRecord) {
-          await markRecentCategory(
-            pendingRecord.type,
-            pendingRecord.category,
-          );
+          await Promise.allSettled([
+            markRecentCategory(
+              pendingRecord.type,
+              pendingRecord.category,
+            ),
+          ]);
         }
       }
       if (isOnline && accessToken && sheetId) {
-        await syncNow();
+        await performSync().catch(() => undefined);
       }
       return await db.transactions.get(id);
     },
@@ -424,14 +434,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       accessToken,
       isOnline,
       sheetId,
-      invalidateTransactions,
-      refreshStats,
       markRecentCategory,
-      syncNow,
+      performSync,
+      refreshMutationState,
     ]
   );
 
-  const undoLast = useCallback(async (): Promise<UndoResult> => {
+  const undoLastUnlocked = useCallback(async (): Promise<UndoResult> => {
     const last = await db.transactions.orderBy("createdAt").last();
     if (!last) {
       return { ok: false, message: "Nothing to undo" };
@@ -439,8 +448,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
     if (last.status === "pending" || last.status === "error") {
       await db.transactions.delete(last.id);
-      await invalidateTransactions();
-      await refreshStats();
+      await refreshMutationState();
       return {
         ok: true,
         message:
@@ -450,6 +458,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       };
     }
 
+    let directDeleteMessage: string | null = null;
     if (last.status === "synced" && accessToken && sheetId) {
       try {
         const effectiveTabId =
@@ -458,19 +467,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           const idMap = await readTransactionIdMap(accessToken, sheetId);
           const currentRow = idMap.get(last.id);
           if (currentRow === undefined) {
-            await db.transactions.delete(last.id);
-            await invalidateTransactions();
-            await refreshStats();
-            return {
-              ok: true,
-              message: "Removed entry already absent from Sheets",
-            };
+            directDeleteMessage = "Removed entry already absent from Sheets";
+          } else {
+            await deleteRow(accessToken, sheetId, effectiveTabId, currentRow);
+            directDeleteMessage = "Removed last synced entry";
           }
-          await deleteRow(accessToken, sheetId, effectiveTabId, currentRow);
-          await db.transactions.delete(last.id);
-          await invalidateTransactions();
-          await refreshStats();
-          return { ok: true, message: "Removed last synced entry" };
         }
       } catch (error) {
         const info = mapGoogleSyncError(error);
@@ -483,6 +484,12 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           at: new Date().toISOString(),
         });
       }
+    }
+
+    if (directDeleteMessage) {
+      await db.transactions.delete(last.id);
+      await refreshMutationState();
+      return { ok: true, message: directDeleteMessage };
     }
 
     const now = new Date().toISOString();
@@ -503,10 +510,9 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       error: undefined,
     };
     await db.transactions.add(compensating);
-    await invalidateTransactions();
-    await refreshStats();
+    await refreshMutationState();
     if (isOnline && accessToken && sheetId) {
-      await syncNow();
+      await performSync().catch(() => undefined);
     }
     return { ok: true, message: "Undo queued as compensating entry" };
   }, [
@@ -514,13 +520,12 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     sheetId,
     sheetTabId,
     isOnline,
-    invalidateTransactions,
-    refreshStats,
-    syncNow,
+    performSync,
+    refreshMutationState,
     signOut,
   ]);
 
-  const deleteTransaction = useCallback(
+  const deleteTransactionUnlocked = useCallback(
     async (id: string): Promise<UndoResult> => {
       const transaction = await db.transactions.get(id);
       if (!transaction) {
@@ -529,8 +534,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
       if (transaction.status === "pending" || transaction.status === "error") {
         await db.transactions.delete(id);
-        await invalidateTransactions();
-        await refreshStats();
+        await refreshMutationState();
         return {
           ok: true,
           message:
@@ -540,6 +544,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         };
       }
 
+      let directDeleteMessage: string | null = null;
       if (transaction.status === "synced" && accessToken && sheetId) {
         try {
           const effectiveTabId =
@@ -548,24 +553,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             const idMap = await readTransactionIdMap(accessToken, sheetId);
             const currentRow = idMap.get(id);
             if (currentRow === undefined) {
-              await db.transactions.delete(id);
-              await invalidateTransactions();
-              await refreshStats();
-              return {
-                ok: true,
-                message: "Removed entry already absent from Sheets",
-              };
+              directDeleteMessage = "Removed entry already absent from Sheets";
+            } else {
+              await deleteRow(
+                accessToken,
+                sheetId,
+                effectiveTabId,
+                currentRow
+              );
+              directDeleteMessage = "Removed synced entry";
             }
-            await deleteRow(
-              accessToken,
-              sheetId,
-              effectiveTabId,
-              currentRow
-            );
-            await db.transactions.delete(id);
-            await invalidateTransactions();
-            await refreshStats();
-            return { ok: true, message: "Removed synced entry" };
           }
         } catch (error) {
           const info = mapGoogleSyncError(error);
@@ -578,6 +575,12 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             at: new Date().toISOString(),
           });
         }
+      }
+
+      if (directDeleteMessage) {
+        await db.transactions.delete(id);
+        await refreshMutationState();
+        return { ok: true, message: directDeleteMessage };
       }
 
       const now = new Date().toISOString();
@@ -598,12 +601,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         error: undefined,
       };
       await db.transactions.add(compensating);
-      await invalidateTransactions();
+      await refreshMutationState();
       await db.transactions.delete(id);
-      await invalidateTransactions();
-      await refreshStats();
+      await refreshMutationState();
       if (isOnline && accessToken && sheetId) {
-        await syncNow();
+        await performSync().catch(() => undefined);
       }
       return { ok: true, message: "Delete queued as compensating entry" };
     },
@@ -612,11 +614,37 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       sheetId,
       sheetTabId,
       isOnline,
-      invalidateTransactions,
-      refreshStats,
-      syncNow,
+      performSync,
+      refreshMutationState,
       signOut,
     ]
+  );
+
+  const addTransaction = useCallback(
+    async (input: TransactionInput) => {
+      const record = await addTransactionLocally(input);
+      if (isOnline && accessToken && sheetId) {
+        await syncNow().catch(() => undefined);
+      }
+      return (await db.transactions.get(record.id)) ?? record;
+    },
+    [accessToken, addTransactionLocally, isOnline, sheetId, syncNow],
+  );
+
+  const updateTransaction = useCallback(
+    (id: string, input: Partial<TransactionInput>) =>
+      runExclusive(() => updateTransactionUnlocked(id, input)),
+    [runExclusive, updateTransactionUnlocked],
+  );
+
+  const undoLast = useCallback(
+    () => runExclusive(undoLastUnlocked),
+    [runExclusive, undoLastUnlocked],
+  );
+
+  const deleteTransaction = useCallback(
+    (id: string) => runExclusive(() => deleteTransactionUnlocked(id)),
+    [deleteTransactionUnlocked, runExclusive],
   );
 
   const value = useMemo<TransactionsContextValue>(

@@ -166,6 +166,16 @@ function invalidatedKeys(
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
 function createMutationHarness() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -911,6 +921,445 @@ describe("TransactionsProvider", () => {
     harness.rendered.unmount();
     harness.queryClient.clear();
   });
+
+  it("serializes a delete behind an in-flight sync and removes the row remotely", async () => {
+    const pending = transaction("delete-during-sync", {
+      status: "pending",
+      sheetId: undefined,
+      sheetRow: undefined,
+    });
+    await db.transactions.add(pending);
+    const syncStarted = deferred<void>();
+    const releaseSync = deferred<void>();
+    vi.mocked(syncPendingTransactions).mockImplementationOnce(async () => {
+      syncStarted.resolve();
+      await releaseSync.promise;
+      await db.transactions.update(pending.id, {
+        status: "synced",
+        sheetId: "sheet-a",
+        sheetRow: 21,
+      });
+      return 1;
+    });
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[pending.id, 21]]),
+    );
+    const harness = createProviderHarness();
+    let syncPromise!: Promise<void>;
+    await act(async () => {
+      syncPromise = harness.getContext().syncNow();
+      await syncStarted.promise;
+    });
+
+    let deletePromise!: ReturnType<
+      TransactionsContextValue["deleteTransaction"]
+    >;
+    act(() => {
+      deletePromise = harness.getContext().deleteTransaction(pending.id);
+    });
+
+    expect(await db.transactions.get(pending.id)).toBeDefined();
+    releaseSync.resolve();
+    let result!: Awaited<typeof deletePromise>;
+    await act(async () => {
+      await syncPromise;
+      result = await deletePromise;
+    });
+
+    expect(result).toEqual({ ok: true, message: "Removed synced entry" });
+    expect(googleMocks.deleteRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      0,
+      21,
+    );
+    expect(await db.transactions.get(pending.id)).toBeUndefined();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("serializes a pending edit behind sync and writes the edited value remotely", async () => {
+    const pending = transaction("edit-during-sync", {
+      status: "pending",
+      note: "Before",
+      sheetId: undefined,
+      sheetRow: undefined,
+    });
+    const remote = transaction(pending.id, {
+      note: "Before",
+      sheetRow: 22,
+    });
+    await db.transactions.add(pending);
+    const syncStarted = deferred<void>();
+    const releaseSync = deferred<void>();
+    vi.mocked(syncPendingTransactions).mockImplementationOnce(async () => {
+      syncStarted.resolve();
+      await releaseSync.promise;
+      await db.transactions.update(pending.id, {
+        status: "synced",
+        sheetId: "sheet-a",
+        sheetRow: 22,
+      });
+      return 1;
+    });
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[pending.id, 22]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    const harness = createProviderHarness();
+    let syncPromise!: Promise<void>;
+    await act(async () => {
+      syncPromise = harness.getContext().syncNow();
+      await syncStarted.promise;
+    });
+
+    let updatePromise!: ReturnType<
+      TransactionsContextValue["updateTransaction"]
+    >;
+    act(() => {
+      updatePromise = harness.getContext().updateTransaction(pending.id, {
+        note: "After",
+      });
+    });
+
+    expect((await db.transactions.get(pending.id))?.note).toBe("Before");
+    releaseSync.resolve();
+    let result!: Awaited<typeof updatePromise>;
+    await act(async () => {
+      await syncPromise;
+      result = await updatePromise;
+    });
+
+    expect(result).toMatchObject({ status: "synced", note: "After" });
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      22,
+      expect.objectContaining({ id: pending.id, note: "After" }),
+    );
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("persists an add immediately and runs a follow-up sync during an active sync", async () => {
+    providerState.isOnline = true;
+    const syncStarted = deferred<void>();
+    const releaseSync = deferred<void>();
+    vi.mocked(syncPendingTransactions)
+      .mockImplementationOnce(async () => {
+        syncStarted.resolve();
+        await releaseSync.promise;
+        return 0;
+      })
+      .mockImplementationOnce(async (_token, activeSheetId) => {
+        const pendingRows = await db.transactions
+          .where("status")
+          .equals("pending")
+          .toArray();
+        for (const record of pendingRows) {
+          await db.transactions.update(record.id, {
+            status: "synced",
+            sheetId: activeSheetId,
+            sheetRow: 23,
+          });
+        }
+        return pendingRows.length;
+      });
+    const harness = createProviderHarness();
+    await act(async () => {
+      await syncStarted.promise;
+    });
+    const addPersisted = deferred<void>();
+    const originalAdd = db.transactions.add.bind(db.transactions);
+    const addToDb = vi
+      .spyOn(db.transactions, "add")
+      .mockImplementation((record, key) => {
+        const addResult =
+          key === undefined
+            ? originalAdd(record)
+            : originalAdd(record, key);
+        void addResult.then(() => addPersisted.resolve());
+        return addResult;
+      });
+
+    let addPromise!: ReturnType<TransactionsContextValue["addTransaction"]>;
+    let result!: Awaited<typeof addPromise>;
+    await act(async () => {
+      addPromise = harness.getContext().addTransaction(input);
+      await addPersisted.promise;
+      expect(addToDb).toHaveBeenCalledTimes(1);
+      expect(syncPendingTransactions).toHaveBeenCalledTimes(1);
+      expect(
+        await db.transactions.where("status").equals("pending").count(),
+      ).toBe(1);
+      releaseSync.resolve();
+      result = await addPromise;
+    });
+
+    expect(syncPendingTransactions).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      status: "synced",
+      sheetId: "sheet-a",
+      sheetRow: 23,
+    });
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not compensate a completed remote delete when invalidation fails", async () => {
+    const synced = transaction("delete-before-invalidation-failure", {
+      sheetRow: 91,
+    });
+    await db.transactions.add(synced);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[synced.id, 26]]),
+    );
+    const harness = createProviderHarness();
+    const invalidationError = new Error("cache unavailable after delete");
+    vi.spyOn(harness.queryClient, "invalidateQueries").mockRejectedValue(
+      invalidationError,
+    );
+
+    let result!: Awaited<
+      ReturnType<TransactionsContextValue["deleteTransaction"]>
+    >;
+    await act(async () => {
+      result = await harness.getContext().deleteTransaction(synced.id);
+    });
+
+    expect(result).toEqual({ ok: true, message: "Removed synced entry" });
+    expect(googleMocks.deleteRow).toHaveBeenCalledTimes(1);
+    expect(googleMocks.deleteRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      0,
+      26,
+    );
+    expect(await db.transactions.toArray()).toEqual([]);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("returns a durable local add when cache invalidation fails", async () => {
+    const harness = createProviderHarness();
+    vi.spyOn(harness.queryClient, "invalidateQueries").mockRejectedValue(
+      new Error("cache unavailable after add"),
+    );
+
+    let created!: TransactionRecord;
+    await act(async () => {
+      created = await harness.getContext().addTransaction(input);
+    });
+
+    expect(created).toMatchObject({ status: "pending", ...input });
+    expect(await db.transactions.get(created.id)).toEqual(created);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("keeps a completed direct update synced when cache invalidation fails", async () => {
+    const synced = transaction("update-before-invalidation-failure", {
+      note: "Before",
+      sheetRow: 27,
+    });
+    await db.transactions.add(synced);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[synced.id, 27]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(synced);
+    const harness = createProviderHarness();
+    vi.spyOn(harness.queryClient, "invalidateQueries").mockRejectedValue(
+      new Error("cache unavailable after update"),
+    );
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness.getContext().updateTransaction(synced.id, {
+        note: "After",
+      });
+    });
+
+    expect(googleMocks.updateRow).toHaveBeenCalledTimes(1);
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+    expect(updated).toMatchObject({ status: "synced", note: "After" });
+    expect(await db.transactions.get(synced.id)).toMatchObject({
+      status: "synced",
+      note: "After",
+    });
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("latches a syncNow call made while another sync is active", async () => {
+    const syncStarted = deferred<void>();
+    const releaseSync = deferred<void>();
+    vi.mocked(syncPendingTransactions)
+      .mockImplementationOnce(async () => {
+        syncStarted.resolve();
+        await releaseSync.promise;
+        return 0;
+      })
+      .mockResolvedValueOnce(0);
+    const harness = createProviderHarness();
+    let firstSync!: Promise<void>;
+    await act(async () => {
+      firstSync = harness.getContext().syncNow();
+      await syncStarted.promise;
+    });
+
+    const followUpSync = harness.getContext().syncNow();
+
+    expect(syncPendingTransactions).toHaveBeenCalledTimes(1);
+    releaseSync.resolve();
+    await act(async () => {
+      await firstSync;
+      await followUpSync;
+    });
+    expect(syncPendingTransactions).toHaveBeenCalledTimes(2);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("recovers the sync mutex after cache invalidation rejects", async () => {
+    const harness = createProviderHarness();
+    const invalidationError = new Error("cache unavailable");
+    vi.spyOn(harness.queryClient, "invalidateQueries")
+      .mockRejectedValueOnce(invalidationError)
+      .mockResolvedValue(undefined);
+
+    let firstFailure: unknown;
+    await act(async () => {
+      try {
+        await harness.getContext().syncNow();
+      } catch (error) {
+        firstFailure = error;
+      }
+    });
+    await act(async () => {
+      await harness.getContext().syncNow();
+    });
+
+    expect(firstFailure).toBe(invalidationError);
+    expect(syncPendingTransactions).toHaveBeenCalledTimes(2);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("uses an authoritative remote reimbursement relation when local Dexie is unlinked", async () => {
+    const staleLocal = transaction("remote-linked", {
+      type: "expense",
+      category: "Stale expense",
+      reimbursesTransactionId: undefined,
+      sheetRow: 72,
+    });
+    const remoteChild = transaction(staleLocal.id, {
+      type: "income",
+      amount: 25,
+      category: "Reimbursement",
+      currency: "THB",
+      for: "Me",
+      reimbursesTransactionId: "source-authoritative",
+      sheetRow: 24,
+    });
+    await db.transactions.add(staleLocal);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[staleLocal.id, 23]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(remoteChild);
+    const harness = createProviderHarness();
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness.getContext().updateTransaction(staleLocal.id, {
+        type: "expense",
+        category: "Tampered",
+        currency: "USD",
+        for: "Someone else",
+        reimbursesTransactionId: "wrong-source",
+        note: "Allowed metadata",
+      });
+    });
+
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      24,
+      expect.objectContaining({
+        id: staleLocal.id,
+        type: "income",
+        category: "Reimbursement",
+        currency: "THB",
+        for: "Me",
+        reimbursesTransactionId: "source-authoritative",
+        note: "Allowed metadata",
+      }),
+    );
+    expect(updated).toMatchObject({
+      type: "income",
+      category: "Reimbursement",
+      currency: "THB",
+      for: "Me",
+      reimbursesTransactionId: "source-authoritative",
+    });
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not resurrect a stale local relation when the remote child is unlinked", async () => {
+    const staleLocal = transaction("remote-unlinked", {
+      type: "income",
+      category: "Reimbursement",
+      reimbursesTransactionId: "deleted-link",
+      sheetRow: 73,
+    });
+    const remote = transaction(staleLocal.id, {
+      type: "income",
+      category: "Salary",
+      reimbursesTransactionId: undefined,
+      sheetRow: 25,
+    });
+    await db.transactions.add(staleLocal);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[staleLocal.id, 25]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    const harness = createProviderHarness();
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness.getContext().updateTransaction(staleLocal.id, {
+        category: "Bonus",
+        note: "Remote is authoritative",
+        reimbursesTransactionId: "wrong-source",
+      });
+    });
+
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      25,
+      expect.objectContaining({
+        id: staleLocal.id,
+        category: "Bonus",
+        note: "Remote is authoritative",
+        reimbursesTransactionId: undefined,
+      }),
+    );
+    expect(updated?.reimbursesTransactionId).toBeUndefined();
+    expect(updated?.category).toBe("Bonus");
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
 });
 
 describe("transaction mutations", () => {
@@ -1097,6 +1546,32 @@ describe("transaction mutations", () => {
         ["transactionById"],
       ]),
     );
+    queryClient.clear();
+  });
+
+  it("rejects a delete provider result whose operation was not completed", async () => {
+    mutationContextState.value = mutationContext({
+      deleteTransaction: vi.fn().mockResolvedValue({
+        ok: false,
+        message: "Transaction not found",
+      }),
+    });
+    const { queryClient, wrapper } = createMutationHarness();
+    const { result } = renderHook(() => useDeleteTransactionMutation(), {
+      wrapper,
+    });
+
+    let failure: unknown;
+    await act(async () => {
+      try {
+        await result.current.mutateAsync("missing-transaction");
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe("Transaction not found");
     queryClient.clear();
   });
 });

@@ -8,7 +8,11 @@ export function useDeleteTransactionMutation() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      return deleteTransaction(id);
+      const result = await deleteTransaction(id);
+      if (!result.ok) {
+        throw new Error(result.message);
+      }
+      return result;
     },
     onSettled: async () => {
       await Promise.all([
