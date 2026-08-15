@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import {
+  onlineManager,
   QueryClient,
   QueryClientProvider,
   type QueryKey,
@@ -1364,6 +1365,7 @@ describe("TransactionsProvider", () => {
 
 describe("transaction mutations", () => {
   afterEach(() => {
+    onlineManager.setOnline(true);
     mutationContextState.value = null;
   });
 
@@ -1490,15 +1492,69 @@ describe("transaction mutations", () => {
     queryClient.clear();
   });
 
+  it("executes an update immediately offline and settles with the provider result", async () => {
+    const updated = transaction("offline-update-by-hook", {
+      note: "Queued update",
+      status: "pending",
+    });
+    const updateTransaction = vi.fn().mockResolvedValue(updated);
+    mutationContextState.value = mutationContext({ updateTransaction });
+    const queryClient = new QueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    function Wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
+    }
+    const { result } = renderHook(() => useUpdateTransactionMutation(), {
+      wrapper: Wrapper,
+    });
+    let mutationPromise: Promise<TransactionRecord> | undefined;
+
+    onlineManager.setOnline(false);
+    act(() => {
+      mutationPromise = result.current.mutateAsync({
+        id: updated.id,
+        input: { note: "Queued update" },
+      });
+    });
+
+    try {
+      await waitFor(
+        () => {
+          expect(updateTransaction).toHaveBeenCalledWith(updated.id, {
+            note: "Queued update",
+          });
+        },
+        { timeout: 250 },
+      );
+      await expect(mutationPromise).resolves.toEqual(updated);
+      expect(invalidatedKeys(invalidateQueries)).toEqual(
+        expect.arrayContaining([
+          transactionQueryKeys.local,
+          ["recentTransactions"],
+          transactionQueryKeys.reimbursements,
+          ["transactionById"],
+        ]),
+      );
+    } finally {
+      onlineManager.setOnline(true);
+      await mutationPromise?.catch(() => undefined);
+      queryClient.clear();
+    }
+  });
+
   it("rejects an update result whose persisted row is in error", async () => {
     const failed = transaction("update-failed", {
       status: "error",
       error: "Amount exceeds remaining reimbursement balance",
     });
-    mutationContextState.value = mutationContext({
-      updateTransaction: vi.fn().mockResolvedValue(failed),
-    });
+    const updateTransaction = vi.fn().mockResolvedValue(failed);
+    mutationContextState.value = mutationContext({ updateTransaction });
     const { queryClient, wrapper } = createMutationHarness();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     const { result } = renderHook(() => useUpdateTransactionMutation(), {
       wrapper,
     });
@@ -1518,6 +1574,15 @@ describe("transaction mutations", () => {
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe(
       "Amount exceeds remaining reimbursement balance",
+    );
+    expect(updateTransaction).toHaveBeenCalledWith(failed.id, { amount: 101 });
+    expect(invalidatedKeys(invalidateQueries)).toEqual(
+      expect.arrayContaining([
+        transactionQueryKeys.local,
+        ["recentTransactions"],
+        transactionQueryKeys.reimbursements,
+        ["transactionById"],
+      ]),
     );
     queryClient.clear();
   });

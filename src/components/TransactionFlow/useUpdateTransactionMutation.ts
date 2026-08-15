@@ -8,6 +8,7 @@ export function useUpdateTransactionMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({
       id,
       input,
