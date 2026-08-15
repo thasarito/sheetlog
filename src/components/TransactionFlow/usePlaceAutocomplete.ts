@@ -1,0 +1,234 @@
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createPlaceAutocompleteSession,
+  endPlaceAutocompleteSession,
+  resolvePlaceSuggestionName,
+  searchPlaceSuggestions,
+  type Coordinates,
+  type PlaceAutocompleteSession,
+  type PlaceSuggestion,
+} from "../../lib/googlePlaces";
+
+const INPUT_DEBOUNCE_MS = 250;
+
+export const placeAutocompleteKeys = {
+  session: (sessionId: string) =>
+    ["placeAutocomplete", sessionId, "session"] as const,
+  suggestions: (sessionId: string, input: string) =>
+    ["placeAutocomplete", sessionId, "suggestions", input] as const,
+  suggestionsForSession: (sessionId: string) =>
+    ["placeAutocomplete", sessionId, "suggestions"] as const,
+};
+
+function normalizeInput(input: string) {
+  return input.trim().replace(/\s+/g, " ");
+}
+
+export function usePlaceAutocomplete({
+  open,
+  enabled,
+  sessionId,
+  locationBias,
+}: {
+  open: boolean;
+  enabled: boolean;
+  sessionId: string;
+  locationBias?: Coordinates;
+}) {
+  const queryClient = useQueryClient();
+  const [input, setInput] = useState("");
+  const [debouncedInput, setDebouncedInput] = useState("");
+  const activeSessionRef = useRef<{
+    sessionId: string;
+    session: PlaceAutocompleteSession;
+  }>();
+  const selectionPromiseRef = useRef<Promise<string>>();
+  const openRef = useRef(open);
+  const sessionIdRef = useRef(sessionId);
+  openRef.current = open;
+  sessionIdRef.current = sessionId;
+
+  const normalizedInput = normalizeInput(input);
+  const canLoad = open && enabled;
+  const canSearch = canLoad && normalizedInput.length >= 2 && debouncedInput.length >= 2;
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(
+      () => setDebouncedInput(normalizedInput),
+      INPUT_DEBOUNCE_MS
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [normalizedInput]);
+
+  const sessionQuery = useQuery({
+    queryKey: placeAutocompleteKeys.session(sessionId),
+    enabled: canLoad,
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: async () => {
+      const placeSession = await createPlaceAutocompleteSession();
+      if (!openRef.current || sessionIdRef.current !== sessionId) {
+        endPlaceAutocompleteSession(placeSession);
+        throw new Error("Place autocomplete session is no longer active");
+      }
+      return placeSession;
+    },
+  });
+
+  useEffect(() => {
+    if (canLoad && sessionQuery.data) {
+      activeSessionRef.current = { sessionId, session: sessionQuery.data };
+    }
+  }, [canLoad, sessionId, sessionQuery.data]);
+
+  const suggestionQuery = useQuery({
+    queryKey: placeAutocompleteKeys.suggestions(sessionId, debouncedInput),
+    enabled: canSearch && Boolean(sessionQuery.data),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    placeholderData: canSearch ? keepPreviousData : undefined,
+    queryFn: () => {
+      if (!sessionQuery.data) {
+        throw new Error("Place autocomplete session is not available");
+      }
+      return searchPlaceSuggestions(debouncedInput, sessionQuery.data, locationBias);
+    },
+  });
+
+  const selection = useMutation({
+    mutationFn: async ({
+      suggestion,
+      placeSession,
+    }: {
+      suggestion: PlaceSuggestion;
+      placeSession: PlaceAutocompleteSession;
+    }) => {
+      const displayName = await resolvePlaceSuggestionName(suggestion, placeSession);
+      endPlaceAutocompleteSession(placeSession);
+      if (activeSessionRef.current?.session === placeSession) {
+        activeSessionRef.current = undefined;
+      }
+      return displayName;
+    },
+  });
+
+  const reset = useCallback(() => {
+    setInput("");
+    setDebouncedInput("");
+    selection.reset();
+    selectionPromiseRef.current = undefined;
+
+    const activeSession = activeSessionRef.current?.session;
+    if (activeSession) {
+      endPlaceAutocompleteSession(activeSession);
+      activeSessionRef.current = undefined;
+    }
+
+    queryClient.removeQueries({
+      queryKey: placeAutocompleteKeys.suggestionsForSession(sessionId),
+      exact: false,
+    });
+    queryClient.removeQueries({
+      queryKey: placeAutocompleteKeys.session(sessionId),
+      exact: true,
+    });
+  }, [queryClient, selection, sessionId]);
+
+  const wasOpenRef = useRef(open);
+  useEffect(() => {
+    if (wasOpenRef.current && !open) {
+      reset();
+    }
+    wasOpenRef.current = open;
+  }, [open, reset]);
+
+  const previousSessionIdRef = useRef(sessionId);
+  useEffect(() => {
+    const previousSessionId = previousSessionIdRef.current;
+    if (previousSessionId !== sessionId) {
+      const activeSession = activeSessionRef.current;
+      if (activeSession?.sessionId === previousSessionId) {
+        endPlaceAutocompleteSession(activeSession.session);
+        activeSessionRef.current = undefined;
+      }
+      queryClient.removeQueries({
+        queryKey: placeAutocompleteKeys.suggestionsForSession(previousSessionId),
+        exact: false,
+      });
+      queryClient.removeQueries({
+        queryKey: placeAutocompleteKeys.session(previousSessionId),
+        exact: true,
+      });
+      previousSessionIdRef.current = sessionId;
+    }
+  }, [queryClient, sessionId]);
+
+  useEffect(() => {
+    return () => {
+      const activeSession = activeSessionRef.current?.session;
+      if (activeSession) {
+        endPlaceAutocompleteSession(activeSession);
+        activeSessionRef.current = undefined;
+      }
+    };
+  }, []);
+
+  const selectSuggestion = useCallback(
+    (suggestion: PlaceSuggestion) => {
+      if (selectionPromiseRef.current) {
+        return selectionPromiseRef.current;
+      }
+      if (!sessionQuery.data) {
+        return Promise.reject(new Error("Place autocomplete session is not available"));
+      }
+
+      const promise = selection.mutateAsync({
+        suggestion,
+        placeSession: sessionQuery.data,
+      });
+      selectionPromiseRef.current = promise;
+      void promise.finally(() => {
+        selectionPromiseRef.current = undefined;
+      });
+      return promise;
+    },
+    [selection, sessionQuery.data]
+  );
+
+  const retry = useCallback(async () => {
+    if (sessionQuery.isError) {
+      return sessionQuery.refetch();
+    }
+    if (suggestionQuery.isError) {
+      return suggestionQuery.refetch();
+    }
+  }, [sessionQuery, suggestionQuery]);
+
+  const hasSelectionError = selection.isError;
+  const isError = sessionQuery.isError || suggestionQuery.isError || hasSelectionError;
+  const error = selection.error ?? suggestionQuery.error ?? sessionQuery.error ?? null;
+
+  return {
+    input,
+    setInput,
+    suggestions: canSearch ? (suggestionQuery.data ?? []) : [],
+    isLoading:
+      canLoad &&
+      (sessionQuery.isLoading || sessionQuery.isFetching || suggestionQuery.isLoading || suggestionQuery.isFetching),
+    isSelecting: selection.isPending,
+    isError,
+    error,
+    retry,
+    selectSuggestion,
+    reset,
+  };
+}
