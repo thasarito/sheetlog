@@ -28,6 +28,7 @@ import {
 } from './reimbursements';
 import type { TransactionRecord } from './types';
 import { isTransactionInSheetScope } from './transactionScope';
+import { withSheetMutationLock } from './sheetMutationLock';
 
 const appendTransaction = IS_DEV_MODE ? mockAppendTransaction : realAppendTransaction;
 const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
@@ -272,7 +273,7 @@ async function rollbackDeletedAppend(
   await deleteRow(accessToken, sheetId, tabId, currentRow);
 }
 
-export async function syncPendingTransactions(
+async function syncPendingTransactionsUnlocked(
   accessToken: string,
   sheetId: string,
   userId: string,
@@ -430,4 +431,14 @@ export async function syncPendingTransactions(
   }
 
   return syncedCount;
+}
+
+export async function syncPendingTransactions(
+  accessToken: string,
+  sheetId: string,
+  userId: string,
+): Promise<number> {
+  return withSheetMutationLock({ sheetId, userId }, () =>
+    syncPendingTransactionsUnlocked(accessToken, sheetId, userId),
+  );
 }

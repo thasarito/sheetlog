@@ -27,6 +27,7 @@ import {
   validateReimbursementAmount,
 } from "../../../lib/reimbursements";
 import { getRecentCategories, updateRecentCategory } from "../../../lib/settings";
+import { withSheetMutationLock } from "../../../lib/sheetMutationLock";
 import { syncPendingTransactions } from "../../../lib/sync";
 import {
   LEGACY_TRANSACTION_SCOPE_ERROR,
@@ -363,108 +364,148 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         updatedAt: now,
       };
 
-      if (transaction.status === "synced" && accessToken && sheetId) {
+      if (
+        transaction.status === "synced" &&
+        accessToken &&
+        sheetId &&
+        userId
+      ) {
         try {
-          const idMap = await readTransactionIdMap(accessToken, sheetId);
-          const currentRow = idMap.get(transaction.id);
-
-          if (currentRow !== undefined) {
-            const remoteChild = await readTransactionById(
-              accessToken,
-              sheetId,
-              transaction.id,
-            );
-
-            if (!remoteChild) {
-              throw new TypeError("Current transaction row could not be read");
-            }
-
-            safeInput = remoteChild.reimbursesTransactionId
-              ? lockLinkedInput(input, remoteChild)
-              : { ...input, reimbursesTransactionId: undefined };
-            const rowToUpdate = remoteChild.sheetRow ?? currentRow;
-            const updatedRecord: TransactionRecord = {
-              ...transaction,
-              ...remoteChild,
-              ...safeInput,
-              id: transaction.id,
-              status: "synced",
-              sheetId,
-              sheetRow: rowToUpdate,
-              updatedAt: now,
-              error: undefined,
-            };
-            prospectiveRecord = updatedRecord;
-
-            if (
-              remoteChild.reimbursesTransactionId &&
-              updatedRecord.amount !== remoteChild.amount
-            ) {
-              const sourceId = remoteChild.reimbursesTransactionId;
-              const source = sourceId
-                ? await readTransactionById(accessToken, sheetId, sourceId)
-                : null;
-
-              if (!source) {
-                throw new ReimbursementValidationError(
-                  "Original expense unavailable",
-                );
+          const directResult = await withSheetMutationLock(
+            { sheetId, userId },
+            async () => {
+              const latestTransaction = await db.transactions.get(id);
+              if (!latestTransaction) {
+                return null;
               }
-              if (!isReimbursableExpense(source)) {
-                throw new ReimbursementValidationError(
-                  "Original expense is no longer reimbursable",
-                );
+              requireTransactionScope(latestTransaction, sheetId, userId);
+              if (latestTransaction.status !== "synced") {
+                safeInput = latestTransaction.reimbursesTransactionId
+                  ? lockLinkedInput(input, latestTransaction)
+                  : input;
+                prospectiveRecord = {
+                  ...latestTransaction,
+                  ...safeInput,
+                  updatedAt: now,
+                };
+                return undefined;
               }
-              if (source.currency !== remoteChild.currency) {
-                throw new ReimbursementValidationError(
-                  "Reimbursement currency no longer matches original expense",
+              const idMap = await readTransactionIdMap(accessToken, sheetId);
+              const currentRow = idMap.get(latestTransaction.id);
+
+              if (currentRow === undefined) {
+                return undefined;
+              }
+              const remoteChild = await readTransactionById(
+                accessToken,
+                sheetId,
+                latestTransaction.id,
+              );
+
+              if (!remoteChild) {
+                throw new TypeError(
+                  "Current transaction row could not be read",
                 );
               }
 
-              const [remoteRows, localRows] = await Promise.all([
-                readLinkedReimbursements(accessToken, sheetId, source.id),
-                db.transactions.toArray().then((rows) =>
-                  rows.filter((row) =>
-                    isTransactionInSheetScope(row, sheetId, userId),
+              safeInput = remoteChild.reimbursesTransactionId
+                ? lockLinkedInput(input, remoteChild)
+                : { ...input, reimbursesTransactionId: undefined };
+              const rowToUpdate = remoteChild.sheetRow ?? currentRow;
+              const updatedRecord: TransactionRecord = {
+                ...latestTransaction,
+                ...remoteChild,
+                ...safeInput,
+                id: latestTransaction.id,
+                status: "synced",
+                sheetId,
+                sheetRow: rowToUpdate,
+                updatedAt: now,
+                error: undefined,
+              };
+              prospectiveRecord = updatedRecord;
+
+              if (
+                remoteChild.reimbursesTransactionId &&
+                updatedRecord.amount !== remoteChild.amount
+              ) {
+                const sourceId = remoteChild.reimbursesTransactionId;
+                const source = sourceId
+                  ? await readTransactionById(accessToken, sheetId, sourceId)
+                  : null;
+
+                if (!source) {
+                  throw new ReimbursementValidationError(
+                    "Original expense unavailable",
+                  );
+                }
+                if (!isReimbursableExpense(source)) {
+                  throw new ReimbursementValidationError(
+                    "Original expense is no longer reimbursable",
+                  );
+                }
+                if (source.currency !== remoteChild.currency) {
+                  throw new ReimbursementValidationError(
+                    "Reimbursement currency no longer matches original expense",
+                  );
+                }
+
+                const [remoteRows, localRows] = await Promise.all([
+                  readLinkedReimbursements(accessToken, sheetId, source.id),
+                  db.transactions.toArray().then((rows) =>
+                    rows.filter((row) =>
+                      isTransactionInSheetScope(row, sheetId, userId),
+                    ),
                   ),
-                ),
-              ]);
-              const summary = calculateReimbursementSummary(
-                source,
-                remoteRows,
-                localRows,
-                remoteChild.id,
-              );
-              const amountError = validateReimbursementAmount(
-                updatedRecord.amount,
-                summary,
-              );
-              if (amountError) {
-                throw new ReimbursementValidationError(amountError);
+                ]);
+                const summary = calculateReimbursementSummary(
+                  source,
+                  remoteRows,
+                  localRows,
+                  remoteChild.id,
+                );
+                const amountError = validateReimbursementAmount(
+                  updatedRecord.amount,
+                  summary,
+                );
+                if (amountError) {
+                  throw new ReimbursementValidationError(amountError);
+                }
               }
-            }
 
-            await updateRow(accessToken, sheetId, rowToUpdate, updatedRecord);
-            await db.transactions.put({
-              ...updatedRecord,
-              status: "synced",
-              updatedAt: now,
-              sheetId,
-              targetSheetId: sheetId,
-              targetUserId: userId ?? undefined,
-              sheetRow: rowToUpdate,
-              error: undefined,
-            });
+              await updateRow(
+                accessToken,
+                sheetId,
+                rowToUpdate,
+                updatedRecord,
+              );
+              await db.transactions.put({
+                ...updatedRecord,
+                status: "synced",
+                updatedAt: now,
+                sheetId,
+                targetSheetId: sheetId,
+                targetUserId: userId,
+                sheetRow: rowToUpdate,
+                error: undefined,
+              });
+              return await db.transactions.get(id);
+            },
+          );
+          if (directResult === null) {
+            return undefined;
+          }
+          if (directResult) {
             await refreshMutationState();
             if (input.type || input.category) {
               await Promise.allSettled([
                 markRecentCategory(
-                  updatedRecord.type,
-                  updatedRecord.category,
+                  directResult.type,
+                  directResult.category,
                 ),
               ]);
             }
-            return await db.transactions.get(id);
+            return directResult;
           }
         } catch (error) {
           if (error instanceof ReimbursementValidationError) {
@@ -538,21 +579,40 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
 
     let directDeleteMessage: string | null = null;
-    if (last.status === "synced" && accessToken && sheetId) {
+    let directDeleteCommitted = false;
+    if (last.status === "synced" && accessToken && sheetId && userId) {
       try {
-        const effectiveTabId =
-          sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
-        if (effectiveTabId !== null) {
-          const idMap = await readTransactionIdMap(accessToken, sheetId);
-          const currentRow = idMap.get(last.id);
-          if (currentRow === undefined) {
-            directDeleteMessage = "Removed entry already absent from Sheets";
-          } else {
-            await deleteRow(accessToken, sheetId, effectiveTabId, currentRow);
-            directDeleteMessage = "Removed last synced entry";
-          }
-        }
+        directDeleteMessage = await withSheetMutationLock(
+          { sheetId, userId },
+          async () => {
+            const effectiveTabId =
+              sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
+            if (effectiveTabId === null) {
+              return null;
+            }
+            const idMap = await readTransactionIdMap(accessToken, sheetId);
+            const currentRow = idMap.get(last.id);
+            const message =
+              currentRow === undefined
+                ? "Removed entry already absent from Sheets"
+                : "Removed last synced entry";
+            if (currentRow !== undefined) {
+              await deleteRow(
+                accessToken,
+                sheetId,
+                effectiveTabId,
+                currentRow,
+              );
+            }
+            directDeleteCommitted = true;
+            await db.transactions.delete(last.id);
+            return message;
+          },
+        );
       } catch (error) {
+        if (directDeleteCommitted) {
+          throw error;
+        }
         const info = mapGoogleSyncError(error);
         if (info.shouldClearAuth) {
           signOut();
@@ -566,7 +626,6 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
 
     if (directDeleteMessage) {
-      await db.transactions.delete(last.id);
       await refreshMutationState();
       return { ok: true, message: directDeleteMessage };
     }
@@ -635,26 +694,45 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       }
 
       let directDeleteMessage: string | null = null;
-      if (transaction.status === "synced" && accessToken && sheetId) {
+      let directDeleteCommitted = false;
+      if (
+        transaction.status === "synced" &&
+        accessToken &&
+        sheetId &&
+        userId
+      ) {
         try {
-          const effectiveTabId =
-            sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
-          if (effectiveTabId !== null) {
-            const idMap = await readTransactionIdMap(accessToken, sheetId);
-            const currentRow = idMap.get(id);
-            if (currentRow === undefined) {
-              directDeleteMessage = "Removed entry already absent from Sheets";
-            } else {
-              await deleteRow(
-                accessToken,
-                sheetId,
-                effectiveTabId,
-                currentRow
-              );
-              directDeleteMessage = "Removed synced entry";
-            }
-          }
+          directDeleteMessage = await withSheetMutationLock(
+            { sheetId, userId },
+            async () => {
+              const effectiveTabId =
+                sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
+              if (effectiveTabId === null) {
+                return null;
+              }
+              const idMap = await readTransactionIdMap(accessToken, sheetId);
+              const currentRow = idMap.get(id);
+              const message =
+                currentRow === undefined
+                  ? "Removed entry already absent from Sheets"
+                  : "Removed synced entry";
+              if (currentRow !== undefined) {
+                await deleteRow(
+                  accessToken,
+                  sheetId,
+                  effectiveTabId,
+                  currentRow,
+                );
+              }
+              directDeleteCommitted = true;
+              await db.transactions.delete(id);
+              return message;
+            },
+          );
         } catch (error) {
+          if (directDeleteCommitted) {
+            throw error;
+          }
           const info = mapGoogleSyncError(error);
           if (info.shouldClearAuth) {
             signOut();
@@ -668,7 +746,6 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       }
 
       if (directDeleteMessage) {
-        await db.transactions.delete(id);
         await refreshMutationState();
         return { ok: true, message: directDeleteMessage };
       }

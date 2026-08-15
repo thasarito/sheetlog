@@ -108,11 +108,61 @@ describe("syncPendingTransactions concurrency", () => {
     googleMocks.readTransactionIdMap.mockReset().mockResolvedValue(new Map());
     googleMocks.updateRow.mockReset().mockResolvedValue(undefined);
     await db.transactions.clear();
+    await db.settings.clear();
   });
 
   afterEach(async () => {
     vi.restoreAllMocks();
     await db.transactions.clear();
+    await db.settings.clear();
+  });
+
+  it("prevents two independent sync callers from appending the same absent K ID", async () => {
+    const pending = transaction("same-browser-cross-tab");
+    await db.transactions.add(pending);
+    const firstAppendStarted = deferred<void>();
+    const secondAppendStarted = deferred<void>();
+    const releaseFirstAppend = deferred<number | null>();
+    let appendCount = 0;
+
+    googleMocks.appendTransaction.mockImplementation(async () => {
+      appendCount += 1;
+      if (appendCount === 1) {
+        firstAppendStarted.resolve();
+        return releaseFirstAppend.promise;
+      }
+      secondAppendStarted.resolve();
+      return 3;
+    });
+
+    const firstSync = syncPendingTransactions(
+      "access-token-a",
+      "sheet-a",
+      "user-a",
+    );
+    await firstAppendStarted.promise;
+
+    const secondSync = syncPendingTransactions(
+      "access-token-b",
+      "sheet-a",
+      "user-a",
+    );
+    await Promise.race([
+      secondAppendStarted.promise,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 50);
+      }),
+    ]);
+    releaseFirstAppend.resolve(2);
+
+    await Promise.all([firstSync, secondSync]);
+
+    expect(googleMocks.appendTransaction).toHaveBeenCalledTimes(1);
+    expect(await db.transactions.get(pending.id)).toMatchObject({
+      status: "synced",
+      sheetId: "sheet-a",
+      sheetRow: 2,
+    });
   });
 
   it("keeps an offline A queue out of B after sign-out and resumes it only when A returns", async () => {

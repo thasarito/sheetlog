@@ -1235,6 +1235,150 @@ describe("TransactionsProvider", () => {
     harness.queryClient.clear();
   });
 
+  it("serializes same-scope providers so a delete cannot shift an update onto the wrong K row", async () => {
+    const first = transaction("cross-tab-delete", { sheetRow: 2 });
+    const second = transaction("cross-tab-update", {
+      note: "Before",
+      sheetRow: 3,
+    });
+    const third = transaction("untouched-third-row", { sheetRow: 4 });
+    await db.transactions.bulkAdd([first, second]);
+    const remoteRows = [first, second, third];
+    const deleteStarted = deferred<void>();
+    const releaseDelete = deferred<void>();
+    const deleteFinished = deferred<void>();
+    const updateStarted = deferred<void>();
+
+    googleMocks.readTransactionIdMap.mockImplementation(async () =>
+      new Map(
+        remoteRows.map((record, index) => [record.id, index + 2] as const),
+      ),
+    );
+    googleMocks.readTransactionById.mockImplementation(async (_token, _sheet, id) => {
+      const index = remoteRows.findIndex((record) => record.id === id);
+      return index < 0
+        ? null
+        : { ...remoteRows[index], sheetRow: index + 2 };
+    });
+    googleMocks.deleteRow.mockImplementation(
+      async (_token, _sheet, tabId, rowIndex) => {
+        expect(tabId).toBe(0);
+        deleteStarted.resolve();
+        await releaseDelete.promise;
+        remoteRows.splice(rowIndex - 2, 1);
+        deleteFinished.resolve();
+      },
+    );
+    googleMocks.updateRow.mockImplementation(
+      async (_token, _sheet, rowIndex, record) => {
+        updateStarted.resolve();
+        await deleteFinished.promise;
+        remoteRows[rowIndex - 2] = record;
+      },
+    );
+
+    const deletingProvider = createProviderHarness();
+    const updatingProvider = createProviderHarness();
+    let deletePromise!: ReturnType<
+      TransactionsContextValue["deleteTransaction"]
+    >;
+    let updatePromise!: ReturnType<
+      TransactionsContextValue["updateTransaction"]
+    >;
+    await act(async () => {
+      deletePromise = deletingProvider
+        .getContext()
+        .deleteTransaction(first.id);
+      await deleteStarted.promise;
+      updatePromise = updatingProvider
+        .getContext()
+        .updateTransaction(second.id, { note: "After" });
+      await Promise.race([
+        updateStarted.promise,
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        }),
+      ]);
+      releaseDelete.resolve();
+      await Promise.all([deletePromise, updatePromise]);
+    });
+
+    expect(googleMocks.deleteRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      0,
+      2,
+    );
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      2,
+      expect.objectContaining({ id: second.id, note: "After" }),
+    );
+    expect(remoteRows.map(({ id }) => id)).toEqual([
+      second.id,
+      third.id,
+    ]);
+
+    deletingProvider.rendered.unmount();
+    deletingProvider.queryClient.clear();
+    updatingProvider.rendered.unmount();
+    updatingProvider.queryClient.clear();
+  });
+
+  it("does not resurrect a row deleted while another provider waits to update it", async () => {
+    const transactionToDelete = transaction("delete-before-cross-tab-update", {
+      note: "Before",
+      sheetRow: 2,
+    });
+    await db.transactions.add(transactionToDelete);
+    const remoteRows = [transactionToDelete];
+    const deleteStarted = deferred<void>();
+    const releaseDelete = deferred<void>();
+
+    googleMocks.readTransactionIdMap.mockImplementation(async () =>
+      new Map(
+        remoteRows.map((record, index) => [record.id, index + 2] as const),
+      ),
+    );
+    googleMocks.deleteRow.mockImplementation(async (_token, _sheet, _tab, row) => {
+      deleteStarted.resolve();
+      await releaseDelete.promise;
+      remoteRows.splice(row - 2, 1);
+    });
+
+    const deletingProvider = createProviderHarness();
+    const updatingProvider = createProviderHarness();
+    let deleted!: Awaited<
+      ReturnType<TransactionsContextValue["deleteTransaction"]>
+    >;
+    let updated!: Awaited<
+      ReturnType<TransactionsContextValue["updateTransaction"]>
+    >;
+    await act(async () => {
+      const deletePromise = deletingProvider
+        .getContext()
+        .deleteTransaction(transactionToDelete.id);
+      await deleteStarted.promise;
+      const updatePromise = updatingProvider
+        .getContext()
+        .updateTransaction(transactionToDelete.id, { note: "After" });
+      releaseDelete.resolve();
+      [deleted, updated] = await Promise.all([deletePromise, updatePromise]);
+    });
+
+    expect(deleted).toEqual({ ok: true, message: "Removed synced entry" });
+    expect(updated).toBeUndefined();
+    expect(await db.transactions.get(transactionToDelete.id)).toBeUndefined();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    deletingProvider.rendered.unmount();
+    deletingProvider.queryClient.clear();
+    updatingProvider.rendered.unmount();
+    updatingProvider.queryClient.clear();
+  });
+
   it("serializes a pending edit behind sync and writes the edited value remotely", async () => {
     const pending = transaction("edit-during-sync", {
       status: "pending",

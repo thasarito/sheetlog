@@ -6,6 +6,7 @@ import {
   getRecentTransactions,
   readLinkedReimbursements,
   readTransactionById,
+  readTransactionIdMap,
   updateRow,
 } from "./google";
 import {
@@ -237,6 +238,21 @@ describe("Google transaction Sheet APIs", () => {
       sheetRow: 4,
       reimbursesTransactionId: "parent-expense",
     });
+  });
+
+  it("rejects duplicate nonblank stable IDs with both conflicting K rows", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        values: [["duplicate-id"], [], [" duplicate-id "]],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readTransactionIdMap(ACCESS_TOKEN, SHEET_ID),
+    ).rejects.toThrow(
+      'Duplicate transaction ID "duplicate-id" found in Transactions!K at rows 2 and 4',
+    );
   });
 
   it("re-resolves column K once when a row shift returns a different transaction", async () => {

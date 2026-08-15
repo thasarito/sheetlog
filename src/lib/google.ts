@@ -333,8 +333,14 @@ export async function readTransactionIdMap(
       continue;
     }
     const id = String(rawValue).trim();
-    if (!id || map.has(id)) {
+    if (!id) {
       continue;
+    }
+    const existingRow = map.get(id);
+    if (existingRow !== undefined) {
+      throw new Error(
+        `Duplicate transaction ID "${id}" found in ${TAB_NAME}!K at rows ${existingRow} and ${index + 2}. Remove the duplicate row before syncing.`,
+      );
     }
     map.set(id, index + 2);
   }
