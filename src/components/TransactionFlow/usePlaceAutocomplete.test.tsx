@@ -30,13 +30,19 @@ const secondSuggestion = {
 };
 
 function createWrapper() {
+  return createTestHarness().Wrapper;
+}
+
+function createTestHarness() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
 
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  function Wrapper({ children }: { children: React.ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
-  };
+  }
+
+  return { Wrapper, queryClient };
 }
 
 async function enterSearch(
@@ -83,7 +89,7 @@ describe("usePlaceAutocomplete", () => {
     expect(createPlaceAutocompleteSession).not.toHaveBeenCalled();
   });
 
-  it("does not search or expose cached suggestions below two trimmed characters", async () => {
+  it("immediately clears cached suggestions below two trimmed characters without another request", async () => {
     const { result } = renderHook(
       () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "threshold" }),
       { wrapper: createWrapper() }
@@ -91,10 +97,30 @@ describe("usePlaceAutocomplete", () => {
 
     await flushQueries();
     expect(createPlaceAutocompleteSession).toHaveBeenCalledTimes(1);
-    await enterSearch(result, " c ");
+    await enterSearch(result, "coffee");
+    await flushQueries();
+    expect(result.current.suggestions).toEqual([firstSuggestion]);
 
-    expect(searchPlaceSuggestions).not.toHaveBeenCalled();
+    act(() => result.current.setInput(" c "));
+
     expect(result.current.suggestions).toEqual([]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(searchPlaceSuggestions).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores an opened session under the exact session cache key", async () => {
+    const { Wrapper, queryClient } = createTestHarness();
+    renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "session-key" }),
+      { wrapper: Wrapper }
+    );
+
+    await flushQueries();
+    expect(queryClient.getQueryData(["placeAutocompleteSession", "session-key"])).toBe(
+      session
+    );
   });
 
   it("debounces a normalized query for exactly 250ms and uses one session token", async () => {
@@ -140,13 +166,13 @@ describe("usePlaceAutocomplete", () => {
     expect(searchPlaceSuggestions).toHaveBeenCalledWith("coffee", session, locationBias);
   });
 
-  it("keeps prior suggestions while a valid newer query loads and ignores an older response", async () => {
-    let resolveOld: ((value: typeof firstSuggestion[]) => void) | undefined;
-    let resolveNew: ((value: typeof secondSuggestion[]) => void) | undefined;
+  it("keeps the newer result when an older unresolved query completes later", async () => {
+    let resolveFirst: ((value: typeof firstSuggestion[]) => void) | undefined;
+    let resolveSecond: ((value: typeof secondSuggestion[]) => void) | undefined;
     vi.mocked(searchPlaceSuggestions).mockImplementation((input) => {
       return new Promise((resolve) => {
-        if (input === "old") resolveOld = resolve;
-        if (input === "new") resolveNew = resolve;
+        if (input === "first") resolveFirst = resolve;
+        if (input === "second") resolveSecond = resolve;
       });
     });
     const { result } = renderHook(
@@ -156,18 +182,17 @@ describe("usePlaceAutocomplete", () => {
 
     await flushQueries();
     expect(createPlaceAutocompleteSession).toHaveBeenCalledTimes(1);
-    await enterSearch(result, "old");
+    await enterSearch(result, "first");
     await flushQueries();
-    expect(searchPlaceSuggestions).toHaveBeenCalledWith("old", session, undefined);
-    resolveOld?.([firstSuggestion]);
-    await flushQueries();
-    expect(result.current.suggestions).toEqual([firstSuggestion]);
+    expect(searchPlaceSuggestions).toHaveBeenCalledWith("first", session, undefined);
 
-    await enterSearch(result, "new");
-    expect(result.current.suggestions).toEqual([firstSuggestion]);
+    await enterSearch(result, "second");
     await flushQueries();
-    expect(searchPlaceSuggestions).toHaveBeenCalledWith("new", session, undefined);
-    resolveNew?.([secondSuggestion]);
+    expect(searchPlaceSuggestions).toHaveBeenCalledWith("second", session, undefined);
+    resolveSecond?.([secondSuggestion]);
+    await flushQueries();
+    expect(result.current.suggestions).toEqual([secondSuggestion]);
+    resolveFirst?.([firstSuggestion]);
     await flushQueries();
     expect(result.current.suggestions).toEqual([secondSuggestion]);
   });
@@ -216,9 +241,13 @@ describe("usePlaceAutocomplete", () => {
     await flushQueries();
     expect(result.current.isError).toBe(true);
     act(() => result.current.setInput("coffee"));
-    await act(async () => result.current.retry());
+    let retryResult: unknown;
+    await act(async () => {
+      retryResult = await result.current.retry();
+    });
     await flushQueries();
     expect(createPlaceAutocompleteSession).toHaveBeenCalledTimes(2);
+    expect(retryResult).toBeUndefined();
     expect(result.current.input).toBe("coffee");
   });
 
@@ -241,26 +270,43 @@ describe("usePlaceAutocomplete", () => {
     expect(result.current.input).toBe("coffee");
   });
 
-  it("cleans up the session and cached results when closed, then creates a new token", async () => {
-    const wrapper = createWrapper();
+  it("cleans up old session caches on close and creates a distinct token for a new session", async () => {
+    const firstSession = { token: {} as GoogleAutocompleteSessionToken };
+    const secondSession = { token: {} as GoogleAutocompleteSessionToken };
+    vi.mocked(createPlaceAutocompleteSession)
+      .mockResolvedValueOnce(firstSession)
+      .mockResolvedValueOnce(secondSession);
+    const { Wrapper, queryClient } = createTestHarness();
     const { result, rerender } = renderHook(
       ({ open, sessionId }) => usePlaceAutocomplete({ open, enabled: true, sessionId }),
-      { initialProps: { open: true, sessionId: "first" }, wrapper }
+      { initialProps: { open: true, sessionId: "first" }, wrapper: Wrapper }
     );
     await flushQueries();
     expect(createPlaceAutocompleteSession).toHaveBeenCalledTimes(1);
     await enterSearch(result, "coffee");
     await flushQueries();
-    expect(result.current.suggestions).toEqual([firstSuggestion]);
+    expect(queryClient.getQueryData(["placeAutocompleteSession", "first"])).toBe(
+      firstSession
+    );
+    expect(
+      queryClient.getQueryData(["placeAutocomplete", "first", "suggestions", "coffee"])
+    ).toEqual([firstSuggestion]);
 
     rerender({ open: false, sessionId: "first" });
     await flushQueries();
-    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(session);
+    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(firstSession);
     expect(result.current.input).toBe("");
     expect(result.current.suggestions).toEqual([]);
+    expect(queryClient.getQueryData(["placeAutocompleteSession", "first"])).toBeUndefined();
+    expect(
+      queryClient.getQueryData(["placeAutocomplete", "first", "suggestions", "coffee"])
+    ).toBeUndefined();
 
     rerender({ open: true, sessionId: "second" });
     await flushQueries();
     expect(createPlaceAutocompleteSession).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryData(["placeAutocompleteSession", "second"])).toBe(
+      secondSession
+    );
   });
 });

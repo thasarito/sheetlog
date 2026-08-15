@@ -59,6 +59,7 @@ describe("PlaceSearchDrawer", () => {
     expect(screen.getByText("Coffee House")).toBeVisible();
     expect(screen.getByText("123 Main Street")).toBeVisible();
     expect(screen.getByText("Google Maps")).toHaveClass("text-xs", "font-normal");
+    expect(screen.getByText("Google Maps")).toHaveAttribute("translate", "no");
   });
 
   it("emits a place suggestion and disables result buttons while selecting", async () => {

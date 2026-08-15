@@ -19,7 +19,7 @@ const INPUT_DEBOUNCE_MS = 250;
 
 export const placeAutocompleteKeys = {
   session: (sessionId: string) =>
-    ["placeAutocomplete", sessionId, "session"] as const,
+    ["placeAutocompleteSession", sessionId] as const,
   suggestions: (sessionId: string, input: string) =>
     ["placeAutocomplete", sessionId, "suggestions", input] as const,
   suggestionsForSession: (sessionId: string) =>
@@ -206,10 +206,11 @@ export function usePlaceAutocomplete({
 
   const retry = useCallback(async () => {
     if (sessionQuery.isError) {
-      return sessionQuery.refetch();
+      await sessionQuery.refetch();
+      return;
     }
     if (suggestionQuery.isError) {
-      return suggestionQuery.refetch();
+      await suggestionQuery.refetch();
     }
   }, [sessionQuery, suggestionQuery]);
 
