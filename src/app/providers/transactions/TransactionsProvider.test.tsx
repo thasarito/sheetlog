@@ -9,6 +9,7 @@ import { act, render, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../../lib/db";
+import { GoogleApiError } from "../../../lib/google";
 import { syncPendingTransactions } from "../../../lib/sync";
 import type {
   TransactionInput,
@@ -34,6 +35,15 @@ const providerState = vi.hoisted(() => ({
 }));
 
 const googleMocks = vi.hoisted(() => {
+  class GoogleApiError extends Error {
+    status: number;
+
+    constructor({ status, message }: { status: number; message: string }) {
+      super(message);
+      this.status = status;
+    }
+  }
+
   class DuplicateTransactionIdError extends Error {
     readonly transactionId: string;
     readonly firstRow: number;
@@ -57,6 +67,7 @@ const googleMocks = vi.hoisted(() => {
   return {
     deleteRow: vi.fn(),
     DuplicateTransactionIdError,
+    GoogleApiError,
     getSheetTabId: vi.fn(),
     readLinkedReimbursements: vi.fn(),
     readTransactionById: vi.fn(),
@@ -70,16 +81,7 @@ const mutationContextState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../lib/google", () => {
-  class GoogleApiError extends Error {
-    status: number;
-
-    constructor({ status, message }: { status: number; message: string }) {
-      super(message);
-      this.status = status;
-    }
-  }
-
-  return { ...googleMocks, GoogleApiError };
+  return googleMocks;
 });
 
 vi.mock("../../../lib/mock", () => ({
@@ -167,17 +169,24 @@ function createProviderHarness() {
     return null;
   }
 
-  const rendered = render(
-    <QueryClientProvider client={queryClient}>
-      <TransactionsProvider>
-        <CaptureContext />
-      </TransactionsProvider>
-    </QueryClientProvider>,
-  );
+  function tree() {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <TransactionsProvider>
+          <CaptureContext />
+        </TransactionsProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  const rendered = render(tree());
 
   return {
     queryClient,
     rendered,
+    rerender() {
+      rendered.rerender(tree());
+    },
     getContext() {
       if (!context) {
         throw new Error("Transactions context has not rendered");
@@ -295,6 +304,52 @@ describe("TransactionsProvider", () => {
         ["transactionById"],
       ]),
     );
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("binds a late sync auth failure to the access token that started it", async () => {
+    await db.transactions.add(
+      transaction("account-a-pending", {
+        status: "pending",
+        sheetId: undefined,
+        sheetRow: undefined,
+      }),
+    );
+    const accountASync = deferred<number>();
+    vi.mocked(syncPendingTransactions).mockReturnValue(accountASync.promise);
+    const harness = createProviderHarness();
+    let syncPromise!: Promise<void>;
+
+    act(() => {
+      syncPromise = harness.getContext().syncNow();
+    });
+
+    await waitFor(() => {
+      expect(syncPendingTransactions).toHaveBeenCalledWith(
+        "access-token",
+        "sheet-a",
+        "user-a",
+      );
+      expect(harness.getContext().queueCount).toBe(1);
+    });
+    providerState.accessToken = "access-token-b";
+    providerState.userId = "user-b";
+    harness.rerender();
+    await waitFor(() => {
+      expect(harness.getContext().queueCount).toBe(0);
+    });
+    accountASync.reject(
+      new GoogleApiError({ status: 401, message: "Account A expired" }),
+    );
+
+    await act(async () => {
+      await syncPromise;
+    });
+    expect(providerState.signOut).toHaveBeenCalledWith("access-token");
+    expect(harness.getContext().queueCount).toBe(0);
+    expect(harness.getContext().lastSyncError).toBeNull();
 
     harness.rendered.unmount();
     harness.queryClient.clear();
@@ -643,7 +698,7 @@ describe("TransactionsProvider", () => {
       await remoteReadStarted.promise;
     });
     await db.settings.put({
-      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      key: "sheetlog.sheet-mutation:sheet-a",
       value: JSON.stringify({
         ownerId: "successor-tab",
         expiresAt: Date.now() + 60_000,
@@ -698,7 +753,7 @@ describe("TransactionsProvider", () => {
       await deleteStarted.promise;
     });
     await db.settings.put({
-      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      key: "sheetlog.sheet-mutation:sheet-a",
       value: JSON.stringify({
         ownerId: "successor-tab",
         expiresAt: Date.now() + 60_000,

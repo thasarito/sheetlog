@@ -56,6 +56,7 @@ export function useReimbursementSummary({
   const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
   const localQuery = useLocalTransactionsQuery();
+  const userId = userProfile?.id ?? null;
   const sourceId = source?.id ?? "";
   const sourceIsLocalOnly = isLocalOnly(source);
   const canCheckRemote = Boolean(
@@ -63,11 +64,12 @@ export function useReimbursementSummary({
       !sourceIsLocalOnly &&
       isOnline &&
       accessToken &&
-      sheetId,
+      sheetId &&
+      userId,
   );
 
   const remoteQuery = useQuery<ReimbursementLedgerRow[]>({
-    queryKey: transactionQueryKeys.reimbursement(sheetId, sourceId),
+    queryKey: transactionQueryKeys.reimbursement(sheetId, userId, sourceId),
     enabled: canCheckRemote,
     staleTime: 0,
     refetchOnMount: "always",

@@ -17,9 +17,15 @@ import {
 const providerMocks = vi.hoisted(() => ({
   addTransaction: vi.fn(),
   sheetId: "sheet-a" as string | null,
+  userId: "user-a" as string | null,
 }));
 
 vi.mock("../../app/providers", () => ({
+  useSession: () => ({
+    userProfile: providerMocks.userId
+      ? { id: providerMocks.userId, name: "Test user", picture: null }
+      : null,
+  }),
   useTransactions: () => ({ addTransaction: providerMocks.addTransaction }),
   useWorkspace: () => ({ sheetId: providerMocks.sheetId }),
 }));
@@ -92,6 +98,7 @@ describe("useCreateReimbursementMutation", () => {
     onlineManager.setOnline(true);
     providerMocks.addTransaction.mockReset();
     providerMocks.sheetId = "sheet-a";
+    providerMocks.userId = "user-a";
   });
 
   afterEach(() => {
@@ -237,7 +244,11 @@ describe("useCreateReimbursementMutation", () => {
         queryKey: ["recentTransactions"],
       });
       expect(invalidate).toHaveBeenCalledWith({
-        queryKey: transactionQueryKeys.reimbursement("sheet-a", "expense-1"),
+        queryKey: transactionQueryKeys.reimbursement(
+          "sheet-a",
+          "user-a",
+          "expense-1",
+        ),
       });
     });
   });

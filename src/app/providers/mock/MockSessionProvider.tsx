@@ -19,7 +19,7 @@ export function MockSessionProvider({ children }: { children: React.ReactNode })
     setIsConnecting(false);
   }, []);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback((_expectedAccessToken?: string | null) => {
     // No-op in mock mode
     console.log("[DEV MODE] Mock signOut called");
   }, []);

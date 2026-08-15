@@ -32,9 +32,7 @@ export function useAppPhase() {
     onboarding.categoriesConfirmed && hasAllCategories(categories);
 
   return useMemo(() => {
-    const isBooting =
-      !session.isInitialized || !workspace.isInitialized || isOnboardingLoading;
-    if (isBooting) {
+    if (!session.isInitialized) {
       return {
         phase: "booting" as const,
         accountsReady,
@@ -48,6 +46,19 @@ export function useAppPhase() {
         accountsReady,
         categoriesReady,
         error: session.error,
+      };
+    }
+
+    const isBooting =
+      session.status === "initializing" ||
+      session.status === "authenticating" ||
+      !workspace.isInitialized ||
+      isOnboardingLoading;
+    if (isBooting) {
+      return {
+        phase: "booting" as const,
+        accountsReady,
+        categoriesReady,
       };
     }
 
@@ -100,4 +111,3 @@ export function useAppPhase() {
     categoriesReady,
   ]);
 }
-

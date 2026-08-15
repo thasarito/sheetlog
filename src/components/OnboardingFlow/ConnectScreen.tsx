@@ -6,12 +6,18 @@ import type { ScreenMeta } from './types';
 type ConnectScreenProps = {
   meta: ScreenMeta;
   isConnecting: boolean;
+  errorMessage?: string | null;
   onConnect: () => void;
 };
 
 const googleLogoUrl = `${import.meta.env.BASE_URL}google-logo.svg`;
 
-export function ConnectScreen({ meta, isConnecting, onConnect }: ConnectScreenProps) {
+export function ConnectScreen({
+  meta,
+  isConnecting,
+  errorMessage,
+  onConnect,
+}: ConnectScreenProps) {
   return (
     <OnboardingLayout
       title="Let's get started"
@@ -23,6 +29,14 @@ export function ConnectScreen({ meta, isConnecting, onConnect }: ConnectScreenPr
         <div className="relative"></div>
 
         <div className="w-full space-y-4 mt-auto">
+          {errorMessage ? (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {errorMessage}
+            </p>
+          ) : null}
           <button
             type="button"
             className="w-full flex items-center justify-center gap-3 rounded-md bg-white border border-slate-200 py-3 px-4 text-base font-medium text-slate-700 hover:bg-slate-50 transition active:scale-95 disabled:opacity-60"

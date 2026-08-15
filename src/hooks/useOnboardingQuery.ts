@@ -11,7 +11,8 @@ const writeOnboardingConfig = IS_DEV_MODE ? mockWriteOnboardingConfig : realWrit
 
 export const onboardingKeys = {
   state: (sheetId: string | null) => ['onboarding', sheetId] as const,
-  sync: (sheetId: string | null) => ['onboarding', 'sync', sheetId] as const,
+  sync: (sheetId: string | null, userId: string | null) =>
+    ['onboarding', 'sync', sheetId, userId] as const,
 };
 
 /**
@@ -33,34 +34,36 @@ export function useOnboardingQuery(sheetId: string | null) {
  * Only runs when authenticated and online
  */
 export function useOnboardingSync() {
-  const { accessToken, signOut } = useSession();
+  const { accessToken, signOut, userProfile } = useSession();
   const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
+  const userId = userProfile?.id ?? null;
 
   return useQuery({
-    queryKey: onboardingKeys.sync(sheetId),
+    queryKey: onboardingKeys.sync(sheetId, userId),
     queryFn: async () => {
-      if (!accessToken || !sheetId) {
+      if (!accessToken || !userId || !sheetId) {
         return { next: getDefaultOnboardingState(), changed: false };
       }
+      const requestAccessToken = accessToken;
       const current =
         queryClient.getQueryData<OnboardingState>(onboardingKeys.state(sheetId)) ??
         getDefaultOnboardingState();
       try {
-        const result = await hydrateOnboardingFromSheet(accessToken, sheetId, current);
+        const result = await hydrateOnboardingFromSheet(requestAccessToken, sheetId, current);
         if (result.changed) {
           queryClient.setQueryData(onboardingKeys.state(sheetId), result.next);
         }
         return result;
       } catch (error) {
         if (isGoogleAuthError(error)) {
-          signOut();
+          signOut(requestAccessToken);
         }
         throw error;
       }
     },
-    enabled: Boolean(accessToken && sheetId && isOnline),
+    enabled: Boolean(accessToken && userId && sheetId && isOnline),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
   });
@@ -145,9 +148,10 @@ function buildSheetUpdates(
  */
 export function useUpdateOnboarding() {
   const queryClient = useQueryClient();
-  const { accessToken, signOut } = useSession();
+  const { accessToken, signOut, userProfile } = useSession();
   const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
+  const userId = userProfile?.id ?? null;
 
   return useMutation({
     mutationFn: async (updates: Partial<OnboardingState>): Promise<OnboardingState> => {
@@ -160,14 +164,15 @@ export function useUpdateOnboarding() {
       await setOnboardingState(next, sheetId);
 
       // Sync to Sheets if online and authenticated
-      if (accessToken && sheetId && isOnline) {
+      if (accessToken && userId && sheetId && isOnline) {
+        const requestAccessToken = accessToken;
         const sheetUpdates = buildSheetUpdates(current, updates, next);
         if (sheetUpdates.accounts || sheetUpdates.categories) {
           try {
-            await writeOnboardingConfig(accessToken, sheetId, sheetUpdates);
+            await writeOnboardingConfig(requestAccessToken, sheetId, sheetUpdates);
           } catch (error) {
             if (isGoogleAuthError(error)) {
-              signOut();
+              signOut(requestAccessToken);
             }
             throw error;
           }

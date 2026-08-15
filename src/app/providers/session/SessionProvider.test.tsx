@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STORAGE_KEYS } from "../../../lib/constants";
@@ -8,15 +9,20 @@ import { SessionProvider } from "./SessionProvider";
 import type { TokenData } from "./session.types";
 
 function ProfileSubject() {
-  const { accessToken, signOut, userProfile } = useSession();
+  const { accessToken, error, signOut, status, userProfile } = useSession();
   return (
     <>
       <output data-testid="profile-subject">
         {userProfile?.id ?? "waiting"}
       </output>
       <output data-testid="access-token">{accessToken ?? "none"}</output>
-      <button type="button" onClick={signOut}>
+      <output data-testid="session-status">{status}</output>
+      <output data-testid="session-error">{error?.message ?? "none"}</output>
+      <button type="button" onClick={() => signOut()}>
         Sign out
+      </button>
+      <button type="button" onClick={() => signOut("access-token")}>
+        Retire access-token
       </button>
     </>
   );
@@ -60,6 +66,7 @@ function renderSession(queryClient = new QueryClient({
 
 describe("SessionProvider account identity", () => {
   beforeEach(() => {
+    onlineManager.setOnline(true);
     window.localStorage.clear();
     window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, "access-token");
     window.localStorage.setItem(
@@ -69,6 +76,7 @@ describe("SessionProvider account identity", () => {
   });
 
   afterEach(() => {
+    onlineManager.setOnline(true);
     vi.unstubAllGlobals();
     window.localStorage.clear();
   });
@@ -93,6 +101,76 @@ describe("SessionProvider account identity", () => {
         window.localStorage.getItem(STORAGE_KEYS.USER_PROFILE) ?? "null",
       ),
     ).toMatchObject({ id: "google-subject-123", name: "Test User" });
+  });
+
+  it("stops after bounded userinfo retries and exposes an actionable verification error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("temporary userinfo outage")),
+    );
+    renderSession();
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("session-status")).toHaveTextContent("error");
+      },
+      { timeout: 5_000 },
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(screen.getByTestId("session-error")).toHaveTextContent(
+      /verify.*google account|load.*profile/i,
+    );
+    expect(screen.getByTestId("profile-subject")).toHaveTextContent("waiting");
+  });
+
+  it("rejects a 200 userinfo response that has no stable Google subject", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ name: "Name without a subject" }),
+      }),
+    );
+    renderSession();
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("session-status")).toHaveTextContent("error");
+      },
+      { timeout: 5_000 },
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(screen.getByTestId("session-error")).toHaveTextContent(
+      /stable google account identity/i,
+    );
+  });
+
+  it("re-verifies the profile after connectivity returns", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("userinfo offline"))
+        .mockRejectedValueOnce(new TypeError("userinfo offline"))
+        .mockRejectedValueOnce(new TypeError("userinfo offline"))
+        .mockResolvedValueOnce(userInfo("account-a", "Account A")),
+    );
+    renderSession();
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("session-status")).toHaveTextContent("error");
+      },
+      { timeout: 5_000 },
+    );
+    act(() => onlineManager.setOnline(false));
+    act(() => onlineManager.setOnline(true));
+
+    expect(await screen.findByText("account-a")).toBeInTheDocument();
+    expect(screen.getByTestId("session-status")).toHaveTextContent(
+      "authenticated",
+    );
+    expect(fetch).toHaveBeenCalledTimes(4);
   });
 
   it("does not expose a persisted account A identity while account B userinfo is pending", async () => {
@@ -183,6 +261,59 @@ describe("SessionProvider account identity", () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId("profile-subject")).toHaveTextContent("account-b");
+  });
+
+  it("ignores a token-bound signout from account A after account B is active", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        const authorization = new Headers(init?.headers).get("Authorization");
+        return Promise.resolve(
+          authorization === "Bearer access-token-b"
+            ? userInfo("account-b", "Account B")
+            : userInfo("account-a", "Account A"),
+        );
+      }),
+    );
+    const queryClient = renderSession();
+    expect(await screen.findByText("account-a")).toBeInTheDocument();
+
+    act(() => {
+      queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, token("access-token-b"));
+    });
+    expect(await screen.findByText("account-b")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retire access-token" }),
+    );
+
+    expect(window.localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)).toBe(
+      "access-token-b",
+    );
+    expect(
+      queryClient.getQueryData<TokenData>(GOOGLE_TOKEN_QUERY_KEY)?.access_token,
+    ).toBe("access-token-b");
+    expect(screen.getByTestId("access-token")).toHaveTextContent(
+      "access-token-b",
+    );
+    expect(screen.getByTestId("profile-subject")).toHaveTextContent(
+      "account-b",
+    );
+  });
+
+  it("honors a token-bound signout for the currently active account", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(userInfo("account-a")));
+    renderSession();
+    expect(await screen.findByText("account-a")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retire access-token" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("access-token")).toHaveTextContent("none");
+    });
+    expect(screen.getByTestId("profile-subject")).toHaveTextContent("waiting");
   });
 
   it("re-verifies a refreshed token for the same account without retaining the old token profile", async () => {

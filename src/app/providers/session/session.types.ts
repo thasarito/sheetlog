@@ -20,7 +20,11 @@ export interface SessionContextValue {
   status: SessionStatus;
   error: Error | null;
   connect: () => Promise<void>;
-  signOut: () => void;
+  /**
+   * Clears the active session. Async work should pass the access token that
+   * started it so a late failure cannot sign out a replacement account.
+   */
+  signOut: (expectedAccessToken?: string | null) => void;
 }
 
 export interface TokenData {

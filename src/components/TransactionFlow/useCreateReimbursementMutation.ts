@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { useTransactions, useWorkspace } from "../../app/providers";
+import { useSession, useTransactions, useWorkspace } from "../../app/providers";
 import {
   isReimbursableExpense,
   REIMBURSEMENT_CATEGORY,
@@ -67,6 +67,7 @@ export function buildReimbursementInput({
 
 export function useCreateReimbursementMutation() {
   const { addTransaction } = useTransactions();
+  const { userProfile } = useSession();
   const { sheetId } = useWorkspace();
   const queryClient = useQueryClient();
 
@@ -94,6 +95,7 @@ export function useCreateReimbursementMutation() {
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.reimbursement(
             sheetId,
+            userProfile?.id ?? null,
             variables.source.id,
           ),
         }),

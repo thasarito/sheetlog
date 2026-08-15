@@ -121,10 +121,12 @@ function createHarness() {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((nextResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve;
+    reject = nextReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function mockLocalRows(...requests: Array<Promise<TransactionRecord[]>>) {
@@ -187,6 +189,94 @@ describe("useReimbursementSummary", () => {
         queued: 30,
         remaining: 70,
       });
+    });
+  });
+
+  it("keys remote reimbursement state by verified Google account", () => {
+    expect(
+      transactionQueryKeys.reimbursement(
+        "sheet-a",
+        "user-a",
+        "expense-1",
+      ),
+    ).toEqual([
+      "reimbursementSummary",
+      "sheet-a",
+      "user-a",
+      "expense-1",
+    ]);
+  });
+
+  it("starts a clean remote request for account B while account A is still in flight", async () => {
+    const accountARequest = deferred<ReimbursementLedgerRow[]>();
+    vi.mocked(readLinkedReimbursements).mockImplementation(
+      async (accessToken) => {
+        if (accessToken === "token-a") {
+          return accountARequest.promise;
+        }
+        return [linkedRow("account-b-child", 25)];
+      },
+    );
+    providerState.accessToken = "token-a";
+    const { wrapper } = createHarness();
+    const { result, rerender } = renderHook(
+      () =>
+        useReimbursementSummary({
+          source: source({ targetUserId: providerState.userId ?? undefined }),
+        }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(readLinkedReimbursements).toHaveBeenCalledWith(
+        "token-a",
+        "sheet-a",
+        "expense-1",
+      );
+    });
+
+    providerState.accessToken = "token-b";
+    providerState.userId = "user-b";
+    rerender();
+
+    await waitFor(() => {
+      expect(readLinkedReimbursements).toHaveBeenCalledWith(
+        "token-b",
+        "sheet-a",
+        "expense-1",
+      );
+      expect(result.current.summary.confirmed).toBe(25);
+    });
+    accountARequest.resolve([linkedRow("account-a-child", 80)]);
+    await act(async () => {
+      await accountARequest.promise;
+    });
+    expect(result.current.summary.confirmed).toBe(25);
+  });
+
+  it("does not carry account A remote errors into account B", async () => {
+    providerState.accessToken = "token-a";
+    vi.mocked(readLinkedReimbursements)
+      .mockRejectedValueOnce(new Error("Account A read failed"))
+      .mockResolvedValueOnce([linkedRow("account-b-child", 15)]);
+    const { wrapper } = createHarness();
+    const { result, rerender } = renderHook(
+      () =>
+        useReimbursementSummary({
+          source: source({ targetUserId: providerState.userId ?? undefined }),
+        }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    providerState.accessToken = "token-b";
+    providerState.userId = "user-b";
+    rerender();
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(false);
+      expect(result.current.summary.confirmed).toBe(15);
     });
   });
 
@@ -322,7 +412,7 @@ describe("useReimbursementSummary", () => {
     vi.mocked(readLinkedReimbursements).mockReturnValue(remoteRequest.promise);
     const { queryClient, wrapper } = createHarness();
     queryClient.setQueryData(
-      transactionQueryKeys.reimbursement("sheet-a", "expense-1"),
+      transactionQueryKeys.reimbursement("sheet-a", "user-a", "expense-1"),
       [linkedRow("cached-child", 40)],
     );
 
@@ -509,7 +599,7 @@ describe("useReimbursementSummary", () => {
     );
     const { queryClient, wrapper } = createHarness();
     queryClient.setQueryData(
-      transactionQueryKeys.reimbursement("sheet-a", "expense-1"),
+      transactionQueryKeys.reimbursement("sheet-a", "user-a", "expense-1"),
       [linkedRow("cached-child", 35)],
     );
 
@@ -573,7 +663,7 @@ describe("useReimbursementSummary", () => {
     );
     const { queryClient, wrapper } = createHarness();
     queryClient.setQueryData(
-      transactionQueryKeys.reimbursement("sheet-a", "expense-1"),
+      transactionQueryKeys.reimbursement("sheet-a", "user-a", "expense-1"),
       [linkedRow("stale-impossible-child", 70)],
     );
 
@@ -598,11 +688,11 @@ describe("useReimbursementSummary", () => {
     providerState.isOnline = false;
     const { queryClient, wrapper } = createHarness();
     queryClient.setQueryData(
-      transactionQueryKeys.reimbursement("sheet-b", "expense-1"),
+      transactionQueryKeys.reimbursement("sheet-b", "user-a", "expense-1"),
       [linkedRow("wrong-sheet", 70)],
     );
     queryClient.setQueryData(
-      transactionQueryKeys.reimbursement("sheet-a", "expense-2"),
+      transactionQueryKeys.reimbursement("sheet-a", "user-a", "expense-2"),
       [linkedRow("wrong-source", 60, "synced", "expense-2")],
     );
 

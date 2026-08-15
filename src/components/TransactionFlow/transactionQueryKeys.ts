@@ -7,8 +7,11 @@ export const transactionQueryKeys = {
     userId: string | null,
   ) => ["localTransactions", sheetId, userId] as const,
   reimbursements: ["reimbursementSummary"] as const,
-  reimbursement: (sheetId: string | null, sourceId: string) =>
-    ["reimbursementSummary", sheetId, sourceId] as const,
+  reimbursement: (
+    sheetId: string | null,
+    userId: string | null,
+    sourceId: string,
+  ) => ["reimbursementSummary", sheetId, userId, sourceId] as const,
   transaction: (
     sheetId: string | null,
     userId: string | null,

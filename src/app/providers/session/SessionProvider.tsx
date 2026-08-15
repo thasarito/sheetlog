@@ -34,6 +34,18 @@ type UserInfoResponse = {
   picture?: string;
 };
 
+class TokenBoundRefreshError extends Error {
+  readonly expectedAccessToken: string | null;
+
+  constructor(error: unknown, expectedAccessToken: string | null) {
+    super(
+      error instanceof Error ? error.message : "Failed to refresh access token",
+    );
+    this.name = "TokenBoundRefreshError";
+    this.expectedAccessToken = expectedAccessToken;
+  }
+}
+
 function persistProfile(profile: UserProfile | null) {
   if (typeof window === "undefined") {
     return;
@@ -61,25 +73,34 @@ async function fetchUserProfile(
   accessToken: string,
   signal: AbortSignal
 ): Promise<UserProfile | null> {
-  const response = await fetch(USERINFO_ENDPOINT, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(USERINFO_ENDPOINT, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal,
+    });
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+    throw new Error(
+      "Could not verify this Google account. Check your connection, then try again.",
+    );
+  }
   if (!response.ok) {
-    throw new Error(`Failed to load user profile: ${response.status}`);
+    throw new Error(
+      `Could not verify this Google account (Google returned ${response.status}). Sign in again.`,
+    );
   }
   const data = (await response.json()) as UserInfoResponse;
-  if (
-    !data.sub &&
-    !data.name &&
-    !data.given_name &&
-    !data.family_name &&
-    !data.picture
-  ) {
-    return null;
+  const subject = data.sub?.trim();
+  if (!subject) {
+    throw new Error(
+      "Google did not return a stable Google account identity. Sign in again.",
+    );
   }
   return {
-    id: data.sub?.trim() || null,
+    id: subject,
     name: resolveProfileName(data),
     picture: data.picture ?? null,
   };
@@ -135,6 +156,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const profileSessionIdRef = useRef<number | null>(null);
   const profileTokenRef = useRef<string | null>(null);
   const profileTokenVersionRef = useRef(0);
+  const activeTokenRef = useRef<string | null>(null);
 
   if (profileSessionIdRef.current === null) {
     nextProfileSessionId += 1;
@@ -159,7 +181,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (!refreshTokenAvailable) {
         return null;
       }
-      return refreshAccessToken();
+      const expectedAccessToken =
+        queryClient.getQueryData<TokenData | null>(GOOGLE_TOKEN_QUERY_KEY)
+          ?.access_token ??
+        getStoredToken()?.access_token ??
+        null;
+      try {
+        return await refreshAccessToken();
+      } catch (error) {
+        throw new TokenBoundRefreshError(error, expectedAccessToken);
+      }
     },
     refetchInterval: (query) => getRefreshDelay(query.state.data),
     refetchIntervalInBackground: true,
@@ -180,6 +211,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [tokenData]);
 
   const activeToken = tokenData?.access_token ?? null;
+  activeTokenRef.current = activeToken;
   if (profileTokenRef.current !== activeToken) {
     profileTokenRef.current = activeToken;
     profileTokenVersionRef.current += 1;
@@ -192,13 +224,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       ] as const
     : ["inactiveUserProfile", profileSessionIdRef.current] as const;
 
-  const { data: userProfile } = useQuery({
+  const {
+    data: userProfile,
+    error: profileError,
+    isFetching: isProfileFetching,
+  } = useQuery({
     queryKey: profileQueryKey,
     queryFn: ({ signal }) =>
       fetchUserProfile(activeToken ?? "", signal),
     enabled: Boolean(activeToken) && isInitialized,
     staleTime: 1000 * 60 * 10,
-    retry: false,
+    retry: (failureCount) => failureCount < 2,
+    retryDelay: (attemptIndex) => Math.min(100 * 2 ** attemptIndex, 500),
+    refetchOnReconnect: "always",
   });
 
   useEffect(() => {
@@ -208,16 +246,30 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     persistProfile(activeToken && userProfile ? userProfile : null);
   }, [userProfile, activeToken, isInitialized]);
 
-  const signOut = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-    localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
-    clearOAuthStorage();
+  const signOut = useCallback(
+    (expectedAccessToken?: string | null) => {
+      const currentAccessToken =
+        queryClient.getQueryData<TokenData | null>(GOOGLE_TOKEN_QUERY_KEY)
+          ?.access_token ?? activeTokenRef.current;
+      if (
+        expectedAccessToken !== undefined &&
+        currentAccessToken !== expectedAccessToken
+      ) {
+        return;
+      }
 
-    queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
-    queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
-    queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
-  }, [queryClient]);
+      localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+      localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
+      clearOAuthStorage();
+
+      activeTokenRef.current = null;
+      queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
+      queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
+      queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
+    },
+    [queryClient],
+  );
 
   const connect = useCallback(async () => {
     setIsConnecting(true);
@@ -233,22 +285,39 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (refreshError && isTerminalRefreshError(refreshError)) {
-      signOut();
+      signOut(
+        refreshError instanceof TokenBoundRefreshError
+          ? refreshError.expectedAccessToken
+          : activeToken,
+      );
     }
-  }, [refreshError, signOut]);
+  }, [activeToken, refreshError, signOut]);
 
   const status: SessionStatus = useMemo(() => {
     if (!isInitialized) return "initializing";
     if (refreshError) return "error";
+    if (activeToken && profileError) return "error";
     if (isConnecting || (isFetching && !tokenData)) return "authenticating";
     if (!tokenData?.access_token) return "unauthenticated";
+    if (isProfileFetching || !userProfile?.id) return "authenticating";
     return "authenticated";
-  }, [isInitialized, refreshError, isConnecting, isFetching, tokenData]);
+  }, [
+    isInitialized,
+    refreshError,
+    activeToken,
+    profileError,
+    isConnecting,
+    isFetching,
+    tokenData,
+    isProfileFetching,
+    userProfile,
+  ]);
 
   const error = useMemo(() => {
     if (refreshError instanceof Error) return refreshError;
+    if (profileError instanceof Error) return profileError;
     return null;
-  }, [refreshError]);
+  }, [profileError, refreshError]);
 
   const value = useMemo<SessionContextValue>(() => {
     const isExpired = tokenData?.expires_at
@@ -258,7 +327,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return {
       accessToken: !isExpired ? tokenData?.access_token ?? null : null,
       userProfile: activeToken ? userProfile ?? null : null,
-      isConnecting: isConnecting || (isFetching && !tokenData),
+      isConnecting:
+        isConnecting ||
+        (isFetching && !tokenData) ||
+        Boolean(activeToken && isProfileFetching),
       isInitialized,
       status,
       error,
@@ -271,6 +343,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     userProfile,
     isConnecting,
     isFetching,
+    isProfileFetching,
     isInitialized,
     status,
     error,

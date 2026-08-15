@@ -88,7 +88,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       : EMPTY_WORKSPACE;
   const isInitialized = Boolean(
     isSessionInitialized &&
-      (status !== "authenticated" ||
+      ((status === "unauthenticated" || status === "error") ||
         (verifiedUserId && workspace.ownerId === verifiedUserId)),
   );
 

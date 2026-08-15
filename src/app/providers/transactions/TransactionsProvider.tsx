@@ -141,6 +141,23 @@ type TransactionsState = {
   lastSyncAt: string | null;
 };
 
+type ActiveTransactionScope = {
+  accessToken: string | null;
+  sheetId: string | null;
+  userId: string | null;
+};
+
+function isSameActiveScope(
+  left: ActiveTransactionScope,
+  right: ActiveTransactionScope,
+): boolean {
+  return (
+    left.accessToken === right.accessToken &&
+    left.sheetId === right.sheetId &&
+    left.userId === right.userId
+  );
+}
+
 type TransactionsAction =
   | {
       type: "set_stats";
@@ -202,27 +219,38 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   });
   const syncingRef = useRef(state.isSyncing);
   const operationTailRef = useRef<Promise<void>>(Promise.resolve());
+  const activeScopeRef = useRef<ActiveTransactionScope>({
+    accessToken,
+    sheetId,
+    userId,
+  });
+  activeScopeRef.current = { accessToken, sheetId, userId };
 
   useEffect(() => {
     syncingRef.current = state.isSyncing;
   }, [state.isSyncing]);
 
   const refreshStats = useCallback(async () => {
+    const requestedScope = { accessToken, sheetId, userId };
     if (!sheetId || !userId) {
-      dispatch({ type: "set_stats", queueCount: 0 });
+      if (isSameActiveScope(activeScopeRef.current, requestedScope)) {
+        dispatch({ type: "set_stats", queueCount: 0 });
+      }
       return;
     }
     const pendingRows = await db.transactions
       .where("status")
       .equals("pending")
       .toArray();
-    dispatch({
-      type: "set_stats",
-      queueCount: pendingRows.filter((row) =>
-        isTransactionInSheetScope(row, sheetId, userId),
-      ).length,
-    });
-  }, [sheetId, userId]);
+    if (isSameActiveScope(activeScopeRef.current, requestedScope)) {
+      dispatch({
+        type: "set_stats",
+        queueCount: pendingRows.filter((row) =>
+          isTransactionInSheetScope(row, sheetId, userId),
+        ).length,
+      });
+    }
+  }, [accessToken, sheetId, userId]);
 
   const invalidateTransactions = useCallback(async () => {
     await Promise.all([
@@ -273,21 +301,28 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     if (!accessToken || !sheetId || !userId) {
       return;
     }
+    const requestedScope = { accessToken, sheetId, userId };
+    const requestIsCurrent = () =>
+      isSameActiveScope(activeScopeRef.current, requestedScope);
     syncingRef.current = true;
     dispatch({ type: "sync_start" });
     try {
       await syncPendingTransactions(accessToken, sheetId, userId);
-      dispatch({ type: "sync_success", at: new Date().toISOString() });
+      if (requestIsCurrent()) {
+        dispatch({ type: "sync_success", at: new Date().toISOString() });
+      }
     } catch (error) {
       const info = mapGoogleSyncError(error);
       if (info.shouldClearAuth) {
-        signOut();
+        signOut(accessToken);
       }
-      dispatch({
-        type: "sync_error",
-        message: info.message,
-        at: new Date().toISOString(),
-      });
+      if (requestIsCurrent()) {
+        dispatch({
+          type: "sync_error",
+          message: info.message,
+          at: new Date().toISOString(),
+        });
+      }
     } finally {
       try {
         await refreshStats();
@@ -647,7 +682,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         }
         const info = mapGoogleSyncError(error);
         if (info.shouldClearAuth) {
-          signOut();
+          signOut(accessToken);
         }
         dispatch({
           type: "sync_error",
@@ -794,7 +829,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           }
           const info = mapGoogleSyncError(error);
           if (info.shouldClearAuth) {
-            signOut();
+            signOut(accessToken);
           }
           dispatch({
             type: "sync_error",
