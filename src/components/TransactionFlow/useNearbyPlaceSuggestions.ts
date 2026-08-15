@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   getCurrentCoordinates,
-  getNearbyPlaceNames,
+  getNearbyPlaces,
   hasGoogleMapsApiKey,
+  type Coordinates,
+  type PlaceSuggestion,
 } from "../../lib/googlePlaces";
 
 export const nearbyPlaceSuggestionKeys = {
@@ -13,35 +15,48 @@ export const nearbyPlaceSuggestionKeys = {
 
 export function useNearbyPlaceSuggestions({
   enabled,
+  isOnline,
   sessionId,
 }: {
   enabled: boolean;
+  isOnline: boolean;
   sessionId: number;
 }) {
+  const canSearch = enabled && isOnline && hasGoogleMapsApiKey();
   const query = useQuery({
     queryKey: nearbyPlaceSuggestionKeys.session(sessionId),
-    enabled,
+    enabled: canSearch,
     retry: false,
-    staleTime: 0,
+    staleTime: Infinity,
     gcTime: 1000 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     queryFn: async () => {
+      let coordinates: Coordinates;
       try {
-        if (!hasGoogleMapsApiKey()) {
-          return [];
-        }
-        const coordinates = await getCurrentCoordinates();
-        return await getNearbyPlaceNames(coordinates);
+        coordinates = await getCurrentCoordinates();
       } catch {
-        return [];
+        return { suggestions: [] };
+      }
+
+      try {
+        return {
+          coordinates,
+          suggestions: await getNearbyPlaces(coordinates),
+        };
+      } catch {
+        return { coordinates, suggestions: [] };
       }
     },
   });
 
-  const suggestions = query.data ?? [];
+  const data: { suggestions: PlaceSuggestion[]; coordinates?: Coordinates } =
+    query.data ?? { suggestions: [] };
 
   return {
-    suggestions,
-    isLoading: enabled && (query.isLoading || query.isFetching),
-    shouldShowAttribution: suggestions.length > 0,
+    suggestions: data.suggestions,
+    coordinates: data.coordinates,
+    isLoading: canSearch && (query.isLoading || query.isFetching),
+    canSearch,
   };
 }
