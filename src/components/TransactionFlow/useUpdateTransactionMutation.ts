@@ -1,7 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { TransactionInput } from "../../lib/types";
+import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { useTransactions } from "../../app/providers";
 import { transactionQueryKeys } from "./transactionQueryKeys";
+
+export class UpdateTransactionRecordError extends Error {
+  readonly record: TransactionRecord;
+
+  constructor(message: string, record: TransactionRecord) {
+    super(message);
+    this.name = "UpdateTransactionRecordError";
+    this.record = record;
+  }
+}
 
 export function useUpdateTransactionMutation() {
   const { updateTransaction } = useTransactions();
@@ -20,9 +30,10 @@ export function useUpdateTransactionMutation() {
       if (!record) {
         throw new Error("Transaction no longer exists. Refresh and try again.");
       }
-      if (record?.status === "error") {
-        throw new Error(
+      if (record.status === "error") {
+        throw new UpdateTransactionRecordError(
           record.error ?? "Transaction could not be synced. Retry or delete it.",
+          record,
         );
       }
       return record;

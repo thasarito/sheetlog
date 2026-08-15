@@ -29,7 +29,10 @@ import {
 import { TopDashboard } from "./TopDashboard";
 import { CategoryGridDrawer } from "../CategoryGridDrawer";
 import { DateTimeDrawer } from "../DateTimeDrawer";
-import { useUpdateTransactionMutation } from "./useUpdateTransactionMutation";
+import {
+  UpdateTransactionRecordError,
+  useUpdateTransactionMutation,
+} from "./useUpdateTransactionMutation";
 import { useDeleteTransactionMutation } from "./useDeleteTransactionMutation";
 import { useNearbyPlaceSuggestions } from "./useNearbyPlaceSuggestions";
 import { hasGoogleMapsApiKey, type PlaceSuggestion } from "../../lib/googlePlaces";
@@ -50,7 +53,6 @@ import { useReimbursementSummary } from "./useReimbursementSummary";
 import { ReimbursementAction } from "./ReimbursementAction";
 import {
   isReimbursableExpense,
-  REIMBURSEMENT_CATEGORY,
   validateReimbursementAmount,
 } from "../../lib/reimbursements";
 import { createFlowGeneration } from "./flowGeneration";
@@ -122,6 +124,19 @@ function buildLinkedEditInput(
     date: format(values.dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
     note: values.note.trim() || undefined,
     reimbursesTransactionId: original.reimbursesTransactionId,
+  };
+}
+
+function receiptDataFromRecord(record: TransactionRecord): ReceiptData {
+  return {
+    type: record.type,
+    category: record.category,
+    amount: String(record.amount),
+    currency: record.currency,
+    account: record.account,
+    forValue: record.for,
+    dateObject: parseDate(record.date),
+    note: record.note ?? "",
   };
 }
 
@@ -938,16 +953,6 @@ export function TransactionFlow() {
       return;
     }
     const submissionId = `${source.id}:${submissionToken.generation}`;
-    const nextReceipt: ReceiptData = {
-      type: "income",
-      category: REIMBURSEMENT_CATEGORY,
-      amount: values.amount,
-      currency: source.currency,
-      account: values.account,
-      forValue: source.for,
-      dateObject: values.dateObject,
-      note: values.note.trim(),
-    };
     const variables = {
       source,
       amount: values.amount,
@@ -968,20 +973,16 @@ export function TransactionFlow() {
       if (!flowGeneration.isCurrent(submissionToken, flowKey)) {
         return;
       }
-      if (record.status === "error") {
-        throw new ReimbursementRecordError(
-          record.error ??
-            "Reimbursement could not be synced. Retry or delete it.",
-          record,
-        );
-      }
       setCreatedReimbursement(record);
-      setReceiptData(nextReceipt);
+      setReceiptData(receiptDataFromRecord(record));
       flowGeneration.transition(receiptFlowKey(record.id));
       setStep(2);
     } catch (error) {
       if (flowGeneration.isCurrent(submissionToken, flowKey)) {
-        if (error instanceof ReimbursementRecordError) {
+        if (
+          error instanceof ReimbursementRecordError ||
+          error instanceof UpdateTransactionRecordError
+        ) {
           setCreatedReimbursement(error.record);
         }
         handleToast(
@@ -1028,15 +1029,15 @@ export function TransactionFlow() {
         !reimbursementSummary.isChecking &&
         !reimbursementSummary.isError,
     );
+    const amountChanged = parsedAmount !== original.amount;
     if (!canChangeAmount) {
-      const amountUnchanged = parsedAmount === original.amount;
-      if (!amountUnchanged || !linkedLockedFieldsMatch(values, original)) {
+      if (amountChanged || !linkedLockedFieldsMatch(values, original)) {
         handleToast(
           linkedEditConstraintMessage ?? "Original expense unavailable",
         );
         return;
       }
-    } else {
+    } else if (amountChanged) {
       const validationError = validateReimbursementAmount(
         parsedAmount,
         reimbursementSummary.summary,
@@ -1054,16 +1055,6 @@ export function TransactionFlow() {
       return;
     }
     const submissionId = `${original.id}:${submissionToken.generation}`;
-    const nextReceipt: ReceiptData = {
-      type: original.type,
-      category: original.category,
-      amount: String(input.amount),
-      currency: original.currency,
-      account: values.account,
-      forValue: original.for,
-      dateObject: values.dateObject,
-      note: values.note.trim(),
-    };
 
     reimbursementSubmissionRef.current = submissionId;
     try {
@@ -1074,23 +1065,14 @@ export function TransactionFlow() {
       if (!flowGeneration.isCurrent(submissionToken, flowKey)) {
         return;
       }
-      if (record.status === "error") {
-        setFlowMode({ kind: "edit", transaction: record });
-        throw new ReimbursementRecordError(
-          record.error ??
-            "Reimbursement could not be synced. Retry or delete it.",
-          record,
-        );
-      }
-
       setFlowMode({ kind: "edit", transaction: record });
       setCreatedReimbursement(record);
-      setReceiptData(nextReceipt);
+      setReceiptData(receiptDataFromRecord(record));
       flowGeneration.transition(receiptFlowKey(record.id));
       setStep(2);
     } catch (error) {
       if (flowGeneration.isCurrent(submissionToken, flowKey)) {
-        if (error instanceof ReimbursementRecordError) {
+        if (error instanceof UpdateTransactionRecordError) {
           setFlowMode({ kind: "edit", transaction: error.record });
         }
         setCreatedReimbursement(null);
@@ -1173,7 +1155,7 @@ export function TransactionFlow() {
       setReceiptData(nextReceipt);
       setStep(2);
       try {
-        await updateMutation.mutateAsync({
+        const record = await updateMutation.mutateAsync({
           id: flowMode.transaction.id,
           input: {
             type: values.type,
@@ -1189,6 +1171,7 @@ export function TransactionFlow() {
         if (!flowGeneration.isCurrent(submissionToken, receiptKey)) {
           return;
         }
+        setReceiptData(receiptDataFromRecord(record));
         scheduleReceiptTransition(() => {
           if (flowGeneration.isCurrent(submissionToken, receiptKey)) {
             resetFlow();

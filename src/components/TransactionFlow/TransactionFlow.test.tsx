@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { TransactionFlow } from "./index";
 import type { TransactionFormApi } from "./useTransactionForm";
+import { UpdateTransactionRecordError } from "./useUpdateTransactionMutation";
 
 const exactReimbursementDate = new Date("2026-08-14T07:08:09.000Z");
 
@@ -277,9 +278,15 @@ vi.mock("./useAddTransactionMutation", () => ({
   useAddTransactionMutation: () => mocks.addMutation,
 }));
 
-vi.mock("./useUpdateTransactionMutation", () => ({
-  useUpdateTransactionMutation: () => mocks.updateMutation,
-}));
+vi.mock("./useUpdateTransactionMutation", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("./useUpdateTransactionMutation")
+  >();
+  return {
+    ...actual,
+    useUpdateTransactionMutation: () => mocks.updateMutation,
+  };
+});
 
 vi.mock("../Header", () => ({ Header: () => <header>SheetLog</header> }));
 
@@ -883,6 +890,44 @@ describe("TransactionFlow linked reimbursement editing", () => {
     expect(screen.getByText("Reimbursement")).toBeInTheDocument();
   });
 
+  it("allows metadata-only edits when the unchanged child amount now exceeds remaining", async () => {
+    Object.assign(mocks.summaryState.summary, {
+      confirmed: 90,
+      queued: 0,
+      remaining: 10,
+    });
+    mocks.updateMutation.mutateAsync.mockImplementation(
+      async ({ input }: { input: Partial<TransactionInput> }) => ({
+        ...mocks.linkedChild,
+        ...input,
+        status: "synced",
+        error: undefined,
+      }),
+    );
+    const user = userEvent.setup();
+    renderFlow();
+    await openLinkedEditor(user);
+
+    const note = screen.getByPlaceholderText("Add a note...");
+    await user.clear(note);
+    await user.type(note, "Metadata correction");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "linked-child",
+        input: expect.objectContaining({
+          amount: 30,
+          note: "Metadata correction",
+          reimbursesTransactionId: "expense-1",
+        }),
+      });
+    });
+    expect(
+      await screen.findByText("Reimbursement recorded"),
+    ).toBeInTheDocument();
+  });
+
   it.each([
     [
       "loading",
@@ -1024,14 +1069,49 @@ describe("TransactionFlow linked reimbursement editing", () => {
     });
   });
 
+  it("renders linked receipt data from the authoritative returned record", async () => {
+    mocks.updateMutation.mutateAsync.mockResolvedValue({
+      ...mocks.linkedChild,
+      amount: 31,
+      currency: "USD",
+      account: "Remote account",
+      for: "Partner",
+      category: "Remote reimbursement",
+      date: "2026-08-14T06:07:08.000Z",
+      note: "Remote repayment note",
+      status: "pending",
+      updatedAt: "2026-08-15T12:00:00.000Z",
+    });
+    const user = userEvent.setup();
+    renderFlow();
+    await openLinkedEditor(user);
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Reimbursement queued")).toBeInTheDocument();
+    expect(screen.getByText("USD 31")).toBeInTheDocument();
+    expect(screen.getByText("Remote reimbursement")).toBeInTheDocument();
+    expect(screen.getByText("Remote account")).toBeInTheDocument();
+    expect(screen.getByText("Partner")).toBeInTheDocument();
+    expect(screen.getByText("Remote repayment note")).toBeInTheDocument();
+  });
+
   it("keeps a failed child open on error and retries the same ID into a queued receipt", async () => {
+    const latestErrorRecord = {
+      ...mocks.failedLinkedChild,
+      category: "Remote reimbursement",
+      error: "Amount exceeds remaining reimbursement balance",
+      updatedAt: "2026-08-15T11:00:00.000Z",
+    };
     mocks.updateMutation.mutateAsync
+      .mockRejectedValueOnce(
+        new UpdateTransactionRecordError(
+          "Amount exceeds remaining reimbursement balance",
+          latestErrorRecord,
+        ),
+      )
       .mockResolvedValueOnce({
-        ...mocks.failedLinkedChild,
-        error: "Amount exceeds remaining reimbursement balance",
-      })
-      .mockResolvedValueOnce({
-        ...mocks.failedLinkedChild,
+        ...latestErrorRecord,
         status: "pending",
         error: undefined,
       });
@@ -1057,7 +1137,12 @@ describe("TransactionFlow linked reimbursement editing", () => {
     expect(await screen.findByText("Reimbursement queued")).toBeInTheDocument();
     expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledTimes(2);
     expect(mocks.updateMutation.mutateAsync).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: "failed-linked-child" }),
+      {
+        id: "failed-linked-child",
+        input: expect.objectContaining({
+          category: "Remote reimbursement",
+        }),
+      },
     );
   });
 
@@ -1085,6 +1170,32 @@ describe("TransactionFlow linked reimbursement editing", () => {
 });
 
 describe("TransactionFlow reimbursement submission and receipt", () => {
+  it("refreshes an ordinary edit receipt from the returned record", async () => {
+    mocks.updateMutation.mutateAsync.mockResolvedValue({
+      ...mocks.income,
+      amount: 250,
+      currency: "USD",
+      account: "Remote account",
+      for: "Partner",
+      category: "Remote salary",
+      date: "2026-08-14T06:07:08.000Z",
+      note: "Remote ordinary note",
+      updatedAt: "2026-08-15T12:00:00.000Z",
+    });
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Edit income" }));
+    await screen.findByText("Salary");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("USD 250")).toBeInTheDocument();
+    expect(screen.getByText("Remote salary")).toBeInTheDocument();
+    expect(screen.getByText("Remote account")).toBeInTheDocument();
+    expect(screen.getByText("Partner")).toBeInTheDocument();
+    expect(screen.getByText("Remote ordinary note")).toBeInTheDocument();
+  });
+
   it("retains the ordinary transaction two-second receipt transition", async () => {
     const timeoutSpy = vi.spyOn(window, "setTimeout");
     const user = userEvent.setup();
