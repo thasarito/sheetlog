@@ -20,6 +20,21 @@ const legacyElevenColumns = [
   "expense-1",
 ];
 
+const numericSheetRow = [
+  46249 + (9 * 60 + 30) / (24 * 60),
+  "expense",
+  100.25,
+  "Dining",
+  "Cafe",
+  46249 + (10 * 60 * 60 + 45 * 60 + 30) / (24 * 60 * 60),
+  "PWA",
+  "THB",
+  "Cash",
+  "Me",
+  "expense-serial",
+  "",
+];
+
 function legacyRowWith(index: number, value: unknown): unknown[] {
   const row: unknown[] = [...legacyElevenColumns];
   row[index] = value;
@@ -59,12 +74,31 @@ describe("transaction Sheet rows", () => {
 
     expect(parsed).toMatchObject({
       id: "expense-1",
+      date: "2026-08-15T10:00:00.000Z",
       type: "expense",
       amount: 100,
+      createdAt: "2026-08-15T10:00:00.000Z",
+      updatedAt: "2026-08-15T10:00:00.000Z",
       reimbursesTransactionId: undefined,
       sheetRow: 2,
       sheetRowValid: true,
     });
+  });
+
+  it("normalizes numeric Sheet date and timestamp cells to stable ISO strings", () => {
+    const parsed = parseTransactionRow(numericSheetRow, 7);
+
+    expect(parsed).toMatchObject({
+      id: "expense-serial",
+      date: new Date(2026, 7, 15, 9, 30, 0).toISOString(),
+      amount: 100.25,
+      createdAt: new Date(2026, 7, 15, 10, 45, 30).toISOString(),
+      updatedAt: new Date(2026, 7, 15, 10, 45, 30).toISOString(),
+      sheetRow: 7,
+      sheetRowValid: true,
+    });
+    expect(parsed.createdAt).not.toMatch(/^\d+(?:\.\d+)?$/);
+    expect(parsed.updatedAt).not.toMatch(/^\d+(?:\.\d+)?$/);
   });
 
   it("parses and trims a twelve-column reimbursement relation", () => {

@@ -124,7 +124,7 @@ export function parseTransactionRow(
   const stableId = String(idRaw ?? "").trim();
   const relation = String(reimbursesTransactionIdRaw ?? "").trim();
   const now = new Date().toISOString();
-  const timestamp = String(createdAt || now);
+  const timestamp = parseSheetDate(createdAt, now);
 
   return {
     id: stableId || `row-${rowIndex}`,

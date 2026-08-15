@@ -39,6 +39,21 @@ const legacyRow = [
   "expense-1",
 ];
 
+const numericSheetRow = [
+  46249 + (9 * 60 + 30) / (24 * 60),
+  "income",
+  40,
+  "Reimbursement",
+  "Cafe",
+  46249 + (10 * 60 * 60 + 45 * 60 + 30) / (24 * 60 * 60),
+  "PWA",
+  "THB",
+  "Bank",
+  "Me",
+  "income-1",
+  "expense-1",
+];
+
 function transaction(
   overrides: Partial<TransactionRecord> = {},
 ): TransactionRecord {
@@ -197,20 +212,7 @@ describe("Google transaction Sheet APIs", () => {
         jsonResponse({
           values: [
             legacyRow,
-            [
-              "2026-08-15T10:00:00.000Z",
-              "income",
-              40,
-              "Reimbursement",
-              "Cafe",
-              "2026-08-15T10:00:00.000Z",
-              "PWA",
-              "THB",
-              "Bank",
-              "Me",
-              "income-1",
-              "expense-1",
-            ],
+            numericSheetRow,
           ],
         }),
       );
@@ -229,12 +231,18 @@ describe("Google transaction Sheet APIs", () => {
       sheetId: SHEET_ID,
       sheetRow: 3,
       sheetRowValid: true,
+      date: new Date(2026, 7, 15, 9, 30, 0).toISOString(),
+      createdAt: new Date(2026, 7, 15, 10, 45, 30).toISOString(),
+      updatedAt: new Date(2026, 7, 15, 10, 45, 30).toISOString(),
       reimbursesTransactionId: "expense-1",
     });
     expect(records[1]).toMatchObject({
       sheetId: SHEET_ID,
       sheetRow: 2,
       sheetRowValid: true,
+      date: "2026-08-15T09:00:00.000Z",
+      createdAt: "2026-08-15T09:00:00.000Z",
+      updatedAt: "2026-08-15T09:00:00.000Z",
       reimbursesTransactionId: undefined,
     });
   });
@@ -264,6 +272,9 @@ describe("Google transaction Sheet APIs", () => {
     );
     expect(record).toMatchObject({
       id: "expense-1",
+      date: "2026-08-15T09:00:00.000Z",
+      createdAt: "2026-08-15T09:00:00.000Z",
+      updatedAt: "2026-08-15T09:00:00.000Z",
       sheetId: SHEET_ID,
       sheetRow: 4,
       reimbursesTransactionId: "parent-expense",
