@@ -156,7 +156,7 @@ window.dispatchEvent(new Event("online"));
 expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
 ```
 
-Assert that successful data includes both `suggestions` and the coordinates used for location bias. With one shared QueryClient, change to a new UUID session and assert exactly one additional lookup; then remount with another UUID and prove it cannot reuse the first mount's fresh cache entry. Use a deferred geolocation promise to assert `isLoading` transitions from true to false.
+Assert that successful data includes both `suggestions` and the coordinates used for location bias. With one shared QueryClient, change to a new UUID session and assert exactly one additional lookup; then remount with another UUID and prove it cannot reuse the first mount's fresh cache entry. Use a deferred geolocation or Nearby Search promise to assert `isLoading` remains true through the asynchronous pipeline and transitions to false when it settles.
 
 - [ ] **Step 2: Run the hook test and verify failure**
 
