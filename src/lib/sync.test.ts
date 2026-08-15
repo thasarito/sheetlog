@@ -668,6 +668,140 @@ describe("syncPendingTransactions reimbursement validation", () => {
     ).toBe(false);
   });
 
+  it("blocks a new child when a remote sibling has a currency mismatch and continues unrelated sync", async () => {
+    const source = transaction("source", {
+      amount: 100,
+      status: "synced",
+      sheetRow: 2,
+    });
+    const mismatchedSibling = reimbursement("foreign-sibling", source.id, {
+      amount: 20,
+      currency: "USD",
+      status: "synced",
+      sheetRow: 3,
+    });
+    const child = reimbursement("current", source.id, {
+      amount: 20,
+      createdAt: "2026-08-15T08:00:00.000Z",
+      updatedAt: "2026-08-15T08:00:00.000Z",
+    });
+    const unrelated = transaction("unrelated", {
+      createdAt: "2026-08-15T09:00:00.000Z",
+      updatedAt: "2026-08-15T09:00:00.000Z",
+    });
+    await db.transactions.bulkAdd([child, unrelated]);
+    googleMocks.readTransactionById.mockResolvedValue(source);
+    googleMocks.readLinkedReimbursements.mockResolvedValue([
+      linkedLedgerRow(mismatchedSibling),
+    ]);
+
+    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+
+    expect(await db.transactions.get(child.id)).toMatchObject({
+      status: "error",
+      error: "Linked reimbursement currency mismatch",
+    });
+    expect(await db.transactions.get(unrelated.id)).toMatchObject({
+      status: "synced",
+    });
+    expect(
+      googleMocks.appendTransaction.mock.calls.some(
+        (call) => (call[2] as TransactionRecord).id === child.id,
+      ),
+    ).toBe(false);
+  });
+
+  it("blocks an existing amount edit when a local sibling has a currency mismatch", async () => {
+    const source = transaction("source", {
+      amount: 100,
+      status: "synced",
+      sheetRow: 2,
+    });
+    const remoteChild = reimbursement("current", source.id, {
+      amount: 20,
+      status: "synced",
+      sheetRow: 8,
+    });
+    const pendingChild = {
+      ...remoteChild,
+      amount: 30,
+      status: "pending" as const,
+      sheetRow: undefined,
+      updatedAt: "2026-08-15T10:00:00.000Z",
+    };
+    const localMismatch = reimbursement("foreign-local", source.id, {
+      amount: 15,
+      currency: "USD",
+      status: "error",
+      error: "Needs attention",
+    });
+    await db.transactions.bulkAdd([pendingChild, localMismatch]);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[remoteChild.id, 8]]),
+    );
+    googleMocks.readTransactionById.mockImplementation(
+      async (_token: string, _sheetId: string, id: string) =>
+        id === remoteChild.id ? remoteChild : id === source.id ? source : null,
+    );
+    googleMocks.readLinkedReimbursements.mockResolvedValue([
+      linkedLedgerRow(remoteChild),
+    ]);
+
+    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(0);
+
+    expect(await db.transactions.get(remoteChild.id)).toMatchObject({
+      status: "error",
+      error: "Linked reimbursement currency mismatch",
+    });
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+  });
+
+  it("excludes the current child from currency mismatch validation during an amount edit", async () => {
+    const source = transaction("source", {
+      amount: 100,
+      status: "synced",
+      sheetRow: 2,
+    });
+    const remoteChild = reimbursement("current", source.id, {
+      amount: 20,
+      status: "synced",
+      sheetRow: 8,
+    });
+    await db.transactions.add({
+      ...remoteChild,
+      amount: 30,
+      status: "pending",
+      sheetRow: undefined,
+      updatedAt: "2026-08-15T10:00:00.000Z",
+    });
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[remoteChild.id, 8]]),
+    );
+    googleMocks.readTransactionById.mockImplementation(
+      async (_token: string, _sheetId: string, id: string) =>
+        id === remoteChild.id ? remoteChild : id === source.id ? source : null,
+    );
+    googleMocks.readLinkedReimbursements.mockResolvedValue([
+      {
+        ...linkedLedgerRow(remoteChild),
+        currency: "USD",
+      },
+    ]);
+
+    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      8,
+      expect.objectContaining({ id: remoteChild.id, amount: 30 }),
+    );
+    expect(await db.transactions.get(remoteChild.id)).toMatchObject({
+      status: "synced",
+      amount: 30,
+    });
+  });
+
   it("accepts a signed compensating child when the source is fully reimbursed", async () => {
     const source = transaction("source", {
       amount: 100,

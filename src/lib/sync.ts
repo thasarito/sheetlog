@@ -51,6 +51,7 @@ const ORIGINAL_EXPENSE_UNAVAILABLE = 'Original expense unavailable';
 const ORIGINAL_EXPENSE_FAILED = 'Original expense failed to sync';
 const ORIGINAL_NOT_EXPENSE = 'Original transaction is no longer an expense';
 const ORIGINAL_CURRENCY_CHANGED = 'Original expense currency changed';
+const LINKED_CURRENCY_MISMATCH = 'Linked reimbursement currency mismatch';
 const AMOUNT_EXCEEDS_REMAINING =
   'Amount exceeds remaining reimbursement balance';
 
@@ -223,6 +224,9 @@ async function validateLinkedTransaction(
     localRows,
     item.id,
   );
+  if (summary.currencyMismatchIds.length > 0) {
+    throw new ReimbursementSyncValidationError(LINKED_CURRENCY_MISMATCH);
+  }
   const exceedsRemaining =
     item.amount > 0 &&
     validateReimbursementAmount(item.amount, summary) !== null;
