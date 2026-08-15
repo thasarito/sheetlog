@@ -299,7 +299,7 @@ export async function appendTransaction(
   spreadsheetId: string,
   transaction: TransactionRecord
 ): Promise<number | null> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:L:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
   const values = [serializeTransactionRow(transaction)];
 
   const data = await fetchWithAuth<{ updates?: { updatedRange?: string } }>(
@@ -389,7 +389,7 @@ export async function updateRow(
   const values = [serializeTransactionRow(transaction)];
 
   const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
 
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
