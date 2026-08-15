@@ -168,9 +168,13 @@ function createPlaceSuggestion(
 }
 
 function limitNearbyResults(maxResultCount?: number) {
+  if (maxResultCount === undefined || !Number.isFinite(maxResultCount)) {
+    return MAX_NEARBY_RESULT_COUNT;
+  }
+
   return Math.max(
     0,
-    Math.min(maxResultCount ?? MAX_NEARBY_RESULT_COUNT, MAX_NEARBY_RESULT_COUNT)
+    Math.min(Math.trunc(maxResultCount), MAX_NEARBY_RESULT_COUNT)
   );
 }
 
@@ -225,7 +229,7 @@ export async function getNearbyPlaces(
     }
   }
 
-  return suggestions;
+  return suggestions.slice(0, maxResultCount);
 }
 
 export async function createPlaceAutocompleteSession(
@@ -273,7 +277,7 @@ export async function searchPlaceSuggestions(
       : {}),
   });
 
-  predictions.clear();
+  const responsePlaceIds = new Set<string>();
   const suggestions: PlaceSuggestion[] = [];
   for (const autocompleteSuggestion of response.suggestions ?? []) {
     const prediction = autocompleteSuggestion.placePrediction;
@@ -282,9 +286,14 @@ export async function searchPlaceSuggestions(
       prediction?.structuredFormat?.mainText ?? prediction?.text,
       prediction?.structuredFormat?.secondaryText
     );
-    if (!prediction || !suggestion || predictions.has(suggestion.placeId)) {
+    if (
+      !prediction ||
+      !suggestion ||
+      responsePlaceIds.has(suggestion.placeId)
+    ) {
       continue;
     }
+    responsePlaceIds.add(suggestion.placeId);
     predictions.set(suggestion.placeId, prediction);
     suggestions.push(suggestion);
   }
@@ -304,8 +313,10 @@ export async function resolvePlaceSuggestionName(
   }
 
   const place = prediction.toPlace();
-  const fields = await place.fetchFields({ fields: ["displayName"] });
-  return normalizeDisplayName(fields.displayName) || suggestion.name;
+  const { place: resolvedPlace } = await place.fetchFields({
+    fields: ["displayName"],
+  });
+  return normalizeDisplayName(resolvedPlace.displayName) || suggestion.name;
 }
 
 export function endPlaceAutocompleteSession(session: PlaceAutocompleteSession) {

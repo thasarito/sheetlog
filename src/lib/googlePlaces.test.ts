@@ -144,6 +144,58 @@ describe("Google Places browser client", () => {
     });
   });
 
+  it("normalizes nearby result counts to integers from zero through five", async () => {
+    const searchNearby = vi.fn(async () => ({
+      places: [
+        { id: "one", displayName: "One" },
+        { id: "two", displayName: "Two" },
+        { id: "three", displayName: "Three" },
+        { id: "four", displayName: "Four" },
+        { id: "five", displayName: "Five" },
+        { id: "six", displayName: "Six" },
+      ],
+    }));
+
+    window.google = {
+      maps: {
+        importLibrary: vi.fn(async () => ({
+          Place: { searchNearby },
+          SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
+        })),
+      },
+    };
+
+    const coordinates = { lat: 13.7563, lng: 100.5018 };
+    const noResults = await getNearbyPlaces(coordinates, {
+      apiKey: "test-key",
+      maxResultCount: 0,
+    });
+    const fractionalResults = await getNearbyPlaces(coordinates, {
+      apiKey: "test-key",
+      maxResultCount: 2.8,
+    });
+    const oversizedResults = await getNearbyPlaces(coordinates, {
+      apiKey: "test-key",
+      maxResultCount: 99,
+    });
+
+    expect(noResults).toHaveLength(0);
+    expect(fractionalResults).toHaveLength(2);
+    expect(oversizedResults).toHaveLength(5);
+    expect(searchNearby).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ maxResultCount: 0 })
+    );
+    expect(searchNearby).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ maxResultCount: 2 })
+    );
+    expect(searchNearby).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ maxResultCount: 5 })
+    );
+  });
+
   it("loads the Maps JavaScript API when the importer is missing", async () => {
     const searchNearby = vi.fn(async () => ({
       places: [{ id: "cafe-amazon", displayName: "Cafe Amazon" }],
@@ -234,10 +286,15 @@ describe("Google Places browser client", () => {
 
   it("resolves a selected prediction name and forgets it when the session ends", async () => {
     class AutocompleteSessionToken {}
-    const fetchFields = vi.fn(async () => ({
+    const resolvedPlace: GooglePlace = {
       displayName: { text: "Resolved Cafe" },
+      fetchFields: vi.fn(async () => ({ place: resolvedPlace })),
+    };
+    const fetchFields = vi.fn(async () => ({
+      place: resolvedPlace,
     }));
-    const toPlace = vi.fn(() => ({ fetchFields }));
+    const selectedPlace: GooglePlace = { fetchFields };
+    const toPlace = vi.fn(() => selectedPlace);
 
     window.google = {
       maps: {
@@ -274,6 +331,70 @@ describe("Google Places browser client", () => {
     await expect(resolvePlaceSuggestionName(suggestion, session)).rejects.toThrow(
       "Place suggestion is no longer available"
     );
+  });
+
+  it("keeps newer autocomplete predictions resolvable when an older search finishes later", async () => {
+    class AutocompleteSessionToken {}
+    let releaseOlderSearch = () => {};
+    const olderResponse = new Promise<{ suggestions: GoogleAutocompleteSuggestion[] }>(
+      (resolve) => {
+        releaseOlderSearch = () => {
+          resolve({
+            suggestions: [
+              {
+                placePrediction: {
+                  placeId: "older-cafe",
+                  structuredFormat: { mainText: { text: "Older Cafe" } },
+                },
+              },
+            ],
+          });
+        };
+      }
+    );
+    const resolvedPlace: GooglePlace = {
+      displayName: { text: "Newer Cafe" },
+      fetchFields: vi.fn(async () => ({ place: resolvedPlace })),
+    };
+    const fetchFields = vi.fn(async () => ({
+      place: resolvedPlace,
+    }));
+    const selectedPlace: GooglePlace = { fetchFields };
+    const fetchAutocompleteSuggestions = vi
+      .fn()
+      .mockImplementationOnce(() => olderResponse)
+      .mockResolvedValueOnce({
+        suggestions: [
+          {
+            placePrediction: {
+              placeId: "newer-cafe",
+              structuredFormat: { mainText: { text: "Newer Cafe" } },
+              toPlace: () => selectedPlace,
+            },
+          },
+        ],
+      });
+
+    window.google = {
+      maps: {
+        importLibrary: vi.fn(async () => ({
+          AutocompleteSessionToken,
+          AutocompleteSuggestion: { fetchAutocompleteSuggestions },
+          Place: { searchNearby: vi.fn() },
+          SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
+        })),
+      },
+    };
+
+    const session = await createPlaceAutocompleteSession({ apiKey: "test-key" });
+    const olderSearch = searchPlaceSuggestions("old", session);
+    const [newerSuggestion] = await searchPlaceSuggestions("new", session);
+    releaseOlderSearch();
+    await olderSearch;
+
+    await expect(
+      resolvePlaceSuggestionName(newerSuggestion, session)
+    ).resolves.toBe("Newer Cafe");
   });
 
   it("retries script loading with a fresh script after a load failure", async () => {

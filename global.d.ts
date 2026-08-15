@@ -26,9 +26,10 @@ declare global {
   };
 
   type GooglePlace = {
+    displayName?: GooglePlaceDisplayName;
     fetchFields: (request: {
       fields: string[];
-    }) => Promise<{ displayName?: GooglePlaceDisplayName }>;
+    }) => Promise<{ place: GooglePlace }>;
   };
 
   type GooglePlacesLibrary = {
