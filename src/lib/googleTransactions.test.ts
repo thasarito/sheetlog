@@ -105,7 +105,7 @@ describe("Google transaction Sheet APIs", () => {
     });
   });
 
-  it("appends an A:L row as raw values so formula-like notes stay literal", async () => {
+  it("appends with USER_ENTERED so dates stay native while formula-like notes are literal", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
         updates: { updatedRange: "Transactions!A8:L8" },
@@ -122,7 +122,7 @@ describe("Google transaction Sheet APIs", () => {
     expect(row).toBe(8);
     const [url, init] = requestAt(fetchMock, 0);
     expect(url).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A:L:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",
     );
     expect(JSON.parse(String(init.body))).toEqual({
       values: [
@@ -131,7 +131,7 @@ describe("Google transaction Sheet APIs", () => {
           "income",
           40,
           "Reimbursement",
-          '=IMPORTXML("https://example.com", "//title")',
+          '\'=IMPORTXML("https://example.com", "//title")',
           "2026-08-15T10:00:00.000Z",
           "PWA",
           "THB",
@@ -144,7 +144,7 @@ describe("Google transaction Sheet APIs", () => {
     });
   });
 
-  it("updates exactly A:L as raw values while preserving numeric amounts and literal notes", async () => {
+  it("updates A:L with typed dates/numbers and literalizes dangerous text columns", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -152,21 +152,38 @@ describe("Google transaction Sheet APIs", () => {
       ACCESS_TOKEN,
       SHEET_ID,
       8,
-      transaction({ amount: 55, note: "=1+1" }),
+      transaction({
+        id: "+income-1",
+        amount: 55,
+        category: "=Category",
+        note: " \t+note",
+        currency: "\u0000-THB",
+        account: "\r@Bank",
+        for: "\n=Me",
+        reimbursesTransactionId: "-expense-1",
+      }),
     );
 
     const [url, init] = requestAt(fetchMock, 0);
     expect(url).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A8%3AL8?valueInputOption=RAW",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A8%3AL8?valueInputOption=USER_ENTERED",
     );
     const body = JSON.parse(String(init.body)) as { values: unknown[][] };
     expect(body.values).toHaveLength(1);
     expect(body.values[0]).toHaveLength(12);
+    expect(body.values[0][0]).toBe("2026-08-15T10:00:00.000Z");
+    expect(body.values[0][1]).toBe("income");
     expect(body.values[0][2]).toBe(55);
     expect(typeof body.values[0][2]).toBe("number");
-    expect(body.values[0][4]).toBe("=1+1");
-    expect(body.values[0][10]).toBe("income-1");
-    expect(body.values[0][11]).toBe("expense-1");
+    expect(body.values[0][3]).toBe("'=Category");
+    expect(body.values[0][4]).toBe("' \t+note");
+    expect(body.values[0][5]).toBe("2026-08-15T10:00:00.000Z");
+    expect(body.values[0][6]).toBe("PWA");
+    expect(body.values[0][7]).toBe("'\u0000-THB");
+    expect(body.values[0][8]).toBe("'\r@Bank");
+    expect(body.values[0][9]).toBe("'\n=Me");
+    expect(body.values[0][10]).toBe("'+income-1");
+    expect(body.values[0][11]).toBe("'-expense-1");
   });
 
   it("keeps K as the count range, reads recent rows from A:L, and assigns Sheet provenance", async () => {

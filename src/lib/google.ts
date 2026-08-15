@@ -9,7 +9,7 @@ import {
 import type { ReimbursementLedgerRow } from "./reimbursements";
 import {
   parseTransactionRow,
-  serializeTransactionRow,
+  serializeTransactionRowForUserEntered,
   TRANSACTION_HEADERS,
 } from "./transactionRows";
 import type {
@@ -299,8 +299,8 @@ export async function appendTransaction(
   spreadsheetId: string,
   transaction: TransactionRecord
 ): Promise<number | null> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:L:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-  const values = [serializeTransactionRow(transaction)];
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const values = [serializeTransactionRowForUserEntered(transaction)];
 
   const data = await fetchWithAuth<{ updates?: { updatedRange?: string } }>(
     url,
@@ -386,10 +386,10 @@ export async function updateRow(
     throw new Error("Refusing to update header row");
   }
 
-  const values = [serializeTransactionRow(transaction)];
+  const values = [serializeTransactionRowForUserEntered(transaction)];
 
   const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
 
   await fetchWithAuth(url, accessToken, {
     method: "PUT",

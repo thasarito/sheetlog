@@ -78,6 +78,28 @@ export function serializeTransactionRow(
   ];
 }
 
+const USER_ENTERED_TEXT_COLUMNS = new Set([1, 3, 4, 6, 7, 8, 9, 10, 11]);
+const FORMULA_LIKE_TEXT = /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u;
+
+/**
+ * Keeps dates and amounts eligible for Sheets' USER_ENTERED parsing while
+ * forcing formula-like text cells to remain literal text.
+ */
+export function serializeTransactionRowForUserEntered(
+  transaction: TransactionRecord,
+): unknown[] {
+  return serializeTransactionRow(transaction).map((value, index) => {
+    if (
+      USER_ENTERED_TEXT_COLUMNS.has(index) &&
+      typeof value === "string" &&
+      FORMULA_LIKE_TEXT.test(value)
+    ) {
+      return `'${value}`;
+    }
+    return value;
+  });
+}
+
 export function parseTransactionRow(
   row: unknown[],
   rowIndex: number,
