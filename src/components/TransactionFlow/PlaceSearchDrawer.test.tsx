@@ -24,6 +24,7 @@ function renderDrawer(
     isLoading: false,
     isError: false,
     error: null,
+    selectionError: null,
     isSelecting: false,
     onRetry: vi.fn(),
     onSelect: vi.fn(),
@@ -72,6 +73,27 @@ describe("PlaceSearchDrawer", () => {
 
     rerender(<PlaceSearchDrawer {...props} isSelecting />);
     expect(screen.getByRole("button", { name: /Coffee House.*123 Main Street/i })).toBeDisabled();
+  });
+
+  it("does not dismiss while a selection is pending", () => {
+    const { props } = renderDrawer({ isSelecting: true });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(props.onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("shows selection recovery guidance without a query retry action", () => {
+    const { props } = renderDrawer({
+      selectionError: new Error("selection unavailable"),
+    });
+
+    expect(screen.getByText("Couldn’t select that place. Tap it again.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    const result = screen.getByRole("button", { name: /Coffee House.*123 Main Street/i });
+    expect(result).toBeEnabled();
+    fireEvent.click(result);
+    expect(props.onSelect).toHaveBeenCalledWith(suggestions[0]);
   });
 
   it("keeps the query visible when an error is retried inline", async () => {

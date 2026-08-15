@@ -19,6 +19,7 @@ type PlaceSearchDrawerProps = {
   isLoading: boolean;
   isError: boolean;
   error: Error | null;
+  selectionError: Error | null;
   isSelecting: boolean;
   onRetry: () => void;
   onSelect: (suggestion: PlaceSuggestion) => void;
@@ -33,6 +34,7 @@ export function PlaceSearchDrawer({
   isLoading,
   isError,
   error,
+  selectionError,
   isSelecting,
   onRetry,
   onSelect,
@@ -51,7 +53,15 @@ export function PlaceSearchDrawer({
     !isLoading && !isError && input.trim().length >= 2 && suggestions.length === 0;
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer
+      open={open}
+      dismissible={!isSelecting}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen || !isSelecting) {
+          onOpenChange(nextOpen);
+        }
+      }}
+    >
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Search places</DrawerTitle>
@@ -92,6 +102,12 @@ export function PlaceSearchDrawer({
                   Try again
                 </button>
               </div>
+            ) : null}
+
+            {selectionError ? (
+              <p className="py-2 text-sm text-muted-foreground">
+                Couldn’t select that place. Tap it again.
+              </p>
             ) : null}
 
             {suggestions.length > 0 ? (

@@ -230,6 +230,53 @@ describe("usePlaceAutocomplete", () => {
     expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(session);
   });
 
+  it("keeps query errors separate from a failed selection and lets the user tap again", async () => {
+    vi.mocked(resolvePlaceSuggestionName)
+      .mockRejectedValueOnce(new Error("selection unavailable"))
+      .mockResolvedValueOnce("Coffee House");
+    const { result } = renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "selection-retry" }),
+      { wrapper: createWrapper() }
+    );
+    await flushQueries();
+    await enterSearch(result, "coffee");
+    await flushQueries();
+
+    let firstAttempt: Promise<string> | undefined;
+    act(() => {
+      firstAttempt = result.current.selectSuggestion(firstSuggestion);
+    });
+    await expect(firstAttempt).rejects.toThrow("selection unavailable");
+    await flushQueries();
+    expect(result.current.isError).toBe(false);
+    expect(result.current.selectionError).toMatchObject({ message: "selection unavailable" });
+
+    await expect(result.current.selectSuggestion(firstSuggestion)).resolves.toBe("Coffee House");
+    await flushQueries();
+    expect(resolvePlaceSuggestionName).toHaveBeenCalledTimes(2);
+    expect(result.current.selectionError).toBeNull();
+  });
+
+  it("clears a selection error when the user changes the query", async () => {
+    vi.mocked(resolvePlaceSuggestionName).mockRejectedValueOnce(
+      new Error("selection unavailable")
+    );
+    const { result } = renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "selection-input" }),
+      { wrapper: createWrapper() }
+    );
+    await flushQueries();
+
+    await expect(result.current.selectSuggestion(firstSuggestion)).rejects.toThrow(
+      "selection unavailable"
+    );
+    await flushQueries();
+    expect(result.current.selectionError).toMatchObject({ message: "selection unavailable" });
+
+    act(() => result.current.setInput("coffee"));
+    expect(result.current.selectionError).toBeNull();
+  });
+
   it("retries failed session creation without clearing the typed input", async () => {
     vi.mocked(createPlaceAutocompleteSession)
       .mockRejectedValueOnce(new Error("session unavailable"))
@@ -268,6 +315,59 @@ describe("usePlaceAutocomplete", () => {
     await flushQueries();
     expect(result.current.suggestions).toEqual([firstSuggestion]);
     expect(result.current.input).toBe("coffee");
+  });
+
+  it("hides an unresolved stale suggestion request after the input becomes too short", async () => {
+    let rejectSearch: ((reason: Error) => void) | undefined;
+    vi.mocked(searchPlaceSuggestions).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectSearch = reject;
+        })
+    );
+    const { result } = renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "short-input" }),
+      { wrapper: createWrapper() }
+    );
+    await flushQueries();
+    await enterSearch(result, "coffee");
+    await flushQueries();
+    expect(result.current.isLoading).toBe(true);
+
+    act(() => result.current.setInput("c"));
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isError).toBe(false);
+
+    rejectSearch?.(new Error("stale search error"));
+    await flushQueries();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isError).toBe(false);
+  });
+
+  it("ends a deferred provider session and clears its caches after unmount", async () => {
+    const deferredSession = { token: {} as GoogleAutocompleteSessionToken };
+    let resolveSession: ((value: typeof deferredSession) => void) | undefined;
+    vi.mocked(createPlaceAutocompleteSession).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        })
+    );
+    const { Wrapper, queryClient } = createTestHarness();
+    const { unmount } = renderHook(
+      () => usePlaceAutocomplete({ open: true, enabled: true, sessionId: "deferred-unmount" }),
+      { wrapper: Wrapper }
+    );
+    await flushQueries();
+    expect(createPlaceAutocompleteSession).toHaveBeenCalledTimes(1);
+
+    unmount();
+    resolveSession?.(deferredSession);
+    await flushQueries();
+    expect(endPlaceAutocompleteSession).toHaveBeenCalledWith(deferredSession);
+    expect(
+      queryClient.getQueryData(["placeAutocompleteSession", "deferred-unmount"])
+    ).toBeUndefined();
   });
 
   it("cleans up old session caches on close and creates a distinct token for a new session", async () => {

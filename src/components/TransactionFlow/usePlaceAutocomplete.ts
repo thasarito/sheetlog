@@ -42,7 +42,7 @@ export function usePlaceAutocomplete({
   locationBias?: Coordinates;
 }) {
   const queryClient = useQueryClient();
-  const [input, setInput] = useState("");
+  const [input, setInputValue] = useState("");
   const [debouncedInput, setDebouncedInput] = useState("");
   const activeSessionRef = useRef<{
     sessionId: string;
@@ -50,9 +50,12 @@ export function usePlaceAutocomplete({
   }>();
   const selectionPromiseRef = useRef<Promise<string>>();
   const openRef = useRef(open);
-  const sessionIdRef = useRef(sessionId);
+  const scopeRef = useRef({ mounted: true, sessionId });
+  if (scopeRef.current.sessionId !== sessionId) {
+    scopeRef.current = { mounted: true, sessionId };
+  }
+  const scope = scopeRef.current;
   openRef.current = open;
-  sessionIdRef.current = sessionId;
 
   const normalizedInput = normalizeInput(input);
   const canLoad = open && enabled;
@@ -75,7 +78,7 @@ export function usePlaceAutocomplete({
     refetchOnReconnect: false,
     queryFn: async () => {
       const placeSession = await createPlaceAutocompleteSession();
-      if (!openRef.current || sessionIdRef.current !== sessionId) {
+      if (!openRef.current || !scope.mounted || scopeRef.current !== scope) {
         endPlaceAutocompleteSession(placeSession);
         throw new Error("Place autocomplete session is no longer active");
       }
@@ -84,10 +87,10 @@ export function usePlaceAutocomplete({
   });
 
   useEffect(() => {
-    if (canLoad && sessionQuery.data) {
+    if (canLoad && sessionQuery.data && scopeRef.current === scope) {
       activeSessionRef.current = { sessionId, session: sessionQuery.data };
     }
-  }, [canLoad, sessionId, sessionQuery.data]);
+  }, [canLoad, scope, sessionId, sessionQuery.data]);
 
   const suggestionQuery = useQuery({
     queryKey: placeAutocompleteKeys.suggestions(sessionId, debouncedInput),
@@ -121,8 +124,16 @@ export function usePlaceAutocomplete({
     },
   });
 
+  const setInput = useCallback(
+    (nextInput: string) => {
+      selection.reset();
+      setInputValue(nextInput);
+    },
+    [selection]
+  );
+
   const reset = useCallback(() => {
-    setInput("");
+    setInputValue("");
     setDebouncedInput("");
     selection.reset();
     selectionPromiseRef.current = undefined;
@@ -151,36 +162,24 @@ export function usePlaceAutocomplete({
     wasOpenRef.current = open;
   }, [open, reset]);
 
-  const previousSessionIdRef = useRef(sessionId);
   useEffect(() => {
-    const previousSessionId = previousSessionIdRef.current;
-    if (previousSessionId !== sessionId) {
+    return () => {
+      scope.mounted = false;
       const activeSession = activeSessionRef.current;
-      if (activeSession?.sessionId === previousSessionId) {
+      if (activeSession?.sessionId === scope.sessionId) {
         endPlaceAutocompleteSession(activeSession.session);
         activeSessionRef.current = undefined;
       }
       queryClient.removeQueries({
-        queryKey: placeAutocompleteKeys.suggestionsForSession(previousSessionId),
+        queryKey: placeAutocompleteKeys.suggestionsForSession(scope.sessionId),
         exact: false,
       });
       queryClient.removeQueries({
-        queryKey: placeAutocompleteKeys.session(previousSessionId),
+        queryKey: placeAutocompleteKeys.session(scope.sessionId),
         exact: true,
       });
-      previousSessionIdRef.current = sessionId;
-    }
-  }, [queryClient, sessionId]);
-
-  useEffect(() => {
-    return () => {
-      const activeSession = activeSessionRef.current?.session;
-      if (activeSession) {
-        endPlaceAutocompleteSession(activeSession);
-        activeSessionRef.current = undefined;
-      }
     };
-  }, []);
+  }, [queryClient, scope]);
 
   const selectSuggestion = useCallback(
     (suggestion: PlaceSuggestion) => {
@@ -196,9 +195,18 @@ export function usePlaceAutocomplete({
         placeSession: sessionQuery.data,
       });
       selectionPromiseRef.current = promise;
-      void promise.finally(() => {
-        selectionPromiseRef.current = undefined;
-      });
+      void promise.then(
+        () => {
+          if (selectionPromiseRef.current === promise) {
+            selectionPromiseRef.current = undefined;
+          }
+        },
+        () => {
+          if (selectionPromiseRef.current === promise) {
+            selectionPromiseRef.current = undefined;
+          }
+        }
+      );
       return promise;
     },
     [selection, sessionQuery.data]
@@ -214,20 +222,24 @@ export function usePlaceAutocomplete({
     }
   }, [sessionQuery, suggestionQuery]);
 
-  const hasSelectionError = selection.isError;
-  const isError = sessionQuery.isError || suggestionQuery.isError || hasSelectionError;
-  const error = selection.error ?? suggestionQuery.error ?? sessionQuery.error ?? null;
+  const isError =
+    (canLoad && sessionQuery.isError) || (canSearch && suggestionQuery.isError);
+  const error =
+    (canSearch ? suggestionQuery.error : null) ??
+    (canLoad ? sessionQuery.error : null) ??
+    null;
 
   return {
     input,
     setInput,
     suggestions: canSearch ? (suggestionQuery.data ?? []) : [],
     isLoading:
-      canLoad &&
-      (sessionQuery.isLoading || sessionQuery.isFetching || suggestionQuery.isLoading || suggestionQuery.isFetching),
+      (canLoad && (sessionQuery.isLoading || sessionQuery.isFetching)) ||
+      (canSearch && (suggestionQuery.isLoading || suggestionQuery.isFetching)),
     isSelecting: selection.isPending,
     isError,
     error,
+    selectionError: selection.error ?? null,
     retry,
     selectSuggestion,
     reset,
