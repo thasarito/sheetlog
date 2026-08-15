@@ -117,6 +117,17 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function mockLocalRows(...requests: Array<Promise<TransactionRecord[]>>) {
+  const toArray = vi.fn();
+  for (const request of requests) {
+    toArray.mockReturnValueOnce(request);
+  }
+  vi.spyOn(db.transactions, "where").mockReturnValue({
+    anyOf: () => ({ toArray }),
+  } as never);
+  return toArray;
+}
+
 describe("useReimbursementSummary", () => {
   beforeEach(async () => {
     providerState.accessToken = "access-token";
@@ -130,7 +141,167 @@ describe("useReimbursementSummary", () => {
 
   afterEach(async () => {
     onlineManager.setOnline(true);
+    vi.restoreAllMocks();
     await db.transactions.clear();
+  });
+
+  it("withholds an offline balance until the initial local ledger read settles", async () => {
+    providerState.isOnline = false;
+    const localRequest = deferred<TransactionRecord[]>();
+    mockLocalRows(localRequest.promise);
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useReimbursementSummary({ source: source() }),
+      { wrapper },
+    );
+
+    expect(result.current.isChecking).toBe(true);
+    expect(result.current.summary.remaining).toBe(0);
+    expect(result.current.needsOnlineVerification).toBe(true);
+
+    localRequest.resolve([
+      localLinkedRow(
+        "offline-pending",
+        30,
+        "pending",
+        "2026-08-15T10:00:00.000Z",
+      ),
+    ]);
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.summary).toMatchObject({
+        queued: 30,
+        remaining: 70,
+      });
+    });
+  });
+
+  it("withholds a local-only source balance until its local ledger is known", async () => {
+    const localSource = source({
+      status: "pending",
+      sheetId: undefined,
+      sheetRow: undefined,
+    });
+    const localRequest = deferred<TransactionRecord[]>();
+    mockLocalRows(localRequest.promise);
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useReimbursementSummary({ source: localSource }),
+      { wrapper },
+    );
+
+    expect(result.current.isChecking).toBe(true);
+    expect(result.current.summary.remaining).toBe(0);
+    expect(readLinkedReimbursements).not.toHaveBeenCalled();
+
+    localRequest.resolve([]);
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.summary.remaining).toBe(100);
+    });
+    expect(readLinkedReimbursements).not.toHaveBeenCalled();
+  });
+
+  it("gates the balance while an invalidated local ledger refetch is unresolved", async () => {
+    const refreshedLocalRows = deferred<TransactionRecord[]>();
+    mockLocalRows(
+      Promise.resolve([
+        localLinkedRow(
+          "initial-child",
+          10,
+          "pending",
+          "2026-08-15T10:00:00.000Z",
+        ),
+      ]),
+      refreshedLocalRows.promise,
+    );
+    vi.mocked(readLinkedReimbursements).mockResolvedValue([
+      linkedRow("remote-child", 20),
+    ]);
+    const { queryClient, wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useReimbursementSummary({ source: source() }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.summary.remaining).toBe(70);
+    });
+
+    let invalidation!: Promise<void>;
+    act(() => {
+      invalidation = queryClient.invalidateQueries({
+        queryKey: transactionQueryKeys.local,
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(true);
+      expect(result.current.summary.remaining).toBe(0);
+    });
+
+    refreshedLocalRows.resolve([
+      localLinkedRow(
+        "refreshed-child",
+        35,
+        "pending",
+        "2026-08-15T11:00:00.000Z",
+      ),
+    ]);
+    await act(async () => {
+      await invalidation;
+    });
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.summary.remaining).toBe(45);
+    });
+  });
+
+  it("surfaces local ledger failures and retries them without a remote source", async () => {
+    const localSource = source({
+      status: "error",
+      sheetId: undefined,
+      sheetRow: undefined,
+    });
+    const toArray = mockLocalRows(
+      Promise.reject(new Error("IndexedDB unavailable")),
+      Promise.resolve([
+        localLinkedRow(
+          "recovered-child",
+          25,
+          "error",
+          "2026-08-15T10:00:00.000Z",
+        ),
+      ]),
+    );
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useReimbursementSummary({ source: localSource }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.summary.remaining).toBe(0);
+    });
+
+    await act(async () => {
+      await result.current.retry();
+    });
+    await waitFor(() => {
+      expect(result.current.isError).toBe(false);
+      expect(result.current.summary).toMatchObject({
+        queued: 25,
+        remaining: 75,
+      });
+    });
+    expect(toArray).toHaveBeenCalledTimes(2);
+    expect(readLinkedReimbursements).not.toHaveBeenCalled();
   });
 
   it("checks online for a fresh remote total even when cached rows are visible", async () => {
@@ -147,8 +318,15 @@ describe("useReimbursementSummary", () => {
       { wrapper },
     );
 
-    expect(result.current.summary.confirmed).toBe(40);
+    expect(result.current.summary.remaining).toBe(0);
     expect(result.current.isChecking).toBe(true);
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(transactionQueryKeys.local)?.fetchStatus,
+      ).toBe("idle");
+      expect(result.current.summary.confirmed).toBe(40);
+      expect(result.current.isChecking).toBe(true);
+    });
 
     remoteRequest.resolve([linkedRow("fresh-child", 55)]);
     await waitFor(() => {
@@ -372,17 +550,17 @@ describe("useReimbursementSummary", () => {
       { wrapper },
     );
 
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(transactionQueryKeys.local)?.fetchStatus,
+      ).toBe("idle");
+    });
     expect(result.current.summary).toMatchObject({
       confirmed: 0,
       queued: 0,
       remaining: 100,
     });
     expect(result.current.needsOnlineVerification).toBe(true);
-    await waitFor(() => {
-      expect(
-        queryClient.getQueryState(transactionQueryKeys.local)?.fetchStatus,
-      ).toBe("idle");
-    });
   });
 
   it("does not start the remote request without both credentials", async () => {
@@ -394,12 +572,12 @@ describe("useReimbursementSummary", () => {
       { wrapper },
     );
 
-    expect(result.current.isChecking).toBe(false);
-    expect(readLinkedReimbursements).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(
         queryClient.getQueryState(transactionQueryKeys.local)?.fetchStatus,
       ).toBe("idle");
     });
+    expect(result.current.isChecking).toBe(false);
+    expect(readLinkedReimbursements).not.toHaveBeenCalled();
   });
 });

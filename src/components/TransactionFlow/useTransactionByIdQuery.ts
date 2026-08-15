@@ -51,6 +51,8 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
   const queryClient = useQueryClient();
   const canReadRemote = Boolean(id && isOnline && accessToken && sheetId);
   const couldReadRemoteRef = useRef(canReadRemote);
+  const remoteStateRef = useRef({ accessToken, isOnline, sheetId });
+  remoteStateRef.current = { accessToken, isOnline, sheetId };
   const queryKey = transactionQueryKeys.transaction(sheetId, id ?? "");
 
   const query = useQuery<TransactionRecord | null>({
@@ -82,8 +84,18 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
         return localTransaction;
       }
 
-      if (isOnline && accessToken && sheetId) {
-        return readTransactionById(accessToken, sheetId, id);
+      const remoteState = remoteStateRef.current;
+      if (
+        remoteState.isOnline &&
+        remoteState.accessToken &&
+        sheetId &&
+        remoteState.sheetId === sheetId
+      ) {
+        return readTransactionById(
+          remoteState.accessToken,
+          sheetId,
+          id,
+        );
       }
 
       if (

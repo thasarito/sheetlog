@@ -82,20 +82,44 @@ export function useReimbursementSummary({
 
   const cachedRemoteIsKnown = remoteQuery.data !== undefined;
   const remoteRows = sourceIsLocalOnly ? [] : (remoteQuery.data ?? []);
-  const summary = source
+  const localRows = localQuery.data;
+  const localLedgerIsChecking = Boolean(source && localQuery.isFetching);
+  const localLedgerIsError = Boolean(source && localQuery.isError);
+  const localLedgerIsReady = Boolean(
+    source &&
+      !localLedgerIsChecking &&
+      !localLedgerIsError &&
+      localRows !== undefined,
+  );
+  const summary = source && localLedgerIsReady && localRows
     ? calculateReimbursementSummary(
         source,
         remoteRows,
-        localQuery.data ?? [],
+        localRows,
         excludeChildId,
       )
     : EMPTY_SUMMARY;
 
+  async function retry() {
+    const retries: Promise<unknown>[] = [];
+    if (localQuery.isError) {
+      retries.push(localQuery.refetch());
+    }
+    if (canCheckRemote && remoteQuery.isError) {
+      retries.push(remoteQuery.refetch());
+    }
+    await Promise.all(retries);
+  }
+
   return {
     summary,
-    isChecking: canCheckRemote && remoteQuery.isFetching,
-    isError: canCheckRemote && remoteQuery.isError,
-    retry: remoteQuery.refetch,
+    isChecking:
+      localLedgerIsChecking ||
+      (canCheckRemote && remoteQuery.isFetching),
+    isError:
+      localLedgerIsError ||
+      (canCheckRemote && remoteQuery.isError),
+    retry,
     needsOnlineVerification: Boolean(
       source &&
         !sourceIsLocalOnly &&
