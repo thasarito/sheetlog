@@ -5,6 +5,7 @@ import { transactionQueryKeys } from "../../../components/TransactionFlow/transa
 import { db } from "../../../lib/db";
 import {
   deleteRow as realDeleteRow,
+  DuplicateTransactionIdError,
   getSheetTabId as realGetSheetTabId,
   readLinkedReimbursements as realReadLinkedReimbursements,
   readTransactionById as realReadTransactionById,
@@ -27,7 +28,10 @@ import {
   validateReimbursementAmount,
 } from "../../../lib/reimbursements";
 import { getRecentCategories, updateRecentCategory } from "../../../lib/settings";
-import { withSheetMutationLock } from "../../../lib/sheetMutationLock";
+import {
+  SheetMutationLockLostError,
+  withSheetMutationLock,
+} from "../../../lib/sheetMutationLock";
 import { syncPendingTransactions } from "../../../lib/sync";
 import {
   LEGACY_TRANSACTION_SCOPE_ERROR,
@@ -381,7 +385,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         try {
           const directResult = await withSheetMutationLock(
             { sheetId, userId },
-            async () => {
+            async (mutationGuard) => {
               const latestTransaction = await db.transactions.get(id);
               if (!latestTransaction) {
                 return null;
@@ -486,12 +490,14 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 }
               }
 
+              await mutationGuard.assertOwnership();
               await updateRow(
                 accessToken,
                 sheetId,
                 rowToUpdate,
                 updatedRecord,
               );
+              await mutationGuard.assertOwnership();
               await db.transactions.put({
                 ...updatedRecord,
                 status: "synced",
@@ -521,7 +527,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             return directResult;
           }
         } catch (error) {
-          if (error instanceof ReimbursementValidationError) {
+          if (
+            error instanceof ReimbursementValidationError ||
+            error instanceof DuplicateTransactionIdError ||
+            error instanceof SheetMutationLockLostError
+          ) {
             throw error;
           }
           console.warn(
@@ -598,7 +608,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       try {
         directDeleteMessage = await withSheetMutationLock(
           { sheetId, userId },
-          async () => {
+          async (mutationGuard) => {
             const effectiveTabId =
               sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
             if (effectiveTabId === null) {
@@ -611,6 +621,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 ? "Removed entry already absent from Sheets"
                 : "Removed last synced entry";
             if (currentRow !== undefined) {
+              await mutationGuard.assertOwnership();
               await deleteRow(
                 accessToken,
                 sheetId,
@@ -619,12 +630,19 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               );
             }
             directDeleteCommitted = true;
+            await mutationGuard.assertOwnership();
             await db.transactions.delete(last.id);
             return message;
           },
         );
       } catch (error) {
         if (directDeleteCommitted) {
+          throw error;
+        }
+        if (
+          error instanceof DuplicateTransactionIdError ||
+          error instanceof SheetMutationLockLostError
+        ) {
           throw error;
         }
         const info = mapGoogleSyncError(error);
@@ -737,7 +755,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         try {
           directDeleteMessage = await withSheetMutationLock(
             { sheetId, userId },
-            async () => {
+            async (mutationGuard) => {
               const effectiveTabId =
                 sheetTabId ?? (await getSheetTabId(accessToken, sheetId));
               if (effectiveTabId === null) {
@@ -750,6 +768,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                   ? "Removed entry already absent from Sheets"
                   : "Removed synced entry";
               if (currentRow !== undefined) {
+                await mutationGuard.assertOwnership();
                 await deleteRow(
                   accessToken,
                   sheetId,
@@ -758,12 +777,19 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 );
               }
               directDeleteCommitted = true;
+              await mutationGuard.assertOwnership();
               await db.transactions.delete(id);
               return message;
             },
           );
         } catch (error) {
           if (directDeleteCommitted) {
+            throw error;
+          }
+          if (
+            error instanceof DuplicateTransactionIdError ||
+            error instanceof SheetMutationLockLostError
+          ) {
             throw error;
           }
           const info = mapGoogleSyncError(error);

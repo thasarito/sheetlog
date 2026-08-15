@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appendTransaction,
+  DuplicateTransactionIdError,
   ensureHeaders,
   ensureReimbursementHeader,
   getRecentTransactions,
@@ -277,11 +278,19 @@ describe("Google transaction Sheet APIs", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      readTransactionIdMap(ACCESS_TOKEN, SHEET_ID),
-    ).rejects.toThrow(
-      'Duplicate transaction ID "duplicate-id" found in Transactions!K at rows 2 and 4',
-    );
+    const failure = await readTransactionIdMap(
+      ACCESS_TOKEN,
+      SHEET_ID,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(DuplicateTransactionIdError);
+    expect(failure).toMatchObject({
+      transactionId: "duplicate-id",
+      firstRow: 2,
+      duplicateRow: 4,
+      message:
+        'Duplicate transaction ID "duplicate-id" found in Transactions!K at rows 2 and 4. Remove the duplicate row before syncing.',
+    });
   });
 
   it("re-resolves column K once when a row shift returns a different transaction", async () => {

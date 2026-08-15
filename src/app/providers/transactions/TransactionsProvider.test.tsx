@@ -33,14 +33,37 @@ const providerState = vi.hoisted(() => ({
   signOut: vi.fn(),
 }));
 
-const googleMocks = vi.hoisted(() => ({
-  deleteRow: vi.fn(),
-  getSheetTabId: vi.fn(),
-  readLinkedReimbursements: vi.fn(),
-  readTransactionById: vi.fn(),
-  readTransactionIdMap: vi.fn(),
-  updateRow: vi.fn(),
-}));
+const googleMocks = vi.hoisted(() => {
+  class DuplicateTransactionIdError extends Error {
+    readonly transactionId: string;
+    readonly firstRow: number;
+    readonly duplicateRow: number;
+
+    constructor(
+      transactionId: string,
+      firstRow: number,
+      duplicateRow: number,
+    ) {
+      super(
+        `Duplicate transaction ID "${transactionId}" found in Transactions!K at rows ${firstRow} and ${duplicateRow}. Remove the duplicate row before syncing.`,
+      );
+      this.name = "DuplicateTransactionIdError";
+      this.transactionId = transactionId;
+      this.firstRow = firstRow;
+      this.duplicateRow = duplicateRow;
+    }
+  }
+
+  return {
+    deleteRow: vi.fn(),
+    DuplicateTransactionIdError,
+    getSheetTabId: vi.fn(),
+    readLinkedReimbursements: vi.fn(),
+    readTransactionById: vi.fn(),
+    readTransactionIdMap: vi.fn(),
+    updateRow: vi.fn(),
+  };
+});
 
 const mutationContextState = vi.hoisted(() => ({
   value: null as TransactionsContextValue | null,
@@ -493,6 +516,212 @@ describe("TransactionsProvider", () => {
       sheetRow: 20,
     });
     expect(await db.transactions.get(created.id)).toEqual(created);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("preserves a synced row when an update finds duplicate stable IDs", async () => {
+    const original = transaction("duplicate-update");
+    const integrityError = new googleMocks.DuplicateTransactionIdError(
+      original.id,
+      2,
+      4,
+    );
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockRejectedValue(integrityError);
+    const harness = createProviderHarness();
+    let failure: unknown;
+
+    await act(async () => {
+      try {
+        await harness.getContext().updateTransaction(original.id, {
+          note: "Must not queue",
+        });
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBe(integrityError);
+    expect(await db.transactions.get(original.id)).toEqual(original);
+    expect(await db.transactions.count()).toBe(1);
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("preserves a synced row when delete finds duplicate stable IDs", async () => {
+    const original = transaction("duplicate-delete");
+    const integrityError = new googleMocks.DuplicateTransactionIdError(
+      original.id,
+      2,
+      4,
+    );
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockRejectedValue(integrityError);
+    const harness = createProviderHarness();
+    let failure: unknown;
+
+    await act(async () => {
+      try {
+        await harness.getContext().deleteTransaction(original.id);
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBe(integrityError);
+    expect(await db.transactions.get(original.id)).toEqual(original);
+    expect(await db.transactions.count()).toBe(1);
+    expect(googleMocks.deleteRow).not.toHaveBeenCalled();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("preserves the latest synced row when undo finds duplicate stable IDs", async () => {
+    const original = transaction("duplicate-undo", {
+      createdAt: "2026-08-15T12:00:00.000Z",
+    });
+    const integrityError = new googleMocks.DuplicateTransactionIdError(
+      original.id,
+      2,
+      4,
+    );
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockRejectedValue(integrityError);
+    const harness = createProviderHarness();
+    let failure: unknown;
+
+    await act(async () => {
+      try {
+        await harness.getContext().undoLast();
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBe(integrityError);
+    expect(await db.transactions.get(original.id)).toEqual(original);
+    expect(await db.transactions.count()).toBe(1);
+    expect(googleMocks.deleteRow).not.toHaveBeenCalled();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("fails closed before a direct update when the fallback lock loses ownership", async () => {
+    const original = transaction("lock-lost-direct-update", {
+      note: "Before",
+      sheetRow: 6,
+    });
+    const remoteReadStarted = deferred<void>();
+    const releaseRemoteRead = deferred<TransactionRecord | null>();
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[original.id, 6]]),
+    );
+    googleMocks.readTransactionById.mockImplementationOnce(async () => {
+      remoteReadStarted.resolve();
+      return releaseRemoteRead.promise;
+    });
+    const harness = createProviderHarness();
+    let updatePromise!: ReturnType<
+      TransactionsContextValue["updateTransaction"]
+    >;
+    let failure: unknown;
+
+    await act(async () => {
+      updatePromise = harness
+        .getContext()
+        .updateTransaction(original.id, { note: "After" });
+      await remoteReadStarted.promise;
+    });
+    await db.settings.put({
+      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      value: JSON.stringify({
+        ownerId: "successor-tab",
+        expiresAt: Date.now() + 60_000,
+      }),
+      updatedAt: new Date().toISOString(),
+    });
+    releaseRemoteRead.resolve(original);
+    await act(async () => {
+      try {
+        await updatePromise;
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain(
+      "Sheet mutation lock was lost before the operation completed",
+    );
+    expect(await db.transactions.get(original.id)).toEqual(original);
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("keeps the original local row when ownership is lost after remote delete", async () => {
+    const original = transaction("lock-lost-after-delete", {
+      sheetRow: 7,
+    });
+    const deleteStarted = deferred<void>();
+    const releaseDelete = deferred<void>();
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[original.id, 7]]),
+    );
+    googleMocks.deleteRow.mockImplementationOnce(async () => {
+      deleteStarted.resolve();
+      return releaseDelete.promise;
+    });
+    const harness = createProviderHarness();
+    let deletePromise!: ReturnType<
+      TransactionsContextValue["deleteTransaction"]
+    >;
+    let failure: unknown;
+
+    await act(async () => {
+      deletePromise = harness
+        .getContext()
+        .deleteTransaction(original.id);
+      await deleteStarted.promise;
+    });
+    await db.settings.put({
+      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      value: JSON.stringify({
+        ownerId: "successor-tab",
+        expiresAt: Date.now() + 60_000,
+      }),
+      updatedAt: new Date().toISOString(),
+    });
+    releaseDelete.resolve();
+    await act(async () => {
+      try {
+        await deletePromise;
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain(
+      "Sheet mutation lock was lost before the operation completed",
+    );
+    expect(googleMocks.deleteRow).toHaveBeenCalledTimes(1);
+    expect(await db.transactions.get(original.id)).toEqual(original);
+    expect(await db.transactions.count()).toBe(1);
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
 
     harness.rendered.unmount();
     harness.queryClient.clear();
@@ -1528,16 +1757,32 @@ describe("TransactionsProvider", () => {
     const remoteRows = [transactionToDelete];
     const deleteStarted = deferred<void>();
     const releaseDelete = deferred<void>();
+    const deleteFinished = deferred<void>();
+    const updateStarted = deferred<void>();
 
     googleMocks.readTransactionIdMap.mockImplementation(async () =>
       new Map(
         remoteRows.map((record, index) => [record.id, index + 2] as const),
       ),
     );
+    googleMocks.readTransactionById.mockImplementation(
+      async (_token, _sheet, id) => {
+        const index = remoteRows.findIndex((record) => record.id === id);
+        return index < 0
+          ? null
+          : { ...remoteRows[index], sheetRow: index + 2 };
+      },
+    );
     googleMocks.deleteRow.mockImplementation(async (_token, _sheet, _tab, row) => {
       deleteStarted.resolve();
       await releaseDelete.promise;
       remoteRows.splice(row - 2, 1);
+      deleteFinished.resolve();
+    });
+    googleMocks.updateRow.mockImplementation(async (_token, _sheet, row, record) => {
+      updateStarted.resolve();
+      await deleteFinished.promise;
+      remoteRows[row - 2] = record;
     });
 
     const deletingProvider = createProviderHarness();
@@ -1548,6 +1793,7 @@ describe("TransactionsProvider", () => {
     let updated!: Awaited<
       ReturnType<TransactionsContextValue["updateTransaction"]>
     >;
+    let updateEnteredBeforeDeleteReleased = false;
     await act(async () => {
       const deletePromise = deletingProvider
         .getContext()
@@ -1556,6 +1802,12 @@ describe("TransactionsProvider", () => {
       const updatePromise = updatingProvider
         .getContext()
         .updateTransaction(transactionToDelete.id, { note: "After" });
+      updateEnteredBeforeDeleteReleased = await Promise.race([
+        updateStarted.promise.then(() => true),
+        new Promise<false>((resolve) => {
+          setTimeout(() => resolve(false), 50);
+        }),
+      ]);
       releaseDelete.resolve();
       [deleted, updated] = await Promise.all([deletePromise, updatePromise]);
     });
@@ -1565,10 +1817,12 @@ describe("TransactionsProvider", () => {
       outcome: "deleted",
       message: "Removed synced entry",
     });
+    expect(updateEnteredBeforeDeleteReleased).toBe(false);
     expect(updated).toBeUndefined();
     expect(await db.transactions.get(transactionToDelete.id)).toBeUndefined();
     expect(googleMocks.updateRow).not.toHaveBeenCalled();
     expect(syncPendingTransactions).not.toHaveBeenCalled();
+    expect(remoteRows).toEqual([]);
 
     deletingProvider.rendered.unmount();
     deletingProvider.queryClient.clear();

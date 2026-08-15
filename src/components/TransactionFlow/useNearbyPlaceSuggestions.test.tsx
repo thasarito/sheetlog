@@ -41,6 +41,10 @@ const sessionIds = {
   disabledAfterSuccess: "0198b949-5f77-7d98-a53a-bce26d004a35",
   deferredGeolocation: "0198b949-5f77-7d98-a53a-bce26d004a36",
   deferredPlaces: "0198b949-5f77-7d98-a53a-bce26d004a37",
+  strictMode: "0198b949-5f77-7d98-a53a-bce26d004a38",
+  sameTaskRemount: "0198b949-5f77-7d98-a53a-bce26d004a39",
+  unmount: "0198b949-5f77-7d98-a53a-bce26d004a3a",
+  deferredUnmount: "0198b949-5f77-7d98-a53a-bce26d004a3b",
 };
 
 function createHarness() {
@@ -222,6 +226,120 @@ describe("useNearbyPlaceSuggestions", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 20));
     expect(getCurrentCoordinates).toHaveBeenCalledTimes(1);
     expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses one lookup when React StrictMode replays effects", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    vi.mocked(getNearbyPlaces).mockResolvedValue(suggestions);
+
+    const { result } = renderHook(
+      () =>
+        useNearbyPlaceSuggestions({
+          enabled: true,
+          isOnline: true,
+          sessionId: sessionIds.strictMode,
+        }),
+      { wrapper: createWrapper(), reactStrictMode: true },
+    );
+
+    await waitFor(() => {
+      expect(result.current.suggestions).toEqual(suggestions);
+    });
+    expect(getCurrentCoordinates).toHaveBeenCalledTimes(1);
+    expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps one lookup across an immediate same-session remount", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    vi.mocked(getNearbyPlaces).mockResolvedValue(suggestions);
+    const { wrapper } = createHarness();
+    const renderNearbyHook = () =>
+      renderHook(
+        () =>
+          useNearbyPlaceSuggestions({
+            enabled: true,
+            isOnline: true,
+            sessionId: sessionIds.sameTaskRemount,
+          }),
+        { wrapper },
+      );
+    const first = renderNearbyHook();
+
+    await waitFor(() => {
+      expect(first.result.current.suggestions).toEqual(suggestions);
+    });
+    first.unmount();
+    const second = renderNearbyHook();
+
+    await waitFor(() => {
+      expect(second.result.current.suggestions).toEqual(suggestions);
+    });
+    expect(getCurrentCoordinates).toHaveBeenCalledTimes(1);
+    expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes completed session data after a real unmount", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    vi.mocked(getNearbyPlaces).mockResolvedValue(suggestions);
+    const { queryClient, wrapper } = createHarness();
+    const queryKey = nearbyPlaceSuggestionKeys.session(sessionIds.unmount);
+    const mounted = renderHook(
+      () =>
+        useNearbyPlaceSuggestions({
+          enabled: true,
+          isOnline: true,
+          sessionId: sessionIds.unmount,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(mounted.result.current.suggestions).toEqual(suggestions);
+    });
+    mounted.unmount();
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(queryKey)).toBeUndefined();
+    });
+  });
+
+  it("does not cache an in-flight result during deferred unmount cleanup", async () => {
+    vi.mocked(getCurrentCoordinates).mockResolvedValue(coordinates);
+    let resolveNearbyPlaces: ((value: typeof suggestions) => void) | undefined;
+    vi.mocked(getNearbyPlaces).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveNearbyPlaces = resolve;
+        }),
+    );
+    const { queryClient, wrapper } = createHarness();
+    const queryKey = nearbyPlaceSuggestionKeys.session(
+      sessionIds.deferredUnmount,
+    );
+    const mounted = renderHook(
+      () =>
+        useNearbyPlaceSuggestions({
+          enabled: true,
+          isOnline: true,
+          sessionId: sessionIds.deferredUnmount,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(getNearbyPlaces).toHaveBeenCalledTimes(1);
+    });
+    mounted.unmount();
+    if (!resolveNearbyPlaces) {
+      throw new Error("Nearby Places request did not start");
+    }
+    const finishNearbyPlaces = resolveNearbyPlaces;
+    await act(async () => {
+      finishNearbyPlaces(suggestions);
+      await Promise.resolve();
+    });
+
+    expect(queryClient.getQueryData(queryKey)).toBeUndefined();
   });
 
   it("uses separate cache entries for each session lifecycle", async () => {

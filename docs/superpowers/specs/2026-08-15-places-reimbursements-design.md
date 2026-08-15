@@ -212,6 +212,14 @@ known stale writes, but two devices submitting at the same instant can still rac
 is acceptable for this personal, single-user workflow and must not be represented as a strict
 cross-device guarantee.
 
+Same-origin browser contexts use Web Locks when available. The IndexedDB fallback is a renewable,
+sheet-and-user-scoped lease with ownership checks immediately before each remote mutation and local
+status commit. Because a suspended browser context can outlive an expired lease and Google Sheets
+does not accept a fencing token, the fallback is best-effort rather than an absolute remote fence:
+detected ownership loss stops subsequent work and local commits, while a request that already
+completed remotely is reconciled by stable column-K ID on retry. This is not a cross-browser or
+cross-device atomicity guarantee.
+
 Editing a linked reimbursement preserves its relationship, type, category, and currency. Its
 maximum editable amount is the source expense amount minus all other linked reimbursements.
 Deleting a reimbursement reduces the derived total. Deleting the source expense does not cascade;

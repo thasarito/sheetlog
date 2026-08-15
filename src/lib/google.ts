@@ -49,6 +49,26 @@ export class GoogleApiError extends Error {
   }
 }
 
+export class DuplicateTransactionIdError extends Error {
+  readonly transactionId: string;
+  readonly firstRow: number;
+  readonly duplicateRow: number;
+
+  constructor(
+    transactionId: string,
+    firstRow: number,
+    duplicateRow: number,
+  ) {
+    super(
+      `Duplicate transaction ID "${transactionId}" found in ${TAB_NAME}!K at rows ${firstRow} and ${duplicateRow}. Remove the duplicate row before syncing.`,
+    );
+    this.name = "DuplicateTransactionIdError";
+    this.transactionId = transactionId;
+    this.firstRow = firstRow;
+    this.duplicateRow = duplicateRow;
+  }
+}
+
 export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof GoogleApiError && error.status === 401;
 }
@@ -338,8 +358,10 @@ export async function readTransactionIdMap(
     }
     const existingRow = map.get(id);
     if (existingRow !== undefined) {
-      throw new Error(
-        `Duplicate transaction ID "${id}" found in ${TAB_NAME}!K at rows ${existingRow} and ${index + 2}. Remove the duplicate row before syncing.`,
+      throw new DuplicateTransactionIdError(
+        id,
+        existingRow,
+        index + 2,
       );
     }
     map.set(id, index + 2);

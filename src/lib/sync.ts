@@ -2,6 +2,7 @@ import { db } from './db';
 import {
   appendTransaction as realAppendTransaction,
   deleteRow as realDeleteRow,
+  DuplicateTransactionIdError,
   ensureReimbursementHeader as realEnsureReimbursementHeader,
   getSheetTabId as realGetSheetTabId,
   readLinkedReimbursements as realReadLinkedReimbursements,
@@ -28,7 +29,11 @@ import {
 } from './reimbursements';
 import type { TransactionRecord } from './types';
 import { isTransactionInSheetScope } from './transactionScope';
-import { withSheetMutationLock } from './sheetMutationLock';
+import {
+  SheetMutationLockLostError,
+  type SheetMutationGuard,
+  withSheetMutationLock,
+} from './sheetMutationLock';
 
 const appendTransaction = IS_DEV_MODE ? mockAppendTransaction : realAppendTransaction;
 const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
@@ -177,7 +182,9 @@ function isSamePendingRevision(
 async function updatePendingRevision(
   attempted: TransactionRecord,
   updates: Partial<TransactionRecord>,
+  mutationGuard: SheetMutationGuard,
 ): Promise<boolean> {
+  await mutationGuard.assertOwnership();
   return db.transaction('rw', db.transactions, async () => {
     const current = await db.transactions.get(attempted.id);
     if (!current || !isSamePendingRevision(current, attempted)) {
@@ -190,7 +197,9 @@ async function updatePendingRevision(
 
 async function deletePendingRevision(
   attempted: TransactionRecord,
+  mutationGuard: SheetMutationGuard,
 ): Promise<boolean> {
+  await mutationGuard.assertOwnership();
   return db.transaction('rw', db.transactions, async () => {
     const current = await db.transactions.get(attempted.id);
     if (
@@ -279,6 +288,7 @@ async function rollbackDeletedAppend(
   accessToken: string,
   sheetId: string,
   id: string,
+  mutationGuard: SheetMutationGuard,
 ): Promise<void> {
   const tabId = await getSheetTabId(accessToken, sheetId);
   if (tabId === null) {
@@ -290,6 +300,7 @@ async function rollbackDeletedAppend(
   if (currentRow === undefined) {
     return;
   }
+  await mutationGuard.assertOwnership();
   await deleteRow(accessToken, sheetId, tabId, currentRow);
 }
 
@@ -297,6 +308,7 @@ async function syncPendingTransactionsUnlocked(
   accessToken: string,
   sheetId: string,
   userId: string,
+  mutationGuard: SheetMutationGuard,
 ): Promise<number> {
   const pendingByCreatedAt = await db.transactions
     .where('status')
@@ -321,6 +333,7 @@ async function syncPendingTransactionsUnlocked(
     if (reimbursementHeaderReady) {
       return;
     }
+    await mutationGuard.assertOwnership();
     await ensureReimbursementHeader(accessToken, sheetId);
     reimbursementHeaderReady = true;
   };
@@ -347,6 +360,7 @@ async function syncPendingTransactionsUnlocked(
           if (!item?.deleteIntent) {
             continue;
           }
+          await mutationGuard.assertOwnership();
           await deleteRow(accessToken, sheetId, tabId, currentRow);
           existingIds.delete(item.id);
           for (const [existingId, rowIndex] of existingIds) {
@@ -355,7 +369,10 @@ async function syncPendingTransactionsUnlocked(
             }
           }
         }
-        const didDelete = await deletePendingRevision(item);
+        const didDelete = await deletePendingRevision(
+          item,
+          mutationGuard,
+        );
         if (didDelete) {
           syncedCount += 1;
         }
@@ -388,6 +405,7 @@ async function syncPendingTransactionsUnlocked(
           }
         }
         if (!hasSameTransactionContent(remote, itemForWrite)) {
+          await mutationGuard.assertOwnership();
           await updateRow(accessToken, sheetId, currentRow, itemForWrite);
         }
 
@@ -403,7 +421,7 @@ async function syncPendingTransactionsUnlocked(
           sheetId,
           error: undefined,
           updatedAt: new Date().toISOString(),
-        });
+        }, mutationGuard);
         if (didMarkSynced) {
           syncedCount += 1;
         }
@@ -420,6 +438,7 @@ async function syncPendingTransactionsUnlocked(
         await validateLinkedTransaction(accessToken, sheetId, userId, item);
       }
 
+      await mutationGuard.assertOwnership();
       const rowIndex = await appendTransaction(accessToken, sheetId, item);
       if (rowIndex !== null) {
         existingIds.set(item.id, rowIndex);
@@ -430,7 +449,12 @@ async function syncPendingTransactionsUnlocked(
         !currentAfterAppend ||
         !isTransactionInSheetScope(currentAfterAppend, sheetId, userId)
       ) {
-        await rollbackDeletedAppend(accessToken, sheetId, item.id);
+        await rollbackDeletedAppend(
+          accessToken,
+          sheetId,
+          item.id,
+          mutationGuard,
+        );
         continue;
       }
 
@@ -440,16 +464,28 @@ async function syncPendingTransactionsUnlocked(
         sheetId,
         error: undefined,
         updatedAt: new Date().toISOString(),
-      });
+      }, mutationGuard);
       if (didMarkSynced) {
         syncedCount += 1;
       } else {
         const current = await db.transactions.get(item.id);
         if (!current || !isTransactionInSheetScope(current, sheetId, userId)) {
-          await rollbackDeletedAppend(accessToken, sheetId, item.id);
+          await rollbackDeletedAppend(
+            accessToken,
+            sheetId,
+            item.id,
+            mutationGuard,
+          );
         }
       }
     } catch (error) {
+      if (
+        error instanceof SheetMutationLockLostError ||
+        error instanceof DuplicateTransactionIdError
+      ) {
+        syncFailure = error;
+        break;
+      }
       const current = await db.transactions.get(snapshotItem.id);
       if (
         !current ||
@@ -467,7 +503,7 @@ async function syncPendingTransactionsUnlocked(
           status: info.retryable ? 'pending' : 'error',
           error: info.message,
           updatedAt: new Date().toISOString(),
-        });
+        }, mutationGuard);
       }
       if (info.shouldClearAuth || info.retryable) {
         syncFailure = error;
@@ -488,7 +524,12 @@ export async function syncPendingTransactions(
   sheetId: string,
   userId: string,
 ): Promise<number> {
-  return withSheetMutationLock({ sheetId, userId }, () =>
-    syncPendingTransactionsUnlocked(accessToken, sheetId, userId),
+  return withSheetMutationLock({ sheetId, userId }, (mutationGuard) =>
+    syncPendingTransactionsUnlocked(
+      accessToken,
+      sheetId,
+      userId,
+      mutationGuard,
+    ),
   );
 }

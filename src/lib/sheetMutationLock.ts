@@ -18,7 +18,21 @@ type LeaseStore = {
 };
 
 const LEASE_DURATION_MS = 60_000;
-const RETRY_DELAY_MS = 10;
+const RETRY_DELAY_MS = 25;
+const MAX_RETRY_DELAY_MS = 250;
+
+export interface SheetMutationGuard {
+  assertOwnership(): Promise<void>;
+}
+
+export class SheetMutationLockLostError extends Error {
+  constructor() {
+    super(
+      "Sheet mutation lock was lost before the operation completed. Retry the transaction to reconcile with the latest Sheet state.",
+    );
+    this.name = "SheetMutationLockLostError";
+  }
+}
 
 export interface SheetMutationLockOptions {
   database?: LeaseStore;
@@ -98,11 +112,14 @@ async function renewLease(
   leaseDurationMs: number,
 ): Promise<boolean> {
   return store.transaction("rw", store.settings, async () => {
+    const now = Date.now();
     const current = readLease(await store.settings.get(key));
-    if (current?.ownerId !== leaseOwnerId) {
+    if (
+      current?.ownerId !== leaseOwnerId ||
+      current.expiresAt <= now
+    ) {
       return false;
     }
-    const now = Date.now();
     await store.settings.put({
       key,
       value: JSON.stringify({
@@ -122,19 +139,27 @@ async function waitForLease(
   leaseDurationMs: number,
   retryDelayMs: number,
 ): Promise<void> {
+  let nextRetryDelayMs = retryDelayMs;
   while (
     !(await tryAcquireLease(store, key, leaseOwnerId, leaseDurationMs))
   ) {
+    const jitterMs = Math.floor(
+      Math.random() * Math.max(1, nextRetryDelayMs / 5),
+    );
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, retryDelayMs);
+      setTimeout(resolve, nextRetryDelayMs + jitterMs);
     });
+    nextRetryDelayMs = Math.min(
+      MAX_RETRY_DELAY_MS,
+      nextRetryDelayMs * 2,
+    );
   }
 }
 
 async function withDexieLease<Result>(
   store: LeaseStore,
   scope: SheetMutationScope,
-  operation: () => Promise<Result>,
+  operation: (guard: SheetMutationGuard) => Promise<Result>,
   leaseDurationMs: number,
   retryDelayMs: number,
 ): Promise<Result> {
@@ -171,18 +196,69 @@ async function withDexieLease<Result>(
         leaseFailure = error;
       });
   }, Math.max(1, Math.floor(leaseDurationMs / 3)));
+
+  const guard: SheetMutationGuard = {
+    async assertOwnership() {
+      if (leaseFailure) {
+        throw new SheetMutationLockLostError();
+      }
+      try {
+        const stillOwnsLease = await renewLease(
+          store,
+          key,
+          leaseOwnerId,
+          leaseDurationMs,
+        );
+        if (!stillOwnsLease) {
+          leaseFailure = new SheetMutationLockLostError();
+          throw leaseFailure;
+        }
+      } catch (error: unknown) {
+        leaseFailure = error;
+        if (error instanceof SheetMutationLockLostError) {
+          throw error;
+        }
+        throw new SheetMutationLockLostError();
+      }
+    },
+  };
+
+  let operationResult!: Result;
+  let operationError: unknown;
+  let operationFailed = false;
   try {
-    const result = await operation();
-    await renewal;
-    if (leaseFailure) {
-      throw leaseFailure;
-    }
-    return result;
-  } finally {
-    clearInterval(renewalTimer);
-    await renewal;
-    await releaseLease(store, key, leaseOwnerId);
+    operationResult = await operation(guard);
+    await guard.assertOwnership();
+  } catch (error: unknown) {
+    operationFailed = true;
+    operationError = error;
   }
+
+  clearInterval(renewalTimer);
+  await renewal;
+  let cleanupError: unknown;
+  try {
+    await releaseLease(store, key, leaseOwnerId);
+  } catch (error: unknown) {
+    cleanupError = error;
+  }
+
+  if (operationFailed) {
+    if (cleanupError) {
+      console.warn(
+        "Failed to release the Sheet mutation lock:",
+        cleanupError,
+      );
+    }
+    throw operationError;
+  }
+  if (leaseFailure) {
+    throw new SheetMutationLockLostError();
+  }
+  if (cleanupError) {
+    throw cleanupError;
+  }
+  return operationResult;
 }
 
 function browserLockManager(): Pick<LockManager, "request"> | null {
@@ -207,7 +283,7 @@ export function createSheetMutationLock(
 
   return async function withLock<Result>(
     scope: SheetMutationScope,
-    operation: () => Promise<Result>,
+    operation: (guard: SheetMutationGuard) => Promise<Result>,
   ): Promise<Result> {
     const lockManager =
       options.lockManager === undefined
@@ -217,7 +293,7 @@ export function createSheetMutationLock(
       return lockManager.request(
         scopeKey(scope),
         { mode: "exclusive" },
-        async () => operation(),
+        async () => operation({ assertOwnership: async () => undefined }),
       );
     }
     return withDexieLease(

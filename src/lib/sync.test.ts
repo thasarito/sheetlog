@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db";
+import { DuplicateTransactionIdError } from "./google";
 import { syncPendingTransactions } from "./sync";
 import type { TransactionRecord } from "./types";
 
@@ -16,6 +17,26 @@ const googleMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./google", () => {
+  class DuplicateTransactionIdError extends Error {
+    readonly transactionId: string;
+    readonly firstRow: number;
+    readonly duplicateRow: number;
+
+    constructor(
+      transactionId: string,
+      firstRow: number,
+      duplicateRow: number,
+    ) {
+      super(
+        `Duplicate transaction ID "${transactionId}" found in Transactions!K at rows ${firstRow} and ${duplicateRow}. Remove the duplicate row before syncing.`,
+      );
+      this.name = "DuplicateTransactionIdError";
+      this.transactionId = transactionId;
+      this.firstRow = firstRow;
+      this.duplicateRow = duplicateRow;
+    }
+  }
+
   class GoogleApiError extends Error {
     status: number;
 
@@ -25,7 +46,11 @@ vi.mock("./google", () => {
     }
   }
 
-  return { ...googleMocks, GoogleApiError };
+  return {
+    ...googleMocks,
+    DuplicateTransactionIdError,
+    GoogleApiError,
+  };
 });
 
 vi.mock("./mock", () => ({
@@ -174,6 +199,72 @@ describe("syncPendingTransactions concurrency", () => {
       sheetId: "sheet-a",
       sheetRow: 2,
     });
+  });
+
+  it("fails closed before append when the fallback lock loses ownership", async () => {
+    const pending = transaction("lock-lost-before-append");
+    const idReadStarted = deferred<void>();
+    const releaseIdRead = deferred<Map<string, number>>();
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap.mockImplementationOnce(async () => {
+      idReadStarted.resolve();
+      return releaseIdRead.promise;
+    });
+
+    const activeSync = syncPendingTransactions(
+      "access-token",
+      "sheet-a",
+      "user-a",
+    );
+    await idReadStarted.promise;
+    await db.settings.put({
+      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      value: JSON.stringify({
+        ownerId: "successor-tab",
+        expiresAt: Date.now() + 60_000,
+      }),
+      updatedAt: new Date().toISOString(),
+    });
+    releaseIdRead.resolve(new Map());
+
+    await expect(activeSync).rejects.toThrow(
+      "Sheet mutation lock was lost before the operation completed",
+    );
+    expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
+    expect(await db.transactions.get(pending.id)).toEqual(pending);
+  });
+
+  it("does not commit synced state after losing the fallback lock during append", async () => {
+    const pending = transaction("lock-lost-after-append");
+    const appendStarted = deferred<void>();
+    const releaseAppend = deferred<number | null>();
+    await db.transactions.add(pending);
+    googleMocks.appendTransaction.mockImplementationOnce(async () => {
+      appendStarted.resolve();
+      return releaseAppend.promise;
+    });
+
+    const activeSync = syncPendingTransactions(
+      "access-token",
+      "sheet-a",
+      "user-a",
+    );
+    await appendStarted.promise;
+    await db.settings.put({
+      key: "sheetlog.sheet-mutation:sheet-a:user-a",
+      value: JSON.stringify({
+        ownerId: "successor-tab",
+        expiresAt: Date.now() + 60_000,
+      }),
+      updatedAt: new Date().toISOString(),
+    });
+    releaseAppend.resolve(7);
+
+    await expect(activeSync).rejects.toThrow(
+      "Sheet mutation lock was lost before the operation completed",
+    );
+    expect(googleMocks.appendTransaction).toHaveBeenCalledTimes(1);
+    expect(await db.transactions.get(pending.id)).toEqual(pending);
   });
 
   it("keeps an offline A queue out of B after sign-out and resumes it only when A returns", async () => {
@@ -496,6 +587,29 @@ describe("syncPendingTransactions reimbursement validation", () => {
     expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
     expect(googleMocks.updateRow).not.toHaveBeenCalled();
     expect(await db.transactions.get(intent.id)).toBeUndefined();
+  });
+
+  it("preserves a delete intent when its fresh K read finds duplicate stable IDs", async () => {
+    const intent = reimbursementDeleteIntent(
+      "duplicate-delete-intent",
+      "missing-source",
+    );
+    const integrityError = new DuplicateTransactionIdError(
+      intent.id,
+      5,
+      9,
+    );
+    await db.transactions.add(intent);
+    googleMocks.readTransactionIdMap
+      .mockResolvedValueOnce(new Map([[intent.id, 5]]))
+      .mockRejectedValueOnce(integrityError);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).rejects.toBe(integrityError);
+
+    expect(googleMocks.deleteRow).not.toHaveBeenCalled();
+    expect(await db.transactions.get(intent.id)).toEqual(intent);
   });
 
   it("completes a stable-ID delete intent already absent from K without resolving a tab or source", async () => {

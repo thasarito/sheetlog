@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
+import Dexie from "dexie";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { db } from "./db";
+import { db, SheetLogDB } from "./db";
 import {
   createSheetMutationLock,
   withSheetMutationLock,
@@ -17,6 +18,12 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
 describe("sheet mutation lock", () => {
   beforeEach(async () => {
     vi.stubGlobal("navigator", {});
@@ -26,6 +33,7 @@ describe("sheet mutation lock", () => {
   afterEach(async () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     await db.settings.clear();
   });
 
@@ -40,7 +48,10 @@ describe("sheet mutation lock", () => {
     vi.stubGlobal("navigator", { locks: { request } });
 
     await expect(
-      withSheetMutationLock(SCOPE, async () => "completed"),
+      withSheetMutationLock(SCOPE, async (guard) => {
+        await guard.assertOwnership();
+        return "completed";
+      }),
     ).resolves.toBe("completed");
 
     expect(request).toHaveBeenCalledWith(
@@ -52,11 +63,20 @@ describe("sheet mutation lock", () => {
   });
 
   it("serializes fallback callers for one scope and releases after success", async () => {
+    const databaseName = `SheetMutationLock-${Date.now()}-${Math.random()}`;
+    const firstDatabase = new SheetLogDB(databaseName);
+    const secondDatabase = new SheetLogDB(databaseName);
     const firstEntered = deferred<void>();
     const releaseFirst = deferred<void>();
     const order: string[] = [];
-    const firstContext = createSheetMutationLock();
-    const secondContext = createSheetMutationLock();
+    const firstContext = createSheetMutationLock({
+      database: firstDatabase,
+      lockManager: null,
+    });
+    const secondContext = createSheetMutationLock({
+      database: secondDatabase,
+      lockManager: null,
+    });
     const first = firstContext(SCOPE, async () => {
       order.push("first entered");
       firstEntered.resolve();
@@ -80,7 +100,10 @@ describe("sheet mutation lock", () => {
       "first left",
       "second entered",
     ]);
-    expect(await db.settings.get(LEASE_KEY)).toBeUndefined();
+    expect(await firstDatabase.settings.get(LEASE_KEY)).toBeUndefined();
+    firstDatabase.close();
+    secondDatabase.close();
+    await Dexie.delete(databaseName);
   });
 
   it("releases the fallback lease when the operation throws", async () => {
@@ -96,6 +119,23 @@ describe("sheet mutation lock", () => {
     ).resolves.toBe("recovered");
 
     expect(await db.settings.get(LEASE_KEY)).toBeUndefined();
+  });
+
+  it("preserves the operation error when fallback cleanup also fails", async () => {
+    const operationError = new Error("remote mutation failed");
+    const cleanupError = new Error("lease cleanup failed");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(db.settings, "delete").mockRejectedValueOnce(cleanupError);
+
+    await expect(
+      withSheetMutationLock(SCOPE, async () => {
+        throw operationError;
+      }),
+    ).rejects.toBe(operationError);
+    expect(warn).toHaveBeenCalledWith(
+      "Failed to release the Sheet mutation lock:",
+      cleanupError,
+    );
   });
 
   it("recovers an expired fallback lease left by a stopped context", async () => {
@@ -144,6 +184,85 @@ describe("sheet mutation lock", () => {
     await Promise.all([first, second]);
 
     expect(enteredBeforeRelease).toBe(false);
+  });
+
+  it("fails closed before guarded work after another context takes ownership", async () => {
+    let guardedWorkRan = false;
+
+    await expect(
+      withSheetMutationLock(SCOPE, async (guard) => {
+        await db.settings.put({
+          key: LEASE_KEY,
+          value: JSON.stringify({
+            ownerId: "new-owner",
+            expiresAt: Date.now() + 60_000,
+          }),
+          updatedAt: new Date().toISOString(),
+        });
+        await guard.assertOwnership();
+        guardedWorkRan = true;
+      }),
+    ).rejects.toThrow(
+      "Sheet mutation lock was lost before the operation completed",
+    );
+
+    expect(guardedWorkRan).toBe(false);
+    expect(JSON.parse((await db.settings.get(LEASE_KEY))?.value ?? "{}"))
+      .toMatchObject({ ownerId: "new-owner" });
+  });
+
+  it("fails closed with an actionable error when lease renewal fails", async () => {
+    const originalPut = db.settings.put.bind(db.settings);
+    vi.spyOn(db.settings, "put")
+      .mockImplementationOnce((record, key) => originalPut(record, key))
+      .mockRejectedValueOnce(new Error("IndexedDB renewal failed"));
+    const withShortLease = createSheetMutationLock({
+      leaseDurationMs: 30,
+      lockManager: null,
+      retryDelayMs: 2,
+    });
+    let guardedWorkRan = false;
+
+    await expect(
+      withShortLease(SCOPE, async (guard) => {
+        await delay(20);
+        await guard.assertOwnership();
+        guardedWorkRan = true;
+      }),
+    ).rejects.toThrow(
+      "Sheet mutation lock was lost before the operation completed",
+    );
+
+    expect(guardedWorkRan).toBe(false);
+  });
+
+  it("backs off fallback acquisition retries instead of polling at one fixed delay", async () => {
+    const withFastRetry = createSheetMutationLock({
+      leaseDurationMs: 1_000,
+      lockManager: null,
+      retryDelayMs: 2,
+    });
+    const firstEntered = deferred<void>();
+    const releaseFirst = deferred<void>();
+    const first = withFastRetry(SCOPE, async () => {
+      firstEntered.resolve();
+      await releaseFirst.promise;
+    });
+    await firstEntered.promise;
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const second = withFastRetry(SCOPE, async () => undefined);
+
+    await delay(35);
+    const retryDelays = setTimeoutSpy.mock.calls
+      .map((call) => call[1])
+      .filter((value): value is number =>
+        typeof value === "number" && value <= 20
+      );
+    releaseFirst.resolve();
+    await Promise.all([first, second]);
+
+    expect(retryDelays.length).toBeGreaterThan(1);
+    expect(retryDelays.some((value) => value > retryDelays[0])).toBe(true);
   });
 
   it("lets unrelated sheet or user scopes proceed concurrently", async () => {
