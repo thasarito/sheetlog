@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -196,15 +196,50 @@ function renderFlow() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const createUi = () => (
     <QueryClientProvider client={queryClient}>
       <TransactionFlow />
     </QueryClientProvider>
   );
+  const rendered = render(createUi());
+  return {
+    ...rendered,
+    rerenderFlow: () => rendered.rerender(createUi()),
+  };
 }
 
 function latestNearbyCall() {
   return mocks.nearbyCalls.at(-1);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+async function beginDeferredPlaceSelection(
+  user: ReturnType<typeof userEvent.setup>,
+  selection: ReturnType<typeof deferred<string>>
+) {
+  mocks.resolveSuggestion.mockReturnValueOnce(selection.promise);
+  await user.click(screen.getByRole("button", { name: "Start expense" }));
+  const noteInput = screen.getByPlaceholderText("Add a note...");
+  await user.type(noteInput, "Lunch");
+  await user.click(screen.getByRole("button", { name: "Search places" }));
+  const searchInput = await screen.findByRole("searchbox", {
+    name: "Search places",
+  });
+  await user.type(searchInput, "coffee");
+  await user.click(
+    await screen.findByRole("button", {
+      name: /Coffee House.*123 Main Street/i,
+    })
+  );
+  await screen.findByText("Selecting place…");
+  return noteInput;
 }
 
 beforeAll(() => {
@@ -362,6 +397,63 @@ describe("TransactionFlow Places integration", () => {
     expect(screen.getByRole("dialog", { name: "Search places" })).toBeVisible();
     expect(searchInput).toHaveValue("coffee");
     expect(noteInput).toHaveValue("Lunch");
+  });
+
+  it("ignores a deferred selection after Places eligibility is lost", async () => {
+    const selection = deferred<string>();
+    const user = userEvent.setup();
+    const { rerenderFlow } = renderFlow();
+    const noteInput = await beginDeferredPlaceSelection(user, selection);
+
+    mocks.isOnline = false;
+    rerenderFlow();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Search places" })
+      ).toHaveAttribute("data-state", "closed");
+    });
+
+    await act(async () => selection.resolve("Stale Coffee House"));
+
+    expect(noteInput).toHaveValue("Lunch");
+    expect(screen.queryByRole("button", { name: "Search places" })).not.toBeInTheDocument();
+  });
+
+  it("does not let an old selection alter or close a newly reopened search", async () => {
+    const selection = deferred<string>();
+    const user = userEvent.setup();
+    const { rerenderFlow } = renderFlow();
+    const noteInput = await beginDeferredPlaceSelection(user, selection);
+
+    mocks.isOnline = false;
+    rerenderFlow();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Search places" })
+      ).toHaveAttribute("data-state", "closed");
+    });
+
+    mocks.isOnline = true;
+    rerenderFlow();
+    fireEvent.click(screen.getByRole("button", { name: "Search places" }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Search places" })
+      ).toHaveAttribute("data-state", "open");
+    });
+    const reopenedSearchInput = screen.getByRole("searchbox", {
+      name: "Search places",
+    });
+    await waitFor(() => expect(reopenedSearchInput).toHaveFocus());
+
+    await act(async () => selection.resolve("Stale Coffee House"));
+
+    expect(noteInput).toHaveValue("Lunch");
+    expect(
+      screen.getByRole("dialog", { name: "Search places" })
+    ).toHaveAttribute("data-state", "open");
+    expect(reopenedSearchInput).toHaveFocus();
+    expect(mocks.createSession).toHaveBeenCalledTimes(2);
   });
 
   it("clears search state and creates a new autocomplete session after closing", async () => {

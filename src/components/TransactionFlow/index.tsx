@@ -80,6 +80,10 @@ export function TransactionFlow() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const placeSearchButtonRef = useRef<HTMLButtonElement>(null);
   const noteInputRef = useRef<HTMLInputElement>(null);
+  const placeSearchGenerationRef = useRef(0);
+  const activePlaceSearchSessionRef = useRef<string | null>(null);
+  const placeSearchOpenRef = useRef(false);
+  const canSearchPlacesRef = useRef(false);
   const mutation = useAddTransactionMutation();
   const updateMutation = useUpdateTransactionMutation();
   const deleteMutation = useDeleteTransactionMutation();
@@ -107,6 +111,8 @@ export function TransactionFlow() {
   });
   const canSearchPlaces =
     shouldFetchNearbyPlaces && isOnline && hasGoogleMapsApiKey();
+  placeSearchOpenRef.current = placeSearchOpen;
+  canSearchPlacesRef.current = canSearchPlaces;
   const nearbyPlaces = useNearbyPlaceSuggestions({
     enabled: shouldFetchNearbyPlaces,
     isOnline,
@@ -121,8 +127,22 @@ export function TransactionFlow() {
   const receiptTimeoutRef = useRef<number | null>(null);
   const lastSyncErrorRef = useRef<string | null>(null);
 
-  const restorePlacePickerFocus = useCallback(() => {
+  const invalidatePlaceSearch = useCallback(() => {
+    const nextGeneration = placeSearchGenerationRef.current + 1;
+    placeSearchGenerationRef.current = nextGeneration;
+    activePlaceSearchSessionRef.current = null;
+    placeSearchOpenRef.current = false;
+    return nextGeneration;
+  }, []);
+
+  const restorePlacePickerFocus = useCallback((closedGeneration: number) => {
     window.requestAnimationFrame(() => {
+      if (
+        placeSearchGenerationRef.current !== closedGeneration ||
+        placeSearchOpenRef.current
+      ) {
+        return;
+      }
       const searchButton = placeSearchButtonRef.current;
       if (searchButton?.isConnected) {
         searchButton.focus();
@@ -133,15 +153,20 @@ export function TransactionFlow() {
   }, []);
 
   const closePlaceSearch = useCallback(() => {
+    const closedGeneration = invalidatePlaceSearch();
     setPlaceSearchOpen(false);
-    restorePlacePickerFocus();
-  }, [restorePlacePickerFocus]);
+    restorePlacePickerFocus(closedGeneration);
+  }, [invalidatePlaceSearch, restorePlacePickerFocus]);
 
   const openPlaceSearch = useCallback(() => {
     if (!canSearchPlaces) {
       return;
     }
-    setPlaceSearchSessionId(createPlaceSessionId());
+    const sessionId = createPlaceSessionId();
+    placeSearchGenerationRef.current += 1;
+    activePlaceSearchSessionRef.current = sessionId;
+    placeSearchOpenRef.current = true;
+    setPlaceSearchSessionId(sessionId);
     setPlaceSearchOpen(true);
   }, [canSearchPlaces]);
 
@@ -158,8 +183,26 @@ export function TransactionFlow() {
 
   const handlePlaceSuggestionSelect = useCallback(
     async (suggestion: PlaceSuggestion) => {
+      const selectionGeneration = placeSearchGenerationRef.current;
+      const selectionSessionId = activePlaceSearchSessionRef.current;
+      if (
+        !selectionSessionId ||
+        !placeSearchOpenRef.current ||
+        !canSearchPlacesRef.current
+      ) {
+        return;
+      }
+
       try {
         const displayName = await placeAutocomplete.selectSuggestion(suggestion);
+        if (
+          placeSearchGenerationRef.current !== selectionGeneration ||
+          activePlaceSearchSessionRef.current !== selectionSessionId ||
+          !placeSearchOpenRef.current ||
+          !canSearchPlacesRef.current
+        ) {
+          return;
+        }
         form.setFieldValue("note", displayName);
         closePlaceSearch();
       } catch {
@@ -188,10 +231,15 @@ export function TransactionFlow() {
   }, []);
 
   useEffect(() => {
-    if (placeSearchOpen && !canSearchPlaces) {
-      closePlaceSearch();
+    if (canSearchPlaces) {
+      return;
     }
-  }, [canSearchPlaces, closePlaceSearch, placeSearchOpen]);
+    if (placeSearchOpenRef.current) {
+      closePlaceSearch();
+      return;
+    }
+    invalidatePlaceSearch();
+  }, [canSearchPlaces, closePlaceSearch, invalidatePlaceSearch]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -355,6 +403,7 @@ export function TransactionFlow() {
   }
 
   const resetFlow = useCallback(() => {
+    invalidatePlaceSearch();
     setStep(0);
     setPlaceSearchOpen(false);
     setPlaceSuggestionSessionId(createPlaceSessionId());
@@ -370,7 +419,7 @@ export function TransactionFlow() {
     form.setFieldValue("forValue", "Me");
     form.setFieldValue("note", "");
     form.setFieldValue("dateObject", new Date());
-  }, [mutation, updateMutation, form]);
+  }, [mutation, updateMutation, form, invalidatePlaceSearch]);
 
   const openCreateAmountStep = useCallback(() => {
     setPlaceSuggestionSessionId(createPlaceSessionId());
