@@ -13,6 +13,7 @@ import {
   type ReimbursementSummary,
 } from "../../lib/reimbursements";
 import type { TransactionRecord } from "../../lib/types";
+import { isTransactionInSheetScope } from "../../lib/transactionScope";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 import { useLocalTransactionsQuery } from "./useLocalTransactionsQuery";
 
@@ -51,7 +52,7 @@ export function useReimbursementSummary({
   source: TransactionRecord | null;
   excludeChildId?: string;
 }): ReimbursementSummaryQueryResult {
-  const { accessToken } = useSession();
+  const { accessToken, userProfile } = useSession();
   const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
   const localQuery = useLocalTransactionsQuery();
@@ -83,19 +84,22 @@ export function useReimbursementSummary({
   const cachedRemoteIsKnown = remoteQuery.data !== undefined;
   const remoteRows = sourceIsLocalOnly ? [] : (remoteQuery.data ?? []);
   const localRows = localQuery.data;
+  const scopedLocalRows = localRows?.filter((row) =>
+    isTransactionInSheetScope(row, sheetId, userProfile?.id),
+  );
   const localLedgerIsChecking = Boolean(source && localQuery.isFetching);
   const localLedgerIsError = Boolean(source && localQuery.isError);
   const localLedgerIsReady = Boolean(
     source &&
       !localLedgerIsChecking &&
       !localLedgerIsError &&
-      localRows !== undefined,
+      scopedLocalRows !== undefined,
   );
-  const summary = source && localLedgerIsReady && localRows
+  const summary = source && localLedgerIsReady && scopedLocalRows
     ? calculateReimbursementSummary(
         source,
         remoteRows,
-        localRows,
+        scopedLocalRows,
         excludeChildId,
       )
     : EMPTY_SUMMARY;

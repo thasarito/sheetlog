@@ -33,6 +33,7 @@ describe("Places legal disclosures", () => {
     expect(copy).toContain("does not persist");
     expect(copy).toContain("IP address");
     expect(copy).toContain("browser's location permission prompt");
+    expect(copy).toContain("stable Google account identifier");
 
     expect(screen.getByRole("link", { name: "Google Privacy Policy" })).toHaveAttribute(
       "href",

@@ -26,6 +26,7 @@ const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
 const USER_PROFILE_QUERY_KEY = ["userProfile"] as const;
 
 type UserInfoResponse = {
+  sub?: string;
   name?: string;
   given_name?: string;
   family_name?: string;
@@ -41,7 +42,15 @@ function readStoredProfile(): UserProfile | null {
     return null;
   }
   try {
-    return JSON.parse(raw) as UserProfile;
+    const stored = JSON.parse(raw) as Partial<UserProfile>;
+    if (!stored.name || typeof stored.name !== "string") {
+      return null;
+    }
+    return {
+      id: typeof stored.id === "string" ? stored.id : null,
+      name: stored.name,
+      picture: typeof stored.picture === "string" ? stored.picture : null,
+    };
   } catch {
     return null;
   }
@@ -82,10 +91,17 @@ async function fetchUserProfile(
     throw new Error(`Failed to load user profile: ${response.status}`);
   }
   const data = (await response.json()) as UserInfoResponse;
-  if (!data.name && !data.given_name && !data.family_name && !data.picture) {
+  if (
+    !data.sub &&
+    !data.name &&
+    !data.given_name &&
+    !data.family_name &&
+    !data.picture
+  ) {
     return null;
   }
   return {
+    id: data.sub?.trim() || null,
     name: resolveProfileName(data),
     picture: data.picture ?? null,
   };

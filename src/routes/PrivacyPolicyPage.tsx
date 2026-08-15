@@ -43,8 +43,9 @@ export function PrivacyPolicyPage() {
           </li>
           <li>
             Local app data stored in your browser (IndexedDB and localStorage),
-            including offline transactions, your selected sheet ID, and display
-            preferences.
+            including offline transactions, your selected sheet ID, the stable
+            Google account identifier used to keep offline queues separated,
+            and display preferences.
           </li>
           <li>
             If you allow your browser&apos;s location request while creating an

@@ -18,6 +18,10 @@ export interface TransactionRecord extends TransactionInput {
   status: TransactionStatus;
   createdAt: string;
   updatedAt: string;
+  /** Immutable local queue destination. Never serialized to Google Sheets. */
+  targetSheetId?: string;
+  /** Immutable Google account subject that created the local queue entry. */
+  targetUserId?: string;
   sheetRow?: number;
   sheetId?: string;
   sheetRowValid?: boolean;

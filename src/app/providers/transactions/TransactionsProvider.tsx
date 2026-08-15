@@ -28,6 +28,12 @@ import {
 } from "../../../lib/reimbursements";
 import { getRecentCategories, updateRecentCategory } from "../../../lib/settings";
 import { syncPendingTransactions } from "../../../lib/sync";
+import {
+  LEGACY_TRANSACTION_SCOPE_ERROR,
+  getTransactionTargetSheetId,
+  getTransactionTargetUserId,
+  isTransactionInSheetScope,
+} from "../../../lib/transactionScope";
 import type {
   RecentCategories,
   TransactionInput,
@@ -55,6 +61,48 @@ const readTransactionIdMap = IS_DEV_MODE ? mockReadTransactionIdMap : realReadTr
 const updateRow = IS_DEV_MODE ? mockUpdateRow : realUpdateRow;
 
 class ReimbursementValidationError extends Error {}
+
+class TransactionScopeError extends Error {}
+
+function requireTransactionScope(
+  transaction: TransactionRecord,
+  sheetId: string | null,
+  userId: string | null,
+): void {
+  if (!sheetId) {
+    throw new TransactionScopeError("No active Sheet workspace");
+  }
+  if (!userId) {
+    throw new TransactionScopeError("Google account identity is unavailable");
+  }
+
+  const targetSheetId = getTransactionTargetSheetId(transaction);
+  const targetUserId = getTransactionTargetUserId(transaction);
+  if (!targetSheetId || !targetUserId) {
+    throw new TransactionScopeError(LEGACY_TRANSACTION_SCOPE_ERROR);
+  }
+  if (targetSheetId !== sheetId) {
+    throw new TransactionScopeError(
+      "Transaction belongs to a different Sheet workspace",
+    );
+  }
+  if (targetUserId !== userId) {
+    throw new TransactionScopeError(
+      "Transaction belongs to a different Google account",
+    );
+  }
+}
+
+function canDeleteAsLegacyRecovery(
+  transaction: TransactionRecord,
+  sheetId: string | null,
+): boolean {
+  const targetSheetId = getTransactionTargetSheetId(transaction);
+  return (
+    !getTransactionTargetUserId(transaction) &&
+    (!targetSheetId || targetSheetId === sheetId)
+  );
+}
 
 function lockLinkedInput(
   input: Partial<TransactionInput>,
@@ -132,8 +180,9 @@ function transactionsReducer(
 
 export function TransactionsProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const { accessToken, signOut } = useSession();
+  const { accessToken, userProfile, signOut } = useSession();
   const { sheetId, sheetTabId } = useWorkspace();
+  const userId = userProfile?.id ?? null;
   const { isOnline } = useConnectivity();
   const [state, dispatch] = useReducer(transactionsReducer, {
     queueCount: 0,
@@ -151,15 +200,21 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   }, [state.isSyncing]);
 
   const refreshStats = useCallback(async () => {
-    const pendingCount = await db.transactions
+    if (!sheetId || !userId) {
+      dispatch({ type: "set_stats", queueCount: 0 });
+      return;
+    }
+    const pendingRows = await db.transactions
       .where("status")
       .equals("pending")
-      .count();
+      .toArray();
     dispatch({
       type: "set_stats",
-      queueCount: pendingCount,
+      queueCount: pendingRows.filter((row) =>
+        isTransactionInSheetScope(row, sheetId, userId),
+      ).length,
     });
-  }, []);
+  }, [sheetId, userId]);
 
   const invalidateTransactions = useCallback(async () => {
     await Promise.all([
@@ -207,13 +262,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   }, [refreshStats]);
 
   const performSync = useCallback(async () => {
-    if (!accessToken || !sheetId) {
+    if (!accessToken || !sheetId || !userId) {
       return;
     }
     syncingRef.current = true;
     dispatch({ type: "sync_start" });
     try {
-      await syncPendingTransactions(accessToken, sheetId);
+      await syncPendingTransactions(accessToken, sheetId, userId);
       dispatch({ type: "sync_success", at: new Date().toISOString() });
     } catch (error) {
       const info = mapGoogleSyncError(error);
@@ -237,7 +292,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         }
       }
     }
-  }, [accessToken, sheetId, refreshStats, invalidateTransactions, signOut]);
+  }, [accessToken, sheetId, userId, refreshStats, invalidateTransactions, signOut]);
 
   const syncNow = useCallback(
     () => runExclusive(performSync),
@@ -245,10 +300,10 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   );
 
   useEffect(() => {
-    if (isOnline && accessToken && sheetId) {
+    if (isOnline && accessToken && sheetId && userId) {
       void syncNow();
     }
-  }, [isOnline, accessToken, sheetId, syncNow]);
+  }, [isOnline, accessToken, sheetId, userId, syncNow]);
 
   const markRecentCategory = useCallback(
     async (type: TransactionType, category: string) => {
@@ -260,6 +315,14 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   const addTransactionLocally = useCallback(
     async (input: TransactionInput) => {
+      if (!sheetId) {
+        throw new TransactionScopeError("No active Sheet workspace");
+      }
+      if (!userId) {
+        throw new TransactionScopeError(
+          "Google account identity is unavailable",
+        );
+      }
       const now = new Date().toISOString();
       const id =
         typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -271,6 +334,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         status: "pending",
         createdAt: now,
         updatedAt: now,
+        targetSheetId: sheetId,
+        targetUserId: userId,
       };
       await db.transactions.add(record);
       await Promise.allSettled([
@@ -279,13 +344,14 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       ]);
       return (await db.transactions.get(id)) ?? record;
     },
-    [markRecentCategory, refreshMutationState]
+    [markRecentCategory, refreshMutationState, sheetId, userId]
   );
 
   const updateTransactionUnlocked = useCallback(
     async (id: string, input: Partial<TransactionInput>) => {
       const transaction = await db.transactions.get(id);
       if (!transaction) return;
+      requireTransactionScope(transaction, sheetId, userId);
 
       const now = new Date().toISOString();
       let safeInput = transaction.reimbursesTransactionId
@@ -357,7 +423,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
               const [remoteRows, localRows] = await Promise.all([
                 readLinkedReimbursements(accessToken, sheetId, source.id),
-                db.transactions.toArray(),
+                db.transactions.toArray().then((rows) =>
+                  rows.filter((row) =>
+                    isTransactionInSheetScope(row, sheetId, userId),
+                  ),
+                ),
               ]);
               const summary = calculateReimbursementSummary(
                 source,
@@ -380,6 +450,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               status: "synced",
               updatedAt: now,
               sheetId,
+              targetSheetId: sheetId,
+              targetUserId: userId ?? undefined,
               sheetRow: rowToUpdate,
               error: undefined,
             });
@@ -434,6 +506,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       accessToken,
       isOnline,
       sheetId,
+      userId,
       markRecentCategory,
       performSync,
       refreshMutationState,
@@ -441,7 +514,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   );
 
   const undoLastUnlocked = useCallback(async (): Promise<UndoResult> => {
-    const last = await db.transactions.orderBy("createdAt").last();
+    const last = await db.transactions
+      .orderBy("createdAt")
+      .reverse()
+      .filter((transaction) =>
+        isTransactionInSheetScope(transaction, sheetId, userId),
+      )
+      .first();
     if (!last) {
       return { ok: false, message: "Nothing to undo" };
     }
@@ -507,6 +586,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       updatedAt: now,
       sheetRow: undefined,
       sheetId: undefined,
+      targetSheetId: sheetId ?? undefined,
+      targetUserId: userId ?? undefined,
       error: undefined,
     };
     await db.transactions.add(compensating);
@@ -519,6 +600,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     accessToken,
     sheetId,
     sheetTabId,
+    userId,
     isOnline,
     performSync,
     refreshMutationState,
@@ -530,6 +612,14 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       const transaction = await db.transactions.get(id);
       if (!transaction) {
         return { ok: false, message: "Transaction not found" };
+      }
+
+      const isLegacyRecovery = canDeleteAsLegacyRecovery(
+        transaction,
+        sheetId,
+      );
+      if (!isLegacyRecovery) {
+        requireTransactionScope(transaction, sheetId, userId);
       }
 
       if (transaction.status === "pending" || transaction.status === "error") {
@@ -598,6 +688,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         updatedAt: now,
         sheetRow: undefined,
         sheetId: undefined,
+        targetSheetId: sheetId ?? undefined,
+        targetUserId: userId ?? undefined,
         error: undefined,
       };
       await db.transactions.add(compensating);
@@ -613,6 +705,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       accessToken,
       sheetId,
       sheetTabId,
+      userId,
       isOnline,
       performSync,
       refreshMutationState,

@@ -26,6 +26,7 @@ import { TransactionsProvider } from "./TransactionsProvider";
 
 const providerState = vi.hoisted(() => ({
   accessToken: "access-token" as string | null,
+  userId: "user-a" as string | null,
   sheetId: "sheet-a" as string | null,
   sheetTabId: 0 as number | null,
   isOnline: false,
@@ -75,6 +76,9 @@ vi.mock("../../../lib/sync", () => ({
 vi.mock("../session/session.hooks", () => ({
   useSession: () => ({
     accessToken: providerState.accessToken,
+    userProfile: providerState.userId
+      ? { id: providerState.userId, name: "Test user", picture: null }
+      : null,
     signOut: providerState.signOut,
   }),
 }));
@@ -120,6 +124,8 @@ function transaction(
     status: "synced",
     createdAt: "2026-08-15T08:00:00.000Z",
     updatedAt: "2026-08-15T08:00:00.000Z",
+    targetSheetId: "sheet-a",
+    targetUserId: "user-a",
     sheetId: "sheet-a",
     sheetRow: 2,
     sheetRowValid: true,
@@ -218,6 +224,7 @@ function mutationContext(
 describe("TransactionsProvider", () => {
   beforeEach(async () => {
     providerState.accessToken = "access-token";
+    providerState.userId = "user-a";
     providerState.sheetId = "sheet-a";
     providerState.sheetTabId = 0;
     providerState.isOnline = false;
@@ -254,6 +261,8 @@ describe("TransactionsProvider", () => {
 
     expect(created.id).toBeTruthy();
     expect(created.status).toBe("pending");
+    expect(created.targetSheetId).toBe("sheet-a");
+    expect(created.targetUserId).toBe("user-a");
     expect(await db.transactions.get(created.id)).toEqual(created);
     expect(invalidatedKeys(invalidateQueries)).toEqual(
       expect.arrayContaining([
@@ -263,6 +272,183 @@ describe("TransactionsProvider", () => {
         ["transactionById"],
       ]),
     );
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("refuses to enqueue a transaction without an active sheet scope", async () => {
+    providerState.sheetId = null;
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await expect(harness.getContext().addTransaction(input)).rejects.toThrow(
+        /active sheet/i,
+      );
+    });
+    expect(await db.transactions.count()).toBe(0);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("refuses to enqueue before the stable Google account identity is known", async () => {
+    providerState.userId = null;
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await expect(harness.getContext().addTransaction(input)).rejects.toThrow(
+        /account identity/i,
+      );
+    });
+    expect(await db.transactions.count()).toBe(0);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("counts pending rows only for the active sheet", async () => {
+    await db.transactions.bulkAdd([
+      transaction("pending-a", {
+        status: "pending",
+        sheetId: undefined,
+        sheetRow: undefined,
+      }),
+      transaction("pending-b", {
+        status: "pending",
+        targetSheetId: "sheet-b",
+        sheetId: undefined,
+        sheetRow: undefined,
+      }),
+      transaction("legacy-pending", {
+        status: "pending",
+        targetSheetId: undefined,
+        targetUserId: undefined,
+        sheetId: undefined,
+        sheetRow: undefined,
+      }),
+    ]);
+    const harness = createProviderHarness();
+
+    await waitFor(() => {
+      expect(harness.getContext().queueCount).toBe(1);
+    });
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not edit or sync a row owned by a different sheet", async () => {
+    providerState.sheetId = "sheet-b";
+    await db.transactions.add(
+      transaction("owned-by-a", {
+        status: "error",
+        sheetId: undefined,
+        sheetRow: undefined,
+        error: "Previous failure",
+      }),
+    );
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await expect(
+        harness.getContext().updateTransaction("owned-by-a", {
+          note: "Must stay in A",
+        }),
+      ).rejects.toThrow(/different sheet/i);
+    });
+    expect(await db.transactions.get("owned-by-a")).toMatchObject({
+      note: "Lunch",
+      status: "error",
+      targetSheetId: "sheet-a",
+    });
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not edit a row owned by another Google user on the same sheet", async () => {
+    providerState.userId = "user-b";
+    await db.transactions.add(
+      transaction("owned-by-user-a", {
+        status: "error",
+        sheetId: undefined,
+        sheetRow: undefined,
+        error: "Previous failure",
+      }),
+    );
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await expect(
+        harness.getContext().updateTransaction("owned-by-user-a", {
+          note: "Must stay with user A",
+        }),
+      ).rejects.toThrow(/different.*account/i);
+    });
+    expect(await db.transactions.get("owned-by-user-a")).toMatchObject({
+      note: "Lunch",
+      targetSheetId: "sheet-a",
+      targetUserId: "user-a",
+    });
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("keeps legacy unscoped rows deletable without adopting them", async () => {
+    await db.transactions.add(
+      transaction("legacy-delete", {
+        status: "pending",
+        targetSheetId: undefined,
+        targetUserId: undefined,
+        sheetId: undefined,
+        sheetRow: undefined,
+      }),
+    );
+    const harness = createProviderHarness();
+
+    let result!: Awaited<
+      ReturnType<TransactionsContextValue["deleteTransaction"]>
+    >;
+    await act(async () => {
+      result = await harness.getContext().deleteTransaction("legacy-delete");
+    });
+
+    expect(result).toEqual({ ok: true, message: "Removed pending entry" });
+    expect(await db.transactions.get("legacy-delete")).toBeUndefined();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("keeps legacy unscoped rows in an explicit recovery error instead of adopting them on edit", async () => {
+    await db.transactions.add(
+      transaction("legacy-edit", {
+        status: "pending",
+        targetSheetId: undefined,
+        targetUserId: undefined,
+        sheetId: undefined,
+        sheetRow: undefined,
+      }),
+    );
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await expect(
+        harness.getContext().updateTransaction("legacy-edit", {
+          note: "Do not adopt me",
+        }),
+      ).rejects.toThrow(/cannot sync safely/i);
+    });
+    expect(await db.transactions.get("legacy-edit")).toMatchObject({
+      note: "Lunch",
+      status: "pending",
+      targetSheetId: undefined,
+      targetUserId: undefined,
+    });
 
     harness.rendered.unmount();
     harness.queryClient.clear();
@@ -514,6 +700,8 @@ describe("TransactionsProvider", () => {
       status: "error",
       error: "Amount exceeds remaining reimbursement balance",
       note: "Try adjusted metadata",
+      targetSheetId: "sheet-a",
+      targetUserId: "user-a",
     });
 
     harness.rendered.unmount();
@@ -671,6 +859,71 @@ describe("TransactionsProvider", () => {
     );
     expect(googleMocks.updateRow).not.toHaveBeenCalled();
     expect(await db.transactions.get("child-overage")).toEqual(child);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not reserve a direct linked edit against pending rows from another scope", async () => {
+    const child = transaction("child-current-scope", {
+      type: "income",
+      amount: 40,
+      category: "Reimbursement",
+      reimbursesTransactionId: "source-current-scope",
+      sheetRow: 6,
+    });
+    const source = transaction("source-current-scope", {
+      amount: 100,
+      sheetRow: 3,
+    });
+    const otherScopeSibling = transaction("other-scope-sibling", {
+      type: "income",
+      amount: 20,
+      category: "Reimbursement",
+      reimbursesTransactionId: source.id,
+      status: "pending",
+      targetSheetId: "sheet-b",
+      sheetId: undefined,
+      sheetRow: undefined,
+    });
+    await db.transactions.bulkAdd([child, otherScopeSibling]);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[child.id, 6]]),
+    );
+    googleMocks.readTransactionById.mockImplementation(
+      async (_token: string, _sheetId: string, id: string) =>
+        id === child.id ? child : id === source.id ? source : null,
+    );
+    googleMocks.readLinkedReimbursements.mockResolvedValue([
+      {
+        id: child.id,
+        type: "income",
+        amount: child.amount,
+        currency: "THB",
+        reimbursesTransactionId: source.id,
+        status: "synced",
+      },
+    ]);
+    const harness = createProviderHarness();
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness
+        .getContext()
+        .updateTransaction(child.id, { amount: 95 });
+    });
+
+    expect(updated).toMatchObject({
+      id: child.id,
+      amount: 95,
+      status: "synced",
+    });
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      6,
+      expect.objectContaining({ id: child.id, amount: 95 }),
+    );
 
     harness.rendered.unmount();
     harness.queryClient.clear();
@@ -861,6 +1114,8 @@ describe("TransactionsProvider", () => {
       amount: -25,
       reimbursesTransactionId: "compensated-source",
       status: "pending",
+      targetSheetId: "sheet-a",
+      targetUserId: "user-a",
     });
     expect(remaining[0].id).not.toBe(child.id);
 

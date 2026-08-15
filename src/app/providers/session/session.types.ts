@@ -6,6 +6,8 @@ export type SessionStatus =
   | "error";
 
 export type UserProfile = {
+  /** Stable Google account subject (`sub`), used to isolate local queues. */
+  id: string | null;
   name: string;
   picture: string | null;
 };
@@ -26,4 +28,3 @@ export interface TokenData {
   expires_in: number;
   expires_at: number;
 }
-

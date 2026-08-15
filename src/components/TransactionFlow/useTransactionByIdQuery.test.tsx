@@ -15,11 +15,17 @@ import { useTransactionByIdQuery } from "./useTransactionByIdQuery";
 const providerState = vi.hoisted(() => ({
   accessToken: "access-token" as string | null,
   sheetId: "sheet-a" as string | null,
+  userId: "user-a" as string | null,
   isOnline: true,
 }));
 
 vi.mock("../../app/providers", () => ({
-  useSession: () => ({ accessToken: providerState.accessToken }),
+  useSession: () => ({
+    accessToken: providerState.accessToken,
+    userProfile: providerState.userId
+      ? { id: providerState.userId, name: "Test user", picture: null }
+      : null,
+  }),
   useWorkspace: () => ({ sheetId: providerState.sheetId }),
   useConnectivity: () => ({ isOnline: providerState.isOnline }),
 }));
@@ -44,6 +50,8 @@ function transaction(
     status: "synced",
     createdAt: "2026-08-15T08:00:00.000Z",
     updatedAt: "2026-08-15T08:00:00.000Z",
+    targetSheetId: "sheet-a",
+    targetUserId: "user-a",
     sheetId: "sheet-a",
     sheetRow: 2,
     sheetRowValid: true,
@@ -92,6 +100,7 @@ describe("useTransactionByIdQuery", () => {
   beforeEach(async () => {
     providerState.accessToken = "access-token";
     providerState.sheetId = "sheet-a";
+    providerState.userId = "user-a";
     providerState.isOnline = true;
     onlineManager.setOnline(true);
     vi.mocked(readTransactionById).mockReset();
@@ -235,6 +244,28 @@ describe("useTransactionByIdQuery", () => {
 
     await waitFor(() => {
       expect(result.current.data).toEqual(cachedSource);
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a local record owned by another workspace account", async () => {
+    providerState.isOnline = false;
+    onlineManager.setOnline(false);
+    const otherAccount = localOnly("other-account-source", "pending");
+    await db.transactions.put({
+      ...otherAccount,
+      targetUserId: "user-b",
+    });
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery(otherAccount.id),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.data).toBeNull();
     });
     expect(readTransactionById).not.toHaveBeenCalled();
   });

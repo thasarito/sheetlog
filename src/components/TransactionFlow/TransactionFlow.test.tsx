@@ -184,6 +184,9 @@ vi.mock("./useTransactionForm", async (importOriginal) => {
 
 vi.mock("../../app/providers", () => ({
   useConnectivity: () => ({ isOnline: true }),
+  useSession: () => ({
+    userProfile: { id: "user-a", name: "Test user", picture: null },
+  }),
   useWorkspace: () => ({ sheetId: "sheet-a" }),
   useTransactions: () => ({
     addTransaction: mocks.addTransaction,
@@ -551,6 +554,21 @@ describe("TransactionFlow reimbursement entry", () => {
     });
     expect(screen.getByPlaceholderText("Add a note...")).toHaveValue("");
     expect(screen.queryByDisplayValue("Lunch")).not.toBeInTheDocument();
+  });
+
+  it("stamps a remote dashboard row with the current immutable local scope before editing", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Edit expense" }));
+
+    await waitFor(() => {
+      expect(mocks.dbPut).toHaveBeenCalledWith({
+        ...mocks.expense,
+        targetSheetId: "sheet-a",
+        targetUserId: "user-a",
+      });
+    });
   });
 
   it("shows Reimburse only for parsed positive expenses in Delete, Reimburse, Save order", async () => {

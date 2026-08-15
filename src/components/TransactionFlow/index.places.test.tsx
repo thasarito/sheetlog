@@ -68,6 +68,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../app/providers", () => ({
   useConnectivity: () => ({ isOnline: mocks.isOnline }),
+  useSession: () => ({
+    userProfile: { id: "user-a", name: "Test user", picture: null },
+  }),
+  useWorkspace: () => ({ sheetId: "sheet-a" }),
   useTransactions: () => ({
     undoLast: vi.fn(async () => ({ message: "Undone" })),
     lastSyncError: null,

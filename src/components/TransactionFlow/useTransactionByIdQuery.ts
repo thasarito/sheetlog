@@ -7,6 +7,7 @@ import {
   readTransactionById as mockReadTransactionById,
 } from "../../lib/mock";
 import type { TransactionRecord } from "../../lib/types";
+import { isTransactionInSheetScope } from "../../lib/transactionScope";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 
 const readTransactionById = IS_DEV_MODE
@@ -44,7 +45,7 @@ function findRecentTransaction(
 }
 
 export function useTransactionByIdQuery(id: string | null | undefined) {
-  const { accessToken } = useSession();
+  const { accessToken, userProfile } = useSession();
   const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
@@ -73,7 +74,16 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
         id,
       );
       const localTransaction = await db.transactions.get(id);
-      return localTransaction ?? recentTransaction ?? null;
+      const scopedLocalTransaction =
+        localTransaction &&
+        isTransactionInSheetScope(
+          localTransaction,
+          sheetId,
+          userProfile?.id,
+        )
+          ? localTransaction
+          : undefined;
+      return scopedLocalTransaction ?? recentTransaction ?? null;
     },
   });
 

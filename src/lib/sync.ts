@@ -27,6 +27,7 @@ import {
   validateReimbursementAmount,
 } from './reimbursements';
 import type { TransactionRecord } from './types';
+import { isTransactionInSheetScope } from './transactionScope';
 
 const appendTransaction = IS_DEV_MODE ? mockAppendTransaction : realAppendTransaction;
 const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
@@ -160,6 +161,8 @@ function isSamePendingRevision(
 ): boolean {
   return (
     current.status === 'pending' &&
+    current.targetSheetId === attempted.targetSheetId &&
+    current.targetUserId === attempted.targetUserId &&
     current.createdAt === attempted.createdAt &&
     current.updatedAt === attempted.updatedAt &&
     hasSameTransactionContent(current, attempted)
@@ -180,14 +183,22 @@ async function updatePendingRevision(
   });
 }
 
-async function getPendingRevision(id: string): Promise<TransactionRecord | null> {
+async function getPendingRevision(
+  id: string,
+  sheetId: string,
+  userId: string,
+): Promise<TransactionRecord | null> {
   const current = await db.transactions.get(id);
-  return current?.status === 'pending' ? current : null;
+  return current?.status === 'pending' &&
+    isTransactionInSheetScope(current, sheetId, userId)
+    ? current
+    : null;
 }
 
 async function validateLinkedTransaction(
   accessToken: string,
   sheetId: string,
+  userId: string,
   item: TransactionRecord,
 ): Promise<void> {
   const sourceId = item.reimbursesTransactionId;
@@ -196,7 +207,10 @@ async function validateLinkedTransaction(
   }
 
   const localSource = await db.transactions.get(sourceId);
-  if (localSource?.status === 'error') {
+  if (
+    localSource?.status === 'error' &&
+    isTransactionInSheetScope(localSource, sheetId, userId)
+  ) {
     throw new ReimbursementSyncValidationError(ORIGINAL_EXPENSE_FAILED);
   }
 
@@ -216,7 +230,12 @@ async function validateLinkedTransaction(
     db.transactions
       .where('status')
       .anyOf('pending', 'error')
-      .toArray(),
+      .toArray()
+      .then((rows) =>
+        rows.filter((row) =>
+          isTransactionInSheetScope(row, sheetId, userId),
+        ),
+      ),
   ]);
   const summary = calculateReimbursementSummary(
     source,
@@ -256,11 +275,17 @@ async function rollbackDeletedAppend(
 export async function syncPendingTransactions(
   accessToken: string,
   sheetId: string,
+  userId: string,
 ): Promise<number> {
   const pendingByCreatedAt = await db.transactions
     .where('status')
     .equals('pending')
-    .sortBy('createdAt');
+    .sortBy('createdAt')
+    .then((rows) =>
+      rows.filter((row) =>
+        isTransactionInSheetScope(row, sheetId, userId),
+      ),
+    );
   if (pendingByCreatedAt.length === 0) {
     return 0;
   }
@@ -280,7 +305,7 @@ export async function syncPendingTransactions(
   };
 
   for (const snapshotItem of pendingSnapshot) {
-    let item = await getPendingRevision(snapshotItem.id);
+    let item = await getPendingRevision(snapshotItem.id, sheetId, userId);
     if (!item) {
       continue;
     }
@@ -293,7 +318,7 @@ export async function syncPendingTransactions(
           throw new TypeError('Current transaction row could not be read');
         }
 
-        item = await getPendingRevision(item.id);
+        item = await getPendingRevision(item.id, sheetId, userId);
         if (!item) {
           continue;
         }
@@ -306,6 +331,7 @@ export async function syncPendingTransactions(
             await validateLinkedTransaction(
               accessToken,
               sheetId,
+              userId,
               itemForWrite,
             );
           }
@@ -333,14 +359,14 @@ export async function syncPendingTransactions(
         continue;
       }
 
-      item = await getPendingRevision(item.id);
+      item = await getPendingRevision(item.id, sheetId, userId);
       if (!item) {
         continue;
       }
 
       if (item.reimbursesTransactionId) {
         await ensureLinkedHeader();
-        await validateLinkedTransaction(accessToken, sheetId, item);
+        await validateLinkedTransaction(accessToken, sheetId, userId, item);
       }
 
       const rowIndex = await appendTransaction(accessToken, sheetId, item);
@@ -348,7 +374,11 @@ export async function syncPendingTransactions(
         existingIds.set(item.id, rowIndex);
       }
 
-      if (!(await db.transactions.get(snapshotItem.id))) {
+      const currentAfterAppend = await db.transactions.get(snapshotItem.id);
+      if (
+        !currentAfterAppend ||
+        !isTransactionInSheetScope(currentAfterAppend, sheetId, userId)
+      ) {
         await rollbackDeletedAppend(accessToken, sheetId, item.id);
         continue;
       }
@@ -362,11 +392,18 @@ export async function syncPendingTransactions(
       });
       if (didMarkSynced) {
         syncedCount += 1;
-      } else if (!(await db.transactions.get(item.id))) {
-        await rollbackDeletedAppend(accessToken, sheetId, item.id);
+      } else {
+        const current = await db.transactions.get(item.id);
+        if (!current || !isTransactionInSheetScope(current, sheetId, userId)) {
+          await rollbackDeletedAppend(accessToken, sheetId, item.id);
+        }
       }
     } catch (error) {
-      if (!(await db.transactions.get(snapshotItem.id))) {
+      const current = await db.transactions.get(snapshotItem.id);
+      if (
+        !current ||
+        !isTransactionInSheetScope(current, sheetId, userId)
+      ) {
         if (error instanceof ReimbursementSyncValidationError) {
           continue;
         }

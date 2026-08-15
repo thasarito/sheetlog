@@ -2,7 +2,12 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { parseDate } from "../../lib/date-utils";
-import { useConnectivity, useTransactions } from "../../app/providers";
+import {
+  useConnectivity,
+  useSession,
+  useTransactions,
+  useWorkspace,
+} from "../../app/providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { Header } from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
@@ -142,6 +147,8 @@ function receiptDataFromRecord(record: TransactionRecord): ReceiptData {
 
 export function TransactionFlow() {
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
+  const { userProfile } = useSession();
+  const { sheetId } = useWorkspace();
   const { onboarding, refreshOnboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
   const [isResyncing, setIsResyncing] = useState(false);
@@ -699,8 +706,16 @@ export function TransactionFlow() {
       if (!flowGeneration.isCurrent(token, flowKey)) {
         return;
       }
-      if (!existingTransaction) {
-        await db.transactions.put(transaction);
+      if (
+        sheetId &&
+        userProfile?.id &&
+        (!existingTransaction || existingTransaction.status === "synced")
+      ) {
+        await db.transactions.put({
+          ...transaction,
+          targetSheetId: sheetId,
+          targetUserId: userProfile.id,
+        });
         if (!flowGeneration.isCurrent(token, flowKey)) {
           return;
         }
@@ -720,7 +735,13 @@ export function TransactionFlow() {
       setShowDeleteConfirm(false);
       setStep(1);
     },
-    [deleteMutation.isPending, flowGeneration, form],
+    [
+      deleteMutation.isPending,
+      flowGeneration,
+      form,
+      sheetId,
+      userProfile?.id,
+    ],
   );
 
   const handleDelete = useCallback(() => {

@@ -55,6 +55,8 @@ function transaction(
     date: "2026-08-15T08:00:00.000Z",
     note: "Original",
     status: "pending",
+    targetSheetId: "sheet-a",
+    targetUserId: "user-a",
     createdAt: "2026-08-15T08:00:00.000Z",
     updatedAt: "2026-08-15T08:00:00.000Z",
     ...overrides,
@@ -113,6 +115,77 @@ describe("syncPendingTransactions concurrency", () => {
     await db.transactions.clear();
   });
 
+  it("keeps an offline A queue out of B after sign-out and resumes it only when A returns", async () => {
+    const sheetA = transaction("sheet-a-only");
+    const sheetB = transaction("sheet-b-only", { targetSheetId: "sheet-b" });
+    const otherUser = transaction("sheet-b-other-user", {
+      targetSheetId: "sheet-b",
+      targetUserId: "user-b",
+    });
+    const legacy = transaction("legacy-unscoped", {
+      targetSheetId: undefined,
+      targetUserId: undefined,
+    });
+    await db.transactions.bulkAdd([sheetA, sheetB, otherUser, legacy]);
+
+    expect(
+      await syncPendingTransactions("token-b", "sheet-b", "user-a"),
+    ).toBe(1);
+    expect(
+      googleMocks.appendTransaction.mock.calls.map(
+        (call) => (call[2] as TransactionRecord).id,
+      ),
+    ).toEqual(["sheet-b-only"]);
+    expect(await db.transactions.get("sheet-b-only")).toMatchObject({
+      status: "synced",
+      sheetId: "sheet-b",
+      targetSheetId: "sheet-b",
+    });
+    expect(await db.transactions.get("sheet-a-only")).toMatchObject({
+      status: "pending",
+      targetSheetId: "sheet-a",
+    });
+    expect(await db.transactions.get("legacy-unscoped")).toMatchObject({
+      status: "pending",
+    });
+    expect(await db.transactions.get("sheet-b-other-user")).toMatchObject({
+      status: "pending",
+      targetUserId: "user-b",
+    });
+
+    googleMocks.appendTransaction.mockClear();
+    googleMocks.readTransactionIdMap.mockResolvedValue(new Map());
+
+    expect(
+      await syncPendingTransactions("token-a", "sheet-a", "user-a"),
+    ).toBe(1);
+    expect(
+      googleMocks.appendTransaction.mock.calls.map(
+        (call) => (call[2] as TransactionRecord).id,
+      ),
+    ).toEqual(["sheet-a-only"]);
+    expect(await db.transactions.get("sheet-a-only")).toMatchObject({
+      status: "synced",
+      sheetId: "sheet-a",
+      targetSheetId: "sheet-a",
+    });
+    expect(await db.transactions.get("legacy-unscoped")).toMatchObject({
+      status: "pending",
+      targetSheetId: undefined,
+    });
+
+    googleMocks.appendTransaction.mockClear();
+    googleMocks.readTransactionIdMap.mockResolvedValue(new Map());
+    expect(
+      await syncPendingTransactions("token-b-user", "sheet-b", "user-b"),
+    ).toBe(1);
+    expect(
+      googleMocks.appendTransaction.mock.calls.map(
+        (call) => (call[2] as TransactionRecord).id,
+      ),
+    ).toEqual(["sheet-b-other-user"]);
+  });
+
   it("skips a snapshot row deleted before its remote write", async () => {
     const pending = transaction("deleted-before-write");
     await db.transactions.add(pending);
@@ -121,7 +194,7 @@ describe("syncPendingTransactions concurrency", () => {
       return new Map();
     });
 
-    const count = await syncPendingTransactions("access-token", "sheet-a");
+    const count = await syncPendingTransactions("access-token", "sheet-a", "user-a");
 
     expect(count).toBe(0);
     expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
@@ -140,7 +213,7 @@ describe("syncPendingTransactions concurrency", () => {
       return new Map();
     });
 
-    await syncPendingTransactions("access-token", "sheet-a");
+    await syncPendingTransactions("access-token", "sheet-a", "user-a");
 
     expect(googleMocks.appendTransaction).toHaveBeenCalledWith(
       "access-token",
@@ -166,7 +239,7 @@ describe("syncPendingTransactions concurrency", () => {
       return releaseAppend.promise;
     });
 
-    const activeSync = syncPendingTransactions("access-token", "sheet-a");
+    const activeSync = syncPendingTransactions("access-token", "sheet-a", "user-a");
     await appendStarted.promise;
     await db.transactions.delete(pending.id);
     releaseAppend.resolve(12);
@@ -196,7 +269,7 @@ describe("syncPendingTransactions concurrency", () => {
     });
     googleMocks.deleteRow.mockRejectedValueOnce(cleanupError);
 
-    const activeSync = syncPendingTransactions("access-token", "sheet-a");
+    const activeSync = syncPendingTransactions("access-token", "sheet-a", "user-a");
     await appendStarted.promise;
     await db.transactions.delete(pending.id);
     releaseAppend.resolve(13);
@@ -225,7 +298,7 @@ describe("syncPendingTransactions concurrency", () => {
       return releaseAppend.promise;
     });
 
-    const firstSync = syncPendingTransactions("access-token", "sheet-a");
+    const firstSync = syncPendingTransactions("access-token", "sheet-a", "user-a");
     await appendStarted.promise;
     await db.transactions.update(pending.id, {
       note: "Edited during append",
@@ -240,7 +313,7 @@ describe("syncPendingTransactions concurrency", () => {
     });
 
     googleMocks.readTransactionById.mockResolvedValue(remoteBeforeEdit);
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.updateRow).toHaveBeenCalledWith(
       "access-token",
@@ -286,7 +359,7 @@ describe("syncPendingTransactions concurrency", () => {
     googleMocks.readTransactionIdMap.mockResolvedValue(new Map([[pending.id, 9]]));
     googleMocks.readTransactionById.mockResolvedValue(remote);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.updateRow).toHaveBeenCalledWith(
       "access-token",
@@ -366,7 +439,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
         remoteById.get(id) ?? null,
     );
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(3);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(3);
 
     expect(
       googleMocks.appendTransaction.mock.calls.map(
@@ -395,7 +468,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
     ]);
     googleMocks.readTransactionById.mockResolvedValue(source);
 
-    await syncPendingTransactions("access-token", "sheet-a");
+    await syncPendingTransactions("access-token", "sheet-a", "user-a");
 
     expect(googleMocks.ensureReimbursementHeader).toHaveBeenCalledTimes(1);
     expect(
@@ -444,7 +517,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       ),
     ]);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
     expect(googleMocks.ensureReimbursementHeader).toHaveBeenCalledTimes(1);
@@ -496,7 +569,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
     );
     googleMocks.readTransactionById.mockResolvedValue(remoteChild);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.ensureReimbursementHeader).toHaveBeenCalledTimes(1);
     expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
@@ -532,7 +605,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
         id === remoteChild.id ? remoteChild : null,
     );
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.updateRow).toHaveBeenCalledWith(
       "access-token",
@@ -568,7 +641,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
         id === remoteChild.id ? remoteChild : null,
     );
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(0);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(0);
 
     expect(googleMocks.updateRow).not.toHaveBeenCalled();
     expect(await db.transactions.get(remoteChild.id)).toMatchObject({
@@ -602,7 +675,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
     );
     googleMocks.readTransactionById.mockResolvedValue(remoteChild);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.updateRow).toHaveBeenCalledWith(
       "access-token",
@@ -655,7 +728,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       linkedLedgerRow(staleRemoteDuplicate),
     ]);
 
-    await syncPendingTransactions("access-token", "sheet-a");
+    await syncPendingTransactions("access-token", "sheet-a", "user-a");
 
     expect(await db.transactions.get(current.id)).toMatchObject({
       status: "error",
@@ -695,7 +768,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       linkedLedgerRow(mismatchedSibling),
     ]);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(await db.transactions.get(child.id)).toMatchObject({
       status: "error",
@@ -747,7 +820,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       linkedLedgerRow(remoteChild),
     ]);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(0);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(0);
 
     expect(await db.transactions.get(remoteChild.id)).toMatchObject({
       status: "error",
@@ -788,7 +861,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       },
     ]);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.updateRow).toHaveBeenCalledWith(
       "access-token",
@@ -822,7 +895,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       linkedLedgerRow(confirmed),
     ]);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(googleMocks.appendTransaction).toHaveBeenCalledWith(
       "access-token",
@@ -860,7 +933,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       },
     );
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(0);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(0);
 
     expect(await db.transactions.get(source.id)).toMatchObject({
       status: "error",
@@ -920,7 +993,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
     await db.transactions.add(child);
     googleMocks.readTransactionById.mockResolvedValue(source);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(0);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(0);
 
     expect(await db.transactions.get(child.id)).toMatchObject({
       status: "error",
@@ -945,7 +1018,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
       sheetRow: 2,
     });
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(0);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(0);
 
     expect(await db.transactions.get(child.id)).toMatchObject({
       status: "error",
@@ -965,7 +1038,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
     });
     await db.transactions.bulkAdd([invalidChild, unrelated]);
 
-    expect(await syncPendingTransactions("access-token", "sheet-a")).toBe(1);
+    expect(await syncPendingTransactions("access-token", "sheet-a", "user-a")).toBe(1);
 
     expect(await db.transactions.get(invalidChild.id)).toMatchObject({
       status: "error",
@@ -999,7 +1072,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
     googleMocks.readLinkedReimbursements.mockRejectedValue(networkError);
 
     await expect(
-      syncPendingTransactions("access-token", "sheet-a"),
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
     ).rejects.toBe(networkError);
 
     expect(await db.transactions.get(child.id)).toMatchObject({
@@ -1028,7 +1101,7 @@ describe("syncPendingTransactions reimbursement validation", () => {
     });
 
     await expect(
-      syncPendingTransactions("access-token", "sheet-a"),
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
     ).resolves.toBe(1);
 
     expect(await db.transactions.get(child.id)).toBeUndefined();
