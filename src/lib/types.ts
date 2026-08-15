@@ -10,6 +10,7 @@ export interface TransactionInput {
   category: string;
   date: string;
   note?: string;
+  reimbursesTransactionId?: string;
 }
 
 export interface TransactionRecord extends TransactionInput {
@@ -19,6 +20,7 @@ export interface TransactionRecord extends TransactionInput {
   updatedAt: string;
   sheetRow?: number;
   sheetId?: string;
+  sheetRowValid?: boolean;
   error?: string;
 }
 
