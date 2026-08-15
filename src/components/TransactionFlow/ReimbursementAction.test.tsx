@@ -22,6 +22,7 @@ function renderAction({
   isChecking = false,
   isError = false,
   needsOnlineVerification = false,
+  isDeleting = false,
   onRetry = vi.fn(),
   onReimburse = vi.fn(),
 }: {
@@ -29,6 +30,7 @@ function renderAction({
   isChecking?: boolean;
   isError?: boolean;
   needsOnlineVerification?: boolean;
+  isDeleting?: boolean;
   onRetry?: () => void;
   onReimburse?: () => void;
 } = {}) {
@@ -39,6 +41,7 @@ function renderAction({
       isChecking={isChecking}
       isError={isError}
       needsOnlineVerification={needsOnlineVerification}
+      isDeleting={isDeleting}
       onRetry={onRetry}
       onReimburse={onReimburse}
     />
@@ -160,6 +163,18 @@ describe("ReimbursementAction", () => {
     renderAction({ value: summary({ remaining: Number.NaN }), onReimburse });
 
     screen.getByRole("button", { name: "Reimburse" }).click();
+
+    expect(onReimburse).not.toHaveBeenCalled();
+  });
+
+  it("disables and ignores reimbursement while the source is deleting", async () => {
+    const user = userEvent.setup();
+    const onReimburse = vi.fn();
+    renderAction({ isDeleting: true, onReimburse });
+
+    const action = screen.getByRole("button", { name: "Reimburse" });
+    expect(action).toBeDisabled();
+    await user.click(action);
 
     expect(onReimburse).not.toHaveBeenCalled();
   });

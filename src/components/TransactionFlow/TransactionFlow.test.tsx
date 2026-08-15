@@ -420,6 +420,61 @@ describe("TransactionFlow reimbursement entry", () => {
     );
   });
 
+  it("clears an armed delete confirmation across a reimbursement round trip", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+    await openExpenseEditor(user);
+
+    await user.click(
+      screen.getByRole("button", { name: "Delete transaction" }),
+    );
+    expect(mocks.deleteTransaction).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Reimburse" }));
+    await user.click(screen.getByRole("button", { name: "Go back" }));
+
+    await user.click(
+      screen.getByRole("button", { name: "Delete transaction" }),
+    );
+    expect(mocks.deleteTransaction).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "Delete transaction" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.deleteTransaction).toHaveBeenCalledWith("expense-1");
+    });
+  });
+
+  it("blocks reimbursement while source deletion is in flight", async () => {
+    const deletion = deferred<{ ok: boolean; message: string }>();
+    mocks.deleteTransaction.mockReturnValue(deletion.promise);
+    const user = userEvent.setup();
+    renderFlow();
+    await openExpenseEditor(user);
+
+    const deleteButton = screen.getByRole("button", {
+      name: "Delete transaction",
+    });
+    const reimburse = screen.getByRole("button", { name: "Reimburse" });
+    await user.click(deleteButton);
+    act(() => {
+      deleteButton.click();
+      reimburse.click();
+    });
+    await waitFor(() => {
+      expect(mocks.deleteTransaction).toHaveBeenCalledWith("expense-1");
+    });
+
+    expect(reimburse).toBeDisabled();
+    expect(screen.queryByText("Reimbursement")).not.toBeInTheDocument();
+    expect(screen.getByText("Food")).toBeInTheDocument();
+
+    await act(async () => {
+      deletion.resolve({ ok: true, message: "Removed synced entry" });
+      await deletion.promise;
+    });
+  });
+
   it("never enables Places in reimbursement mode", async () => {
     const user = userEvent.setup();
     renderFlow();

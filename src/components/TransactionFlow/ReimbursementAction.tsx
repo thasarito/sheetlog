@@ -6,6 +6,7 @@ export type ReimbursementActionProps = {
   isChecking: boolean;
   isError: boolean;
   needsOnlineVerification: boolean;
+  isDeleting?: boolean;
   onRetry: () => void;
   onReimburse: () => void;
 };
@@ -26,6 +27,7 @@ export function ReimbursementAction({
   isChecking,
   isError,
   needsOnlineVerification,
+  isDeleting = false,
   onRetry,
   onReimburse,
 }: ReimbursementActionProps) {
@@ -43,6 +45,7 @@ export function ReimbursementAction({
   const canReimburse =
     !isChecking &&
     !isError &&
+    !isDeleting &&
     !hasCurrencyMismatch &&
     !isOverReimbursed &&
     hasKnownRemaining &&

@@ -106,6 +106,7 @@ export function TransactionFlow() {
   const reimbursementMutation = useCreateReimbursementMutation();
   const reimbursementSubmissionRef = useRef(false);
   const reimbursementUndoRef = useRef(false);
+  const sourceDeletionRef = useRef(false);
   const form = useTransactionForm({
     onSubmit: async (values) => {
       await handleSubmit(values);
@@ -489,6 +490,7 @@ export function TransactionFlow() {
     setDateDrawerOpen(false);
     reimbursementSubmissionRef.current = false;
     reimbursementUndoRef.current = false;
+    sourceDeletionRef.current = false;
     mutation.reset();
     updateMutation.reset();
     reimbursementMutation.reset();
@@ -552,12 +554,20 @@ export function TransactionFlow() {
       });
       return;
     }
+    if (deleteMutation.isPending || sourceDeletionRef.current) {
+      return;
+    }
+    sourceDeletionRef.current = true;
     deleteMutation.mutate(flowMode.transaction.id, {
       onSuccess: () => {
         resetFlow();
       },
       onError: () => {
         toast.error("Failed to delete transaction");
+      },
+      onSettled: () => {
+        sourceDeletionRef.current = false;
+        setShowDeleteConfirm(false);
       },
     });
   }, [flowMode, showDeleteConfirm, deleteMutation, resetFlow]);
@@ -567,6 +577,8 @@ export function TransactionFlow() {
     setReceiptData(null);
     setCreatedReimbursement(null);
     setFlowMode({ kind: "create" });
+    setShowDeleteConfirm(false);
+    sourceDeletionRef.current = false;
     mutation.reset();
     updateMutation.reset();
     reimbursementMutation.reset();
@@ -611,6 +623,8 @@ export function TransactionFlow() {
     if (
       flowMode.kind !== "edit" ||
       !isReimbursableExpense(flowMode.transaction) ||
+      deleteMutation.isPending ||
+      sourceDeletionRef.current ||
       reimbursementSummary.isChecking ||
       reimbursementSummary.isError ||
       reimbursementSummary.summary.currencyMismatchIds.length > 0 ||
@@ -638,6 +652,7 @@ export function TransactionFlow() {
     reimbursementSubmissionRef.current = false;
     setCreatedReimbursement(null);
     setReceiptData(null);
+    setShowDeleteConfirm(false);
     setCategoryDrawerOpen(false);
     setDateDrawerOpen(false);
     setFlowMode({ kind: "reimburse", source });
@@ -655,6 +670,7 @@ export function TransactionFlow() {
       setFlowMode({ kind: "edit", transaction: flowMode.source });
       setCreatedReimbursement(null);
       setReceiptData(null);
+      setShowDeleteConfirm(false);
       setDateDrawerOpen(false);
       reimbursementMutation.reset();
       setStep(1);
@@ -671,6 +687,8 @@ export function TransactionFlow() {
   async function handleReimbursementSubmit(values: TransactionFormValues) {
     if (
       flowMode.kind !== "reimburse" ||
+      deleteMutation.isPending ||
+      sourceDeletionRef.current ||
       reimbursementSubmissionRef.current ||
       reimbursementMutation.isPending
     ) {
@@ -893,6 +911,7 @@ export function TransactionFlow() {
                 currency={flowMode.transaction.currency}
                 isChecking={reimbursementSummary.isChecking}
                 isError={reimbursementSummary.isError}
+                isDeleting={deleteMutation.isPending}
                 needsOnlineVerification={
                   reimbursementSummary.needsOnlineVerification
                 }
