@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
 import { Loader2, XCircle } from "lucide-react";
-import type { TransactionType } from "../../lib/types";
+import type { TransactionStatus, TransactionType } from "../../lib/types";
 import {
   CircleCheckIcon,
   type CircleCheckIconHandle,
@@ -26,6 +26,11 @@ type StepReceiptProps = ReceiptData & {
   errorMessage?: string;
   onDone?: () => void;
   onUndo?: () => void;
+  variant?: "transaction" | "reimbursement";
+  syncStatus?: TransactionStatus;
+  doneLabel?: string;
+  undoLabel?: string;
+  showTimedProgress?: boolean;
 };
 
 const TYPE_LABELS: Record<TransactionType, string> = {
@@ -49,6 +54,11 @@ export function StepReceipt({
   errorMessage,
   onDone,
   onUndo,
+  variant = "transaction",
+  syncStatus,
+  doneLabel,
+  undoLabel,
+  showTimedProgress,
 }: StepReceiptProps) {
   const amountLabel = amount ? amount : "0";
   const amountDisplay = `${currency} ${amountLabel}`;
@@ -59,18 +69,37 @@ export function StepReceipt({
     : isError
     ? "error"
     : "loading";
-  const statusTitle =
-    normalizedStatus === "loading"
-      ? "Saving transaction"
-      : normalizedStatus === "success"
-      ? "Payment Successful"
-      : "Save failed";
-  const statusDescription =
-    normalizedStatus === "loading"
-      ? "Hang tight while we log this entry."
-      : normalizedStatus === "success"
-      ? "Transaction added to your ledger."
-      : errorMessage || "Check your connection and try again.";
+  const isReimbursement = variant === "reimbursement";
+  let statusTitle: string;
+  let statusDescription: string;
+
+  if (normalizedStatus === "loading") {
+    statusTitle = isReimbursement
+      ? "Saving reimbursement"
+      : "Saving transaction";
+    statusDescription = isReimbursement
+      ? "Hang tight while we record this reimbursement."
+      : "Hang tight while we log this entry.";
+  } else if (normalizedStatus === "error") {
+    statusTitle = isReimbursement ? "Reimbursement failed" : "Save failed";
+    statusDescription =
+      errorMessage || "Check your connection and try again.";
+  } else if (isReimbursement && syncStatus === "synced") {
+    statusTitle = "Reimbursement recorded";
+    statusDescription = "Saved to Google Sheets.";
+  } else if (isReimbursement) {
+    statusTitle = "Reimbursement queued";
+    statusDescription = "Saved locally and will sync to Google Sheets.";
+  } else {
+    statusTitle = "Payment Successful";
+    statusDescription = "Transaction added to your ledger.";
+  }
+
+  const resolvedDoneLabel = doneLabel ?? "Done";
+  const resolvedUndoLabel =
+    undoLabel ?? (isReimbursement ? "Undo reimbursement" : "Undo");
+  const shouldShowTimedProgress =
+    showTimedProgress ?? variant === "transaction";
   const accountLabel = type === "transfer" ? "From" : "Account";
   const forLabel = type === "transfer" ? "To" : "For";
   const checkIconRef = useRef<CircleCheckIconHandle | null>(null);
@@ -153,7 +182,7 @@ export function StepReceipt({
               >
                 {amountDisplay}
               </p>
-              {isSuccess ? null : (
+              {isSuccess && !isReimbursement ? null : (
                 <p className="text-xs text-muted-foreground">
                   {statusDescription}
                 </p>
@@ -196,21 +225,24 @@ export function StepReceipt({
             className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground"
             onClick={onDone}
           >
-            <span className="relative z-10">Done</span>
-            <motion.span
-              aria-hidden="true"
-              className="absolute bottom-0 left-0 h-1 w-full origin-left bg-success-foreground/35"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 2, ease: "linear" }}
-            />
+            <span className="relative z-10">{resolvedDoneLabel}</span>
+            {shouldShowTimedProgress ? (
+              <motion.span
+                data-testid="receipt-timed-progress"
+                aria-hidden="true"
+                className="absolute bottom-0 left-0 h-1 w-full origin-left bg-success-foreground/35"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 2, ease: "linear" }}
+              />
+            ) : null}
           </button>
           <button
             type="button"
             className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground"
             onClick={onUndo}
           >
-            Undo
+            {resolvedUndoLabel}
           </button>
         </div>
       ) : null}

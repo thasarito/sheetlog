@@ -33,6 +33,11 @@ type StepAmountProps = {
   onSearchPlaces?: () => void;
   searchButtonRef?: React.Ref<HTMLButtonElement>;
   noteInputRef?: React.Ref<HTMLInputElement>;
+  currencyLocked?: boolean;
+  forLocked?: boolean;
+  amountLocked?: boolean;
+  preserveCurrencyOnAccountChange?: boolean;
+  middleAction?: React.ReactNode;
 };
 
 export function StepAmount({
@@ -55,6 +60,11 @@ export function StepAmount({
   onSearchPlaces,
   searchButtonRef,
   noteInputRef,
+  currencyLocked = false,
+  forLocked = false,
+  amountLocked = false,
+  preserveCurrencyOnAccountChange = false,
+  middleAction,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -69,7 +79,10 @@ export function StepAmount({
   const handleAccountChange = useCallback(
     (value: string) => {
       form.setFieldValue("account", value);
-      if (typeof window === "undefined") {
+      if (
+        preserveCurrencyOnAccountChange ||
+        typeof window === "undefined"
+      ) {
         return;
       }
       const accountCurrency = window.localStorage.getItem(
@@ -86,7 +99,7 @@ export function StepAmount({
         form.setFieldValue("currency", fallbackCurrency);
       }
     },
-    [form]
+    [form, preserveCurrencyOnAccountChange]
   );
   const toAccountOptions = useMemo(() => {
     if (!isTransfer || !hasTransferAccounts) {
@@ -147,6 +160,7 @@ export function StepAmount({
           <CurrencyPicker
             value={currency}
             onChange={(value) => form.setFieldValue("currency", value)}
+            disabled={currencyLocked}
           />
         </div>
 
@@ -164,7 +178,7 @@ export function StepAmount({
               value={selectedFor}
               options={toAccountOptions}
               onChange={(value) => form.setFieldValue("forValue", value)}
-              disabled={!hasTransferAccounts}
+              disabled={!hasTransferAccounts || forLocked}
             />
           ) : (
             <InlinePicker
@@ -172,6 +186,7 @@ export function StepAmount({
               value={selectedFor}
               options={FOR_OPTIONS}
               onChange={(value) => form.setFieldValue("forValue", value)}
+              disabled={forLocked}
             />
           )}
         </div>
@@ -216,12 +231,14 @@ export function StepAmount({
         <Keypad
           value={amount}
           onChange={(value) => form.setFieldValue("amount", value)}
+          disabled={amountLocked}
         />
 
         <div className="flex items-center gap-2">
           {onDelete && (
             <button
               type="button"
+              aria-label="Delete transaction"
               className={cn(
                 "flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive",
                 (isSubmitting || isDeleting) && "opacity-60"
@@ -232,6 +249,7 @@ export function StepAmount({
               <Trash2 className="h-4 w-4" />
             </button>
           )}
+          {middleAction}
           <button
             type="button"
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
