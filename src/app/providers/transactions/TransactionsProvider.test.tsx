@@ -752,25 +752,39 @@ describe("TransactionsProvider", () => {
   });
 
   it("keeps linked locked fields safe when an in-place network write queues", async () => {
-    const child = transaction("network-child", {
+    const remoteChild = transaction("network-child", {
       type: "income",
       amount: 25,
       category: "Reimbursement",
+      account: "Remote bank",
+      date: "2026-08-15T11:00:00.000Z",
+      note: "Remote note",
       reimbursesTransactionId: "network-source",
+      createdAt: "2026-08-15T10:00:00.000Z",
       sheetRow: 14,
     });
-    await db.transactions.add(child);
+    const staleLocalChild = {
+      ...remoteChild,
+      amount: 10,
+      account: "Stale wallet",
+      date: "2026-08-14T11:00:00.000Z",
+      note: "Stale note",
+      createdAt: "2026-08-14T10:00:00.000Z",
+      sheetRow: 99,
+      error: "Stale error",
+    };
+    await db.transactions.add(staleLocalChild);
     googleMocks.readTransactionIdMap.mockResolvedValue(
-      new Map([[child.id, 14]]),
+      new Map([[remoteChild.id, 13]]),
     );
-    googleMocks.readTransactionById.mockResolvedValue(child);
+    googleMocks.readTransactionById.mockResolvedValue(remoteChild);
     googleMocks.updateRow.mockRejectedValue(new TypeError("offline"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const harness = createProviderHarness();
 
     let updated!: TransactionRecord | undefined;
     await act(async () => {
-      updated = await harness.getContext().updateTransaction(child.id, {
+      updated = await harness.getContext().updateTransaction(remoteChild.id, {
         type: "expense",
         category: "Tampered",
         currency: "USD",
@@ -781,14 +795,29 @@ describe("TransactionsProvider", () => {
     });
 
     expect(warn).toHaveBeenCalled();
-    expect(updated).toMatchObject({
-      type: "income",
-      category: "Reimbursement",
-      currency: "THB",
-      for: "Me",
-      reimbursesTransactionId: "network-source",
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      14,
+      {
+        ...remoteChild,
+        type: "income",
+        category: "Reimbursement",
+        currency: "THB",
+        for: "Me",
+        reimbursesTransactionId: "network-source",
+        note: "Queued note",
+        updatedAt: expect.any(String),
+        error: undefined,
+      },
+    );
+    expect(updated).toEqual({
+      ...remoteChild,
       note: "Queued note",
       status: "pending",
+      updatedAt: expect.any(String),
+      sheetRow: undefined,
+      error: undefined,
     });
 
     harness.rendered.unmount();

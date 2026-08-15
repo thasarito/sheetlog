@@ -273,6 +273,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       let safeInput = transaction.reimbursesTransactionId
         ? lockLinkedInput(input, transaction)
         : input;
+      let prospectiveRecord: TransactionRecord = {
+        ...transaction,
+        ...safeInput,
+        updatedAt: now,
+      };
 
       if (transaction.status === "synced" && accessToken && sheetId) {
         try {
@@ -282,11 +287,10 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           if (currentRow !== undefined) {
             let rowToUpdate = currentRow;
             let updatedRecord: TransactionRecord = {
-              ...transaction,
-              ...safeInput,
-              updatedAt: now,
+              ...prospectiveRecord,
               sheetRow: currentRow,
             };
+            prospectiveRecord = updatedRecord;
 
             if (transaction.reimbursesTransactionId) {
               const remoteChild = await readTransactionById(
@@ -316,7 +320,9 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 sheetId,
                 sheetRow: rowToUpdate,
                 updatedAt: now,
+                error: undefined,
               };
+              prospectiveRecord = updatedRecord;
 
               if (updatedRecord.amount !== authoritativeChild.amount) {
                 const sourceId = authoritativeChild.reimbursesTransactionId;
@@ -390,8 +396,9 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         }
       }
 
-      await db.transactions.update(id, {
-        ...safeInput,
+      await db.transactions.put({
+        ...prospectiveRecord,
+        id: transaction.id,
         status: "pending",
         updatedAt: now,
         sheetRow: undefined,
