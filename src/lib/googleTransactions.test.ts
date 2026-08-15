@@ -239,6 +239,79 @@ describe("Google transaction Sheet APIs", () => {
     });
   });
 
+  it("re-resolves column K once when a row shift returns a different transaction", async () => {
+    const shiftedRow = [...legacyRow];
+    shiftedRow[10] = "other-id";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["other-id"], [], ["expense-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [shiftedRow] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["other-id"], [], [], ["expense-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [legacyRow] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const record = await readTransactionById(
+      ACCESS_TOKEN,
+      SHEET_ID,
+      "expense-1",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(requestAt(fetchMock, 1)[0]).toContain("Transactions!A4:L4");
+    expect(requestAt(fetchMock, 2)[0]).toContain("Transactions!K2:K");
+    expect(requestAt(fetchMock, 3)[0]).toContain("Transactions!A5:L5");
+    expect(record).toMatchObject({
+      id: "expense-1",
+      sheetId: SHEET_ID,
+      sheetRow: 5,
+    });
+  });
+
+  it("returns null when a mismatched row is no longer present in the refreshed ID map", async () => {
+    const shiftedRow = [...legacyRow];
+    shiftedRow[10] = "other-id";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["other-id"], [], ["expense-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [shiftedRow] }))
+      .mockResolvedValueOnce(jsonResponse({ values: [["other-id"]] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readTransactionById(ACCESS_TOKEN, SHEET_ID, "expense-1"),
+    ).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds row-shift recovery to one retry when the second row also mismatches", async () => {
+    const firstWrongRow = [...legacyRow];
+    firstWrongRow[10] = "other-id";
+    const secondWrongRow = [...legacyRow];
+    secondWrongRow[10] = "another-id";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["other-id"], [], ["expense-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [firstWrongRow] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["other-id"], [], [], ["expense-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [secondWrongRow] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      readTransactionById(ACCESS_TOKEN, SHEET_ID, "expense-1"),
+    ).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
   it("returns null without a row fetch when the stable ID is absent", async () => {
     const fetchMock = vi
       .fn()

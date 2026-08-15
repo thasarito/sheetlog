@@ -665,25 +665,32 @@ export async function readTransactionById(
   spreadsheetId: string,
   id: string
 ): Promise<TransactionRecord | null> {
-  const rowIndex = (await readTransactionIdMap(accessToken, spreadsheetId)).get(
-    id
-  );
-  if (rowIndex === undefined) {
-    return null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const rowIndex = (
+      await readTransactionIdMap(accessToken, spreadsheetId)
+    ).get(id);
+    if (rowIndex === undefined) {
+      return null;
+    }
+
+    const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
+    const data = await fetchWithAuth<{ values?: unknown[][] }>(url, accessToken);
+    const row = data.values?.[0];
+    if (!row) {
+      continue;
+    }
+
+    const transaction = parseTransactionRow(row, rowIndex);
+    if (transaction.id === id) {
+      return {
+        ...transaction,
+        sheetId: spreadsheetId,
+      };
+    }
   }
 
-  const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
-  const data = await fetchWithAuth<{ values?: unknown[][] }>(url, accessToken);
-  const row = data.values?.[0];
-  if (!row) {
-    return null;
-  }
-
-  return {
-    ...parseTransactionRow(row, rowIndex),
-    sheetId: spreadsheetId,
-  };
+  return null;
 }
 
 function finiteSheetAmount(value: unknown): number | null {
