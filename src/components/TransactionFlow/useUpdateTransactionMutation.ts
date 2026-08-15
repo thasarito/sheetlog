@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TransactionInput } from "../../lib/types";
 import { useTransactions } from "../../app/providers";
+import { transactionQueryKeys } from "./transactionQueryKeys";
 
 export function useUpdateTransactionMutation() {
   const { updateTransaction } = useTransactions();
@@ -14,10 +15,23 @@ export function useUpdateTransactionMutation() {
       id: string;
       input: Partial<TransactionInput>;
     }) => {
-      await updateTransaction(id, input);
+      const record = await updateTransaction(id, input);
+      if (record?.status === "error") {
+        throw new Error(
+          record.error ?? "Transaction could not be synced. Retry or delete it.",
+        );
+      }
+      return record;
     },
-    onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["recentTransactions"] });
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
+        queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
+        queryClient.invalidateQueries({
+          queryKey: transactionQueryKeys.reimbursements,
+        }),
+        queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
+      ]);
     },
   });
 }
