@@ -8,6 +8,7 @@ import { InlinePicker } from "../ui/inline-picker";
 import { FOR_OPTIONS } from "./constants";
 import { NearbyPlaceChips } from "./NearbyPlaceChips";
 import { STORAGE_KEYS } from "../../lib/constants";
+import type { PlaceSuggestion } from "../../lib/googlePlaces";
 import type { TransactionFormApi } from "./useTransactionForm";
 
 type StepAmountProps = {
@@ -25,9 +26,12 @@ type StepAmountProps = {
   // Quick note mode props
   customHeader?: React.ReactNode;
   optionalAmount?: boolean;
-  nearbyPlaceSuggestions?: string[];
+  nearbyPlaceSuggestions?: PlaceSuggestion[];
   isNearbyPlacesLoading?: boolean;
-  onNearbyPlaceSelect?: (placeName: string) => void;
+  canSearchPlaces?: boolean;
+  onNearbyPlaceSelect?: (suggestion: PlaceSuggestion) => void;
+  onSearchPlaces?: () => void;
+  searchButtonRef?: React.Ref<HTMLButtonElement>;
 };
 
 export function StepAmount({
@@ -45,7 +49,10 @@ export function StepAmount({
   optionalAmount = false,
   nearbyPlaceSuggestions = [],
   isNearbyPlacesLoading = false,
+  canSearchPlaces = false,
   onNearbyPlaceSelect,
+  onSearchPlaces,
+  searchButtonRef,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -54,8 +61,9 @@ export function StepAmount({
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
   const shouldRenderNearbyPlaces =
-    Boolean(onNearbyPlaceSelect) &&
-    (isNearbyPlacesLoading || nearbyPlaceSuggestions.length > 0);
+    isNearbyPlacesLoading ||
+    nearbyPlaceSuggestions.length > 0 ||
+    canSearchPlaces;
   const handleAccountChange = useCallback(
     (value: string) => {
       form.setFieldValue("account", value);
@@ -183,11 +191,14 @@ export function StepAmount({
           />
         </div>
 
-        {shouldRenderNearbyPlaces && onNearbyPlaceSelect ? (
+        {shouldRenderNearbyPlaces ? (
           <NearbyPlaceChips
             suggestions={nearbyPlaceSuggestions}
             isLoading={isNearbyPlacesLoading}
-            onSelect={onNearbyPlaceSelect}
+            canSearch={canSearchPlaces}
+            onSelect={(suggestion) => onNearbyPlaceSelect?.(suggestion)}
+            onSearch={() => onSearchPlaces?.()}
+            searchButtonRef={searchButtonRef}
           />
         ) : null}
       </div>
