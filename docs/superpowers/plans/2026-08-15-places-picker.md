@@ -48,13 +48,15 @@ expect(await getNearbyPlaces(coords, { apiKey: "test-key" })).toEqual([
 ]);
 
 const session = await createPlaceAutocompleteSession({ apiKey: "test-key" });
-expect(await searchPlaceSuggestions("cafe", session, coords)).toEqual([
+const suggestions = await searchPlaceSuggestions("cafe", session, coords);
+expect(suggestions).toEqual([
   { placeId: "cafe-1", name: "Cafe Amazon", secondaryText: "Sukhumvit Road" },
 ]);
-expect(await resolvePlaceSuggestionName(rawSuggestion)).toBe("Cafe Amazon");
+expect(await resolvePlaceSuggestionName(suggestions[0], session)).toBe("Cafe Amazon");
+endPlaceAutocompleteSession(session);
 ```
 
-Also add a loader-recovery test: dispatch `error` on the first inserted script, call the client again, and assert a new script is inserted and can resolve.
+Also add a loader-recovery test: dispatch `error` on the first inserted script, call the client again, and assert a new script is inserted and can resolve. After ending the autocomplete session, assert selection resolution for its old suggestion fails without retaining the raw prediction.
 
 - [ ] **Step 2: Run the browser-client tests and verify they fail**
 
@@ -97,9 +99,11 @@ export async function resolvePlaceSuggestionName(
   suggestion: PlaceSuggestion,
   session: PlaceAutocompleteSession,
 ): Promise<string>;
+
+export function endPlaceAutocompleteSession(session: PlaceAutocompleteSession): void;
 ```
 
-Use `fields: ["id", "displayName", "formattedAddress"]` for nearby, cap and deduplicate by `placeId`, use `includedPrimaryTypes: ["establishment"]` for autocomplete, and call `prediction.toPlace().fetchFields({ fields: ["displayName"] })` on selection. Keep raw predictions in a module-scoped `Map<GoogleAutocompleteSessionToken, Map<string, GooglePlacePrediction>>`; this makes the token object plus place ID the in-memory lookup key and allows all entries to be deleted when the session ends.
+Use `fields: ["id", "displayName", "formattedAddress"]` for nearby, cap and deduplicate by `placeId`, and use `includedPrimaryTypes: ["establishment"]` plus `locationBias: { center: locationBias, radius: 5_000 }` when coordinates exist. Call `prediction.toPlace().fetchFields({ fields: ["displayName"] })` on selection. Keep raw predictions in a module-scoped `Map<GoogleAutocompleteSessionToken, Map<string, GooglePlacePrediction>>`; this makes the token object plus place ID the in-memory lookup key and allows `endPlaceAutocompleteSession` to delete all entries when the sheet closes or selection completes.
 
 - [ ] **Step 4: Make script failure retryable**
 
@@ -117,7 +121,7 @@ The next explicit client call must create a fresh script. `resetGooglePlacesLoad
 
 - [ ] **Step 5: Extend only the Maps shapes the client uses**
 
-In `global.d.ts`, declare IDs, formatted addresses, autocomplete tokens, suggestions, predictions, `toPlace()`, and `fetchFields()` without using `any`. Keep `window.google` optional so tests can exercise script loading.
+In `global.d.ts`, place IDs, formatted addresses, autocomplete tokens, suggestions, predictions, `toPlace()`, and `fetchFields()` inside `declare global` so the aliases are visible to `googlePlaces.ts`, without using `any`. Keep `window.google` optional so tests can exercise script loading.
 
 - [ ] **Step 6: Run the browser-client tests**
 
@@ -222,6 +226,8 @@ expect(searchPlaceSuggestions).toHaveBeenCalledTimes(1);
 
 Rerender with a longer query while the first promise is unresolved and verify the older resolution never replaces the current result. Close and reopen the sheet and verify a new session token is created.
 
+Also assert that `open: false`, `enabled: false`, and an input shortened below two characters make no request and expose an empty suggestion list, even when a previous query has cached results. Simulate failure once in session creation and once in suggestions; the exposed Retry must recover the failed layer after the loader resets.
+
 - [ ] **Step 2: Run the hook tests and verify failure**
 
 Run: `npm run test -- src/components/TransactionFlow/usePlaceAutocomplete.test.tsx`
@@ -235,19 +241,31 @@ Export this interface:
 ```ts
 export function usePlaceAutocomplete({
   open,
+  enabled,
   sessionId,
   locationBias,
 }: {
   open: boolean;
+  enabled: boolean;
   sessionId: number;
   locationBias?: Coordinates;
-}) {
-  // returns input, setInput, suggestions, isLoading, isError,
-  // retry, selectSuggestion, and reset
-}
+}): {
+  input: string;
+  setInput: (value: string) => void;
+  suggestions: PlaceSuggestion[];
+  isLoading: boolean;
+  isSelecting: boolean;
+  isError: boolean;
+  error: Error | null;
+  retry: () => Promise<void>;
+  selectSuggestion: (suggestion: PlaceSuggestion) => Promise<string>;
+  reset: () => void;
+};
 ```
 
-Create one session with a TanStack query keyed by `['placeAutocompleteSession', sessionId]`. Debounce normalized input by 250 ms, enable the suggestions query only at two characters, use `placeholderData: (previous) => previous`, and key it by session ID plus debounced input. `selectSuggestion` resolves the display name through the same session. When `open` becomes false, clear input, remove session-scoped suggestion queries, and end the in-memory session.
+Create one session with a TanStack query keyed by `['placeAutocompleteSession', sessionId]`. Both session and suggestion queries require `open && enabled`; use `retry: false`, `refetchOnWindowFocus: false`, and `refetchOnReconnect: false`. Debounce normalized input by 250 ms, enable suggestions only at two characters, use `placeholderData: (previous) => previous` only while the current normalized input still meets the threshold, and key by session ID plus normalized debounced input. Expose `[]` immediately below threshold or while closed.
+
+Implement `selectSuggestion` with TanStack `useMutation`, disable repeat selection while it is pending, and resolve the display name through the same session. `retry()` refetches a failed session query first and otherwise the failed suggestion query. When `open` becomes false, call `endPlaceAutocompleteSession`, clear input, and remove both the session key and every suggestion key for that session so token and unselected prediction state cannot persist.
 
 - [ ] **Step 4: Run the autocomplete-hook tests**
 
@@ -257,7 +275,7 @@ Expected: PASS for threshold, debounce, one token, stale-response isolation, sel
 
 - [ ] **Step 5: Write failing search-sheet tests**
 
-Assert that opening renders a dialog named `Search places`, focuses the search box, shows name plus secondary address, preserves text on an inline error, calls Retry, and emits the selected display name before closing.
+Assert that opening renders a dialog named `Search places`, focuses the search box, shows name plus secondary address, preserves text on an inline error, calls Retry, and emits the selected `PlaceSuggestion`. While selection is pending, keep the sheet open and disable result buttons; the flow—not this presentational drawer—closes it only after successful `fetchFields()` resolution.
 
 - [ ] **Step 6: Implement attribution and the drawer**
 
@@ -269,7 +287,7 @@ Assert that opening renders a dialog named `Search places`, focuses the search b
 </p>
 ```
 
-`PlaceSearchDrawer` uses the shared Vaul primitives, a controlled `open`, and a `requestAnimationFrame` in an effect to call `inputRef.current?.focus()` only after opening. Results are buttons with the primary name and `secondaryText`; loading, empty, error, and Retry remain inside the sheet. Do not initialize its input from the transaction note.
+`PlaceSearchDrawer` uses the shared Vaul primitives, a controlled `open`, and a `requestAnimationFrame` in an effect to call `inputRef.current?.focus()` only after opening. Results are buttons with the primary name and `secondaryText`; loading, empty, error, Retry, and selection errors remain inside the sheet. Accept `isSelecting` and `onSelect: (suggestion: PlaceSuggestion) => void`. Do not initialize its input from the transaction note.
 
 - [ ] **Step 7: Run the search-sheet tests**
 
@@ -383,7 +401,9 @@ Expected: FAIL because the predicate is absent.
 
 - [ ] **Step 3: Implement and use the predicate**
 
-In `TransactionFlow`, include `type === "expense"` in nearby eligibility, pass `isOnline`, and keep a separate `placeSearchOpen` plus incrementing `placeSearchSessionId`. Render `PlaceSearchDrawer` at the flow root. A nearby selection writes `suggestion.name`; an autocomplete selection first calls the hook's `selectSuggestion(suggestion)` so `fetchFields()` completes the provider session, then writes the resolved display name and closes:
+In the current flow, map state into the predicate as `mode: editingTransaction ? "edit" : "create"` and `hasReceipt: step === 2 || receiptData !== null`. Always call nearby/autocomplete hooks, but pass `enabled: false` outside eligibility; never conditionally call a hook. Search enablement is also gated by `isOnline && hasGoogleMapsApiKey()`, so opening/closed state cannot load Maps while offline or unconfigured.
+
+Keep a separate `placeSearchOpen` plus incrementing `placeSearchSessionId` and a ref to the Search chip. Render `PlaceSearchDrawer` at the flow root. A nearby selection writes `suggestion.name`; an autocomplete selection first calls the hook's `selectSuggestion(suggestion)` so `fetchFields()` completes the provider session, then writes the resolved display name and closes:
 
 ```ts
 const displayName = await placeAutocomplete.selectSuggestion(suggestion);
@@ -392,6 +412,8 @@ setPlaceSearchOpen(false);
 ```
 
 Pass the nearby coordinates as autocomplete bias. Do not mount or query Places for edit, receipt, or reimbursement mode; the later reimbursement plan must preserve this predicate when it introduces the discriminated flow mode.
+
+After a successful selection/close, restore focus to the Search chip (or the note input if the chip is no longer mounted) and test the focus target. On selection failure, keep the drawer and input open with an inline retryable error.
 
 - [ ] **Step 4: Run focused Places tests**
 
@@ -432,11 +454,15 @@ Run:
 
 ```bash
 npm run test -- src/lib/googlePlaces.test.ts src/components/TransactionFlow/useNearbyPlaceSuggestions.test.tsx src/components/TransactionFlow/usePlaceAutocomplete.test.tsx src/components/TransactionFlow/NearbyPlaceChips.test.tsx src/components/TransactionFlow/PlaceSearchDrawer.test.tsx src/components/TransactionFlow/StepAmount.test.tsx src/components/TransactionFlow/placesEligibility.test.ts
+npm run test
 npx tsc --noEmit
 npm run lint
+CI=1 VITE_DEV_MODE=true VITE_GOOGLE_MAPS_API_KEY=test-key npx playwright test --project="Mobile Chrome"
 ```
 
-Expected: all tests and typecheck pass; lint exits 0 with no new findings.
+Expected: all unit and Mobile Chrome tests and typecheck pass; lint exits 0 with no new findings.
+
+Manually verify the HTTPS PWA with permission allow/deny, offline and missing-key no-prompt behavior, five nearby chips plus Search, real mobile keyboard focus, explicit loader Retry, Google Maps attribution, and no Places work in income/transfer/edit/receipt/Quick Note/reimbursement modes.
 
 - [ ] **Step 5: Commit docs and disclosures**
 

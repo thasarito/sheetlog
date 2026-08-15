@@ -35,6 +35,8 @@
 - Modify `src/components/TransactionFlow/useAddTransactionMutation.ts`, `useUpdateTransactionMutation.ts`, and `useDeleteTransactionMutation.ts`: returned record and consistent invalidation.
 - Create `src/components/TransactionFlow/useCreateReimbursementMutation.ts`: derived linked-income mutation.
 - Create `src/components/TransactionFlow/useCreateReimbursementMutation.test.tsx`: locked fields and cap.
+- Modify `src/components/TransactionFlow/transactionSchema.ts`: strict finite amount parsing.
+- Create `src/components/TransactionFlow/transactionSchema.test.ts`: blank/prefix/non-finite validation.
 - Modify `src/components/CurrencyPicker.tsx`, `src/components/Keypad.tsx`, and `src/components/TransactionFlow/StepAmount.tsx`: opt-in locks and middle action slot.
 - Modify `src/components/TransactionFlow/StepAmount.test.tsx`: reimbursement control contracts.
 - Create `src/components/TransactionFlow/ReimbursementAction.tsx`: balance/action UI.
@@ -156,11 +158,21 @@ export type ReimbursementSummary = {
   currencyMismatchIds: string[];
 };
 
+export type ReimbursementLedgerRow = {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  currency: string;
+  reimbursesTransactionId?: string;
+  status: TransactionStatus;
+  sheetRow?: number;
+};
+
 export function isReimbursableExpense(source: TransactionRecord): boolean;
 export function calculateReimbursementSummary(
   source: TransactionRecord,
-  remoteRows: TransactionRecord[],
-  localRows: TransactionRecord[],
+  remoteRows: ReimbursementLedgerRow[],
+  localRows: ReimbursementLedgerRow[],
   excludeChildId?: string,
 ): ReimbursementSummary;
 export function validateReimbursementAmount(amount: number, summary: ReimbursementSummary): string | null;
@@ -217,10 +229,10 @@ Export:
 ```ts
 export async function ensureReimbursementHeader(accessToken: string, spreadsheetId: string): Promise<void>;
 export async function readTransactionById(accessToken: string, spreadsheetId: string, id: string): Promise<TransactionRecord | null>;
-export async function readLinkedReimbursements(accessToken: string, spreadsheetId: string, sourceId: string): Promise<TransactionRecord[]>;
+export async function readLinkedReimbursements(accessToken: string, spreadsheetId: string, sourceId: string): Promise<ReimbursementLedgerRow[]>;
 ```
 
-`readLinkedReimbursements` calls Sheets `values:batchGet` for encoded ranges `Transactions!B2:C` and `Transactions!H2:L`, aligns both returned arrays with row index `offset + 2`, and returns only rows whose L value equals `sourceId`. Give these focused records deterministic `createdAt`/`updatedAt` fallbacks based on row index, `status: "synced"`, and `sheetId`.
+`readLinkedReimbursements` calls Sheets `values:batchGet` for encoded ranges `Transactions!B2:C` and `Transactions!H2:L`, aligns both returned arrays with row index `offset + 2`, and returns only focused `ReimbursementLedgerRow` values whose L value equals `sourceId`; do not invent missing date/category/note/account fields. Assign `sheetId` to every full record returned by `getRecentTransactions` and `readTransactionById`, and mirror that provenance in mock recent/source reads so offline logic can distinguish remote rows from local-only sources.
 
 - [ ] **Step 5: Mirror behavior in mock mode**
 
@@ -305,7 +317,7 @@ export function useReimbursementSummary({
 }): ReimbursementSummaryQueryResult;
 ```
 
-The remote query is keyed by sheet/source and enabled only online with credentials and a non-local-only source. Combine `remoteQuery.data ?? cachedRemote ?? []` with `useLocalTransactionsQuery().data ?? []` through `calculateReimbursementSummary(source, remoteRows, localRows, excludeChildId)`. Return:
+The remote query is keyed by sheet/source and enabled only online with credentials and a non-local-only source. Set `staleTime: 0` and `refetchOnMount: "always"`; while online, `isChecking` follows the fresh fetch even if cached data is visible, so Reimburse stays disabled until the check completes. Offline may use `remoteQuery.data ?? cachedRemote ?? []`. Combine remote rows with `useLocalTransactionsQuery().data ?? []` through `calculateReimbursementSummary(source, remoteRows, localRows, excludeChildId)`. Return:
 
 ```ts
 {
@@ -321,7 +333,7 @@ Do not write the remote result to Dexie or localStorage.
 
 - [ ] **Step 6: Write and implement source-by-ID query tests**
 
-The hook first checks Dexie, then TanStack recent-query caches, then calls `readTransactionById` online. It returns `null` when the ID is authoritatively missing and stays in a quiet error state on transient failure. Use `transactionQueryKeys.transaction` and test local, cached, remote, and missing cases.
+The hook treats a Dexie source as authoritative only when it is genuinely local-only (`status` pending/error and no `sheetId`). A synced Dexie or recent-cache value is placeholder data; while online, resolve the current source by K/A:L before enabling amount editing so remote delete/retype/currency changes are observed. It returns `null` when the ID is authoritatively missing and stays in a quiet error state on transient failure. Use `transactionQueryKeys.transaction` and test local-only, stale synced Dexie, cached, fresh remote, and missing cases.
 
 - [ ] **Step 7: Run all query tests**
 
@@ -357,6 +369,8 @@ expect(deleteRow).toHaveBeenCalledWith(token, sheetId, 0, currentRowFromK);
 
 Use a record whose cached `sheetRow` differs from the K map. Test tab ID `0`, an error row deleting locally without compensation, saving an error row transitions it to pending, a remote-missing synced row is removed locally, and query invalidations include local/recent/reimbursement prefixes. Also delete a source expense with linked children and assert only the source is removed; linked incomes remain as audit rows with their dangling relation.
 
+For a synced linked child, test that increasing amount validates against the current source and other children before `updateRow`, while an account/date/note-only edit remains allowed when the source is missing. Attempts to alter type/category/currency/For/relation must be replaced with the original child values at the provider boundary.
+
 - [ ] **Step 2: Run provider tests and verify failure**
 
 Run: `npm run test -- src/app/providers/transactions/TransactionsProvider.test.tsx`
@@ -369,25 +383,35 @@ Change the context signature to:
 
 ```ts
 addTransaction: (input: TransactionInput) => Promise<TransactionRecord>;
+updateTransaction: (
+  id: string,
+  input: Partial<TransactionInput>,
+) => Promise<TransactionRecord | undefined>;
 ```
 
 Inside the provider, call `useQueryClient()` and define `invalidateTransactions(record?)` to invalidate `local`, `recent`, and `reimbursements`. After any immediate sync attempt, read the record back from Dexie and return that latest copy, falling back to the originally-created record. Callers therefore receive both the stable ID and actual queued/synced/error status without relying on `undoLast` ordering.
 
-- [ ] **Step 4: Fix direct delete and undo row resolution**
+Run invalidation after every Dexie add/update/delete/status transition and in `syncNow`'s `finally`, not only in mutation-hook success handlers. When moving an error row back to pending, clear its stale `error` field before sync.
+
+- [ ] **Step 4: Validate direct linked updates**
+
+Before a synced linked reimbursement calls `updateRow`, read the current child by K and build the prospective record using original type/category/currency/For/relation regardless of form input. If amount changes, resolve the current source and calculate remaining excluding this child; reject an invalid increase while keeping the form values. If the source is missing, allow only account/date/note changes with amount and locked fields unchanged. Network failure may fall back to pending, but the queued sync must enforce the same rules.
+
+- [ ] **Step 5: Fix direct delete and undo row resolution**
 
 For synced rows, obtain `effectiveTabId` and require `effectiveTabId !== null`. Always resolve `currentRow = (await readTransactionIdMap(...)).get(id)` immediately before `deleteRow`; never use cached `sheetRow`. If no K entry exists, remove the stale local copy as already absent. Treat `pending` and `error` as direct local deletes. Preserve `reimbursesTransactionId` on compensating entries.
 
-- [ ] **Step 5: Make mutations invalidate rather than force-fetch**
+- [ ] **Step 6: Make mutations invalidate rather than force-fetch**
 
-Have add/update/delete mutation hooks return provider results and call `queryClient.invalidateQueries` for recent, local, and reimbursement prefixes. This allows offline mutations to settle without requiring a network refetch.
+Have add/update/delete mutation hooks return provider results and call `queryClient.invalidateQueries` for recent, local, and reimbursement prefixes. If add/update returns `status: "error"`, reject the UI mutation with that record's actionable error while leaving the local error row visible; validation failure therefore keeps the form open instead of showing a success receipt. This allows valid offline pending mutations to settle without requiring a network refetch.
 
-- [ ] **Step 6: Run provider and mutation tests**
+- [ ] **Step 7: Run provider and mutation tests**
 
 Run: `npm run test -- src/app/providers/transactions/TransactionsProvider.test.tsx`
 
 Expected: PASS for exact IDs, tab 0, shifted rows, error retry/delete, and invalidation.
 
-- [ ] **Step 7: Commit provider reliability fixes**
+- [ ] **Step 8: Commit provider reliability fixes**
 
 ```bash
 git add src/app/providers/transactions/TransactionsContext.tsx src/app/providers/transactions/TransactionsProvider.tsx src/app/providers/transactions/TransactionsProvider.test.tsx src/components/TransactionFlow/useAddTransactionMutation.ts src/components/TransactionFlow/useUpdateTransactionMutation.ts src/components/TransactionFlow/useDeleteTransactionMutation.ts
@@ -407,6 +431,7 @@ Use injected/mock adapters and assert:
 - source pending is appended before its child;
 - L1 is installed before the first linked append;
 - an existing child K ID is updated in place and marked synced without a second append;
+- an existing linked child validates an amount edit before update, while a metadata-only account/date/note edit can update even after its source was deleted;
 - confirmed plus other pending/error children reserve balance;
 - stale overage becomes `error` with `Amount exceeds remaining reimbursement balance`;
 - missing/deleted, errored, retyped, non-positive, and currency-changed sources produce distinct actionable child errors;
@@ -420,7 +445,7 @@ Expected: FAIL because linked children currently append without source checks.
 
 - [ ] **Step 3: Topologically order source rows before children**
 
-Before the loop, sort pending rows so a row referenced by another pending row is processed first while preserving `createdAt` order for unrelated rows. If the local source has status `error`, mark the child `error` with `Original expense failed to sync`.
+Before the loop, sort pending rows so a row referenced by another pending row is processed first while preserving `createdAt` order for unrelated rows. After attempting the source, re-read its current Dexie status rather than trusting the initial pending snapshot. If it is now `error`, mark the child `error` with `Original expense failed to sync`.
 
 - [ ] **Step 4: Revalidate each linked child immediately before append**
 
@@ -430,7 +455,7 @@ For `item.reimbursesTransactionId`:
 2. resolve the authoritative source by K/A:L;
 3. require valid positive expense and matching currency;
 4. read confirmed linked rows;
-5. load other local pending/error linked rows, excluding the current child and remote IDs;
+5. load other local pending/error linked rows and pass them to the local-wins deduplicating calculator, excluding only the current child;
 6. calculate latest remaining and reject an amount above it.
 
 Use exact messages:
@@ -447,7 +472,9 @@ These are non-retryable until the user edits/retries or deletes the row, so stor
 
 - [ ] **Step 5: Preserve normal K idempotency and provider error mapping**
 
-Check `existingIds` before reimbursement validation. When an existing ID is found, call `updateRow` on that current K-derived row before marking the local item synced; this makes fallback edits reach Sheets and makes a lost append response idempotently converge. Do not change normal retryable Google error behavior. When a linked append succeeds, update `existingIds` so the same run cannot append it twice.
+Resolve `existingRow = existingIds.get(item.id)` first, but do not update or mark synced until linked validation completes. Read the existing A:L child. If it matches the local row (lost append response), mark it synced idempotently. If amount changed, validate the source and balance while excluding the existing child's old amount, then update the current K-derived row. If only account/date/note changed and amount/type/category/currency/For/relation match the existing child, allow the update even when the source is missing; this implements the approved dangling-child edit behavior. Reject changes to locked fields.
+
+For a new linked child with no existing K row, require a valid source and perform the full validation before append. Do not change normal retryable Google error behavior. When an append succeeds, update `existingIds` so the same run cannot append it twice.
 
 - [ ] **Step 6: Run sync and domain tests**
 
@@ -492,7 +519,7 @@ middleAction?: React.ReactNode;
 
 `CurrencyPicker` and `Keypad` receive a real `disabled` prop with accessible disabled semantics. `StepAmount.handleAccountChange` skips all localStorage currency restoration when preservation is enabled. Insert `middleAction` after the Delete button and before the flexing Save button. Existing callers keep current behavior by default.
 
-In `TransactionFlow`, also guard the parent account-to-currency restoration and per-account currency persistence effects while `mode.kind === "reimburse"`; otherwise those effects can still overwrite or contaminate the source currency. Guard the normal non-transfer `For` normalization in reimbursement mode so the copied source value remains exact.
+In `TransactionFlow`, also guard the parent account-to-currency restoration, per-account currency persistence, and non-transfer `For` normalization effects whenever fields are locked: both `mode.kind === "reimburse"` and edit mode for a linked child. Otherwise those effects can overwrite or contaminate the source currency/For even though the visible controls are disabled.
 
 - [ ] **Step 3: Write failing action-state tests**
 
@@ -516,9 +543,19 @@ type ReimbursementActionProps = {
 
 Render compact amounts near the footer and a middle `Reimburse` button. Use no shadow classes.
 
-- [ ] **Step 5: Add receipt copy/action overrides**
+- [ ] **Step 5: Add a status-aware reimbursement receipt variant**
 
-Add optional `statusTitle`, `statusDescription`, `summaryTitle`, `doneLabel`, `undoLabel`, and `showTimedProgress` props. Reimbursement passes `Reimbursement recorded`, copy that distinguishes locally queued from Sheet-synced state, `Done`, `Undo reimbursement`, and `showTimedProgress={false}`.
+Add optional props:
+
+```ts
+variant?: "transaction" | "reimbursement";
+syncStatus?: TransactionStatus;
+doneLabel?: string;
+undoLabel?: string;
+showTimedProgress?: boolean;
+```
+
+For `variant="reimbursement"`, derive copy per state: saving while the mutation is pending; `Reimbursement queued` with a local-sync explanation for `syncStatus="pending"`; `Reimbursement recorded` with Sheets copy for `syncStatus="synced"`; and error copy only when the mutation itself fails. Use `Done`, `Undo reimbursement`, and no timed progress. This keeps queued receipts from claiming Sheets sync and avoids one static description being reused for incompatible states.
 
 - [ ] **Step 6: Run focused component tests**
 
@@ -540,6 +577,8 @@ git commit -m "feat: add reimbursement form controls"
 - Create: `src/components/TransactionFlow/flowMode.test.ts`
 - Create: `src/components/TransactionFlow/useCreateReimbursementMutation.ts`
 - Create: `src/components/TransactionFlow/useCreateReimbursementMutation.test.tsx`
+- Modify: `src/components/TransactionFlow/transactionSchema.ts`
+- Create: `src/components/TransactionFlow/transactionSchema.test.ts`
 - Modify: `src/components/TransactionFlow/index.tsx`
 - Create: `src/components/TransactionFlow/TransactionFlow.test.tsx`
 
@@ -554,11 +593,11 @@ export type TransactionFlowMode =
   | { kind: "reimburse"; source: TransactionRecord };
 ```
 
-The mutation must ignore any caller attempt to change type/category/currency/for/relation and call `addTransaction` with income, `Reimbursement`, source currency, source For, and source ID. Reject blank/zero/negative/non-finite/over-remaining amounts.
+The mutation must ignore any caller attempt to change type/category/currency/for/relation and call `addTransaction` with income, `Reimbursement`, source currency, source For, and source ID. Reject zero, negative, non-finite, numeric-prefix, and over-remaining amounts. Update `transactionSchema` to use `Number(value)` plus `Number.isFinite`; test blank, `12abc`, and `Infinity` before calling the mutation boundary.
 
 - [ ] **Step 2: Run mode/mutation tests and verify failure**
 
-Run: `npm run test -- src/components/TransactionFlow/flowMode.test.ts src/components/TransactionFlow/useCreateReimbursementMutation.test.tsx`
+Run: `npm run test -- src/components/TransactionFlow/flowMode.test.ts src/components/TransactionFlow/useCreateReimbursementMutation.test.tsx src/components/TransactionFlow/transactionSchema.test.ts`
 
 Expected: FAIL because the mode and mutation are absent.
 
@@ -569,7 +608,7 @@ Use this input:
 ```ts
 type CreateReimbursementVariables = {
   source: TransactionRecord;
-  amount: number;
+  amount: string;
   remaining: number;
   account: string;
   date: Date;
@@ -577,7 +616,7 @@ type CreateReimbursementVariables = {
 };
 ```
 
-Derive all locked fields in the mutation function and return the created `TransactionRecord`. Invalidate local, recent, and the source reimbursement query on success.
+Parse amount with `Number(value)`, require `Number.isFinite(amount) && amount > 0`, derive all locked fields in the mutation function, and return the created `TransactionRecord`. If the provider returns an error row after immediate sync validation, throw its actionable error and keep the amount form open; a valid offline `pending` row is success. Invalidate local, recent, and the source reimbursement query on success.
 
 - [ ] **Step 4: Write failing component-flow tests**
 
@@ -590,6 +629,7 @@ Mock hooks/providers and cover:
 - reimbursement mode never enables Places;
 - submit creates one linked income and disables duplicate submit;
 - receipt stays open until Done/Undo;
+- changing date in the reimbursement DateTime drawer writes that exact date to the child;
 - Undo deletes the returned child ID, not the latest unrelated transaction;
 - full, checking, remote-error, mismatch, and overage states disable entry.
 
@@ -616,7 +656,7 @@ Pass `onDateClick={() => setDateDrawerOpen(true)}` in reimbursement mode and bin
 
 - [ ] **Step 6: Make reimbursement receipt exact and persistent**
 
-Store `createdReimbursementId` from the mutation result. Do not call `scheduleReceiptTransition` in reimbursement mode. Undo calls `deleteTransaction(createdReimbursementId)` through the delete mutation, invalidates the source summary, then returns to the dashboard. Keep the existing two-second behavior for ordinary create/edit receipts.
+Store the returned reimbursement record, including ID and final pending/synced status. Do not call `scheduleReceiptTransition` in reimbursement mode. Pass a reimbursement receipt variant plus sync status so copy says either queued locally or synced to Sheets; no success receipt is shown for an error row. Undo calls `deleteTransaction(createdReimbursementId)` through the delete mutation, invalidates the source summary, then returns to the dashboard. Keep the existing two-second behavior for ordinary create/edit receipts.
 
 - [ ] **Step 7: Preserve Places eligibility after the mode refactor**
 
@@ -631,7 +671,7 @@ Expected: PASS for separate form state, locked defaults, exact ID undo, and pers
 - [ ] **Step 9: Commit reimbursement flow**
 
 ```bash
-git add src/components/TransactionFlow/flowMode.ts src/components/TransactionFlow/flowMode.test.ts src/components/TransactionFlow/useCreateReimbursementMutation.ts src/components/TransactionFlow/useCreateReimbursementMutation.test.tsx src/components/TransactionFlow/index.tsx src/components/TransactionFlow/TransactionFlow.test.tsx
+git add src/components/TransactionFlow/flowMode.ts src/components/TransactionFlow/flowMode.test.ts src/components/TransactionFlow/useCreateReimbursementMutation.ts src/components/TransactionFlow/useCreateReimbursementMutation.test.tsx src/components/TransactionFlow/transactionSchema.ts src/components/TransactionFlow/transactionSchema.test.ts src/components/TransactionFlow/index.tsx src/components/TransactionFlow/TransactionFlow.test.tsx
 git commit -m "feat: add linked reimbursement flow"
 ```
 
@@ -653,15 +693,15 @@ Remove `queueCount`, `pendingTransactions` state, and the Dexie effect from `Top
 
 - [ ] **Step 3: Write failing linked-edit tests**
 
-Cover a linked child whose source is cached, outside recent 50, and deleted. Assert relation/type/category/currency/For remain locked; max amount excludes the current child; a missing source shows `Original expense unavailable`, locks amount, but leaves account/date/note/delete available. Saving preserves `reimbursesTransactionId`.
+Cover a linked child whose source is cached, outside recent 50, and deleted. Assert relation/type/category/currency/For remain locked; max amount excludes the current child; a missing source shows `Original expense unavailable`, locks amount, but leaves account/date/note/delete and Save available. Saving preserves `reimbursesTransactionId`. Attempt to tamper with locked form values programmatically and assert the submitted update still derives them from the original child.
 
 - [ ] **Step 4: Wire source lookup and edit constraints**
 
-When edit mode receives a linked row, call `useTransactionByIdQuery` for its source and `useReimbursementSummary` with `excludeChildId` equal to the current child ID. Pass the locked props into `StepAmount`. Include `reimbursesTransactionId` in the update input so an update can never erase the relation. Disable amount submit when source resolution is loading/error or the new amount exceeds the other-child-adjusted maximum.
+When edit mode receives a linked row, call `useTransactionByIdQuery` for its source and `useReimbursementSummary` with `excludeChildId` equal to the current child ID. Pass the locked props into `StepAmount`. Build the update input from the original child for type/category/currency/For/relation and accept form values only for amount/account/date/note. While source resolution is loading/error, lock amount; permit Save when amount and locked fields remain unchanged so account/date/note edits still work. When the source is available, validate changed amount against the other-child-adjusted maximum.
 
 - [ ] **Step 5: Make error-row Save a retry transition**
 
-Saving an error reimbursement uses `updateTransaction`, which sets it to pending and re-enters normal sync validation. Preserve the actionable error in the form until mutation succeeds; deleting it removes the local row and releases its reserved summary amount.
+Saving an error reimbursement uses `updateTransaction`, which sets it to pending, clears the old error, and re-enters normal sync validation. Inspect the latest returned record: preserve the actionable error and form if it returns to `error`; only show a receipt for pending/synced. Deleting it removes the local row and releases its reserved summary amount.
 
 - [ ] **Step 6: Run dashboard and flow tests**
 
