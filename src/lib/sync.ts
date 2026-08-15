@@ -2,7 +2,9 @@ import { db } from './db';
 import {
   appendTransaction as realAppendTransaction,
   deleteRow as realDeleteRow,
+  ensureReimbursementHeader as realEnsureReimbursementHeader,
   getSheetTabId as realGetSheetTabId,
+  readLinkedReimbursements as realReadLinkedReimbursements,
   readTransactionById as realReadTransactionById,
   readTransactionIdMap as realReadTransactionIdMap,
   updateRow as realUpdateRow,
@@ -12,16 +14,29 @@ import {
   IS_DEV_MODE,
   appendTransaction as mockAppendTransaction,
   deleteRow as mockDeleteRow,
+  ensureReimbursementHeader as mockEnsureReimbursementHeader,
   getSheetTabId as mockGetSheetTabId,
+  readLinkedReimbursements as mockReadLinkedReimbursements,
   readTransactionById as mockReadTransactionById,
   readTransactionIdMap as mockReadTransactionIdMap,
   updateRow as mockUpdateRow,
 } from './mock';
+import {
+  calculateReimbursementSummary,
+  isReimbursableExpense,
+  validateReimbursementAmount,
+} from './reimbursements';
 import type { TransactionRecord } from './types';
 
 const appendTransaction = IS_DEV_MODE ? mockAppendTransaction : realAppendTransaction;
 const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
+const ensureReimbursementHeader = IS_DEV_MODE
+  ? mockEnsureReimbursementHeader
+  : realEnsureReimbursementHeader;
 const getSheetTabId = IS_DEV_MODE ? mockGetSheetTabId : realGetSheetTabId;
+const readLinkedReimbursements = IS_DEV_MODE
+  ? mockReadLinkedReimbursements
+  : realReadLinkedReimbursements;
 const readTransactionById = IS_DEV_MODE
   ? mockReadTransactionById
   : realReadTransactionById;
@@ -29,6 +44,71 @@ const readTransactionIdMap = IS_DEV_MODE
   ? mockReadTransactionIdMap
   : realReadTransactionIdMap;
 const updateRow = IS_DEV_MODE ? mockUpdateRow : realUpdateRow;
+
+class ReimbursementSyncValidationError extends Error {}
+
+const ORIGINAL_EXPENSE_UNAVAILABLE = 'Original expense unavailable';
+const ORIGINAL_EXPENSE_FAILED = 'Original expense failed to sync';
+const ORIGINAL_NOT_EXPENSE = 'Original transaction is no longer an expense';
+const ORIGINAL_CURRENCY_CHANGED = 'Original expense currency changed';
+const AMOUNT_EXCEEDS_REMAINING =
+  'Amount exceeds remaining reimbursement balance';
+
+function orderPendingTransactions(
+  pending: TransactionRecord[],
+): TransactionRecord[] {
+  const indexById = new Map(
+    pending.map((transaction, index) => [transaction.id, index] as const),
+  );
+  const childrenBySource = new Map<string, number[]>();
+  const dependencyCount = pending.map(() => 0);
+
+  pending.forEach((transaction, childIndex) => {
+    const sourceId = transaction.reimbursesTransactionId;
+    if (!sourceId) {
+      return;
+    }
+    const sourceIndex = indexById.get(sourceId);
+    if (sourceIndex === undefined || sourceIndex === childIndex) {
+      return;
+    }
+    dependencyCount[childIndex] = 1;
+    const children = childrenBySource.get(sourceId) ?? [];
+    children.push(childIndex);
+    childrenBySource.set(sourceId, children);
+  });
+
+  const ready = dependencyCount.flatMap((count, index) =>
+    count === 0 ? [index] : [],
+  );
+  const ordered: TransactionRecord[] = [];
+  const processed = new Set<number>();
+
+  while (ready.length > 0) {
+    ready.sort((left, right) => left - right);
+    const index = ready.shift();
+    if (index === undefined || processed.has(index)) {
+      continue;
+    }
+    processed.add(index);
+    const transaction = pending[index];
+    ordered.push(transaction);
+
+    for (const childIndex of childrenBySource.get(transaction.id) ?? []) {
+      dependencyCount[childIndex] -= 1;
+      if (dependencyCount[childIndex] === 0) {
+        ready.push(childIndex);
+      }
+    }
+  }
+
+  pending.forEach((transaction, index) => {
+    if (!processed.has(index)) {
+      ordered.push(transaction);
+    }
+  });
+  return ordered;
+}
 
 function hasSameTransactionContent(
   left: TransactionRecord,
@@ -104,6 +184,53 @@ async function getPendingRevision(id: string): Promise<TransactionRecord | null>
   return current?.status === 'pending' ? current : null;
 }
 
+async function validateLinkedTransaction(
+  accessToken: string,
+  sheetId: string,
+  item: TransactionRecord,
+): Promise<void> {
+  const sourceId = item.reimbursesTransactionId;
+  if (!sourceId) {
+    return;
+  }
+
+  const localSource = await db.transactions.get(sourceId);
+  if (localSource?.status === 'error') {
+    throw new ReimbursementSyncValidationError(ORIGINAL_EXPENSE_FAILED);
+  }
+
+  const source = await readTransactionById(accessToken, sheetId, sourceId);
+  if (!source) {
+    throw new ReimbursementSyncValidationError(ORIGINAL_EXPENSE_UNAVAILABLE);
+  }
+  if (!isReimbursableExpense(source)) {
+    throw new ReimbursementSyncValidationError(ORIGINAL_NOT_EXPENSE);
+  }
+  if (source.currency !== item.currency) {
+    throw new ReimbursementSyncValidationError(ORIGINAL_CURRENCY_CHANGED);
+  }
+
+  const [remoteRows, localRows] = await Promise.all([
+    readLinkedReimbursements(accessToken, sheetId, sourceId),
+    db.transactions
+      .where('status')
+      .anyOf('pending', 'error')
+      .toArray(),
+  ]);
+  const summary = calculateReimbursementSummary(
+    source,
+    remoteRows,
+    localRows,
+    item.id,
+  );
+  const exceedsRemaining =
+    item.amount > 0 &&
+    validateReimbursementAmount(item.amount, summary) !== null;
+  if (!Number.isFinite(item.amount) || exceedsRemaining) {
+    throw new ReimbursementSyncValidationError(AMOUNT_EXCEEDS_REMAINING);
+  }
+}
+
 async function rollbackDeletedAppend(
   accessToken: string,
   sheetId: string,
@@ -126,17 +253,27 @@ export async function syncPendingTransactions(
   accessToken: string,
   sheetId: string,
 ): Promise<number> {
-  const pendingSnapshot = await db.transactions
+  const pendingByCreatedAt = await db.transactions
     .where('status')
     .equals('pending')
     .sortBy('createdAt');
-  if (pendingSnapshot.length === 0) {
+  if (pendingByCreatedAt.length === 0) {
     return 0;
   }
+  const pendingSnapshot = orderPendingTransactions(pendingByCreatedAt);
 
   let syncedCount = 0;
   let syncFailure: unknown = null;
+  let reimbursementHeaderReady = false;
   const existingIds = await readTransactionIdMap(accessToken, sheetId);
+
+  const ensureLinkedHeader = async () => {
+    if (reimbursementHeaderReady) {
+      return;
+    }
+    await ensureReimbursementHeader(accessToken, sheetId);
+    reimbursementHeaderReady = true;
+  };
 
   for (const snapshotItem of pendingSnapshot) {
     let item = await getPendingRevision(snapshotItem.id);
@@ -159,6 +296,16 @@ export async function syncPendingTransactions(
 
         const itemForWrite = applyAuthoritativeRelation(item, remote);
         const currentRow = remote.sheetRow ?? existingRow;
+        if (itemForWrite.reimbursesTransactionId) {
+          await ensureLinkedHeader();
+          if (itemForWrite.amount !== remote.amount) {
+            await validateLinkedTransaction(
+              accessToken,
+              sheetId,
+              itemForWrite,
+            );
+          }
+        }
         if (!hasSameTransactionContent(remote, itemForWrite)) {
           await updateRow(accessToken, sheetId, currentRow, itemForWrite);
         }
@@ -187,6 +334,11 @@ export async function syncPendingTransactions(
         continue;
       }
 
+      if (item.reimbursesTransactionId) {
+        await ensureLinkedHeader();
+        await validateLinkedTransaction(accessToken, sheetId, item);
+      }
+
       const rowIndex = await appendTransaction(accessToken, sheetId, item);
       if (rowIndex !== null) {
         existingIds.set(item.id, rowIndex);
@@ -211,6 +363,9 @@ export async function syncPendingTransactions(
       }
     } catch (error) {
       if (!(await db.transactions.get(snapshotItem.id))) {
+        if (error instanceof ReimbursementSyncValidationError) {
+          continue;
+        }
         syncFailure = error;
         break;
       }
