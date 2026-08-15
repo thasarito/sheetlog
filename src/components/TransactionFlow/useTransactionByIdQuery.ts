@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
 import { useConnectivity, useSession, useWorkspace } from "../../app/providers";
 import { db } from "../../lib/db";
 import { readTransactionById as realReadTransactionById } from "../../lib/google";
@@ -49,14 +48,15 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
   const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
-  const canReadRemote = Boolean(id && isOnline && accessToken && sheetId);
-  const couldReadRemoteRef = useRef(canReadRemote);
-  const remoteStateRef = useRef({ accessToken, isOnline, sheetId });
-  remoteStateRef.current = { accessToken, isOnline, sheetId };
-  const queryKey = transactionQueryKeys.transaction(sheetId, id ?? "");
+  const sourceId = id ?? "";
+  const queryKey = transactionQueryKeys.transaction(sheetId, sourceId);
+  const fallbackQueryKey = transactionQueryKeys.transactionFallback(
+    sheetId,
+    sourceId,
+  );
 
-  const query = useQuery<TransactionRecord | null>({
-    queryKey,
+  const fallbackQuery = useQuery<TransactionRecord | null>({
+    queryKey: fallbackQueryKey,
     enabled: Boolean(id),
     networkMode: "always",
     staleTime: 0,
@@ -67,61 +67,87 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
         return null;
       }
 
-      const cachedTransaction = queryClient.getQueryData<
-        TransactionRecord | null
-      >(queryKey);
-      const cachedTransactionIsKnown = cachedTransaction !== undefined;
       const recentTransaction = findRecentTransaction(
         queryClient,
         sheetId,
         id,
       );
       const localTransaction = await db.transactions.get(id);
-      if (
-        localTransaction &&
-        isAuthoritativeLocalSource(localTransaction)
-      ) {
-        return localTransaction;
-      }
-
-      const remoteState = remoteStateRef.current;
-      if (
-        remoteState.isOnline &&
-        remoteState.accessToken &&
-        sheetId &&
-        remoteState.sheetId === sheetId
-      ) {
-        return readTransactionById(
-          remoteState.accessToken,
-          sheetId,
-          id,
-        );
-      }
-
-      if (
-        localTransaction?.status === "pending" ||
-        localTransaction?.status === "error"
-      ) {
-        return localTransaction;
-      }
-      if (cachedTransactionIsKnown) {
-        return cachedTransaction;
-      }
-
       return localTransaction ?? recentTransaction ?? null;
     },
   });
 
-  useEffect(() => {
-    const couldReadRemote = couldReadRemoteRef.current;
-    couldReadRemoteRef.current = canReadRemote;
-    if (!couldReadRemote && canReadRemote && !query.isFetching) {
-      void query.refetch();
+  const fallbackIsLocalOnly = isAuthoritativeLocalSource(
+    fallbackQuery.data ?? undefined,
+  );
+  const canReadRemote = Boolean(
+    id &&
+      isOnline &&
+      accessToken &&
+      sheetId &&
+      fallbackQuery.isSuccess &&
+      !fallbackIsLocalOnly,
+  );
+  const remoteQuery = useQuery<TransactionRecord | null>({
+    queryKey,
+    enabled: canReadRemote,
+    staleTime: 0,
+    refetchOnMount: "always",
+    retry: false,
+    queryFn: async () => {
+      if (!id || !accessToken || !sheetId) {
+        return null;
+      }
+      return readTransactionById(accessToken, sheetId, id);
+    },
+  });
+
+  const remoteDataIsKnown = remoteQuery.data !== undefined;
+  const data = fallbackIsLocalOnly
+    ? fallbackQuery.data
+    : canReadRemote
+      ? remoteQuery.data
+      : remoteDataIsKnown
+        ? remoteQuery.data
+        : fallbackQuery.data;
+  const selectedQuery =
+    fallbackIsLocalOnly || (!canReadRemote && !remoteDataIsKnown)
+      ? fallbackQuery
+      : remoteQuery;
+  const remoteIsFetching = canReadRemote && remoteQuery.isFetching;
+  const isFetching = Boolean(
+    id && (fallbackQuery.isFetching || remoteIsFetching),
+  );
+  const remoteIsError = canReadRemote && remoteQuery.isError;
+  const isError = fallbackQuery.isError || remoteIsError;
+
+  async function refetch() {
+    const fallbackResult = await fallbackQuery.refetch();
+    const refreshedFallbackIsLocalOnly = isAuthoritativeLocalSource(
+      fallbackResult.data ?? undefined,
+    );
+    if (
+      id &&
+      isOnline &&
+      accessToken &&
+      sheetId &&
+      !refreshedFallbackIsLocalOnly
+    ) {
+      await remoteQuery.refetch();
     }
-  }, [canReadRemote, query.isFetching, query.refetch]);
+  }
 
   return {
-    ...query,
-    isChecking: canReadRemote && query.isFetching,
+    ...selectedQuery,
+    data,
+    error: fallbackQuery.error ?? (remoteIsError ? remoteQuery.error : null),
+    isError,
+    isSuccess: !isError && selectedQuery.isSuccess,
+    isPending: Boolean(id && data === undefined && !isError),
+    isLoading: Boolean(id && data === undefined && isFetching),
+    isFetching,
+    fetchStatus: isFetching ? "fetching" : selectedQuery.fetchStatus,
+    isChecking: isFetching,
+    refetch,
   };
 }

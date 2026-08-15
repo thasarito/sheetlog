@@ -7,4 +7,7 @@ export const transactionQueryKeys = {
     ["reimbursementSummary", sheetId, sourceId] as const,
   transaction: (sheetId: string | null, id: string) =>
     ["transactionById", sheetId, id] as const,
+  // Keep fallback beneath the remote-only key so one prefix invalidation refreshes both.
+  transactionFallback: (sheetId: string | null, id: string) =>
+    ["transactionById", sheetId, id, "fallback"] as const,
 };

@@ -3,7 +3,7 @@ import {
   QueryClientProvider,
   onlineManager,
 } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../../lib/db";
@@ -59,12 +59,12 @@ function localOnly(id: string, status: TransactionStatus) {
   });
 }
 
-function createHarness() {
+function createHarness({ gcTime = 0 }: { gcTime?: number } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
-        gcTime: 0,
+        gcTime,
       },
     },
   });
@@ -124,7 +124,8 @@ describe("useTransactionByIdQuery", () => {
   );
 
   it("uses a synced Dexie row only as a placeholder and returns the current remote row", async () => {
-    await db.transactions.put(transaction("expense-1", { amount: 100 }));
+    const staleDexieSource = transaction("expense-1", { amount: 100 });
+    await db.transactions.put(staleDexieSource);
     const currentRemote = transaction("expense-1", {
       amount: 125,
       sheetRow: 9,
@@ -150,6 +151,11 @@ describe("useTransactionByIdQuery", () => {
         transactionQueryKeys.transaction("sheet-a", "expense-1"),
       ),
     ).toEqual(currentRemote);
+    expect(
+      queryClient.getQueryData(
+        transactionQueryKeys.transactionFallback("sheet-a", "expense-1"),
+      ),
+    ).toEqual(staleDexieSource);
   });
 
   it("does not expose a recent-cache placeholder as authoritative while online", async () => {
@@ -251,6 +257,169 @@ describe("useTransactionByIdQuery", () => {
       expect(result.current.data).toEqual(cachedSource);
     });
     expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("gates a mounted pending-to-synced refresh and returns current Dexie data", async () => {
+    providerState.isOnline = false;
+    const pendingSource = localOnly("mounted-sync", "pending");
+    await db.transactions.put(pendingSource);
+    const { queryClient, wrapper } = createHarness();
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("mounted-sync"),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.data).toEqual(pendingSource);
+      expect(result.current.isChecking).toBe(false);
+    });
+    expect(
+      queryClient.getQueryData(
+        transactionQueryKeys.transaction("sheet-a", "mounted-sync"),
+      ),
+    ).toBeUndefined();
+    expect(
+      queryClient.getQueryData(
+        transactionQueryKeys.transactionFallback(
+          "sheet-a",
+          "mounted-sync",
+        ),
+      ),
+    ).toEqual(pendingSource);
+
+    const syncedSource = transaction("mounted-sync", {
+      amount: 135,
+      status: "synced",
+      sheetId: "sheet-a",
+      sheetRow: 8,
+    });
+    await db.transactions.put(syncedSource);
+    const sourceLookup = deferred<TransactionRecord | undefined>();
+    vi.spyOn(db.transactions, "get").mockReturnValueOnce(
+      sourceLookup.promise as never,
+    );
+
+    let invalidation!: Promise<void>;
+    act(() => {
+      invalidation = queryClient.invalidateQueries({
+        queryKey: transactionQueryKeys.transaction(
+          "sheet-a",
+          "mounted-sync",
+        ),
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(true);
+    });
+
+    sourceLookup.resolve(syncedSource);
+    await act(async () => {
+      await invalidation;
+    });
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.data).toEqual(syncedSource);
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("drops a mounted pending fallback after Dexie deletion and query invalidation", async () => {
+    providerState.isOnline = false;
+    const pendingSource = localOnly("mounted-delete", "pending");
+    await db.transactions.put(pendingSource);
+    const { queryClient, wrapper } = createHarness();
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("mounted-delete"),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(result.current.data).toEqual(pendingSource);
+    });
+
+    await db.transactions.delete("mounted-delete");
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: transactionQueryKeys.transaction(
+          "sheet-a",
+          "mounted-delete",
+        ),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.data).toBeNull();
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it.each(["synced", "deleted"] as const)(
+    "refreshes a cached pending fallback after unmount/remount when Dexie is %s",
+    async (transition) => {
+      providerState.isOnline = false;
+      const pendingSource = localOnly(`remount-${transition}`, "pending");
+      await db.transactions.put(pendingSource);
+      const { wrapper } = createHarness({ gcTime: 60_000 });
+      const firstMount = renderHook(
+        () => useTransactionByIdQuery(`remount-${transition}`),
+        { wrapper },
+      );
+      await waitFor(() => {
+        expect(firstMount.result.current.data).toEqual(pendingSource);
+      });
+      firstMount.unmount();
+
+      const syncedSource = transaction(`remount-${transition}`, {
+        amount: 145,
+        status: "synced",
+        sheetId: "sheet-a",
+        sheetRow: 9,
+      });
+      if (transition === "synced") {
+        await db.transactions.put(syncedSource);
+      } else {
+        await db.transactions.delete(`remount-${transition}`);
+      }
+
+      const remounted = renderHook(
+        () => useTransactionByIdQuery(`remount-${transition}`),
+        { wrapper },
+      );
+      expect(remounted.result.current.isChecking).toBe(true);
+      await waitFor(() => {
+        expect(remounted.result.current.isChecking).toBe(false);
+        expect(remounted.result.current.data).toEqual(
+          transition === "synced" ? syncedSource : null,
+        );
+      });
+      expect(readTransactionById).not.toHaveBeenCalled();
+    },
+  );
+
+  it("prefers current Dexie data over a stale local-fallback cache", async () => {
+    providerState.isOnline = false;
+    const staleFallback = transaction("fallback-provenance", { amount: 80 });
+    const currentDexie = transaction("fallback-provenance", { amount: 150 });
+    await db.transactions.put(currentDexie);
+    const { queryClient, wrapper } = createHarness({ gcTime: 60_000 });
+    queryClient.setQueryData(
+      transactionQueryKeys.transactionFallback(
+        "sheet-a",
+        "fallback-provenance",
+      ),
+      staleFallback,
+    );
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("fallback-provenance"),
+      { wrapper },
+    );
+
+    expect(result.current.isChecking).toBe(true);
+    await waitFor(() => {
+      expect(result.current.isChecking).toBe(false);
+      expect(result.current.data).toEqual(currentDexie);
+    });
   });
 
   it("keeps an in-memory authoritative deletion offline instead of reviving stale Dexie", async () => {
