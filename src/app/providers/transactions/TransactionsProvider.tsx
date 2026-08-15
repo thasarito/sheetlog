@@ -613,6 +613,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   );
 
   const undoLastUnlocked = useCallback(async (): Promise<UndoResult> => {
+    const requestedScope = { accessToken, sheetId, userId };
     const last = await db.transactions
       .orderBy("createdAt")
       .reverse()
@@ -684,11 +685,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         if (info.shouldClearAuth) {
           signOut(accessToken);
         }
-        dispatch({
-          type: "sync_error",
-          message: info.message,
-          at: new Date().toISOString(),
-        });
+        if (isSameActiveScope(activeScopeRef.current, requestedScope)) {
+          dispatch({
+            type: "sync_error",
+            message: info.message,
+            at: new Date().toISOString(),
+          });
+        }
       }
     }
 
@@ -743,6 +746,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   const deleteTransactionUnlocked = useCallback(
     async (id: string): Promise<UndoResult> => {
+      const requestedScope = { accessToken, sheetId, userId };
       const transaction = await db.transactions.get(id);
       if (!transaction) {
         return {
@@ -831,11 +835,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           if (info.shouldClearAuth) {
             signOut(accessToken);
           }
-          dispatch({
-            type: "sync_error",
-            message: info.message,
-            at: new Date().toISOString(),
-          });
+          if (isSameActiveScope(activeScopeRef.current, requestedScope)) {
+            dispatch({
+              type: "sync_error",
+              message: info.message,
+              at: new Date().toISOString(),
+            });
+          }
         }
       }
 

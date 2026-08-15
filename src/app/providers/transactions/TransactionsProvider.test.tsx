@@ -355,6 +355,143 @@ describe("TransactionsProvider", () => {
     harness.queryClient.clear();
   });
 
+  it("does not surface a late account A direct undo failure in account B", async () => {
+    const original = transaction("account-a-undo", {
+      createdAt: "2026-08-15T12:00:00.000Z",
+      sheetRow: 7,
+    });
+    const deleteStarted = deferred<void>();
+    const accountADelete = deferred<void>();
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[original.id, 7]]),
+    );
+    googleMocks.deleteRow.mockImplementationOnce(async () => {
+      deleteStarted.resolve();
+      return accountADelete.promise;
+    });
+    const harness = createProviderHarness();
+    let undoPromise!: ReturnType<TransactionsContextValue["undoLast"]>;
+
+    await act(async () => {
+      undoPromise = harness.getContext().undoLast();
+      await deleteStarted.promise;
+    });
+    providerState.accessToken = "access-token-b";
+    providerState.userId = "user-b";
+    providerState.sheetId = "sheet-b";
+    harness.rerender();
+    accountADelete.reject(new TypeError("Account A is offline"));
+
+    let result!: Awaited<typeof undoPromise>;
+    await act(async () => {
+      result = await undoPromise;
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      outcome: "pending",
+      message: "Undo queued as compensating entry",
+    });
+    expect(harness.getContext().lastSyncError).toBeNull();
+    expect(await db.transactions.get(original.id)).toEqual(original);
+    expect(await db.transactions.toArray()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          amount: -original.amount,
+          targetSheetId: "sheet-a",
+          targetUserId: "user-a",
+        }),
+      ]),
+    );
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not surface a late account A direct delete failure in account B", async () => {
+    const original = transaction("account-a-delete", { sheetRow: 8 });
+    const deleteStarted = deferred<void>();
+    const accountADelete = deferred<void>();
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[original.id, 8]]),
+    );
+    googleMocks.deleteRow.mockImplementationOnce(async () => {
+      deleteStarted.resolve();
+      return accountADelete.promise;
+    });
+    const harness = createProviderHarness();
+    let deletePromise!: ReturnType<
+      TransactionsContextValue["deleteTransaction"]
+    >;
+
+    await act(async () => {
+      deletePromise = harness.getContext().deleteTransaction(original.id);
+      await deleteStarted.promise;
+    });
+    providerState.accessToken = "access-token-b";
+    providerState.userId = "user-b";
+    providerState.sheetId = "sheet-b";
+    harness.rerender();
+    accountADelete.reject(new TypeError("Account A is offline"));
+
+    let result!: Awaited<typeof deletePromise>;
+    await act(async () => {
+      result = await deletePromise;
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      outcome: "pending",
+      message: "Delete queued as compensating entry",
+    });
+    expect(harness.getContext().lastSyncError).toBeNull();
+    expect(await db.transactions.get(original.id)).toBeUndefined();
+    expect(await db.transactions.toArray()).toEqual([
+      expect.objectContaining({
+        amount: -original.amount,
+        targetSheetId: "sheet-a",
+        targetUserId: "user-a",
+      }),
+    ]);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("still surfaces a direct undo failure in the active account", async () => {
+    const original = transaction("active-account-undo", {
+      createdAt: "2026-08-15T12:00:00.000Z",
+      sheetRow: 9,
+    });
+    await db.transactions.add(original);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[original.id, 9]]),
+    );
+    googleMocks.deleteRow.mockRejectedValueOnce(new TypeError("offline"));
+    const harness = createProviderHarness();
+
+    let result!: Awaited<
+      ReturnType<TransactionsContextValue["undoLast"]>
+    >;
+    await act(async () => {
+      result = await harness.getContext().undoLast();
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      outcome: "pending",
+      message: "Undo queued as compensating entry",
+    });
+    expect(harness.getContext().lastSyncError).toBe(
+      "Network error while syncing.",
+    );
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
   it("refuses to enqueue a transaction without an active sheet scope", async () => {
     providerState.sheetId = null;
     const harness = createProviderHarness();
@@ -1619,6 +1756,9 @@ describe("TransactionsProvider", () => {
     const remaining = await db.transactions.toArray();
     expect(remaining).toHaveLength(1);
     expect(remaining[0].amount).toBe(-42);
+    expect(harness.getContext().lastSyncError).toBe(
+      "Network error while syncing.",
+    );
 
     harness.rendered.unmount();
     harness.queryClient.clear();
