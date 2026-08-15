@@ -5,6 +5,7 @@ import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { TransactionFlow } from "./index";
+import type { TransactionFormApi } from "./useTransactionForm";
 
 const exactReimbursementDate = new Date("2026-08-14T07:08:09.000Z");
 
@@ -18,6 +19,16 @@ const mocks = vi.hoisted(() => ({
     source: TransactionRecord | null;
     excludeChildId?: string;
   }>,
+  sourceQueryCalls: [] as Array<string | null | undefined>,
+  sourceQueryState: {
+    data: undefined as TransactionRecord | null | undefined,
+    isChecking: false,
+    isLoading: false,
+    isError: false,
+    error: null as Error | null,
+  },
+  retrySource: vi.fn(),
+  forms: [] as TransactionFormApi[],
   dbGet: vi.fn(),
   dbPut: vi.fn(),
   dashboardEdit: null as ((transaction: TransactionRecord) => void) | null,
@@ -91,6 +102,39 @@ const mocks = vi.hoisted(() => ({
     updatedAt: "2026-08-15T08:00:00.000Z",
     sheetRowValid: false,
   } as TransactionRecord,
+  linkedChild: {
+    id: "linked-child",
+    type: "income",
+    amount: 30,
+    currency: "THB",
+    account: "Bank",
+    for: "Family",
+    category: "Reimbursement",
+    date: "2026-08-15T09:00:00.000Z",
+    note: "Lunch repayment",
+    reimbursesTransactionId: "expense-1",
+    status: "synced",
+    createdAt: "2026-08-15T09:00:00.000Z",
+    updatedAt: "2026-08-15T09:00:00.000Z",
+    sheetRowValid: true,
+  } as TransactionRecord,
+  failedLinkedChild: {
+    id: "failed-linked-child",
+    type: "income",
+    amount: 30,
+    currency: "THB",
+    account: "Bank",
+    for: "Family",
+    category: "Reimbursement",
+    date: "2026-08-15T09:00:00.000Z",
+    note: "Lunch repayment",
+    reimbursesTransactionId: "expense-1",
+    status: "error",
+    error: "Original expense temporarily unavailable",
+    createdAt: "2026-08-15T09:00:00.000Z",
+    updatedAt: "2026-08-15T09:00:00.000Z",
+    sheetRowValid: true,
+  } as TransactionRecord,
   summaryState: {
     summary: {
       confirmed: 20,
@@ -120,6 +164,22 @@ const mocks = vi.hoisted(() => ({
     reset: vi.fn(),
   },
 }));
+
+vi.mock("./useTransactionForm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./useTransactionForm")>();
+  return {
+    ...actual,
+    useTransactionForm: (
+      options?: Parameters<typeof actual.useTransactionForm>[0],
+    ) => {
+      const form = actual.useTransactionForm(options);
+      if (!mocks.forms.includes(form)) {
+        mocks.forms.push(form);
+      }
+      return form;
+    },
+  };
+});
 
 vi.mock("../../app/providers", () => ({
   useConnectivity: () => ({ isOnline: true }),
@@ -203,6 +263,16 @@ vi.mock("./useReimbursementSummary", () => ({
   },
 }));
 
+vi.mock("./useTransactionByIdQuery", () => ({
+  useTransactionByIdQuery: (id: string | null | undefined) => {
+    mocks.sourceQueryCalls.push(id);
+    return {
+      ...mocks.sourceQueryState,
+      refetch: mocks.retrySource,
+    };
+  },
+}));
+
 vi.mock("./useAddTransactionMutation", () => ({
   useAddTransactionMutation: () => mocks.addMutation,
 }));
@@ -267,6 +337,18 @@ vi.mock("./TopDashboard", () => ({
         onClick={() => onEditTransaction(mocks.malformedExpense)}
       >
         Edit malformed expense
+      </button>
+      <button
+        type="button"
+        onClick={() => onEditTransaction(mocks.linkedChild)}
+      >
+        Edit linked reimbursement
+      </button>
+      <button
+        type="button"
+        onClick={() => onEditTransaction(mocks.failedLinkedChild)}
+      >
+        Edit failed reimbursement
       </button>
       </div>
     );
@@ -342,6 +424,22 @@ async function enterReimbursement(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText("Reimbursement");
 }
 
+async function openLinkedEditor(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole("button", { name: "Edit linked reimbursement" }),
+  );
+  await screen.findByDisplayValue("Lunch repayment");
+}
+
+async function openFailedLinkedEditor(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(
+    screen.getByRole("button", { name: "Edit failed reimbursement" }),
+  );
+  await screen.findByDisplayValue("Lunch repayment");
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -357,6 +455,8 @@ beforeEach(() => {
   window.localStorage.clear();
   mocks.nearbyCalls.length = 0;
   mocks.summaryCalls.length = 0;
+  mocks.sourceQueryCalls.length = 0;
+  mocks.forms.length = 0;
   mocks.dbGet.mockReset();
   mocks.dbPut.mockReset();
   mocks.dashboardEdit = null;
@@ -364,6 +464,7 @@ beforeEach(() => {
   mocks.deleteTransaction.mockReset();
   mocks.undoLast.mockReset();
   mocks.retrySummary.mockReset();
+  mocks.retrySource.mockReset();
   mocks.addMutation.mutateAsync.mockReset();
   mocks.addMutation.reset.mockReset();
   mocks.updateMutation.mutateAsync.mockReset();
@@ -381,6 +482,13 @@ beforeEach(() => {
     isChecking: false,
     isError: false,
     needsOnlineVerification: false,
+  });
+  Object.assign(mocks.sourceQueryState, {
+    data: mocks.expense,
+    isChecking: false,
+    isLoading: false,
+    isError: false,
+    error: null,
   });
   mocks.addTransaction.mockImplementation(async (input: TransactionInput) =>
     createChild(input),
@@ -678,6 +786,302 @@ describe("TransactionFlow reimbursement entry", () => {
       ).toBeDisabled();
     },
   );
+});
+
+describe("TransactionFlow linked reimbursement editing", () => {
+  it("resolves a source outside recent rows, excludes the current child, and uses the reimbursement receipt", async () => {
+    const resolvedSource = {
+      ...mocks.expense,
+      amount: 120,
+      sheetRow: 77,
+    };
+    mocks.sourceQueryState.data = resolvedSource;
+    Object.assign(mocks.summaryState.summary, {
+      confirmed: 50,
+      queued: 0,
+      remaining: 70,
+    });
+    mocks.updateMutation.mutateAsync.mockImplementation(
+      async ({ input }: { input: Partial<TransactionInput> }) => ({
+        ...mocks.linkedChild,
+        ...input,
+        status: "synced",
+        error: undefined,
+      }),
+    );
+    const user = userEvent.setup();
+    renderFlow();
+
+    await openLinkedEditor(user);
+
+    expect(mocks.sourceQueryCalls).toContain("expense-1");
+    expect(
+      mocks.summaryCalls.some(
+        (call) =>
+          call.source === resolvedSource &&
+          call.excludeChildId === "linked-child",
+      ),
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "THB" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Family" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Reimbursement" }),
+    ).not.toBeInTheDocument();
+    for (const key of Array.from(
+      screen.getByRole("group", { name: "Amount keypad" }).querySelectorAll(
+        "button",
+      ),
+    )) {
+      expect(key).toBeEnabled();
+    }
+
+    await user.click(screen.getByRole("button", { name: "Delete digit" }));
+    await user.click(screen.getByRole("button", { name: "Delete digit" }));
+    await user.click(screen.getByRole("button", { name: "7" }));
+    await user.click(screen.getByRole("button", { name: "0" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "linked-child",
+        input: expect.objectContaining({
+          amount: 70,
+          type: "income",
+          category: "Reimbursement",
+          currency: "THB",
+          for: "Family",
+          reimbursesTransactionId: "expense-1",
+        }),
+      });
+    });
+    expect(
+      await screen.findByText("Reimbursement recorded"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("receipt-timed-progress")).not.toBeInTheDocument();
+  });
+
+  it("rejects an amount above the other-child-adjusted maximum", async () => {
+    Object.assign(mocks.summaryState.summary, {
+      confirmed: 40,
+      queued: 0,
+      remaining: 60,
+    });
+    const user = userEvent.setup();
+    renderFlow();
+    await openLinkedEditor(user);
+
+    await user.click(screen.getByRole("button", { name: "Delete digit" }));
+    await user.click(screen.getByRole("button", { name: "Delete digit" }));
+    await user.click(screen.getByRole("button", { name: "6" }));
+    await user.click(screen.getByRole("button", { name: "1" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.updateMutation.mutateAsync).not.toHaveBeenCalled();
+    expect(toastMock).toHaveBeenCalledWith(
+      "Amount exceeds remaining reimbursement balance",
+    );
+    expect(screen.getByText("Reimbursement")).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "loading",
+      { data: undefined, isChecking: true, isLoading: true, isError: false },
+      "Checking original expense...",
+    ],
+    [
+      "error",
+      { data: undefined, isChecking: false, isLoading: false, isError: true },
+      "Unable to load original expense.",
+    ],
+  ])("locks amount while source resolution is %s", async (_label, state, copy) => {
+    Object.assign(mocks.sourceQueryState, state);
+    const user = userEvent.setup();
+    renderFlow();
+
+    await openLinkedEditor(user);
+
+    expect(screen.getByText(copy)).toBeInTheDocument();
+    for (const key of Array.from(
+      screen.getByRole("group", { name: "Amount keypad" }).querySelectorAll(
+        "button",
+      ),
+    )) {
+      expect(key).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("allows missing-source metadata edits while preserving locked data and the exact date", async () => {
+    mocks.sourceQueryState.data = null;
+    mocks.updateMutation.mutateAsync.mockImplementation(
+      async ({ input }: { input: Partial<TransactionInput> }) => ({
+        ...mocks.linkedChild,
+        ...input,
+        status: "pending",
+        error: undefined,
+      }),
+    );
+    const user = userEvent.setup();
+    renderFlow();
+    await openLinkedEditor(user);
+
+    expect(screen.getByText("Original expense unavailable")).toBeInTheDocument();
+    for (const key of Array.from(
+      screen.getByRole("group", { name: "Amount keypad" }).querySelectorAll(
+        "button",
+      ),
+    )) {
+      expect(key).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: "Wallet" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Delete transaction" }),
+    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+    const note = screen.getByPlaceholderText("Add a note...");
+    await user.clear(note);
+    await user.type(note, "Corrected repayment note");
+    const dateButton = screen
+      .getAllByRole("button")
+      .find((button) => /\d{2} \w{3} · \d{2}:\d{2}/.test(button.textContent ?? ""));
+    expect(dateButton).toBeDefined();
+    await user.click(dateButton as HTMLButtonElement);
+    await user.click(
+      screen.getByRole("button", { name: "Set exact reimbursement date" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "linked-child",
+        input: {
+          type: "income",
+          category: "Reimbursement",
+          amount: 30,
+          currency: "THB",
+          account: "Wallet",
+          for: "Family",
+          date: "2026-08-14T07:08:09",
+          note: "Corrected repayment note",
+          reimbursesTransactionId: "expense-1",
+        },
+      });
+    });
+    expect(await screen.findByText("Reimbursement queued")).toBeInTheDocument();
+  });
+
+  it("blocks a missing-source save when amount or locked values were tampered", async () => {
+    mocks.sourceQueryState.data = null;
+    const user = userEvent.setup();
+    renderFlow();
+    await openLinkedEditor(user);
+
+    act(() => {
+      mocks.forms[0]?.setFieldValue("amount", "31");
+      mocks.forms[0]?.setFieldValue("currency", "USD");
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.updateMutation.mutateAsync).not.toHaveBeenCalled();
+    expect(toastMock).toHaveBeenCalledWith("Original expense unavailable");
+    expect(screen.getByText("Reimbursement")).toBeInTheDocument();
+  });
+
+  it("reconstructs locked linked fields from the original child after form tampering", async () => {
+    mocks.updateMutation.mutateAsync.mockImplementation(
+      async ({ input }: { input: Partial<TransactionInput> }) => ({
+        ...mocks.linkedChild,
+        ...input,
+        status: "synced",
+      }),
+    );
+    const user = userEvent.setup();
+    renderFlow();
+    await openLinkedEditor(user);
+
+    act(() => {
+      mocks.forms[0]?.setFieldValue("type", "expense");
+      mocks.forms[0]?.setFieldValue("category", "Tampered category");
+      mocks.forms[0]?.setFieldValue("currency", "USD");
+      mocks.forms[0]?.setFieldValue("forValue", "Me");
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "linked-child",
+        input: expect.objectContaining({
+          type: "income",
+          category: "Reimbursement",
+          currency: "THB",
+          for: "Family",
+          reimbursesTransactionId: "expense-1",
+        }),
+      });
+    });
+  });
+
+  it("keeps a failed child open on error and retries the same ID into a queued receipt", async () => {
+    mocks.updateMutation.mutateAsync
+      .mockResolvedValueOnce({
+        ...mocks.failedLinkedChild,
+        error: "Amount exceeds remaining reimbursement balance",
+      })
+      .mockResolvedValueOnce({
+        ...mocks.failedLinkedChild,
+        status: "pending",
+        error: undefined,
+      });
+    const user = userEvent.setup();
+    renderFlow();
+    await openFailedLinkedEditor(user);
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        "Amount exceeds remaining reimbursement balance",
+      );
+    });
+    expect(screen.getByText("Reimbursement")).toBeInTheDocument();
+    expect(screen.queryByText("Reimbursement recorded")).not.toBeInTheDocument();
+    expect(mocks.updateMutation.mutateAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "failed-linked-child" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Reimbursement queued")).toBeInTheDocument();
+    expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledTimes(2);
+    expect(mocks.updateMutation.mutateAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "failed-linked-child" }),
+    );
+  });
+
+  it("deletes a failed linked child by its exact ID", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+    await openFailedLinkedEditor(user);
+
+    const remove = screen.getByRole("button", { name: "Delete transaction" });
+    await user.click(remove);
+    await user.click(remove);
+
+    await waitFor(() => {
+      expect(mocks.deleteTransaction).toHaveBeenCalledWith(
+        "failed-linked-child",
+      );
+    });
+    expect(
+      mocks.summaryCalls.some(
+        (call) => call.excludeChildId === "failed-linked-child",
+      ),
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "Edit expense" })).toBeVisible();
+  });
 });
 
 describe("TransactionFlow reimbursement submission and receipt", () => {

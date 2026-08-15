@@ -8,7 +8,12 @@ import { Header } from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
 import { db } from "../../lib/db";
-import type { TransactionType, CategoryItem, TransactionRecord } from "../../lib/types";
+import type {
+  TransactionType,
+  CategoryItem,
+  TransactionInput,
+  TransactionRecord,
+} from "../../lib/types";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
@@ -46,8 +51,10 @@ import { ReimbursementAction } from "./ReimbursementAction";
 import {
   isReimbursableExpense,
   REIMBURSEMENT_CATEGORY,
+  validateReimbursementAmount,
 } from "../../lib/reimbursements";
 import { createFlowGeneration } from "./flowGeneration";
+import { useTransactionByIdQuery } from "./useTransactionByIdQuery";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -87,6 +94,35 @@ function reimbursementFlowKey(sourceId: string) {
 
 function receiptFlowKey(transactionId: string) {
   return `receipt:${transactionId}`;
+}
+
+function linkedLockedFieldsMatch(
+  values: TransactionFormValues,
+  original: TransactionRecord,
+): boolean {
+  return (
+    values.type === original.type &&
+    values.category === original.category &&
+    values.currency === original.currency &&
+    values.forValue === original.for
+  );
+}
+
+function buildLinkedEditInput(
+  values: TransactionFormValues,
+  original: TransactionRecord,
+): TransactionInput {
+  return {
+    type: original.type,
+    category: original.category,
+    amount: Number(values.amount),
+    currency: original.currency,
+    account: values.account,
+    for: original.for,
+    date: format(values.dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
+    note: values.note.trim() || undefined,
+    reimbursesTransactionId: original.reimbursesTransactionId,
+  };
 }
 
 export function TransactionFlow() {
@@ -170,9 +206,42 @@ export function TransactionFlow() {
   const fieldsLocked = reimbursementFieldsLocked(flowMode);
   const reimbursementFieldsLockedRef = useRef(fieldsLocked);
   reimbursementFieldsLockedRef.current = fieldsLocked;
+  const linkedEditTransaction =
+    flowMode.kind === "edit" && flowMode.transaction.reimbursesTransactionId
+      ? flowMode.transaction
+      : null;
+  const linkedEditSourceQuery = useTransactionByIdQuery(
+    linkedEditTransaction?.reimbursesTransactionId,
+  );
+  const linkedEditSource = linkedEditTransaction
+    ? linkedEditSourceQuery.data
+    : null;
+  const linkedEditSourceIsChecking = Boolean(
+    linkedEditTransaction &&
+      (linkedEditSourceQuery.isChecking ||
+        linkedEditSourceQuery.isLoading ||
+        (!linkedEditSourceQuery.isError && linkedEditSource === undefined)),
+  );
+  const linkedEditSourceIsError = Boolean(
+    linkedEditTransaction && linkedEditSourceQuery.isError,
+  );
+  const linkedEditSourceIsMissing = Boolean(
+    linkedEditTransaction &&
+      !linkedEditSourceIsChecking &&
+      !linkedEditSourceIsError &&
+      linkedEditSource === null,
+  );
+  const linkedEditSourceIsReimbursable = Boolean(
+    linkedEditTransaction &&
+      linkedEditSource &&
+      isReimbursableExpense(linkedEditSource) &&
+      linkedEditSource.currency === linkedEditTransaction.currency,
+  );
   const reimbursementSource =
     flowMode.kind === "reimburse"
       ? flowMode.source
+      : linkedEditTransaction
+        ? linkedEditSource ?? null
       : flowMode.kind === "edit" &&
           isReimbursableExpense(flowMode.transaction)
         ? flowMode.transaction
@@ -180,11 +249,38 @@ export function TransactionFlow() {
   const reimbursementSummary = useReimbursementSummary({
     source: reimbursementSource,
     excludeChildId:
-      flowMode.kind === "reimburse" &&
+      linkedEditTransaction?.id ??
+      (flowMode.kind === "reimburse" &&
       createdReimbursement?.status === "error"
         ? createdReimbursement.id
-        : undefined,
+        : undefined),
   });
+  const linkedAmountLocked = Boolean(
+    linkedEditTransaction &&
+      (!linkedEditSourceIsReimbursable ||
+        linkedEditSourceIsChecking ||
+        linkedEditSourceIsError ||
+        reimbursementSummary.isChecking ||
+        reimbursementSummary.isError),
+  );
+  const linkedEditConstraintMessage = linkedEditTransaction
+    ? linkedEditSourceIsChecking
+      ? "Checking original expense..."
+      : linkedEditSourceIsError
+        ? "Unable to load original expense."
+        : linkedEditSourceIsMissing
+          ? "Original expense unavailable"
+          : linkedEditSource && !isReimbursableExpense(linkedEditSource)
+            ? "Original expense is no longer reimbursable"
+            : linkedEditSource &&
+                linkedEditSource.currency !== linkedEditTransaction.currency
+              ? "Reimbursement currency no longer matches original expense"
+              : reimbursementSummary.isChecking
+                ? "Checking reimbursement limit..."
+                : reimbursementSummary.isError
+                  ? "Unable to check reimbursement limit."
+                  : null
+    : null;
   const placesMode: PlacesFlowMode = flowMode.kind;
   const shouldFetchNearbyPlaces = isPlacesEligible({
     step,
@@ -438,6 +534,19 @@ export function TransactionFlow() {
     ) {
       return;
     }
+    if (linkedEditTransaction) {
+      void handleSubmit({
+        type,
+        category,
+        amount,
+        currency,
+        account,
+        forValue,
+        dateObject,
+        note,
+      });
+      return;
+    }
     const result = transactionSchema.safeParse({
       type,
       category,
@@ -680,7 +789,7 @@ export function TransactionFlow() {
   }
 
   async function handleReceiptUndo() {
-    if (flowMode.kind === "reimburse" && createdReimbursement) {
+    if (createdReimbursement?.reimbursesTransactionId) {
       if (
         deleteMutation.isPending ||
         reimbursementUndoRef.current !== null
@@ -888,6 +997,117 @@ export function TransactionFlow() {
     }
   }
 
+  async function handleLinkedEditSubmit(
+    original: TransactionRecord,
+    values: TransactionFormValues,
+  ) {
+    if (
+      !original.reimbursesTransactionId ||
+      deleteMutation.isPending ||
+      sourceDeletionRef.current !== null ||
+      reimbursementSubmissionRef.current !== null ||
+      updateMutation.isPending
+    ) {
+      return;
+    }
+
+    const parsedAmount = Number(values.amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      handleToast("Enter a valid amount");
+      return;
+    }
+    if (!values.account) {
+      handleToast("Select an account");
+      return;
+    }
+
+    const canChangeAmount = Boolean(
+      linkedEditSourceIsReimbursable &&
+        !linkedEditSourceIsChecking &&
+        !linkedEditSourceIsError &&
+        !reimbursementSummary.isChecking &&
+        !reimbursementSummary.isError,
+    );
+    if (!canChangeAmount) {
+      const amountUnchanged = parsedAmount === original.amount;
+      if (!amountUnchanged || !linkedLockedFieldsMatch(values, original)) {
+        handleToast(
+          linkedEditConstraintMessage ?? "Original expense unavailable",
+        );
+        return;
+      }
+    } else {
+      const validationError = validateReimbursementAmount(
+        parsedAmount,
+        reimbursementSummary.summary,
+      );
+      if (validationError) {
+        handleToast(validationError);
+        return;
+      }
+    }
+
+    const input = buildLinkedEditInput(values, original);
+    const flowKey = editFlowKey(original.id);
+    const submissionToken = flowGeneration.capture();
+    if (!flowGeneration.isCurrent(submissionToken, flowKey)) {
+      return;
+    }
+    const submissionId = `${original.id}:${submissionToken.generation}`;
+    const nextReceipt: ReceiptData = {
+      type: original.type,
+      category: original.category,
+      amount: String(input.amount),
+      currency: original.currency,
+      account: values.account,
+      forValue: original.for,
+      dateObject: values.dateObject,
+      note: values.note.trim(),
+    };
+
+    reimbursementSubmissionRef.current = submissionId;
+    try {
+      const record = await updateMutation.mutateAsync({
+        id: original.id,
+        input,
+      });
+      if (!flowGeneration.isCurrent(submissionToken, flowKey)) {
+        return;
+      }
+      if (record.status === "error") {
+        setFlowMode({ kind: "edit", transaction: record });
+        throw new ReimbursementRecordError(
+          record.error ??
+            "Reimbursement could not be synced. Retry or delete it.",
+          record,
+        );
+      }
+
+      setFlowMode({ kind: "edit", transaction: record });
+      setCreatedReimbursement(record);
+      setReceiptData(nextReceipt);
+      flowGeneration.transition(receiptFlowKey(record.id));
+      setStep(2);
+    } catch (error) {
+      if (flowGeneration.isCurrent(submissionToken, flowKey)) {
+        if (error instanceof ReimbursementRecordError) {
+          setFlowMode({ kind: "edit", transaction: error.record });
+        }
+        setCreatedReimbursement(null);
+        setReceiptData(null);
+        handleToast(
+          error instanceof Error
+            ? error.message
+            : "Failed to update reimbursement",
+        );
+      }
+    } finally {
+      if (reimbursementSubmissionRef.current === submissionId) {
+        reimbursementSubmissionRef.current = null;
+      }
+    }
+  }
+
   async function handleSubmit(values: TransactionFormValues) {
     if (
       flowMode.kind === "reimburse" ||
@@ -909,6 +1129,13 @@ export function TransactionFlow() {
     }
     if (!values.account) {
       handleToast("Select an account");
+      return;
+    }
+    if (
+      flowMode.kind === "edit" &&
+      flowMode.transaction.reimbursesTransactionId
+    ) {
+      await handleLinkedEditSubmit(flowMode.transaction, values);
       return;
     }
     const trimmedFor = values.forValue.trim();
@@ -1110,7 +1337,39 @@ export function TransactionFlow() {
           noteInputRef={noteInputRef}
           currencyLocked={fieldsLocked}
           forLocked={fieldsLocked}
+          amountLocked={linkedAmountLocked}
           preserveCurrencyOnAccountChange={fieldsLocked}
+          formNotice={
+            linkedEditConstraintMessage ? (
+              <div
+                role={
+                  linkedEditSourceIsError || linkedEditSourceIsMissing
+                    ? "alert"
+                    : "status"
+                }
+                className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"
+              >
+                <span>{linkedEditConstraintMessage}</span>
+                {linkedEditSourceIsError ? (
+                  <button
+                    type="button"
+                    className="font-semibold text-foreground underline underline-offset-2"
+                    onClick={() => void linkedEditSourceQuery.refetch()}
+                  >
+                    Retry
+                  </button>
+                ) : reimbursementSummary.isError ? (
+                  <button
+                    type="button"
+                    className="font-semibold text-foreground underline underline-offset-2"
+                    onClick={() => void reimbursementSummary.retry()}
+                  >
+                    Retry
+                  </button>
+                ) : null}
+              </div>
+            ) : undefined
+          }
           middleAction={
             flowMode.kind === "edit" &&
             isReimbursableExpense(flowMode.transaction) ? (
@@ -1136,12 +1395,18 @@ export function TransactionFlow() {
       label: "Receipt",
       className: "space-y-6 h-full",
       content: (() => {
-        if (flowMode.kind === "reimburse") {
+        const isLinkedEditReceipt = Boolean(
+          flowMode.kind === "edit" &&
+            flowMode.transaction.reimbursesTransactionId,
+        );
+        if (flowMode.kind === "reimburse" || isLinkedEditReceipt) {
           return (
             <StepReceipt
               {...receiptSnapshot}
               isPending={
-                reimbursementMutation.isPending && !createdReimbursement
+                (flowMode.kind === "reimburse"
+                  ? reimbursementMutation.isPending
+                  : updateMutation.isPending) && !createdReimbursement
               }
               isSuccess={Boolean(createdReimbursement)}
               isError={false}

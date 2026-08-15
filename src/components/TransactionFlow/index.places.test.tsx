@@ -140,9 +140,15 @@ vi.mock("./useDeleteTransactionMutation", () => ({
   useDeleteTransactionMutation: () => mocks.deleteMutation,
 }));
 
-vi.mock("./useCreateReimbursementMutation", () => ({
-  useCreateReimbursementMutation: () => mocks.reimbursementMutation,
-}));
+vi.mock("./useCreateReimbursementMutation", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("./useCreateReimbursementMutation")
+  >();
+  return {
+    ...actual,
+    useCreateReimbursementMutation: () => mocks.reimbursementMutation,
+  };
+});
 
 vi.mock("./useReimbursementSummary", () => ({
   useReimbursementSummary: ({ source }: { source: TransactionRecord | null }) => ({
@@ -157,6 +163,17 @@ vi.mock("./useReimbursementSummary", () => ({
     isError: false,
     retry: vi.fn(async () => undefined),
     needsOnlineVerification: false,
+  }),
+}));
+
+vi.mock("./useTransactionByIdQuery", () => ({
+  useTransactionByIdQuery: (id: string | null | undefined) => ({
+    data: id ? editableExpense : null,
+    isChecking: false,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(async () => undefined),
   }),
 }));
 
@@ -343,7 +360,21 @@ beforeEach(() => {
   mocks.dbGet.mockResolvedValue(undefined);
   mocks.dbPut.mockResolvedValue(undefined);
   mocks.addMutation.mutateAsync.mockResolvedValue(undefined);
-  mocks.updateMutation.mutateAsync.mockResolvedValue(undefined);
+  mocks.updateMutation.mutateAsync.mockImplementation(
+    async ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: Partial<TransactionRecord>;
+    }) => ({
+      ...linkedReimbursement,
+      ...input,
+      id,
+      status: "synced" as const,
+      error: undefined,
+    }),
+  );
 });
 
 describe("TransactionFlow Places integration", () => {

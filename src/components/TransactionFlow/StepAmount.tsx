@@ -38,6 +38,7 @@ type StepAmountProps = {
   amountLocked?: boolean;
   preserveCurrencyOnAccountChange?: boolean;
   middleAction?: React.ReactNode;
+  formNotice?: React.ReactNode;
 };
 
 export function StepAmount({
@@ -65,6 +66,7 @@ export function StepAmount({
   amountLocked = false,
   preserveCurrencyOnAccountChange = false,
   middleAction,
+  formNotice,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -209,6 +211,8 @@ export function StepAmount({
             autoComplete="off"
           />
         </div>
+
+        {formNotice}
 
         {shouldRenderNearbyPlaces ? (
           <NearbyPlaceChips

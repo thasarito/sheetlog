@@ -1,0 +1,182 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TransactionRecord } from "../../lib/types";
+import { TopDashboard } from "./TopDashboard";
+
+const mocks = vi.hoisted(() => ({
+  local: [] as TransactionRecord[],
+  recent: [] as TransactionRecord[],
+  lastSyncAt: null as string | null,
+}));
+
+vi.mock("../../app/providers", () => ({
+  useTransactions: () => ({
+    queueCount: mocks.local.length,
+    lastSyncAt: mocks.lastSyncAt,
+  }),
+}));
+
+vi.mock("./useRecentTransactionsQuery", () => ({
+  useRecentTransactionsQuery: () => ({
+    data: mocks.recent,
+    isLoading: false,
+  }),
+}));
+
+vi.mock("./useLocalTransactionsQuery", () => ({
+  useLocalTransactionsQuery: () => ({
+    data: mocks.local,
+    isLoading: false,
+  }),
+}));
+
+vi.mock("../ui/AnimatedNumber", () => ({
+  AnimatedNumber: ({ value, prefix }: { value: number; prefix: string }) => (
+    <span>{`${prefix}${value}`}</span>
+  ),
+}));
+
+function transaction(
+  id: string,
+  overrides: Partial<TransactionRecord> = {},
+): TransactionRecord {
+  return {
+    id,
+    type: "expense",
+    amount: 10,
+    currency: "THB",
+    account: "Wallet",
+    for: "Me",
+    category: id,
+    date: "2026-08-15T08:00:00.000Z",
+    status: "synced",
+    createdAt: "2026-08-15T08:00:00.000Z",
+    updatedAt: "2026-08-15T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function renderDashboard(
+  onEditTransaction?: (transaction: TransactionRecord) => void,
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <TopDashboard onEditTransaction={onEditTransaction} />
+    </QueryClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  mocks.local = [];
+  mocks.recent = [];
+  mocks.lastSyncAt = null;
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("TopDashboard local reconciliation", () => {
+  it("shows pending and error rows ahead of older remote rows with local duplicates winning", () => {
+    mocks.local = [
+      transaction("pending-local", {
+        category: "Pending local",
+        status: "pending",
+        createdAt: "2026-08-15T11:00:00.000Z",
+      }),
+      transaction("duplicate", {
+        category: "Local duplicate",
+        status: "error",
+        error: "Could not sync this reimbursement",
+        createdAt: "2026-08-15T10:00:00.000Z",
+      }),
+    ];
+    mocks.recent = [
+      transaction("duplicate", {
+        category: "Remote duplicate",
+        amount: 999,
+        createdAt: "2026-08-15T09:00:00.000Z",
+      }),
+      transaction("remote", {
+        category: "Remote row",
+        createdAt: "2026-08-15T08:00:00.000Z",
+      }),
+    ];
+
+    renderDashboard();
+
+    const labels = screen
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "");
+    expect(labels[0]).toContain("Pending local");
+    expect(labels[1]).toContain("Local duplicate");
+    expect(labels[2]).toContain("Remote row");
+    expect(screen.queryByText("Remote duplicate")).not.toBeInTheDocument();
+  });
+
+  it("announces an actionable sync failure and passes the exact local record", async () => {
+    const errorRow = transaction("failed-child", {
+      type: "income",
+      category: "Reimbursement",
+      note: "Lunch repayment",
+      status: "error",
+      error: "Original expense changed currency",
+      reimbursesTransactionId: "expense-1",
+    });
+    mocks.local = [errorRow];
+    const onEditTransaction = vi.fn();
+    const user = userEvent.setup();
+
+    renderDashboard(onEditTransaction);
+
+    expect(screen.getByText("Sync failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Original expense changed currency"),
+    ).toBeInTheDocument();
+    const failedStatus = screen.getByRole("status", { name: "Sync failed" });
+    expect(failedStatus).toHaveAccessibleName("Sync failed");
+
+    await user.click(
+      screen.getByRole("button", { name: /Reimbursement.*Sync failed/i }),
+    );
+    expect(onEditTransaction).toHaveBeenCalledWith(errorRow);
+  });
+
+  it("keeps gross expense totals deduplicated with the local row authoritative", () => {
+    mocks.local = [
+      transaction("duplicate", {
+        amount: 40,
+        status: "pending",
+        createdAt: "2026-08-15T10:00:00.000Z",
+      }),
+      transaction("local-error", {
+        amount: 20,
+        status: "error",
+        error: "Network unavailable",
+        createdAt: "2026-08-15T09:00:00.000Z",
+      }),
+    ];
+    mocks.recent = [
+      transaction("duplicate", { amount: 999 }),
+      transaction("remote", { amount: 10 }),
+    ];
+
+    renderDashboard();
+
+    expect(screen.getByText("฿70")).toBeInTheDocument();
+    expect(screen.queryByText("฿1029")).not.toBeInTheDocument();
+  });
+});
