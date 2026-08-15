@@ -118,8 +118,10 @@ Places library. Extend it with:
 - One `AutocompleteSessionToken` per opened search sheet. On selection, convert the prediction
   with `toPlace()` and request only `displayName` with `fetchFields()` so the selection completes
   the session; discard an uncompleted token when the sheet closes.
-- `includedPrimaryTypes: ["establishment"]` so the sheet searches places rather than addresses or
-  regions.
+- Omit `includedPrimaryTypes`: Google applies it to the single primary type, so filtering for
+  `establishment` excludes normally categorized businesses such as cafes and restaurants. Filter
+  returned predictions in memory to those whose `types` include `establishment` or
+  `point_of_interest`, so the sheet remains place-focused without excluding categorized venues.
 - A location bias around the last coordinates from the nearby lookup when available; otherwise let
   Google apply its normal bias.
 - Reset a failed Maps loader promise and failed script element so an explicit retry can load the
