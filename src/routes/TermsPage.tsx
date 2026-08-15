@@ -15,7 +15,7 @@ export function TermsPage() {
         </p>
         <h1 className="text-3xl font-semibold">Terms of Service</h1>
         <p className="text-sm text-muted-foreground">
-          Effective date: 2026-01-01
+          Effective date: 2026-08-15
         </p>
       </section>
 
@@ -24,6 +24,27 @@ export function TermsPage() {
         <p>
           By using SheetLog, you agree to these terms. If you do not agree, do
           not use the service.
+        </p>
+      </section>
+
+      <section className="space-y-3 text-sm leading-6 text-foreground/90">
+        <h2 className="text-lg font-semibold text-foreground">Google Maps</h2>
+        <p>
+          Google Maps content used for nearby places and place search is
+          provided by Google and is subject to the{" "}
+          <a
+            className="underline underline-offset-2"
+            href="https://maps.google.com/help/terms_maps/"
+          >
+            Google Maps/Google Earth Additional Terms of Service
+          </a>
+          .
+        </p>
+        <p>
+          Place names, addresses, nearby results, and search suggestions may be
+          inaccurate, incomplete, changed, or unavailable. SheetLog does not
+          guarantee their accuracy or availability; verify information before
+          relying on it.
         </p>
       </section>
 

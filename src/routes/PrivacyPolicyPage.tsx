@@ -15,7 +15,7 @@ export function PrivacyPolicyPage() {
         </p>
         <h1 className="text-3xl font-semibold">Privacy Policy</h1>
         <p className="text-sm text-muted-foreground">
-          Effective date: 2026-01-01
+          Effective date: 2026-08-15
         </p>
       </section>
 
@@ -46,7 +46,38 @@ export function PrivacyPolicyPage() {
             including offline transactions, your selected sheet ID, and display
             preferences.
           </li>
+          <li>
+            If you allow your browser&apos;s location request while creating an
+            expense, precise location may be sent directly from your browser to
+            Google Maps to suggest nearby places. When you use place search,
+            place-search text is sent directly from your browser to Google Maps.
+          </li>
         </ul>
+      </section>
+
+      <section className="space-y-3 text-sm leading-6 text-foreground/90">
+        <h2 className="text-lg font-semibold text-foreground">
+          Google Maps place suggestions
+        </h2>
+        <p>
+          Google processes the location and search information used for nearby
+          places and autocomplete under the{" "}
+          <a
+            className="underline underline-offset-2"
+            href="https://policies.google.com/privacy"
+          >
+            Google Privacy Policy
+          </a>
+          . Your browser controls the browser&apos;s location permission prompt;
+          SheetLog does not add a separate in-app location consent flow.
+        </p>
+        <p>
+          When you select a place, SheetLog copies the selected place display
+          name into your transaction note and Google Sheet. SheetLog does not
+          store raw coordinates, location history, autocomplete history, or
+          unselected place suggestions. These statements describe SheetLog&apos;s
+          storage; Google&apos;s handling is governed by its own policy.
+        </p>
       </section>
 
       <section className="space-y-3 text-sm leading-6 text-foreground/90">
@@ -65,8 +96,9 @@ export function PrivacyPolicyPage() {
           Data sharing and transfers
         </h2>
         <p>
-          We do not sell or share your data with third parties. Data is sent
-          directly from your browser to Google APIs to read or write your sheet.
+          We do not sell your data. Data is sent directly from your browser to
+          Google APIs to read or write your sheet and, when you use the Places
+          picker, to provide Google Maps place suggestions.
         </p>
         <p>
           Our use and transfer of information received from Google APIs adheres
