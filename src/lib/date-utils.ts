@@ -16,10 +16,11 @@ export function serialNumberToDate(serial: number): Date {
   const datePart = new Date(excelEpochMs + daysSinceEpoch * msPerDay);
 
   // Calculate time components from fractional day
-  const totalSeconds = Math.round(timeFraction * 86400);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const totalMilliseconds = Math.round(timeFraction * msPerDay);
+  const hours = Math.floor(totalMilliseconds / 3_600_000);
+  const minutes = Math.floor((totalMilliseconds % 3_600_000) / 60_000);
+  const seconds = Math.floor((totalMilliseconds % 60_000) / 1_000);
+  const milliseconds = totalMilliseconds % 1_000;
 
   // Create LOCAL date with these components (no timezone conversion)
   return new Date(
@@ -28,7 +29,8 @@ export function serialNumberToDate(serial: number): Date {
     datePart.getUTCDate(),
     hours,
     minutes,
-    seconds
+    seconds,
+    milliseconds
   );
 }
 
