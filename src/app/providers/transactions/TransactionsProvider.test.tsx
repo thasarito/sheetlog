@@ -411,6 +411,22 @@ describe("TransactionsProvider", () => {
     expect(harness.getContext().lastSyncError).toBeNull();
     expect(harness.getContext().lastSyncErrorAt).toBeNull();
 
+    providerState.accessToken = "access-token";
+    providerState.userId = "user-a";
+    providerState.sheetId = "sheet-a";
+    harness.rerender({ remountConsumer: true });
+    expect(observedErrors).toEqual([]);
+    expect(harness.getContext().lastSyncError).toBeNull();
+    expect(harness.getContext().lastSyncErrorAt).toBeNull();
+
+    providerState.accessToken = "access-token-b";
+    providerState.userId = "user-b";
+    providerState.sheetId = "sheet-b";
+    harness.rerender({ remountConsumer: true });
+    await waitFor(() => {
+      expect(harness.getContext().queueCount).toBe(1);
+    });
+
     await act(async () => {
       await harness.getContext().syncNow();
     });
