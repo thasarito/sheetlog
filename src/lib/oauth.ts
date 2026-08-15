@@ -224,7 +224,7 @@ export async function exchangeCodeForTokens(
  * Refreshes the access token using the stored refresh token
  * This is the key function for silent token refresh
  */
-export async function refreshAccessToken(): Promise<TokenData> {
+export async function refreshAccessToken(signal?: AbortSignal): Promise<TokenData> {
   const { clientId } = getOAuthConfig();
   const refreshToken = localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
 
@@ -244,12 +244,18 @@ export async function refreshAccessToken(): Promise<TokenData> {
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams(body),
+    signal,
   });
 
   if (!response.ok) {
     // If refresh fails with 400/401, the refresh token is likely revoked
-    if (response.status === 400 || response.status === 401) {
+    if (
+      (response.status === 400 || response.status === 401) &&
+      localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN) === refreshToken
+    ) {
       localStorage.removeItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
+    }
+    if (response.status === 400 || response.status === 401) {
       throw new Error(
         "Refresh token expired or revoked - user must re-authenticate"
       );
@@ -262,7 +268,10 @@ export async function refreshAccessToken(): Promise<TokenData> {
   const now = Date.now();
 
   // Google may return a new refresh token (though typically doesn't)
-  if (data.refresh_token) {
+  if (
+    data.refresh_token &&
+    localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN) === refreshToken
+  ) {
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);
   }
 

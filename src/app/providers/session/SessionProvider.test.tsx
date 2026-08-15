@@ -316,6 +316,37 @@ describe("SessionProvider account identity", () => {
     expect(screen.getByTestId("profile-subject")).toHaveTextContent("waiting");
   });
 
+  it("does not erase a newer token persisted by another tab", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(userInfo("account-a")));
+    const queryClient = renderSession();
+    expect(await screen.findByText("account-a")).toBeInTheDocument();
+    window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, "token-b");
+    window.localStorage.setItem(
+      STORAGE_KEYS.EXPIRES_AT,
+      String(Date.now() + 60_000),
+    );
+    window.localStorage.setItem(
+      STORAGE_KEYS.USER_PROFILE,
+      JSON.stringify({ id: "account-b", name: "Account B", picture: null }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retire access-token" }),
+    );
+
+    expect(window.localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)).toBe(
+      "token-b",
+    );
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(STORAGE_KEYS.USER_PROFILE) ?? "null",
+      ),
+    ).toMatchObject({ id: "account-b" });
+    expect(
+      queryClient.getQueryData<TokenData>(GOOGLE_TOKEN_QUERY_KEY)?.access_token,
+    ).toBe("access-token");
+  });
+
   it("re-verifies a refreshed token for the same account without retaining the old token profile", async () => {
     const refreshed = deferred<ReturnType<typeof userInfo>>();
     vi.stubGlobal(

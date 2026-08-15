@@ -199,6 +199,65 @@ describe("browser OAuth public-client flow", () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  it("does not delete a replacement refresh token when an older request is revoked", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    const response = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = refreshAccessToken();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-b");
+    response.resolve(new Response("revoked", { status: 400 }));
+
+    await expect(request).rejects.toThrow(
+      "Refresh token expired or revoked - user must re-authenticate",
+    );
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-b",
+    );
+  });
+
+  it("does not overwrite a replacement refresh token with an older rotation", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    const response = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = refreshAccessToken();
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-b");
+    response.resolve(
+      successfulTokenResponse({ refresh_token: "rotated-refresh-a" }),
+    );
+
+    await expect(request).resolves.toMatchObject({
+      access_token: "access-token",
+      refresh_token: "rotated-refresh-a",
+    });
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-b",
+    );
+  });
+
+  it("passes an abort signal to the refresh request", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    const fetchMock = vi.fn().mockResolvedValue(successfulTokenResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await refreshAccessToken(controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      TOKEN_URL,
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("keeps secret-only OAuth fields out of browser source declarations", () => {
     const forbiddenEnvName = ["VITE_GOOGLE_CLIENT", "SECRET"].join("_");
     const forbiddenFormField = ["client", "secret"].join("_");
@@ -215,3 +274,11 @@ describe("browser OAuth public-client flow", () => {
     expect(violations).toEqual([]);
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}

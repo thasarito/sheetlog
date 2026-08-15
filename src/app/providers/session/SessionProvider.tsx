@@ -1,6 +1,10 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { STORAGE_KEYS } from "../../../lib/constants";
 import {
@@ -15,6 +19,10 @@ import {
   REFRESH_BUFFER_MS,
   USER_PROFILE_QUERY_KEY,
 } from "./session.constants";
+import {
+  advanceSessionTokenGeneration,
+  getSessionTokenGeneration,
+} from "./session.generation";
 import type {
   SessionContextValue,
   SessionStatus,
@@ -36,15 +44,38 @@ type UserInfoResponse = {
 
 class TokenBoundRefreshError extends Error {
   readonly expectedAccessToken: string | null;
+  readonly generation: number;
 
-  constructor(error: unknown, expectedAccessToken: string | null) {
+  constructor(
+    error: unknown,
+    expectedAccessToken: string | null,
+    generation: number,
+  ) {
     super(
       error instanceof Error ? error.message : "Failed to refresh access token",
     );
     this.name = "TokenBoundRefreshError";
     this.expectedAccessToken = expectedAccessToken;
+    this.generation = generation;
   }
 }
+
+class SupersededRefreshError extends Error {
+  readonly expectedAccessToken: string | null;
+  readonly generation: number;
+
+  constructor(expectedAccessToken: string | null, generation: number) {
+    super("Superseded Google token refresh ignored");
+    this.name = "SupersededRefreshError";
+    this.expectedAccessToken = expectedAccessToken;
+    this.generation = generation;
+  }
+}
+
+type RefreshRequestIdentity = {
+  expectedAccessToken: string | null;
+  generation: number;
+};
 
 function persistProfile(profile: UserProfile | null) {
   if (typeof window === "undefined") {
@@ -125,6 +156,53 @@ function getStoredToken(): TokenData | undefined {
   };
 }
 
+function getQueryToken(queryClient: QueryClient) {
+  return queryClient.getQueryData<TokenData | null>(GOOGLE_TOKEN_QUERY_KEY);
+}
+
+function refreshRequestIsCurrent(
+  queryClient: QueryClient,
+  request: RefreshRequestIdentity,
+): boolean {
+  if (request.generation !== getSessionTokenGeneration()) {
+    return false;
+  }
+  const queryAccessToken = getQueryToken(queryClient)?.access_token ?? null;
+  const storedAccessToken = getStoredToken()?.access_token ?? null;
+  if (
+    queryAccessToken !== null &&
+    queryAccessToken !== request.expectedAccessToken
+  ) {
+    return false;
+  }
+  if (
+    storedAccessToken !== null &&
+    storedAccessToken !== request.expectedAccessToken
+  ) {
+    return false;
+  }
+  return !(
+    request.expectedAccessToken !== null &&
+    queryAccessToken === null &&
+    storedAccessToken === null
+  );
+}
+
+function getReplacementToken(
+  queryClient: QueryClient,
+  expectedAccessToken: string | null,
+): TokenData | null {
+  const storedToken = getStoredToken();
+  if (storedToken && storedToken.access_token !== expectedAccessToken) {
+    return storedToken;
+  }
+  const queryToken = getQueryToken(queryClient);
+  if (queryToken && queryToken.access_token !== expectedAccessToken) {
+    return queryToken;
+  }
+  return null;
+}
+
 function persistToken(token: TokenData) {
   localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token.access_token);
   localStorage.setItem(STORAGE_KEYS.EXPIRES_AT, token.expires_at.toString());
@@ -177,24 +255,63 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   } = useQuery<TokenData | null>({
     queryKey: GOOGLE_TOKEN_QUERY_KEY,
     ...(storedToken ? { initialData: storedToken } : {}),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!refreshTokenAvailable) {
         return null;
       }
-      const expectedAccessToken =
-        queryClient.getQueryData<TokenData | null>(GOOGLE_TOKEN_QUERY_KEY)
-          ?.access_token ??
-        getStoredToken()?.access_token ??
-        null;
+      const request: RefreshRequestIdentity = {
+        expectedAccessToken:
+          getQueryToken(queryClient)?.access_token ??
+          getStoredToken()?.access_token ??
+          null,
+        generation: getSessionTokenGeneration(),
+      };
       try {
-        return await refreshAccessToken();
+        const refreshedToken = await refreshAccessToken(signal);
+        if (refreshRequestIsCurrent(queryClient, request)) {
+          return refreshedToken;
+        }
+        const replacementToken = getReplacementToken(
+          queryClient,
+          request.expectedAccessToken,
+        );
+        if (replacementToken) {
+          return replacementToken;
+        }
+        throw new SupersededRefreshError(
+          request.expectedAccessToken,
+          request.generation,
+        );
       } catch (error) {
-        throw new TokenBoundRefreshError(error, expectedAccessToken);
+        if (error instanceof SupersededRefreshError) {
+          throw error;
+        }
+        if (!refreshRequestIsCurrent(queryClient, request)) {
+          const replacementToken = getReplacementToken(
+            queryClient,
+            request.expectedAccessToken,
+          );
+          if (replacementToken) {
+            return replacementToken;
+          }
+          throw new SupersededRefreshError(
+            request.expectedAccessToken,
+            request.generation,
+          );
+        }
+        throw new TokenBoundRefreshError(
+          error,
+          request.expectedAccessToken,
+          request.generation,
+        );
       }
     },
     refetchInterval: (query) => getRefreshDelay(query.state.data),
     refetchIntervalInBackground: true,
     retry: (failureCount, error) => {
+      if (error instanceof SupersededRefreshError) {
+        return false;
+      }
       if (isTerminalRefreshError(error)) {
         return false;
       }
@@ -212,6 +329,23 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const activeToken = tokenData?.access_token ?? null;
   activeTokenRef.current = activeToken;
+  const effectiveRefreshError = useMemo(() => {
+    if (!refreshError || refreshError instanceof SupersededRefreshError) {
+      return null;
+    }
+    if (refreshError instanceof TokenBoundRefreshError) {
+      if (activeToken !== refreshError.expectedAccessToken) {
+        return null;
+      }
+      return refreshRequestIsCurrent(queryClient, {
+        expectedAccessToken: refreshError.expectedAccessToken,
+        generation: refreshError.generation,
+      })
+        ? refreshError
+        : null;
+    }
+    return refreshError;
+  }, [activeToken, queryClient, refreshError]);
   if (profileTokenRef.current !== activeToken) {
     profileTokenRef.current = activeToken;
     profileTokenVersionRef.current += 1;
@@ -249,15 +383,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(
     (expectedAccessToken?: string | null) => {
       const currentAccessToken =
-        queryClient.getQueryData<TokenData | null>(GOOGLE_TOKEN_QUERY_KEY)
-          ?.access_token ?? activeTokenRef.current;
+        getQueryToken(queryClient)?.access_token ?? activeTokenRef.current;
+      const persistedAccessToken =
+        typeof window === "undefined"
+          ? null
+          : localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       if (
         expectedAccessToken !== undefined &&
-        currentAccessToken !== expectedAccessToken
+        (currentAccessToken !== expectedAccessToken ||
+          (persistedAccessToken !== null &&
+            persistedAccessToken !== expectedAccessToken))
       ) {
         return;
       }
 
+      advanceSessionTokenGeneration();
       localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
       localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
       localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
@@ -284,18 +424,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (refreshError && isTerminalRefreshError(refreshError)) {
+    if (effectiveRefreshError && isTerminalRefreshError(effectiveRefreshError)) {
       signOut(
-        refreshError instanceof TokenBoundRefreshError
-          ? refreshError.expectedAccessToken
+        effectiveRefreshError instanceof TokenBoundRefreshError
+          ? effectiveRefreshError.expectedAccessToken
           : activeToken,
       );
     }
-  }, [activeToken, refreshError, signOut]);
+  }, [activeToken, effectiveRefreshError, signOut]);
 
   const status: SessionStatus = useMemo(() => {
     if (!isInitialized) return "initializing";
-    if (refreshError) return "error";
+    if (effectiveRefreshError) return "error";
     if (activeToken && profileError) return "error";
     if (isConnecting || (isFetching && !tokenData)) return "authenticating";
     if (!tokenData?.access_token) return "unauthenticated";
@@ -303,7 +443,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return "authenticated";
   }, [
     isInitialized,
-    refreshError,
+    effectiveRefreshError,
     activeToken,
     profileError,
     isConnecting,
@@ -313,11 +453,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     userProfile,
   ]);
 
-  const error = useMemo(() => {
-    if (refreshError instanceof Error) return refreshError;
+  const sessionError = useMemo(() => {
+    if (effectiveRefreshError instanceof Error) return effectiveRefreshError;
     if (profileError instanceof Error) return profileError;
     return null;
-  }, [profileError, refreshError]);
+  }, [effectiveRefreshError, profileError]);
 
   const value = useMemo<SessionContextValue>(() => {
     const isExpired = tokenData?.expires_at
@@ -333,7 +473,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         Boolean(activeToken && isProfileFetching),
       isInitialized,
       status,
-      error,
+      error: sessionError,
       connect,
       signOut,
     };
@@ -346,7 +486,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     isProfileFetching,
     isInitialized,
     status,
-    error,
+    sessionError,
     connect,
     signOut,
   ]);

@@ -6,3 +6,4 @@ export {
   SCOPES,
   USER_PROFILE_QUERY_KEY,
 } from "./session.constants";
+export { advanceSessionTokenGeneration } from "./session.generation";

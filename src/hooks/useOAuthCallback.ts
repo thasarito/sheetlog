@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { exchangeCodeForTokens } from "../lib/oauth";
 import { STORAGE_KEYS } from "../lib/constants";
 import {
+  advanceSessionTokenGeneration,
   GOOGLE_TOKEN_QUERY_KEY,
   USER_PROFILE_QUERY_KEY,
 } from "../app/providers/session";
@@ -80,6 +81,8 @@ export function useOAuthCallback(): OAuthCallbackState {
 
         // Retire all account-A identity and workspace state before token B is
         // observable by transaction consumers.
+        advanceSessionTokenGeneration();
+        await queryClient.cancelQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
         await queryClient.cancelQueries({ queryKey: USER_PROFILE_QUERY_KEY });
         queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
         localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
