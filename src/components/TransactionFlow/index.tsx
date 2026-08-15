@@ -27,6 +27,10 @@ import { DateTimeDrawer } from "../DateTimeDrawer";
 import { useUpdateTransactionMutation } from "./useUpdateTransactionMutation";
 import { useDeleteTransactionMutation } from "./useDeleteTransactionMutation";
 import { useNearbyPlaceSuggestions } from "./useNearbyPlaceSuggestions";
+import { hasGoogleMapsApiKey, type PlaceSuggestion } from "../../lib/googlePlaces";
+import { PlaceSearchDrawer } from "./PlaceSearchDrawer";
+import { usePlaceAutocomplete } from "./usePlaceAutocomplete";
+import { isPlacesEligible, type PlacesFlowMode } from "./placesEligibility";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -36,18 +40,46 @@ type StepDefinition = {
   content: React.ReactNode;
 };
 
+function createPlaceSessionId() {
+  if (typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hexadecimal = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+  return `${hexadecimal.slice(0, 8)}-${hexadecimal.slice(
+    8,
+    12
+  )}-${hexadecimal.slice(12, 16)}-${hexadecimal.slice(
+    16,
+    20
+  )}-${hexadecimal.slice(20)}`;
+}
+
 export function TransactionFlow() {
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { onboarding, refreshOnboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
   const [isResyncing, setIsResyncing] = useState(false);
   const [step, setStep] = useState(0);
-  const [placeSuggestionSessionId, setPlaceSuggestionSessionId] = useState(0);
+  const [placeSuggestionSessionId, setPlaceSuggestionSessionId] = useState(
+    createPlaceSessionId
+  );
+  const [placeSearchSessionId, setPlaceSearchSessionId] = useState(
+    createPlaceSessionId
+  );
+  const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<TransactionRecord | null>(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const placeSearchButtonRef = useRef<HTMLButtonElement>(null);
+  const noteInputRef = useRef<HTMLInputElement>(null);
   const mutation = useAddTransactionMutation();
   const updateMutation = useUpdateTransactionMutation();
   const deleteMutation = useDeleteTransactionMutation();
@@ -66,13 +98,76 @@ export function TransactionFlow() {
     dateObject,
     note,
   } = form.useStore((state) => state.values);
-  const shouldFetchNearbyPlaces = step === 1 && editingTransaction === null;
+  const placesMode: PlacesFlowMode = editingTransaction ? "edit" : "create";
+  const shouldFetchNearbyPlaces = isPlacesEligible({
+    step,
+    type,
+    mode: placesMode,
+    hasReceipt: step === 2 || receiptData !== null,
+  });
+  const canSearchPlaces =
+    shouldFetchNearbyPlaces && isOnline && hasGoogleMapsApiKey();
   const nearbyPlaces = useNearbyPlaceSuggestions({
     enabled: shouldFetchNearbyPlaces,
+    isOnline,
     sessionId: placeSuggestionSessionId,
+  });
+  const placeAutocomplete = usePlaceAutocomplete({
+    open: placeSearchOpen,
+    enabled: canSearchPlaces,
+    sessionId: placeSearchSessionId,
+    locationBias: nearbyPlaces.coordinates,
   });
   const receiptTimeoutRef = useRef<number | null>(null);
   const lastSyncErrorRef = useRef<string | null>(null);
+
+  const restorePlacePickerFocus = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const searchButton = placeSearchButtonRef.current;
+      if (searchButton?.isConnected) {
+        searchButton.focus();
+        return;
+      }
+      noteInputRef.current?.focus();
+    });
+  }, []);
+
+  const closePlaceSearch = useCallback(() => {
+    setPlaceSearchOpen(false);
+    restorePlacePickerFocus();
+  }, [restorePlacePickerFocus]);
+
+  const openPlaceSearch = useCallback(() => {
+    if (!canSearchPlaces) {
+      return;
+    }
+    setPlaceSearchSessionId(createPlaceSessionId());
+    setPlaceSearchOpen(true);
+  }, [canSearchPlaces]);
+
+  const handlePlaceSearchOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) {
+        openPlaceSearch();
+        return;
+      }
+      closePlaceSearch();
+    },
+    [closePlaceSearch, openPlaceSearch]
+  );
+
+  const handlePlaceSuggestionSelect = useCallback(
+    async (suggestion: PlaceSuggestion) => {
+      try {
+        const displayName = await placeAutocomplete.selectSuggestion(suggestion);
+        form.setFieldValue("note", displayName);
+        closePlaceSearch();
+      } catch {
+        // The autocomplete hook keeps selection errors inline in the drawer.
+      }
+    },
+    [closePlaceSearch, form, placeAutocomplete.selectSuggestion]
+  );
 
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
 
@@ -91,6 +186,12 @@ export function TransactionFlow() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (placeSearchOpen && !canSearchPlaces) {
+      closePlaceSearch();
+    }
+  }, [canSearchPlaces, closePlaceSearch, placeSearchOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -255,6 +356,9 @@ export function TransactionFlow() {
 
   const resetFlow = useCallback(() => {
     setStep(0);
+    setPlaceSearchOpen(false);
+    setPlaceSuggestionSessionId(createPlaceSessionId());
+    setPlaceSearchSessionId(createPlaceSessionId());
     setReceiptData(null);
     setEditingTransaction(null);
     setShowDeleteConfirm(false);
@@ -269,7 +373,7 @@ export function TransactionFlow() {
   }, [mutation, updateMutation, form]);
 
   const openCreateAmountStep = useCallback(() => {
-    setPlaceSuggestionSessionId((current) => current + 1);
+    setPlaceSuggestionSessionId(createPlaceSessionId());
     setStep(1);
   }, []);
 
@@ -494,9 +598,13 @@ export function TransactionFlow() {
           }
           onNearbyPlaceSelect={
             shouldFetchNearbyPlaces
-              ? (placeName) => form.setFieldValue("note", placeName)
+              ? (suggestion) => form.setFieldValue("note", suggestion.name)
               : undefined
           }
+          canSearchPlaces={canSearchPlaces}
+          onSearchPlaces={canSearchPlaces ? openPlaceSearch : undefined}
+          searchButtonRef={placeSearchButtonRef}
+          noteInputRef={noteInputRef}
         />
       ),
     },
@@ -595,6 +703,21 @@ export function TransactionFlow() {
           />
         </>
       )}
+
+      <PlaceSearchDrawer
+        open={placeSearchOpen}
+        onOpenChange={handlePlaceSearchOpenChange}
+        input={placeAutocomplete.input}
+        onInputChange={placeAutocomplete.setInput}
+        suggestions={placeAutocomplete.suggestions}
+        isLoading={placeAutocomplete.isLoading}
+        isError={placeAutocomplete.isError}
+        error={placeAutocomplete.error}
+        selectionError={placeAutocomplete.selectionError}
+        isSelecting={placeAutocomplete.isSelecting}
+        onRetry={() => void placeAutocomplete.retry()}
+        onSelect={(suggestion) => void handlePlaceSuggestionSelect(suggestion)}
+      />
     </main>
   );
 }

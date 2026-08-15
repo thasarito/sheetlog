@@ -26,6 +26,7 @@ function StepAmountHarness({
   onNearbyPlaceSelect = vi.fn(),
   onSearchPlaces = vi.fn(),
   searchButtonRef,
+  noteInputRef,
 }: {
   suggestions?: PlaceSuggestion[];
   isLoading?: boolean;
@@ -35,6 +36,7 @@ function StepAmountHarness({
   onNearbyPlaceSelect?: (suggestion: PlaceSuggestion) => void;
   onSearchPlaces?: () => void;
   searchButtonRef?: React.Ref<HTMLButtonElement>;
+  noteInputRef?: React.Ref<HTMLInputElement>;
 }) {
   const form = useTransactionForm({
     initialValues: {
@@ -61,6 +63,7 @@ function StepAmountHarness({
       }}
       onSearchPlaces={onSearchPlaces}
       searchButtonRef={searchButtonRef}
+      noteInputRef={noteInputRef}
     />
   );
 }
@@ -127,6 +130,15 @@ describe("StepAmount nearby place suggestions", () => {
 
     expect(searchButtonRef.current).toBe(
       screen.getByRole("button", { name: "Search places" })
+    );
+  });
+
+  it("exposes the note input ref as a focus fallback", () => {
+    const noteInputRef = createRef<HTMLInputElement>();
+    render(<StepAmountHarness noteInputRef={noteInputRef} />);
+
+    expect(noteInputRef.current).toBe(
+      screen.getByPlaceholderText("Add a note...")
     );
   });
 

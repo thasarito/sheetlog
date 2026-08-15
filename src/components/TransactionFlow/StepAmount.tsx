@@ -32,6 +32,7 @@ type StepAmountProps = {
   onNearbyPlaceSelect?: (suggestion: PlaceSuggestion) => void;
   onSearchPlaces?: () => void;
   searchButtonRef?: React.Ref<HTMLButtonElement>;
+  noteInputRef?: React.Ref<HTMLInputElement>;
 };
 
 export function StepAmount({
@@ -53,6 +54,7 @@ export function StepAmount({
   onNearbyPlaceSelect,
   onSearchPlaces,
   searchButtonRef,
+  noteInputRef,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -177,6 +179,7 @@ export function StepAmount({
         <div className="mt-4 flex items-center gap-3 border-b border-border/10 pb-2 transition-colors focus-within:border-primary/50">
           <FileText className="h-4 w-4 text-muted-foreground/50" />
           <input
+            ref={noteInputRef}
             type="text"
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
             placeholder="Add a note..."
