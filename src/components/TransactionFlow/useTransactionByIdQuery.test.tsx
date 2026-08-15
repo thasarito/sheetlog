@@ -401,6 +401,98 @@ describe("useTransactionByIdQuery", () => {
     expect(readTransactionById).toHaveBeenCalledTimes(1);
   });
 
+  it("does not replace a cached query's active Dexie lookup when connectivity returns", async () => {
+    providerState.isOnline = false;
+    const cachedSource = transaction("cached-in-flight-reconnect", {
+      amount: 90,
+    });
+    const staleDexieSource = transaction("cached-in-flight-reconnect", {
+      amount: 100,
+    });
+    const currentRemote = transaction("cached-in-flight-reconnect", {
+      amount: 175,
+    });
+    const sourceLookup = deferred<TransactionRecord | undefined>();
+    const getSource = vi
+      .spyOn(db.transactions, "get")
+      .mockImplementation(() => sourceLookup.promise as never);
+    vi.mocked(readTransactionById).mockResolvedValue(currentRemote);
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(
+      transactionQueryKeys.transaction(
+        "sheet-a",
+        "cached-in-flight-reconnect",
+      ),
+      cachedSource,
+    );
+
+    const { result, rerender } = renderHook(
+      () => useTransactionByIdQuery("cached-in-flight-reconnect"),
+      { wrapper },
+    );
+    expect(result.current.data).toEqual(cachedSource);
+    await waitFor(() => {
+      expect(getSource).toHaveBeenCalledTimes(1);
+      expect(result.current.isFetching).toBe(true);
+    });
+
+    providerState.isOnline = true;
+    rerender();
+    sourceLookup.resolve(staleDexieSource);
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(currentRemote);
+      expect(result.current.isFetching).toBe(false);
+    });
+    expect(getSource).toHaveBeenCalledTimes(1);
+    expect(readTransactionById).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not replace a cached query's active Dexie lookup when credentials arrive", async () => {
+    providerState.accessToken = null;
+    const cachedSource = transaction("cached-in-flight-auth", { amount: 90 });
+    const staleDexieSource = transaction("cached-in-flight-auth", {
+      amount: 100,
+    });
+    const currentRemote = transaction("cached-in-flight-auth", {
+      amount: 185,
+    });
+    const sourceLookup = deferred<TransactionRecord | undefined>();
+    const getSource = vi
+      .spyOn(db.transactions, "get")
+      .mockImplementation(() => sourceLookup.promise as never);
+    vi.mocked(readTransactionById).mockResolvedValue(currentRemote);
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(
+      transactionQueryKeys.transaction(
+        "sheet-a",
+        "cached-in-flight-auth",
+      ),
+      cachedSource,
+    );
+
+    const { result, rerender } = renderHook(
+      () => useTransactionByIdQuery("cached-in-flight-auth"),
+      { wrapper },
+    );
+    expect(result.current.data).toEqual(cachedSource);
+    await waitFor(() => {
+      expect(getSource).toHaveBeenCalledTimes(1);
+      expect(result.current.isFetching).toBe(true);
+    });
+
+    providerState.accessToken = "fresh-access-token";
+    rerender();
+    sourceLookup.resolve(staleDexieSource);
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(currentRemote);
+      expect(result.current.isFetching).toBe(false);
+    });
+    expect(getSource).toHaveBeenCalledTimes(1);
+    expect(readTransactionById).toHaveBeenCalledTimes(1);
+  });
+
   it("returns null when a remote ID is authoritatively missing", async () => {
     vi.mocked(readTransactionById).mockResolvedValue(null);
     const { wrapper } = createHarness();

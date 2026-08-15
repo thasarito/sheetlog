@@ -115,10 +115,10 @@ export function useTransactionByIdQuery(id: string | null | undefined) {
   useEffect(() => {
     const couldReadRemote = couldReadRemoteRef.current;
     couldReadRemoteRef.current = canReadRemote;
-    if (!couldReadRemote && canReadRemote) {
+    if (!couldReadRemote && canReadRemote && !query.isFetching) {
       void query.refetch();
     }
-  }, [canReadRemote, query.refetch]);
+  }, [canReadRemote, query.isFetching, query.refetch]);
 
   return {
     ...query,
