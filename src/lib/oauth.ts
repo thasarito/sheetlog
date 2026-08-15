@@ -207,9 +207,12 @@ export async function exchangeCodeForTokens(
   const data = (await response.json()) as TokenResponse;
   const now = Date.now();
 
-  // Store refresh token if provided
+  // A successful exchange starts a new credential generation. Never retain a
+  // refresh token from the previous session when Google omits a replacement.
   if (data.refresh_token) {
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);
+  } else {
+    localStorage.removeItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
   }
 
   return {

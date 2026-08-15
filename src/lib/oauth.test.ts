@@ -116,6 +116,27 @@ describe("browser OAuth public-client flow", () => {
     expect(localStorage.getItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER)).toBeNull();
   });
 
+  it("retires an older refresh credential when a successful exchange omits one", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    const fetchMock = vi.fn().mockResolvedValue(successfulTokenResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      exchangeCodeForTokens("authorization-code", "expected-state"),
+    ).resolves.toMatchObject({
+      access_token: "access-token",
+      refresh_token: undefined,
+    });
+
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBeNull();
+    await expect(refreshAccessToken()).rejects.toThrow(
+      "No refresh token available - user must re-authenticate",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a state mismatch without logging either state value", async () => {
     const storedState = "stored-private-state";
     const receivedState = "received-private-state";

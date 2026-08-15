@@ -179,6 +179,112 @@ describe("useOAuthCallback account handoff", () => {
     });
   });
 
+  it("does not silently refresh account B with account A's retired credential", async () => {
+    routerState.search = {};
+    const actualOAuth = await vi.importActual<typeof import("../lib/oauth")>(
+      "../lib/oauth",
+    );
+    vi.mocked(exchangeCodeForTokens).mockImplementation(
+      actualOAuth.exchangeCodeForTokens,
+    );
+    const tokenRequests: URLSearchParams[] = [];
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === "https://oauth2.googleapis.com/token") {
+        const requestBody = new URLSearchParams(init?.body as URLSearchParams);
+        tokenRequests.push(requestBody);
+        if (requestBody.get("grant_type") === "authorization_code") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                access_token: "token-b",
+                expires_in: 60,
+                scope: "openid",
+                token_type: "Bearer",
+              }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              access_token: "token-a-refreshed",
+              expires_in: 60,
+              scope: "openid",
+              token_type: "Bearer",
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+        );
+      }
+      const authorization = new Headers(init?.headers).get("Authorization");
+      return Promise.resolve(
+        authorization === "Bearer token-b"
+          ? userInfo("account-b")
+          : userInfo("account-a"),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 60_000 } },
+    });
+    window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, "token-a");
+    window.localStorage.setItem(
+      STORAGE_KEYS.EXPIRES_AT,
+      String(Date.now() + 60_000),
+    );
+    window.localStorage.setItem(
+      OAUTH_STORAGE_KEYS.REFRESH_TOKEN,
+      "refresh-a",
+    );
+    const { result, rerender } = renderHook(
+      () => ({ callback: useOAuthCallback(), session: useSession() }),
+      { wrapper: createSessionHarness(queryClient) },
+    );
+    await waitFor(() => {
+      expect(result.current.session.userProfile?.id).toBe("account-a");
+    });
+
+    window.localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "oauth-state");
+    window.localStorage.setItem(
+      OAUTH_STORAGE_KEYS.CODE_VERIFIER,
+      "pkce-verifier",
+    );
+    routerState.search = {
+      code: "authorization-code",
+      state: "oauth-state",
+    };
+    rerender();
+    await waitFor(() => {
+      expect(result.current.session.accessToken).toBe("token-b");
+      expect(result.current.session.userProfile?.id).toBe("account-b");
+      expect(result.current.session.status).toBe("authenticated");
+    });
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: GOOGLE_TOKEN_QUERY_KEY,
+        exact: true,
+      });
+    });
+
+    expect(tokenRequests).toHaveLength(1);
+    expect(tokenRequests[0]?.get("grant_type")).toBe("authorization_code");
+    expect(window.localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBeNull();
+    expect(queryClient.getQueryData(GOOGLE_TOKEN_QUERY_KEY)).toMatchObject({
+      access_token: "token-b",
+    });
+    expect(result.current.session.accessToken).toBe("token-b");
+    expect(result.current.session.userProfile?.id).toBe("account-b");
+    expect(result.current.session.status).toBe("authenticated");
+  });
+
   it("keeps account B when a cancellation-ignoring account A refresh resolves late", async () => {
     routerState.search = {};
     const oldRefresh = deferred<Response>();
