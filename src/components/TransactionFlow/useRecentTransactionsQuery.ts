@@ -3,6 +3,7 @@ import { getRecentTransactions as realGetRecentTransactions } from '../../lib/go
 import type { TransactionRecord } from '../../lib/types';
 import { IS_DEV_MODE, getRecentTransactions as mockGetRecentTransactions } from '../../lib/mock';
 import { useSession, useWorkspace } from '../../app/providers';
+import { transactionQueryKeys } from './transactionQueryKeys';
 
 const getRecentTransactions = IS_DEV_MODE ? mockGetRecentTransactions : realGetRecentTransactions;
 
@@ -11,7 +12,7 @@ export function useRecentTransactionsQuery(limit: number = 50) {
   const { sheetId } = useWorkspace();
 
   return useQuery<TransactionRecord[]>({
-    queryKey: ['recentTransactions', sheetId, limit],
+    queryKey: transactionQueryKeys.recent(sheetId, limit),
     queryFn: async () => {
       if (!accessToken || !sheetId) {
         return [];

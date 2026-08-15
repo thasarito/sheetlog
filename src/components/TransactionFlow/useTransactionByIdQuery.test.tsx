@@ -1,0 +1,380 @@
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
+import type React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { db } from "../../lib/db";
+import { readTransactionById } from "../../lib/google";
+import type { TransactionRecord, TransactionStatus } from "../../lib/types";
+import { transactionQueryKeys } from "./transactionQueryKeys";
+import { useTransactionByIdQuery } from "./useTransactionByIdQuery";
+
+const providerState = vi.hoisted(() => ({
+  accessToken: "access-token" as string | null,
+  sheetId: "sheet-a" as string | null,
+  isOnline: true,
+}));
+
+vi.mock("../../app/providers", () => ({
+  useSession: () => ({ accessToken: providerState.accessToken }),
+  useWorkspace: () => ({ sheetId: providerState.sheetId }),
+  useConnectivity: () => ({ isOnline: providerState.isOnline }),
+}));
+
+vi.mock("../../lib/google", () => ({
+  readTransactionById: vi.fn(),
+}));
+
+function transaction(
+  id: string,
+  overrides: Partial<TransactionRecord> = {},
+): TransactionRecord {
+  return {
+    id,
+    type: "expense",
+    amount: 100,
+    currency: "THB",
+    account: "Wallet",
+    for: "Me",
+    category: "Food",
+    date: "2026-08-15T08:00:00.000Z",
+    status: "synced",
+    createdAt: "2026-08-15T08:00:00.000Z",
+    updatedAt: "2026-08-15T08:00:00.000Z",
+    sheetId: "sheet-a",
+    sheetRow: 2,
+    sheetRowValid: true,
+    ...overrides,
+  };
+}
+
+function localOnly(id: string, status: TransactionStatus) {
+  return transaction(id, {
+    status,
+    sheetId: undefined,
+    sheetRow: undefined,
+  });
+}
+
+function createHarness() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+      },
+    },
+  });
+
+  function Wrapper({ children }: { children: React.ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    );
+  }
+
+  return { queryClient, wrapper: Wrapper };
+}
+
+describe("useTransactionByIdQuery", () => {
+  beforeEach(async () => {
+    providerState.accessToken = "access-token";
+    providerState.sheetId = "sheet-a";
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    vi.mocked(readTransactionById).mockReset();
+    await db.transactions.clear();
+  });
+
+  afterEach(async () => {
+    onlineManager.setOnline(true);
+    await db.transactions.clear();
+  });
+
+  it.each(["pending", "error"] as const)(
+    "treats a genuinely local-only %s source as authoritative",
+    async (status) => {
+      const pendingSource = localOnly("local-expense", status);
+      await db.transactions.put(pendingSource);
+      const { wrapper } = createHarness();
+
+      const { result } = renderHook(
+        () => useTransactionByIdQuery("local-expense"),
+        { wrapper },
+      );
+
+      await waitFor(() => {
+        expect(result.current.data).toEqual(pendingSource);
+      });
+      expect(readTransactionById).not.toHaveBeenCalled();
+    },
+  );
+
+  it("uses a synced Dexie row only as a placeholder and returns the current remote row", async () => {
+    await db.transactions.put(transaction("expense-1", { amount: 100 }));
+    const currentRemote = transaction("expense-1", {
+      amount: 125,
+      sheetRow: 9,
+    });
+    vi.mocked(readTransactionById).mockResolvedValue(currentRemote);
+    const { queryClient, wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("expense-1"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(currentRemote);
+    });
+    expect(readTransactionById).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      "expense-1",
+    );
+    expect(
+      queryClient.getQueryData(
+        transactionQueryKeys.transaction("sheet-a", "expense-1"),
+      ),
+    ).toEqual(currentRemote);
+  });
+
+  it("does not expose a recent-cache placeholder as authoritative while online", async () => {
+    const cachedSource = transaction("expense-1", { amount: 100 });
+    const currentRemote = transaction("expense-1", {
+      type: "income",
+      currency: "USD",
+      amount: 80,
+    });
+    vi.mocked(readTransactionById).mockResolvedValue(currentRemote);
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(transactionQueryKeys.recent("sheet-a"), [
+      cachedSource,
+    ]);
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("expense-1"),
+      { wrapper },
+    );
+
+    expect(result.current.data).toBeUndefined();
+    await waitFor(() => {
+      expect(result.current.data).toEqual(currentRemote);
+    });
+    expect(result.current.data).not.toEqual(cachedSource);
+  });
+
+  it("observes an authoritative remote deletion instead of a stale local row", async () => {
+    await db.transactions.put(transaction("deleted-source"));
+    vi.mocked(readTransactionById).mockResolvedValue(null);
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("deleted-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.data).toBeNull();
+    });
+  });
+
+  it("observes remote source type and currency changes", async () => {
+    await db.transactions.put(transaction("changed-source"));
+    const changedRemote = transaction("changed-source", {
+      type: "income",
+      currency: "USD",
+    });
+    vi.mocked(readTransactionById).mockResolvedValue(changedRemote);
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("changed-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toMatchObject({
+        type: "income",
+        currency: "USD",
+      });
+    });
+  });
+
+  it("uses a synced Dexie placeholder offline without making a remote request", async () => {
+    providerState.isOnline = false;
+    onlineManager.setOnline(false);
+    const cachedSource = transaction("offline-dexie");
+    await db.transactions.put(cachedSource);
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("offline-dexie"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(cachedSource);
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("uses the recent query cache offline when Dexie has no source", async () => {
+    providerState.isOnline = false;
+    onlineManager.setOnline(false);
+    const cachedSource = transaction("recent-source");
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(transactionQueryKeys.recent("sheet-a"), [
+      cachedSource,
+    ]);
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("recent-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(cachedSource);
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("keeps an in-memory authoritative deletion offline instead of reviving stale Dexie", async () => {
+    providerState.isOnline = false;
+    const staleSource = transaction("deleted-source");
+    await db.transactions.put(staleSource);
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(
+      transactionQueryKeys.transaction("sheet-a", "deleted-source"),
+      null,
+    );
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("deleted-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.data).toBeNull();
+      expect(result.current.fetchStatus).toBe("idle");
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("keeps an in-memory current remote source offline over stale synced Dexie", async () => {
+    providerState.isOnline = false;
+    await db.transactions.put(
+      transaction("cached-current-source", { amount: 100 }),
+    );
+    const currentRemote = transaction("cached-current-source", {
+      amount: 145,
+      sheetRow: 12,
+    });
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(
+      transactionQueryKeys.transaction(
+        "sheet-a",
+        "cached-current-source",
+      ),
+      currentRemote,
+    );
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("cached-current-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(currentRemote);
+      expect(result.current.fetchStatus).toBe("idle");
+    });
+    expect(readTransactionById).not.toHaveBeenCalled();
+  });
+
+  it("refreshes an offline placeholder when connectivity returns", async () => {
+    providerState.isOnline = false;
+    const staleSource = transaction("reconnected-source", { amount: 100 });
+    const currentRemote = transaction("reconnected-source", { amount: 140 });
+    await db.transactions.put(staleSource);
+    vi.mocked(readTransactionById).mockResolvedValue(currentRemote);
+    const { wrapper } = createHarness();
+
+    const { result, rerender } = renderHook(
+      () => useTransactionByIdQuery("reconnected-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(staleSource);
+    });
+    providerState.isOnline = true;
+    rerender();
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(currentRemote);
+    });
+    expect(readTransactionById).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when a remote ID is authoritatively missing", async () => {
+    vi.mocked(readTransactionById).mockResolvedValue(null);
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("missing-source"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.data).toBeNull();
+    });
+  });
+
+  it("keeps transient remote failures in a quiet non-retrying error state", async () => {
+    vi.mocked(readTransactionById).mockRejectedValue(
+      new Error("temporary outage"),
+    );
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("expense-1"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+    expect(result.current.error).toEqual(new Error("temporary outage"));
+    expect(readTransactionById).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates cached source records by sheet and ID", async () => {
+    providerState.isOnline = false;
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(
+      transactionQueryKeys.transaction("sheet-b", "expense-1"),
+      transaction("expense-1", { amount: 70 }),
+    );
+    queryClient.setQueryData(
+      transactionQueryKeys.transaction("sheet-a", "expense-2"),
+      transaction("expense-2", { amount: 60 }),
+    );
+
+    const { result } = renderHook(
+      () => useTransactionByIdQuery("expense-1"),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.data).toBeNull();
+    });
+  });
+});
