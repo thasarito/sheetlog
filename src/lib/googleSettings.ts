@@ -264,6 +264,7 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
   spreadsheetId: string,
   section: Section,
   value: SheetSettingsConfig[Section],
+  beforeMutation?: () => void | Promise<void>,
 ): Promise<SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>> {
   const tabTitle =
     section === 'accounts' ? 'Account' : section === 'categories' ? 'Category' : 'Quick Note';
@@ -365,6 +366,7 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
       fields: 'userEnteredValue',
     },
   });
+  await beforeMutation?.();
   await fetchWithAuth(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
     accessToken,

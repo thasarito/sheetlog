@@ -93,6 +93,101 @@ describe('settings reconciliation query runner', () => {
     expect(final.status).toBe('synced');
   });
 
+  it('follows up any safe dirty state left by a concurrent CAS loss', async () => {
+    const pendingState = markSettingsSectionDirty(
+      createDefaultSettingsSyncState('user-a'),
+      'accounts',
+    );
+    const reconcile = vi
+      .fn()
+      .mockResolvedValueOnce(
+        result({ state: pendingState, changed: [], status: 'pending' }),
+      )
+      .mockResolvedValueOnce(result());
+    const dependencies = runnerDependencies(reconcile);
+
+    await runSettingsReconciliation(
+      {
+        accessToken: 'token-a',
+        sheetId: 'sheet-a',
+        verifiedUserId: 'user-a',
+        verifiedWorkspaceCount: 1,
+        signOut: vi.fn(),
+      },
+      dependencies,
+    );
+
+    expect(reconcile).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves first-pass changed, pushed, and conflict facts in the final result', async () => {
+    const pendingState = markSettingsSectionDirty(
+      createDefaultSettingsSyncState('user-a'),
+      'accounts',
+    );
+    const reconcile = vi
+      .fn()
+      .mockResolvedValueOnce(
+        result({
+          state: pendingState,
+          changed: ['accounts'],
+          pushed: ['accounts'],
+          conflicts: ['categories'],
+          status: 'pending',
+        }),
+      )
+      .mockResolvedValueOnce(result());
+
+    const final = await runSettingsReconciliation(
+      {
+        accessToken: 'token-a',
+        sheetId: 'sheet-a',
+        verifiedUserId: 'user-a',
+        verifiedWorkspaceCount: 1,
+        signOut: vi.fn(),
+      },
+      runnerDependencies(reconcile),
+    );
+
+    expect(final.status).toBe('synced');
+    expect(final.changed).toEqual(['accounts']);
+    expect(final.pushed).toEqual(['accounts']);
+    expect(final.conflicts).toEqual(['categories']);
+  });
+
+  it('preserves a first-pass migration decision and applied fact', async () => {
+    const pendingState = markSettingsSectionDirty(
+      createDefaultSettingsSyncState('user-a'),
+      'quickNotes',
+    );
+    const reconcile = vi
+      .fn()
+      .mockResolvedValueOnce(
+        result({
+          state: pendingState,
+          migrationDecision: 'auto-import',
+          migrationApplied: true,
+          status: 'pending',
+        }),
+      )
+      .mockResolvedValueOnce(result());
+
+    const final = await runSettingsReconciliation(
+      {
+        accessToken: 'token-a',
+        sheetId: 'sheet-a',
+        verifiedUserId: 'user-a',
+        verifiedWorkspaceCount: 1,
+        signOut: vi.fn(),
+      },
+      runnerDependencies(reconcile),
+    );
+
+    expect(final.status).toBe('synced');
+    expect(final.migrationDecision).toBe('auto-import');
+    expect(final.migrationApplied).toBe(true);
+  });
+
   it('uses a fresh aggregate for targeted reads and asserts lock ownership immediately before replace', async () => {
     const events: string[] = [];
     const aggregate = {
@@ -109,7 +204,9 @@ describe('settings reconciliation query runner', () => {
         events.push('read');
         return aggregate;
       }),
-      replaceSection: vi.fn(async () => {
+      replaceSection: vi.fn(async (...args: unknown[]) => {
+        const beforeMutation = args[4] as (() => void | Promise<void>) | undefined;
+        await beforeMutation?.();
         events.push('replace');
         return aggregate.accounts;
       }),
