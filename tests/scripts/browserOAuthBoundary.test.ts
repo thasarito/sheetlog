@@ -1,10 +1,18 @@
 /// <reference types="node" />
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
+  chmodSync,
+  closeSync,
+  copyFileSync,
+  ftruncateSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readdirSync,
+  readlinkSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -74,6 +82,77 @@ function runGuard(args: string[] = [], cwd = PROJECT_ROOT) {
   });
 }
 
+function processHasOpenFile(processId: number, filePath: string) {
+  const descriptorRoot = `/proc/${processId}/fd`;
+  try {
+    return readdirSync(descriptorRoot).some((descriptor) => {
+      try {
+        return readlinkSync(join(descriptorRoot, descriptor)) === filePath;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
+  }
+}
+
+function waitForOpenFile(processId: number, filePath: string) {
+  const deadline = Date.now() + 5_000;
+  const waiter = new Int32Array(new SharedArrayBuffer(4));
+  while (Date.now() < deadline) {
+    if (processHasOpenFile(processId, filePath)) return;
+    Atomics.wait(waiter, 0, 0, 1);
+  }
+  throw new Error("scanner did not reach the synchronization fixture");
+}
+
+async function runGuardWithEntrySwap(
+  scanRoot: string,
+  synchronizationFile: string,
+  victimFile: string,
+  symlinkTarget: string,
+) {
+  const child = spawn(process.execPath, [SCRIPT_PATH, "--root", scanRoot], {
+    cwd: PROJECT_ROOT,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  const completion = new Promise<{
+    status: number | null;
+    stderr: string;
+    stdout: string;
+  }>((resolveCompletion, rejectCompletion) => {
+    child.once("error", rejectCompletion);
+    child.once("close", (status) => {
+      resolveCompletion({ status, stderr, stdout });
+    });
+  });
+
+  try {
+    if (child.pid === undefined) throw new Error("scanner did not start");
+    waitForOpenFile(child.pid, synchronizationFile);
+    const replacement = `${victimFile}.replacement`;
+    symlinkSync(symlinkTarget, replacement);
+    renameSync(replacement, victimFile);
+  } catch (error) {
+    child.kill("SIGKILL");
+    await completion.catch(() => undefined);
+    throw error;
+  }
+
+  return completion;
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -96,6 +175,50 @@ describe("browser OAuth boundary guard", () => {
     symlinkSync(ignoredTarget, join(scanRoot, "ignored-link.js"));
 
     const result = runGuard([], workspace);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  it("rejects a scan root with a symlinked ancestor", () => {
+    const workspace = makeTemporaryDirectory();
+    const realRoot = join(workspace, "real", "dist");
+    writeFixture(realRoot, "unsafe.js", MATERIALS[1].value);
+    const alias = join(workspace, "alias");
+    symlinkSync(join(workspace, "real"), alias, "dir");
+
+    const result = runGuard(["--root", join(alias, "dist")]);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "OAuth boundary scan failed: unable to scan root.\n",
+    );
+  });
+
+  it("does not follow an entry replaced with a symlink after enumeration", async () => {
+    const workspace = makeTemporaryDirectory();
+    const scanRoot = join(workspace, "dist");
+    mkdirSync(scanRoot, { recursive: true });
+    const synchronizationFile = join(scanRoot, "a-synchronization.bin");
+    const descriptor = openSync(synchronizationFile, "w");
+    try {
+      ftruncateSync(descriptor, 64 * 1024 * 1024);
+    } finally {
+      closeSync(descriptor);
+    }
+    const victimFile = join(scanRoot, "z-victim.js");
+    writeFileSync(victimFile, "safe");
+    const symlinkTarget = join(workspace, "outside-build.js");
+    writeFileSync(symlinkTarget, MATERIALS[0].value);
+
+    const result = await runGuardWithEntrySwap(
+      scanRoot,
+      synchronizationFile,
+      victimFile,
+      symlinkTarget,
+    );
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("");
@@ -145,6 +268,25 @@ describe("browser OAuth boundary guard", () => {
     }
   });
 
+  it("escapes control characters so each violation stays on one line", () => {
+    const workspace = makeTemporaryDirectory();
+    const scanRoot = join(workspace, "dist");
+    writeFixture(
+      scanRoot,
+      "nested\nsegment/bad\t\u001b.js",
+      MATERIALS[1].value,
+    );
+
+    const result = runGuard(["--root", scanRoot]);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      `${MATERIALS[1].label}: nested\\nsegment/bad\\t\\u001b.js\n`,
+    );
+    expect(result.stderr.split("\n")).toHaveLength(2);
+  });
+
   it("fails safely when the scan root is missing", () => {
     const workspace = makeTemporaryDirectory();
     const missingRoot = join(workspace, "missing-output");
@@ -157,6 +299,40 @@ describe("browser OAuth boundary guard", () => {
       "OAuth boundary scan failed: unable to scan root.\n",
     );
     expect(result.stderr).not.toContain(missingRoot);
+  });
+
+  it("fails generically when a regular build file cannot be read", () => {
+    const workspace = makeTemporaryDirectory();
+    const scanRoot = join(workspace, "dist");
+    const isolatedScript = join(workspace, "boundary-guard.mjs");
+    const unreadableFile = join(scanRoot, "unreadable.js");
+    copyFileSync(SCRIPT_PATH, isolatedScript);
+    writeFixture(scanRoot, "unreadable.js", "safe");
+    chmodSync(workspace, 0o755);
+    chmodSync(isolatedScript, 0o644);
+    chmodSync(scanRoot, 0o755);
+    chmodSync(unreadableFile, 0o000);
+    const identity =
+      typeof process.getuid === "function" && process.getuid() === 0
+        ? { gid: 65_534, uid: 65_534 }
+        : {};
+
+    const result = spawnSync(
+      process.execPath,
+      [isolatedScript, "--root", scanRoot],
+      {
+        ...identity,
+        cwd: workspace,
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "OAuth boundary scan failed: unable to scan root.\n",
+    );
+    expect(result.stderr).not.toContain(unreadableFile);
   });
 
   it.each([

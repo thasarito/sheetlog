@@ -1,8 +1,15 @@
-import { lstat, readFile, readdir } from "node:fs/promises";
-import { relative, resolve, sep } from "node:path";
+import { constants } from "node:fs";
+import { open, readdir } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 
 const USAGE =
   "Usage: node scripts/check-browser-oauth-boundary.mjs [--root <path>]";
+const ROOT_OPEN_FLAGS =
+  constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+const ENTRY_OPEN_FLAGS =
+  constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW;
+const UNSAFE_DIAGNOSTIC_CHARACTERS =
+  /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}\\]/gu;
 const MATERIALS = [
   {
     label: "environment secret marker",
@@ -28,6 +35,24 @@ function compareText(left, right) {
   return 0;
 }
 
+function escapeDiagnosticPath(filePath) {
+  return filePath.replace(UNSAFE_DIAGNOSTIC_CHARACTERS, (character) => {
+    if (character === "\\") return "\\\\";
+    if (character === "\b") return "\\b";
+    if (character === "\t") return "\\t";
+    if (character === "\n") return "\\n";
+    if (character === "\f") return "\\f";
+    if (character === "\r") return "\\r";
+
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined) return "";
+    const hexadecimal = codePoint.toString(16).padStart(4, "0");
+    return codePoint <= 0xffff
+      ? `\\u${hexadecimal}`
+      : `\\u{${hexadecimal}}`;
+  });
+}
+
 function parseRoot(args) {
   if (args.length === 0) return "dist";
   if (
@@ -41,35 +66,99 @@ function parseRoot(args) {
   return undefined;
 }
 
-function relativeFilePath(root, filePath) {
-  return relative(root, filePath).split(sep).join("/");
+function descriptorPath(handle, name) {
+  const directory = `/proc/self/fd/${handle.fd}`;
+  return name === undefined ? directory : `${directory}/${name}`;
 }
 
-async function scanDirectory(root, directory, violations) {
-  const entries = await readdir(directory, { withFileTypes: true });
+function isSymlinkOpenError(error) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ELOOP"
+  );
+}
+
+async function openRootDirectory(root) {
+  const components = root.split(sep).filter(Boolean);
+  let currentHandle;
+  try {
+    currentHandle = await open(sep, ROOT_OPEN_FLAGS);
+    for (const component of components) {
+      const parentHandle = currentHandle;
+      const nextHandle = await open(
+        descriptorPath(parentHandle, component),
+        ROOT_OPEN_FLAGS,
+      );
+      currentHandle = nextHandle;
+      try {
+        await parentHandle.close();
+      } catch (error) {
+        await nextHandle.close().catch(() => undefined);
+        throw error;
+      }
+    }
+    return currentHandle;
+  } catch (error) {
+    await currentHandle?.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function scanDirectory(directoryHandle, relativeParts, violations) {
+  const entries = await readdir(descriptorPath(directoryHandle), {
+    withFileTypes: true,
+  });
   entries.sort((left, right) => compareText(left.name, right.name));
 
   for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue;
-
-    const entryPath = resolve(directory, entry.name);
-    if (entry.isDirectory()) {
-      await scanDirectory(root, entryPath, violations);
-      continue;
+    let entryHandle;
+    try {
+      entryHandle = await open(
+        descriptorPath(directoryHandle, entry.name),
+        ENTRY_OPEN_FLAGS,
+      );
+    } catch (error) {
+      if (isSymlinkOpenError(error)) continue;
+      throw error;
     }
-    if (!entry.isFile()) continue;
 
-    const file = await readFile(entryPath);
-    const filePath = relativeFilePath(root, entryPath);
-    for (const material of MATERIALS) {
-      if (file.includes(material.bytes)) {
-        violations.push({
-          filePath,
-          label: material.label,
-          materialIndex: material.index,
-        });
+    try {
+      const entryStat = await entryHandle.stat();
+      if (entryStat.isDirectory()) {
+        await scanDirectory(
+          entryHandle,
+          [...relativeParts, entry.name],
+          violations,
+        );
+        continue;
       }
+      if (!entryStat.isFile()) continue;
+
+      const file = await entryHandle.readFile();
+      const filePath = [...relativeParts, entry.name].join("/");
+      for (const material of MATERIALS) {
+        if (file.includes(material.bytes)) {
+          violations.push({
+            filePath,
+            label: material.label,
+            materialIndex: material.index,
+          });
+        }
+      }
+    } finally {
+      await entryHandle.close();
     }
+  }
+}
+
+async function scanRoot(root, violations) {
+  const rootHandle = await openRootDirectory(root);
+  try {
+    await scanDirectory(rootHandle, [], violations);
+  } finally {
+    await rootHandle.close();
   }
 }
 
@@ -86,11 +175,7 @@ async function main() {
   const root = resolve(process.cwd(), rootArgument);
   const violations = [];
   try {
-    const rootStat = await lstat(root);
-    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
-      throw new Error("invalid scan root");
-    }
-    await scanDirectory(root, root, violations);
+    await scanRoot(root, violations);
   } catch {
     process.stderr.write(
       "OAuth boundary scan failed: unable to scan root.\n",
@@ -107,7 +192,10 @@ async function main() {
   if (violations.length > 0) {
     process.stderr.write(
       `${violations
-        .map(({ filePath, label }) => `${label}: ${filePath}`)
+        .map(
+          ({ filePath, label }) =>
+            `${label}: ${escapeDiagnosticPath(filePath)}`,
+        )
         .join("\n")}\n`,
     );
     process.exitCode = 1;
