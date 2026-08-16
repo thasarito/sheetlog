@@ -45,12 +45,7 @@ After inline results appear and while the note is focused, simulate the keyboard
 
 ```ts
 await page.setViewportSize({ width: 390, height: 544 });
-await page.evaluate(
-  () =>
-    new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    ),
-);
+await page.clock.runFor(32);
 
 const keyboardNote = await note.boundingBox();
 const keyboardKeypad = await keypad.boundingBox();
@@ -71,12 +66,7 @@ await expect(note).not.toBeFocused();
 await expect(page.getByRole("listbox")).toHaveCount(0);
 
 await page.setViewportSize({ width: 390, height: 844 });
-await page.evaluate(
-  () =>
-    new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    ),
-);
+await page.clock.runFor(32);
 ```
 
 Re-read the three rectangles and use `expectSameBox` against the original baseline.
