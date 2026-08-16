@@ -55,23 +55,32 @@ export function ReimbursementAction({
   const Icon = isLoading ? Loader2 : canRetry ? RotateCcw : HandCoins;
 
   return (
-    <button
-      type="button"
-      aria-label={accessibleName}
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/40 bg-primary/10 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
-      onClick={() => {
-        if (canRetry) {
-          onRetry();
-        } else if (canReimburse) {
-          onReimburse();
-        }
-      }}
-      disabled={!canRetry && !canReimburse}
-    >
-      <Icon
-        className={`h-4 w-4${isLoading ? " animate-spin" : ""}`}
-        aria-hidden="true"
-      />
-    </button>
+    <>
+      <output
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {accessibleName}
+      </output>
+      <button
+        type="button"
+        aria-label={accessibleName}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/40 bg-primary/10 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={() => {
+          if (canRetry) {
+            onRetry();
+          } else if (canReimburse) {
+            onReimburse();
+          }
+        }}
+        disabled={!canRetry && !canReimburse}
+      >
+        <Icon
+          className={`h-4 w-4${isLoading ? " animate-spin motion-reduce:animate-none" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+    </>
   );
 }

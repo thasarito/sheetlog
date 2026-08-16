@@ -834,9 +834,12 @@ describe("TransactionFlow reimbursement entry", () => {
 
       await openExpenseEditor(user);
 
-      expect(
-        screen.queryByText(previousMessage, { exact: true }),
-      ).not.toBeInTheDocument();
+      for (const match of screen.queryAllByText(previousMessage, {
+        exact: true,
+      })) {
+        expect(match).toHaveRole("status");
+        expect(match).toHaveClass("sr-only");
+      }
       const action = screen.getByRole("button", { name: accessibleName });
       if (isDisabled) {
         expect(action).toBeDisabled();

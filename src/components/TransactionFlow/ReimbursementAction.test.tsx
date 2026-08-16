@@ -44,22 +44,30 @@ function renderAction({
   );
 }
 
-function expectSilentPresentation() {
+function expectSilentPresentation(accessibleName: string) {
   expect(
-    screen.queryAllByText(
-      /confirmed|queued|remaining|checking reimbursements|retry|fully reimbursed|mismatch|over-reimbursed|balance will be verified/i
-    )
+    screen.queryAllByText(/confirmed|queued|remaining/i)
   ).toHaveLength(0);
-  expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+  const status = screen.getByRole("status");
+  expect(status).toHaveClass("sr-only");
+  expect(status).toHaveAttribute("aria-live", "polite");
+  expect(status).toHaveAttribute("aria-atomic", "true");
+  expect(status.textContent).toBe(accessibleName);
+  expect(screen.getAllByText(accessibleName, { exact: true })).toEqual([
+    status,
+  ]);
 }
 
-function expectIcon(action: HTMLElement, iconClass: string) {
-  const icon = action.querySelector("svg");
+function expectSingleDecorativeIcon(action: HTMLElement) {
+  const icons = action.querySelectorAll("svg");
+  expect(icons).toHaveLength(1);
+  const icon = icons[0];
   expect(icon).toBeInTheDocument();
-  expect(icon).toHaveClass(iconClass);
   expect(icon).toHaveAttribute("aria-hidden", "true");
+  return icon;
 }
 
 describe("ReimbursementAction", () => {
@@ -68,14 +76,14 @@ describe("ReimbursementAction", () => {
     const onReimburse = vi.fn();
     renderAction({ onReimburse });
 
-    expectSilentPresentation();
+    expectSilentPresentation("Reimburse");
     expect(screen.getAllByRole("button")).toHaveLength(1);
 
     const action = screen.getByRole("button", { name: "Reimburse" });
     expect(action).toBeEnabled();
     expect(action.textContent).toBe("");
     expect(action).toHaveClass("h-11", "w-11");
-    expectIcon(action, "lucide-hand-coins");
+    expectSingleDecorativeIcon(action);
 
     await user.click(action);
     expect(onReimburse).toHaveBeenCalledTimes(1);
@@ -87,13 +95,15 @@ describe("ReimbursementAction", () => {
     const onReimburse = vi.fn();
     renderAction({ isChecking: true, isError: true, onRetry, onReimburse });
 
-    expectSilentPresentation();
     const action = screen.getByRole("button", {
       name: "Checking reimbursements",
     });
     expect(action).toBeDisabled();
-    expectIcon(action, "lucide-loader-circle");
-    expect(action.querySelector("svg")).toHaveClass("animate-spin");
+    expect(expectSingleDecorativeIcon(action)).toHaveClass(
+      "animate-spin",
+      "motion-reduce:animate-none"
+    );
+    expectSilentPresentation("Checking reimbursements");
 
     await user.click(action);
     expect(onRetry).not.toHaveBeenCalled();
@@ -106,12 +116,12 @@ describe("ReimbursementAction", () => {
     const onReimburse = vi.fn();
     renderAction({ isError: true, onRetry, onReimburse });
 
-    expectSilentPresentation();
+    expectSilentPresentation("Retry reimbursement check");
     const action = screen.getByRole("button", {
       name: "Retry reimbursement check",
     });
     expect(action).toBeEnabled();
-    expectIcon(action, "lucide-rotate-ccw");
+    expectSingleDecorativeIcon(action);
 
     await user.click(action);
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -175,10 +185,10 @@ describe("ReimbursementAction", () => {
         onReimburse,
       });
 
-      expectSilentPresentation();
+      expectSilentPresentation(accessibleName);
       const action = screen.getByRole("button", { name: accessibleName });
       expect(action).toBeDisabled();
-      expectIcon(action, "lucide-hand-coins");
+      expectSingleDecorativeIcon(action);
 
       await user.click(action);
       expect(onRetry).not.toHaveBeenCalled();
@@ -191,7 +201,7 @@ describe("ReimbursementAction", () => {
     const onReimburse = vi.fn();
     renderAction({ value: summary({ remaining: 25 }), onReimburse });
 
-    expectSilentPresentation();
+    expectSilentPresentation("Reimburse");
     const action = screen.getByRole("button", { name: "Reimburse" });
     expect(action).toBeEnabled();
 
