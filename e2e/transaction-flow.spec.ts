@@ -24,6 +24,15 @@ type StoredTransaction = {
   sheetRowValid?: boolean;
 };
 
+type RequiredBox = NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>;
+
+function expectSameBox(actual: RequiredBox, expected: RequiredBox) {
+  expect(Math.abs(actual.x - expected.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(actual.y - expected.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(actual.width - expected.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(actual.height - expected.height)).toBeLessThanOrEqual(1);
+}
+
 const sourceExpense: StoredTransaction = {
   id: SOURCE_ID,
   type: "expense",
@@ -477,8 +486,9 @@ test.describe("Transaction flow - Places", () => {
 
     const beforeKeypad = await keypad.boundingBox();
     const beforeSubmit = await submit.boundingBox();
-    expect(beforeKeypad).not.toBeNull();
-    expect(beforeSubmit).not.toBeNull();
+    if (!beforeKeypad || !beforeSubmit) {
+      throw new Error("Expected transaction geometry before keyboard resize");
+    }
 
     await page.clock.pauseAt(new Date("2026-08-15T10:10:00.000Z"));
     await note.fill("c");
@@ -494,13 +504,11 @@ test.describe("Transaction flow - Places", () => {
     await expect(listbox).toBeVisible();
     await expect(page.getByRole("option")).toHaveCount(6);
 
+    const resultsNote = await note.boundingBox();
     const afterKeypad = await keypad.boundingBox();
     const afterSubmit = await submit.boundingBox();
     const listboxBox = await listbox.boundingBox();
-    expect(afterKeypad).not.toBeNull();
-    expect(afterSubmit).not.toBeNull();
-    expect(listboxBox).not.toBeNull();
-    if (!beforeKeypad || !beforeSubmit || !afterKeypad || !afterSubmit || !listboxBox) {
+    if (!resultsNote || !afterKeypad || !afterSubmit || !listboxBox) {
       throw new Error("Expected note results, keypad, and Submit geometry");
     }
 
@@ -550,12 +558,38 @@ test.describe("Transaction flow - Places", () => {
       contentType: "image/png",
     });
 
+    await page.setViewportSize({ width: 390, height: 544 });
+    await page.clock.runFor(32);
+    const keyboardNote = await note.boundingBox();
+    const keyboardKeypad = await keypad.boundingBox();
+    const keyboardSubmit = await submit.boundingBox();
+    if (!keyboardNote || !keyboardKeypad || !keyboardSubmit) {
+      throw new Error("Expected transaction geometry with keyboard visible");
+    }
+    expectSameBox(keyboardNote, resultsNote);
+    expectSameBox(keyboardKeypad, beforeKeypad);
+    expectSameBox(keyboardSubmit, beforeSubmit);
+
     const autocompleteResult = page.getByRole("option", {
       name: /Central Cafe.*123 Test Street/,
     });
     await expect(autocompleteResult).toBeVisible();
     await autocompleteResult.click();
     await expect(note).toHaveValue("Central Cafe");
+    await expect(note).not.toBeFocused();
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.clock.runFor(32);
+    const restoredNote = await note.boundingBox();
+    const restoredKeypad = await keypad.boundingBox();
+    const restoredSubmit = await submit.boundingBox();
+    if (!restoredNote || !restoredKeypad || !restoredSubmit) {
+      throw new Error("Expected restored transaction geometry");
+    }
+    expectSameBox(restoredNote, resultsNote);
+    expectSameBox(restoredKeypad, beforeKeypad);
+    expectSameBox(restoredSubmit, beforeSubmit);
 
     const clear = page.getByRole("button", { name: "Clear note" });
     const clearBox = await clear.boundingBox();
