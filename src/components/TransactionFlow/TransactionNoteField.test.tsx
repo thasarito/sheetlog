@@ -195,7 +195,7 @@ describe("TransactionNoteField", () => {
 
     const listbox = screen.getByRole("listbox");
     expect(listbox).toHaveClass("absolute", "z-50", "max-h-56", "overflow-y-auto");
-    expect(listbox.className).not.toContain("shadow");
+    expect(getComputedStyle(listbox).boxShadow).toBe("");
     expect(screen.getByText("Searching places")).toHaveAttribute(
       "aria-live",
       "polite",
