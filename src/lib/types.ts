@@ -1,6 +1,13 @@
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type TransactionStatus = 'pending' | 'synced' | 'error';
 
+export type TransactionPlace = {
+  provider: 'google';
+  placeId: string;
+};
+
+export type PlaceUpdateIntent = 'preserve' | 'set' | 'clear';
+
 export interface TransactionInput {
   type: TransactionType;
   amount: number;
@@ -11,13 +18,21 @@ export interface TransactionInput {
   date: string;
   note?: string;
   reimbursesTransactionId?: string;
+  place?: TransactionPlace;
 }
+
+export type TransactionUpdateInput =
+  Partial<Omit<TransactionInput, 'place'>> & {
+    place?: TransactionPlace | null;
+  };
 
 export interface TransactionRecord extends TransactionInput {
   id: string;
   status: TransactionStatus;
   /** Durable request to remove this exact stable ID from Google Sheets. */
   deleteIntent?: boolean;
+  /** Local-only three-way place update state for existing Sheet rows. */
+  placeUpdateIntent?: PlaceUpdateIntent;
   createdAt: string;
   updatedAt: string;
   /** Immutable local queue destination. Never serialized to Google Sheets. */
