@@ -1366,7 +1366,7 @@ export function TransactionFlow() {
     <main
       data-testid="transaction-canvas"
       style={{ height: `${stableTransactionHeight}px` }}
-      className="h-full from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6"
+      className="h-full shrink-0 from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6"
     >
       <div className="mx-auto flex h-full w-full max-w-md flex-col">
         {/* Header with settings drawer */}

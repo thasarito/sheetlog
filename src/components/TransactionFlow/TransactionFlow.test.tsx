@@ -561,6 +561,7 @@ describe("TransactionFlow reimbursement entry", () => {
     expect(transactionCanvas).toHaveStyle({
       height: `${window.innerHeight}px`,
     });
+    expect(transactionCanvas).toHaveClass("shrink-0");
     expect(transactionCanvas).not.toHaveClass("h-dvh");
 
     const dashboardCell = screen.getByTestId("top-dashboard").parentElement;
