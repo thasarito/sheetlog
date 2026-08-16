@@ -1402,13 +1402,9 @@ export function TransactionFlow() {
             isReimbursableExpense(flowMode.transaction) ? (
               <ReimbursementAction
                 summary={reimbursementSummary.summary}
-                currency={flowMode.transaction.currency}
                 isChecking={reimbursementSummary.isChecking}
                 isError={reimbursementSummary.isError}
                 isDeleting={deleteMutation.isPending}
-                needsOnlineVerification={
-                  reimbursementSummary.needsOnlineVerification
-                }
                 onRetry={() => void reimbursementSummary.retry()}
                 onReimburse={enterReimbursement}
               />

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ReimbursementSummary } from "../../lib/reimbursements";
@@ -21,7 +21,6 @@ function renderAction({
   value = summary(),
   isChecking = false,
   isError = false,
-  needsOnlineVerification = false,
   isDeleting = false,
   onRetry = vi.fn(),
   onReimburse = vi.fn(),
@@ -29,7 +28,6 @@ function renderAction({
   value?: ReimbursementSummary;
   isChecking?: boolean;
   isError?: boolean;
-  needsOnlineVerification?: boolean;
   isDeleting?: boolean;
   onRetry?: () => void;
   onReimburse?: () => void;
@@ -37,10 +35,8 @@ function renderAction({
   render(
     <ReimbursementAction
       summary={value}
-      currency="THB"
       isChecking={isChecking}
       isError={isError}
-      needsOnlineVerification={needsOnlineVerification}
       isDeleting={isDeleting}
       onRetry={onRetry}
       onReimburse={onReimburse}
@@ -48,134 +44,158 @@ function renderAction({
   );
 }
 
+function expectSilentPresentation() {
+  expect(
+    screen.queryAllByText(
+      /confirmed|queued|remaining|checking reimbursements|retry|fully reimbursed|mismatch|over-reimbursed|balance will be verified/i
+    )
+  ).toHaveLength(0);
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+}
+
+function expectIcon(action: HTMLElement, iconClass: string) {
+  const icon = action.querySelector("svg");
+  expect(icon).toBeInTheDocument();
+  expect(icon).toHaveClass(iconClass);
+  expect(icon).toHaveAttribute("aria-hidden", "true");
+}
+
 describe("ReimbursementAction", () => {
-  it("shows confirmed, queued, and remaining amounts compactly", () => {
-    renderAction();
-
-    const balance = screen.getByRole("group", {
-      name: "Reimbursement balance",
-    });
-    expect(within(balance).getByText("Confirmed").parentElement).toHaveTextContent(
-      "ConfirmedTHB 40"
-    );
-    expect(within(balance).getByText("Queued").parentElement).toHaveTextContent(
-      "QueuedTHB 20"
-    );
-    expect(within(balance).getByText("Remaining").parentElement).toHaveTextContent(
-      "RemainingTHB 40"
-    );
-  });
-
-  it("disables entry while checking reimbursements", async () => {
+  it("renders one silent reimbursement icon without balance copy", async () => {
     const user = userEvent.setup();
     const onReimburse = vi.fn();
-    renderAction({
-      value: summary({ confirmed: 0, queued: 0, remaining: 0 }),
-      isChecking: true,
-      onReimburse,
-    });
+    renderAction({ onReimburse });
 
-    expect(screen.getByText("Checking reimbursements...")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
-    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
+    expectSilentPresentation();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+
     const action = screen.getByRole("button", { name: "Reimburse" });
-    expect(action).toBeDisabled();
+    expect(action).toBeEnabled();
+    expect(action.textContent).toBe("");
+    expect(action).toHaveClass("h-11", "w-11");
+    expectIcon(action, "lucide-hand-coins");
+
     await user.click(action);
+    expect(onReimburse).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a disabled loading icon while checking", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const onReimburse = vi.fn();
+    renderAction({ isChecking: true, isError: true, onRetry, onReimburse });
+
+    expectSilentPresentation();
+    const action = screen.getByRole("button", {
+      name: "Checking reimbursements",
+    });
+    expect(action).toBeDisabled();
+    expectIcon(action, "lucide-loader-circle");
+    expect(action.querySelector("svg")).toHaveClass("animate-spin");
+
+    await user.click(action);
+    expect(onRetry).not.toHaveBeenCalled();
     expect(onReimburse).not.toHaveBeenCalled();
   });
 
-  it("shows an inline Retry action when balance loading fails", async () => {
+  it("uses the silent icon as the retry control after a check failure", async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
     const onReimburse = vi.fn();
     renderAction({ isError: true, onRetry, onReimburse });
 
-    const alert = screen.getByRole("alert");
-    expect(alert).toHaveAttribute("aria-atomic", "true");
-    expect(alert).not.toHaveAttribute("aria-live");
-    expect(within(alert).queryByRole("status")).not.toBeInTheDocument();
-    await user.click(within(alert).getByRole("button", { name: "Retry" }));
-
-    expect(onRetry).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Reimburse" })).toBeDisabled();
-    expect(onReimburse).not.toHaveBeenCalled();
-  });
-
-  it("permits a known positive balance offline and warns that it will be verified", async () => {
-    const user = userEvent.setup();
-    const onReimburse = vi.fn();
-    renderAction({ needsOnlineVerification: true, onReimburse });
-
-    expect(
-      screen.getByText("Balance will be verified when online")
-    ).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
-    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
-    await user.click(screen.getByRole("button", { name: "Reimburse" }));
-
-    expect(onReimburse).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows a disabled fully reimbursed state at zero remaining", () => {
-    const onReimburse = vi.fn();
-    renderAction({
-      value: summary({ confirmed: 80, queued: 20, remaining: 0 }),
-      onReimburse,
+    expectSilentPresentation();
+    const action = screen.getByRole("button", {
+      name: "Retry reimbursement check",
     });
+    expect(action).toBeEnabled();
+    expectIcon(action, "lucide-rotate-ccw");
 
-    expect(
-      screen.getByRole("button", { name: "Fully reimbursed" })
-    ).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Fully reimbursed");
-    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
-    expect(onReimburse).not.toHaveBeenCalled();
-  });
-
-  it("surfaces currency mismatches and disables reimbursement", () => {
-    renderAction({
-      value: summary({ currencyMismatchIds: ["child-2"] }),
-    });
-
-    expect(
-      screen.getByText("Currency mismatch in linked reimbursements")
-    ).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
-    expect(screen.getByRole("button", { name: "Reimburse" })).toBeDisabled();
-  });
-
-  it("surfaces over-reimbursement and disables reimbursement", () => {
-    renderAction({
-      value: summary({
-        confirmed: 110,
-        queued: 0,
-        remaining: 0,
-        overReimbursed: 10,
-      }),
-    });
-
-    expect(screen.getByText("Over-reimbursed by THB 10")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
-    expect(screen.getByRole("button", { name: "Reimburse" })).toBeDisabled();
-  });
-
-  it("does not call the action for an unknown remaining balance", () => {
-    const onReimburse = vi.fn();
-    renderAction({ value: summary({ remaining: Number.NaN }), onReimburse });
-
-    screen.getByRole("button", { name: "Reimburse" }).click();
-
-    expect(onReimburse).not.toHaveBeenCalled();
-  });
-
-  it("disables and ignores reimbursement while the source is deleting", async () => {
-    const user = userEvent.setup();
-    const onReimburse = vi.fn();
-    renderAction({ isDeleting: true, onReimburse });
-
-    const action = screen.getByRole("button", { name: "Reimburse" });
-    expect(action).toBeDisabled();
     await user.click(action);
-
+    expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onReimburse).not.toHaveBeenCalled();
+  });
+
+  it.each<{
+    name: string;
+    value: ReimbursementSummary;
+    isChecking?: boolean;
+    isError?: boolean;
+    isDeleting?: boolean;
+    accessibleName: string;
+  }>([
+    {
+      name: "fully reimbursed",
+      value: summary({ remaining: 0 }),
+      accessibleName: "Fully reimbursed",
+    },
+    {
+      name: "currency mismatch",
+      value: summary({ currencyMismatchIds: ["child-2"] }),
+      accessibleName: "Reimbursement unavailable",
+    },
+    {
+      name: "over-reimbursed",
+      value: summary({ remaining: 0, overReimbursed: 10 }),
+      accessibleName: "Reimbursement unavailable",
+    },
+    {
+      name: "unknown balance",
+      value: summary({ remaining: Number.NaN }),
+      accessibleName: "Reimbursement unavailable",
+    },
+    {
+      name: "source deletion",
+      value: summary(),
+      isChecking: true,
+      isError: true,
+      isDeleting: true,
+      accessibleName: "Reimbursement unavailable",
+    },
+  ])(
+    "disables the icon for $name",
+    async ({
+      value,
+      isChecking,
+      isError,
+      isDeleting,
+      accessibleName,
+    }) => {
+      const user = userEvent.setup();
+      const onRetry = vi.fn();
+      const onReimburse = vi.fn();
+      renderAction({
+        value,
+        isChecking,
+        isError,
+        isDeleting,
+        onRetry,
+        onReimburse,
+      });
+
+      expectSilentPresentation();
+      const action = screen.getByRole("button", { name: accessibleName });
+      expect(action).toBeDisabled();
+      expectIcon(action, "lucide-hand-coins");
+
+      await user.click(action);
+      expect(onRetry).not.toHaveBeenCalled();
+      expect(onReimburse).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps a known positive best-known balance actionable without warning copy", async () => {
+    const user = userEvent.setup();
+    const onReimburse = vi.fn();
+    renderAction({ value: summary({ remaining: 25 }), onReimburse });
+
+    expectSilentPresentation();
+    const action = screen.getByRole("button", { name: "Reimburse" });
+    expect(action).toBeEnabled();
+
+    await user.click(action);
+    expect(onReimburse).toHaveBeenCalledTimes(1);
   });
 });

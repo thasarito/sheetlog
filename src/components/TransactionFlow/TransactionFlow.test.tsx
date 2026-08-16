@@ -786,35 +786,40 @@ describe("TransactionFlow reimbursement entry", () => {
       "checking",
       { isChecking: true },
       "Checking reimbursements...",
-      "Reimburse",
+      "Checking reimbursements",
+      true,
     ],
     [
       "remote error",
       { isError: true },
       "Unable to check reimbursements.",
-      "Reimburse",
+      "Retry reimbursement check",
+      false,
     ],
     [
       "currency mismatch",
       { summary: { currencyMismatchIds: ["child-bad"] } },
       "Currency mismatch in linked reimbursements",
-      "Reimburse",
+      "Reimbursement unavailable",
+      true,
     ],
     [
       "overage",
       { summary: { remaining: 0, overReimbursed: 10 } },
       "Over-reimbursed by THB 10",
-      "Reimburse",
+      "Reimbursement unavailable",
+      true,
     ],
     [
       "full",
       { summary: { confirmed: 80, queued: 20, remaining: 0 } },
       "Fully reimbursed",
       "Fully reimbursed",
+      true,
     ],
   ])(
-    "disables reimbursement entry while the balance is %s",
-    async (_label, state, message, buttonName) => {
+    "presents the %s balance as a silent action state",
+    async (_label, state, previousMessage, accessibleName, isDisabled) => {
       if ("summary" in state) {
         Object.assign(mocks.summaryState.summary, state.summary);
       }
@@ -829,10 +834,15 @@ describe("TransactionFlow reimbursement entry", () => {
 
       await openExpenseEditor(user);
 
-      expect(screen.getAllByText(message).length).toBeGreaterThan(0);
       expect(
-        screen.getByRole("button", { name: buttonName }),
-      ).toBeDisabled();
+        screen.queryByText(previousMessage, { exact: true }),
+      ).not.toBeInTheDocument();
+      const action = screen.getByRole("button", { name: accessibleName });
+      if (isDisabled) {
+        expect(action).toBeDisabled();
+      } else {
+        expect(action).toBeEnabled();
+      }
     },
   );
 });

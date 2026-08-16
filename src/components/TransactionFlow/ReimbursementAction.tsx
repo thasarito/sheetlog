@@ -1,32 +1,19 @@
+import { HandCoins, Loader2, RotateCcw } from "lucide-react";
 import type { ReimbursementSummary } from "../../lib/reimbursements";
 
 export type ReimbursementActionProps = {
   summary: ReimbursementSummary;
-  currency: string;
   isChecking: boolean;
   isError: boolean;
-  needsOnlineVerification: boolean;
   isDeleting?: boolean;
   onRetry: () => void;
   onReimburse: () => void;
 };
 
-function formatAmount(amount: number): string {
-  if (!Number.isFinite(amount)) {
-    return "—";
-  }
-
-  return amount.toLocaleString("en-US", {
-    maximumFractionDigits: 12,
-  });
-}
-
 export function ReimbursementAction({
   summary,
-  currency,
   isChecking,
   isError,
-  needsOnlineVerification,
   isDeleting = false,
   onRetry,
   onReimburse,
@@ -50,92 +37,41 @@ export function ReimbursementAction({
     !isOverReimbursed &&
     hasKnownRemaining &&
     summary.remaining > 0;
+  const canRetry = isError && !isChecking && !isDeleting;
+  const isLoading = isChecking && !isDeleting;
+
+  const accessibleName = isDeleting
+    ? "Reimbursement unavailable"
+    : isChecking
+      ? "Checking reimbursements"
+      : canRetry
+        ? "Retry reimbursement check"
+        : isFullyReimbursed
+          ? "Fully reimbursed"
+          : canReimburse
+            ? "Reimburse"
+            : "Reimbursement unavailable";
+
+  const Icon = isLoading ? Loader2 : canRetry ? RotateCcw : HandCoins;
 
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <fieldset className="m-0 min-w-0 border-0 p-0">
-        <legend className="sr-only">Reimbursement balance</legend>
-        <dl className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          {[
-            ["Confirmed", summary.confirmed],
-            ["Queued", summary.queued],
-            ["Remaining", summary.remaining],
-          ].map(([label, amount]) => (
-            <div key={label} className="flex flex-col">
-              <dt>{label}</dt>
-              <dd className="font-semibold text-foreground tabular-nums">
-                {currency} {formatAmount(amount as number)}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </fieldset>
-
-      {isChecking ? (
-        <output
-          className="text-[10px] text-muted-foreground"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          Checking reimbursements...
-        </output>
-      ) : isError ? (
-        <div
-          role="alert"
-          aria-atomic="true"
-          className="flex items-center gap-1 text-[10px] text-danger"
-        >
-          Unable to check reimbursements.
-          <button
-            type="button"
-            className="font-semibold underline underline-offset-2"
-            onClick={onRetry}
-          >
-            Retry
-          </button>
-        </div>
-      ) : hasCurrencyMismatch ? (
-        <output
-          className="text-[10px] text-danger"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          Currency mismatch in linked reimbursements
-        </output>
-      ) : isOverReimbursed ? (
-        <output
-          className="text-[10px] text-danger"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          Over-reimbursed by {currency} {formatAmount(summary.overReimbursed)}
-        </output>
-      ) : isFullyReimbursed ? (
-        <output className="sr-only" aria-live="polite" aria-atomic="true">
-          Fully reimbursed
-        </output>
-      ) : needsOnlineVerification ? (
-        <output
-          className="text-[10px] text-muted-foreground"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          Balance will be verified when online
-        </output>
-      ) : null}
-
-      <button
-        type="button"
-        className="rounded-2xl border border-primary/40 bg-primary/10 px-3 py-3 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-60"
-        onClick={() => {
-          if (canReimburse) {
-            onReimburse();
-          }
-        }}
-        disabled={!canReimburse}
-      >
-        {isFullyReimbursed ? "Fully reimbursed" : "Reimburse"}
-      </button>
-    </div>
+    <button
+      type="button"
+      aria-label={accessibleName}
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/40 bg-primary/10 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
+      onClick={() => {
+        if (canRetry) {
+          onRetry();
+        } else if (canReimburse) {
+          onReimburse();
+        }
+      }}
+      disabled={!canRetry && !canReimburse}
+    >
+      <Icon
+        className={`h-4 w-4${isLoading ? " animate-spin" : ""}`}
+        aria-hidden="true"
+      />
+    </button>
   );
 }
