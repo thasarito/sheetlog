@@ -1,31 +1,105 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession, useWorkspace, useConnectivity } from '../app/providers';
-import { writeOnboardingConfig as realWriteOnboardingConfig } from '../lib/google';
-import { isGoogleAuthError } from '../lib/googleErrors';
-import { IS_DEV_MODE, writeOnboardingConfig as mockWriteOnboardingConfig } from '../lib/mock';
-import { hydrateOnboardingFromSheet } from '../lib/onboarding';
-import { getDefaultOnboardingState, getOnboardingState, setOnboardingState } from '../lib/settings';
-import type { AccountItem, CategoryConfigWithMeta, OnboardingState } from '../lib/types';
+import { getOnboardingState, setOnboardingState } from '../lib/settings';
+import {
+  mutateLocalOnboarding,
+  readLocalOnboardingState,
+} from '../lib/settingsLocalRepository';
+import { runSettingsReconciliation } from '../lib/settingsReconciliationRunner';
+import type { SettingsReconciliationResult } from '../lib/settingsReconciliation';
+import {
+  countRememberedSettingsWorkspaces,
+  readSettingsSyncState,
+  type SettingsSyncState,
+} from '../lib/settingsSync';
+import type { OnboardingState } from '../lib/types';
 
-const writeOnboardingConfig = IS_DEV_MODE ? mockWriteOnboardingConfig : realWriteOnboardingConfig;
+export const settingsKeys = {
+  all: ['settings'] as const,
+  sync: (sheetId: string | null, userId: string | null) =>
+    ['settings', 'sync', sheetId, userId] as const,
+  state: (sheetId: string | null, userId: string | null) =>
+    ['settings', 'state', sheetId, userId] as const,
+};
 
 export const onboardingKeys = {
-  state: (sheetId: string | null) => ['onboarding', sheetId] as const,
+  all: ['onboarding'] as const,
+  state: (sheetId: string | null, userId: string | null) =>
+    ['onboarding', 'state', sheetId, userId] as const,
   sync: (sheetId: string | null, userId: string | null) =>
-    ['onboarding', 'sync', sheetId, userId] as const,
+    settingsKeys.sync(sheetId, userId),
 };
 
 /**
  * Main query that reads onboarding state from IndexedDB
  */
-export function useOnboardingQuery(sheetId: string | null) {
+export function useOnboardingQuery() {
+  const { accessToken, status, userProfile } = useSession();
+  const { sheetId } = useWorkspace();
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
+
   return useQuery({
-    queryKey: onboardingKeys.state(sheetId),
-    queryFn: () => getOnboardingState(sheetId),
+    queryKey: onboardingKeys.state(sheetId, userId),
+    queryFn: () =>
+      sheetId && userId
+        ? readLocalOnboardingState(sheetId)
+        : getOnboardingState(null),
+    networkMode: 'always',
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
+  });
+}
+
+export function useSettingsStateQuery() {
+  const { accessToken, status, userProfile } = useSession();
+  const { sheetId } = useWorkspace();
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
+
+  return useQuery({
+    queryKey: settingsKeys.state(sheetId, userId),
+    queryFn: () =>
+      sheetId && userId ? readSettingsSyncState(sheetId, userId) : null,
+    networkMode: 'always',
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+}
+
+function rememberedWorkspaceCount(sheetId: string, userId: string): number {
+  return countRememberedSettingsWorkspaces(
+    typeof window === 'undefined' ? null : window.localStorage,
+    { verifiedUserId: userId, sheetId },
+  );
+}
+
+async function refreshSettingsCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  sheetId: string,
+  userId: string,
+  knownState?: SettingsSyncState,
+): Promise<void> {
+  const [onboarding, durableState] = await Promise.all([
+    readLocalOnboardingState(sheetId),
+    knownState
+      ? Promise.resolve(knownState)
+      : readSettingsSyncState(sheetId, userId),
+  ]);
+  queryClient.setQueryData(
+    onboardingKeys.state(sheetId, userId),
+    onboarding,
+  );
+  queryClient.setQueryData(
+    settingsKeys.state(sheetId, userId),
+    durableState,
+  );
+  await queryClient.invalidateQueries({
+    queryKey: ['quickNotes', 'state', sheetId, userId],
   });
 }
 
@@ -34,113 +108,104 @@ export function useOnboardingQuery(sheetId: string | null) {
  * Only runs when authenticated and online
  */
 export function useOnboardingSync() {
-  const { accessToken, signOut, userProfile } = useSession();
+  const { accessToken, signOut, status, userProfile } = useSession();
   const { sheetId } = useWorkspace();
   const { isOnline } = useConnectivity();
   const queryClient = useQueryClient();
-  const userId = userProfile?.id ?? null;
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
 
   return useQuery({
-    queryKey: onboardingKeys.sync(sheetId, userId),
+    queryKey: settingsKeys.sync(sheetId, userId),
     queryFn: async () => {
-      if (!accessToken || !userId || !sheetId) {
-        return { next: getDefaultOnboardingState(), changed: false };
+      if (!accessToken || !userId || !sheetId || !isOnline) {
+        return null;
       }
-      const requestAccessToken = accessToken;
-      const current =
-        queryClient.getQueryData<OnboardingState>(onboardingKeys.state(sheetId)) ??
-        getDefaultOnboardingState();
       try {
-        const result = await hydrateOnboardingFromSheet(requestAccessToken, sheetId, current);
-        if (result.changed) {
-          queryClient.setQueryData(onboardingKeys.state(sheetId), result.next);
-        }
+        const result = await runSettingsReconciliation({
+          accessToken,
+          sheetId,
+          verifiedUserId: userId,
+          verifiedWorkspaceCount: rememberedWorkspaceCount(sheetId, userId),
+          signOut,
+        });
+        await refreshSettingsCaches(
+          queryClient,
+          sheetId,
+          userId,
+          result.state,
+        );
         return result;
       } catch (error) {
-        if (isGoogleAuthError(error)) {
-          signOut(requestAccessToken);
-        }
+        await refreshSettingsCaches(queryClient, sheetId, userId);
         throw error;
       }
     },
-    enabled: Boolean(accessToken && userId && sheetId && isOnline),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: Boolean(
+      accessToken &&
+        status === 'authenticated' &&
+        userId &&
+        sheetId &&
+        isOnline,
+    ),
+    networkMode: 'online',
+    retry: false,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: 'always',
   });
 }
 
-// Helper types for sheet updates
-type SheetUpdates = {
-  accounts?: AccountItem[];
-  categories?: CategoryConfigWithMeta;
-};
+export function useImportLegacyQuickNotes() {
+  const queryClient = useQueryClient();
+  const { accessToken, signOut, status, userProfile } = useSession();
+  const { sheetId } = useWorkspace();
+  const { isOnline } = useConnectivity();
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
 
-function hasAllCategories(categories: CategoryConfigWithMeta): boolean {
-  return (
-    categories.expense.length > 0 && categories.income.length > 0 && categories.transfer.length > 0
-  );
-}
-
-function normalizeAccountList(accounts: AccountItem[]): AccountItem[] {
-  const seen = new Set<string>();
-  return accounts.filter((item) => {
-    const key = item.name.trim().toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  return useMutation({
+    mutationFn: async (): Promise<SettingsReconciliationResult> => {
+      if (!accessToken || !sheetId || !userId || !isOnline) {
+        throw new Error(
+          'Go online with a verified Google account and Sheet to import legacy Quick Notes.',
+        );
+      }
+      return runSettingsReconciliation({
+        accessToken,
+        sheetId,
+        verifiedUserId: userId,
+        verifiedWorkspaceCount: rememberedWorkspaceCount(sheetId, userId),
+        importLegacyQuickNotes: true,
+        signOut,
+      });
+    },
+    networkMode: 'online',
+    retry: false,
+    onSuccess: async (result) => {
+      if (sheetId && userId) {
+        queryClient.setQueryData(settingsKeys.sync(sheetId, userId), result);
+        await refreshSettingsCaches(
+          queryClient,
+          sheetId,
+          userId,
+          result.state,
+        );
+      }
+    },
   });
 }
 
-function normalizeCategoryList(
-  items: { name: string; icon?: string; color?: string }[],
-): typeof items {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = item.name.trim().toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
+export type OnboardingUpdate =
+  | Partial<OnboardingState>
+  | ((current: OnboardingState) => Partial<OnboardingState> | OnboardingState);
 
-function normalizeCategories(categories: CategoryConfigWithMeta): CategoryConfigWithMeta {
-  return {
-    expense: normalizeCategoryList(categories.expense),
-    income: normalizeCategoryList(categories.income),
-    transfer: normalizeCategoryList(categories.transfer),
-  };
-}
-
-/**
- * Determines what updates should be written to Sheets based on
- * what changed and confirmation status
- */
-function buildSheetUpdates(
-  _current: OnboardingState,
-  updates: Partial<OnboardingState>,
-  next: OnboardingState,
-): SheetUpdates {
-  const result: SheetUpdates = {};
-
-  // Only write accounts if accounts changed AND accountsConfirmed is true
-  const accountsChanged = 'accounts' in updates || 'accountsConfirmed' in updates;
-  if (accountsChanged && next.accountsConfirmed) {
-    const normalizedAccounts = normalizeAccountList(next.accounts);
-    if (normalizedAccounts.length > 0) {
-      result.accounts = normalizedAccounts;
-    }
-  }
-
-  // Only write categories if categories changed AND categoriesConfirmed is true
-  const categoriesChanged = 'categories' in updates || 'categoriesConfirmed' in updates;
-  if (categoriesChanged && next.categoriesConfirmed) {
-    const normalizedCategories = normalizeCategories(next.categories);
-    if (hasAllCategories(normalizedCategories)) {
-      result.categories = normalizedCategories;
-    }
-  }
-
-  return result;
+function applyOnboardingUpdate(
+  current: OnboardingState,
+  update: OnboardingUpdate,
+): OnboardingState {
+  const patch = typeof update === 'function' ? update(current) : update;
+  return { ...current, ...patch };
 }
 
 /**
@@ -148,63 +213,43 @@ function buildSheetUpdates(
  */
 export function useUpdateOnboarding() {
   const queryClient = useQueryClient();
-  const { accessToken, signOut, userProfile } = useSession();
+  const { accessToken, status, userProfile } = useSession();
   const { sheetId } = useWorkspace();
-  const { isOnline } = useConnectivity();
-  const userId = userProfile?.id ?? null;
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
+  const queryKey = onboardingKeys.state(sheetId, userId);
 
   return useMutation({
-    mutationFn: async (updates: Partial<OnboardingState>): Promise<OnboardingState> => {
-      const current =
-        queryClient.getQueryData<OnboardingState>(onboardingKeys.state(sheetId)) ??
-        getDefaultOnboardingState();
-      const next = { ...current, ...updates };
-
-      // Always persist to IndexedDB
-      await setOnboardingState(next, sheetId);
-
-      // Sync to Sheets if online and authenticated
-      if (accessToken && userId && sheetId && isOnline) {
-        const requestAccessToken = accessToken;
-        const sheetUpdates = buildSheetUpdates(current, updates, next);
-        if (sheetUpdates.accounts || sheetUpdates.categories) {
-          try {
-            await writeOnboardingConfig(requestAccessToken, sheetId, sheetUpdates);
-          } catch (error) {
-            if (isGoogleAuthError(error)) {
-              signOut(requestAccessToken);
-            }
-            throw error;
-          }
-        }
+    mutationFn: async (update: OnboardingUpdate): Promise<OnboardingState> => {
+      if (sheetId && userId) {
+        const result = await mutateLocalOnboarding(
+          sheetId,
+          userId,
+          (current) => applyOnboardingUpdate(current, update),
+        );
+        queryClient.setQueryData(
+          settingsKeys.state(sheetId, userId),
+          result.state,
+        );
+        return readLocalOnboardingState(sheetId);
       }
-
+      const current = await getOnboardingState(null);
+      const next = applyOnboardingUpdate(current, update);
+      await setOnboardingState(next, null);
       return next;
     },
-    onMutate: async (updates) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: onboardingKeys.state(sheetId) });
-
-      // Snapshot the previous value
-      const previous = queryClient.getQueryData<OnboardingState>(onboardingKeys.state(sheetId));
-
-      // Optimistically update to the new value
-      if (previous) {
-        const next = { ...previous, ...updates };
-        queryClient.setQueryData(onboardingKeys.state(sheetId), next);
-      }
-
-      return { previous };
-    },
-    onError: (_error, _updates, context) => {
-      // Rollback to the previous state on error
-      if (context?.previous) {
-        queryClient.setQueryData(onboardingKeys.state(sheetId), context.previous);
+    networkMode: 'always',
+    retry: false,
+    onSuccess: (next) => {
+      queryClient.setQueryData(queryKey, next);
+      if (sheetId && userId) {
+        void queryClient.invalidateQueries({
+          queryKey: settingsKeys.sync(sheetId, userId),
+        });
       }
     },
     onSettled: () => {
-      // Invalidate to ensure we have the latest data after mutation
-      queryClient.invalidateQueries({ queryKey: onboardingKeys.state(sheetId) });
+      void queryClient.invalidateQueries({ queryKey });
     },
   });
 }

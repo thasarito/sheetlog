@@ -1,33 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { db } from '../lib/db';
+import { useSession, useWorkspace } from '../app/providers';
+import {
+  mutateLegacyQuickNotes,
+  mutateLocalQuickNotes,
+} from '../lib/settingsLocalRepository';
+import {
+  readLegacyQuickNotesConfig,
+  readQuickNotesConfig,
+} from '../lib/settingsSync';
 import type { QuickNote, QuickNotesConfig, TransactionType } from '../lib/types';
+import { settingsKeys } from './useOnboardingQuery';
 
-const STORAGE_KEY = 'quickNotes';
 const DEFAULT_KEY_PREFIX = 'default';
 
 export const quickNotesKeys = {
   all: ['quickNotes'] as const,
+  state: (sheetId: string | null, userId: string | null) =>
+    ['quickNotes', 'state', sheetId, userId] as const,
 };
-
-async function getQuickNotesConfig(): Promise<QuickNotesConfig> {
-  const record = await db.settings.get(STORAGE_KEY);
-  if (!record?.value) {
-    return {};
-  }
-  try {
-    return JSON.parse(record.value) as QuickNotesConfig;
-  } catch {
-    return {};
-  }
-}
-
-async function setQuickNotesConfig(config: QuickNotesConfig): Promise<void> {
-  await db.settings.put({
-    key: STORAGE_KEY,
-    value: JSON.stringify(config),
-    updatedAt: new Date().toISOString(),
-  });
-}
 
 /**
  * Build the key for a category's quick notes
@@ -47,9 +37,21 @@ export function buildDefaultQuickNotesKey(type: TransactionType): string {
  * Query hook to read all quick notes config from IndexedDB
  */
 export function useQuickNotesQuery() {
+  const { accessToken, status, userProfile } = useSession();
+  const { sheetId } = useWorkspace();
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
+
   return useQuery({
-    queryKey: quickNotesKeys.all,
-    queryFn: getQuickNotesConfig,
+    queryKey: quickNotesKeys.state(sheetId, userId),
+    queryFn: async () => {
+      if (sheetId && userId) {
+        const scoped = await readQuickNotesConfig(sheetId);
+        if (scoped !== null) return scoped;
+      }
+      return (await readLegacyQuickNotesConfig()) ?? {};
+    },
+    networkMode: 'always',
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -70,6 +72,11 @@ export function useQuickNotesForCategory(type: TransactionType, categoryName: st
  */
 export function useUpdateQuickNotes() {
   const queryClient = useQueryClient();
+  const { accessToken, status, userProfile } = useSession();
+  const { sheetId } = useWorkspace();
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
+  const queryKey = quickNotesKeys.state(sheetId, userId);
 
   return useMutation({
     mutationFn: async ({
@@ -81,33 +88,36 @@ export function useUpdateQuickNotes() {
       categoryName: string;
       notes: QuickNote[];
     }): Promise<QuickNotesConfig> => {
-      const current =
-        queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all) ?? {};
       const key = buildQuickNotesKey(type, categoryName);
-      const next = { ...current, [key]: notes };
-
-      await setQuickNotesConfig(next);
-      return next;
-    },
-    onMutate: async ({ type, categoryName, notes }) => {
-      await queryClient.cancelQueries({ queryKey: quickNotesKeys.all });
-
-      const previous = queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all);
-      const key = buildQuickNotesKey(type, categoryName);
-
-      if (previous) {
-        queryClient.setQueryData(quickNotesKeys.all, { ...previous, [key]: notes });
+      if (sheetId && userId) {
+        const result = await mutateLocalQuickNotes(
+          sheetId,
+          userId,
+          (current) => ({ ...current, [key]: notes }),
+        );
+        queryClient.setQueryData(
+          settingsKeys.state(sheetId, userId),
+          result.state,
+        );
+        return result.settings.quickNotes;
       }
-
-      return { previous };
+      return mutateLegacyQuickNotes((current) => ({
+        ...current,
+        [key]: notes,
+      }));
     },
-    onError: (_error, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(quickNotesKeys.all, context.previous);
+    networkMode: 'always',
+    retry: false,
+    onSuccess: (next) => {
+      queryClient.setQueryData(queryKey, next);
+      if (sheetId && userId) {
+        void queryClient.invalidateQueries({
+          queryKey: settingsKeys.sync(sheetId, userId),
+        });
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: quickNotesKeys.all });
+      void queryClient.invalidateQueries({ queryKey });
     },
   });
 }
@@ -117,6 +127,11 @@ export function useUpdateQuickNotes() {
  */
 export function useUpdateDefaultQuickNotes() {
   const queryClient = useQueryClient();
+  const { accessToken, status, userProfile } = useSession();
+  const { sheetId } = useWorkspace();
+  const userId =
+    accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
+  const queryKey = quickNotesKeys.state(sheetId, userId);
 
   return useMutation({
     mutationFn: async ({
@@ -126,33 +141,36 @@ export function useUpdateDefaultQuickNotes() {
       type: TransactionType;
       notes: QuickNote[];
     }): Promise<QuickNotesConfig> => {
-      const current =
-        queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all) ?? {};
       const key = buildDefaultQuickNotesKey(type);
-      const next = { ...current, [key]: notes };
-
-      await setQuickNotesConfig(next);
-      return next;
-    },
-    onMutate: async ({ type, notes }) => {
-      await queryClient.cancelQueries({ queryKey: quickNotesKeys.all });
-
-      const previous = queryClient.getQueryData<QuickNotesConfig>(quickNotesKeys.all);
-      const key = buildDefaultQuickNotesKey(type);
-
-      if (previous) {
-        queryClient.setQueryData(quickNotesKeys.all, { ...previous, [key]: notes });
+      if (sheetId && userId) {
+        const result = await mutateLocalQuickNotes(
+          sheetId,
+          userId,
+          (current) => ({ ...current, [key]: notes }),
+        );
+        queryClient.setQueryData(
+          settingsKeys.state(sheetId, userId),
+          result.state,
+        );
+        return result.settings.quickNotes;
       }
-
-      return { previous };
+      return mutateLegacyQuickNotes((current) => ({
+        ...current,
+        [key]: notes,
+      }));
     },
-    onError: (_error, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(quickNotesKeys.all, context.previous);
+    networkMode: 'always',
+    retry: false,
+    onSuccess: (next) => {
+      queryClient.setQueryData(queryKey, next);
+      if (sheetId && userId) {
+        void queryClient.invalidateQueries({
+          queryKey: settingsKeys.sync(sheetId, userId),
+        });
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: quickNotesKeys.all });
+      void queryClient.invalidateQueries({ queryKey });
     },
   });
 }
