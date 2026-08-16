@@ -85,6 +85,15 @@ class TransactionScopeError extends Error {}
 
 class RemoteTransactionMissingError extends Error {}
 
+class RemoteTransactionRollbackError extends Error {
+  constructor(cause: unknown) {
+    super("Could not restore the Sheet row after a concurrent local change", {
+      cause,
+    });
+    this.name = "RemoteTransactionRollbackError";
+  }
+}
+
 const LINKED_CURRENCY_MISMATCH =
   "Linked reimbursement currency mismatch";
 
@@ -486,16 +495,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           return { kind: "missing" as const };
         }
         requireTransactionScope(transaction, sheetId, userId);
-        if (transaction.deleteIntent) {
-          throw new ReimbursementValidationError(
-            "Reimbursement removal is pending; retry undo instead",
-          );
-        }
         if (
           expectedRevision &&
           !isSameProviderRevision(transaction, expectedRevision)
         ) {
           return { kind: "superseded" as const, record: transaction };
+        }
+        if (transaction.deleteIntent) {
+          throw new ReimbursementValidationError(
+            "Reimbursement removal is pending; retry undo instead",
+          );
         }
 
         const baseTransaction: TransactionRecord = authoritativeBase
@@ -553,6 +562,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           "Reimbursement removal is pending; retry undo instead",
         );
       }
+      applyTransactionUpdate(transaction, input);
 
       const now = new Date().toISOString();
       let attemptedRevision: TransactionRecord | undefined;
@@ -577,12 +587,30 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 return { kind: "defer" as const };
               }
               attemptedRevision = latestTransaction;
+              const reconcileMissingRemote = async () => {
+                await mutationGuard.assertOwnership();
+                return db.transaction("rw", db.transactions, async () => {
+                  const current = await db.transactions.get(
+                    latestTransaction.id,
+                  );
+                  if (!current) return { kind: "missing" as const };
+                  if (!isSameProviderRevision(current, latestTransaction)) {
+                    return {
+                      kind: "preserved" as const,
+                      record: current,
+                    };
+                  }
+                  await db.transactions.delete(latestTransaction.id);
+                  return { kind: "deleted" as const };
+                });
+              };
               const idMap = await readTransactionIdMap(accessToken, sheetId);
               const currentRow = idMap.get(latestTransaction.id);
 
               if (currentRow === undefined) {
-                await mutationGuard.assertOwnership();
-                await db.transactions.delete(latestTransaction.id);
+                const localResult = await reconcileMissingRemote();
+                if (localResult.kind === "preserved") return localResult;
+                if (localResult.kind === "missing") return localResult;
                 throw new RemoteTransactionMissingError(
                   "Transaction no longer exists in Google Sheets. Refresh history to continue.",
                 );
@@ -594,8 +622,9 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               );
 
               if (!remoteChild) {
-                await mutationGuard.assertOwnership();
-                await db.transactions.delete(latestTransaction.id);
+                const localResult = await reconcileMissingRemote();
+                if (localResult.kind === "preserved") return localResult;
+                if (localResult.kind === "missing") return localResult;
                 throw new RemoteTransactionMissingError(
                   "Transaction no longer exists in Google Sheets. Refresh history to continue.",
                 );
@@ -733,19 +762,26 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               );
 
               if (localCommit.kind === "rollback") {
-                const freshIdMap = await readTransactionIdMap(
-                  accessToken,
-                  sheetId,
-                );
-                const rollbackRow = freshIdMap.get(latestTransaction.id);
-                if (rollbackRow !== undefined) {
-                  await mutationGuard.assertOwnership();
-                  await updateRow(
+                try {
+                  const freshIdMap = await readTransactionIdMap(
                     accessToken,
                     sheetId,
-                    rollbackRow,
-                    remoteChild,
                   );
+                  const rollbackRow = freshIdMap.get(latestTransaction.id);
+                  if (rollbackRow !== undefined) {
+                    await mutationGuard.assertOwnership();
+                    await updateRow(
+                      accessToken,
+                      sheetId,
+                      rollbackRow,
+                      remoteChild,
+                    );
+                  }
+                } catch (rollbackError) {
+                  if (rollbackError instanceof SheetMutationLockLostError) {
+                    throw rollbackError;
+                  }
+                  throw new RemoteTransactionRollbackError(rollbackError);
                 }
                 return { kind: "missing" as const };
               }
@@ -785,6 +821,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             error instanceof InvalidTransactionPlaceError ||
             error instanceof ReimbursementValidationError ||
             error instanceof RemoteTransactionMissingError ||
+            error instanceof RemoteTransactionRollbackError ||
             error instanceof DuplicateTransactionIdError ||
             error instanceof SheetMutationLockLostError
           ) {
