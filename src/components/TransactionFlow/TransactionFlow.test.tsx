@@ -557,6 +557,12 @@ describe("TransactionFlow reimbursement entry", () => {
   it("keeps the original one-quarter dashboard and three-quarter action layout", () => {
     renderFlow();
 
+    const transactionCanvas = screen.getByTestId("transaction-canvas");
+    expect(transactionCanvas).toHaveStyle({
+      height: `${window.innerHeight}px`,
+    });
+    expect(transactionCanvas).not.toHaveClass("h-dvh");
+
     const dashboardCell = screen.getByTestId("top-dashboard").parentElement;
     const dashboardActionGrid = dashboardCell?.parentElement;
 

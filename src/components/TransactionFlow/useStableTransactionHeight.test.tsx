@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import indexHtml from "../../../index.html?raw";
 import {
   requestVirtualKeyboardOverlay,
   useStableTransactionHeight,
@@ -33,6 +34,10 @@ afterEach(() => {
 });
 
 describe("useStableTransactionHeight", () => {
+  it("requests overlay keyboard behavior in the viewport contract", () => {
+    expect(indexHtml).toContain("interactive-widget=overlays-content");
+  });
+
   it("ignores a same-width mobile keyboard contraction", () => {
     const { result } = renderHook(() => useStableTransactionHeight());
     expect(result.current).toBe(844);
