@@ -966,8 +966,11 @@ describe("browser OAuth public-client flow", () => {
     );
     expect(config).toMatch(
       new RegExp(
-        `\`${serverSecretName}\` is an encrypted Cloudflare Pages runtime secret.*never a \`VITE_\\*\` variable, build variable, dotenv value, or repository value`,
+        `production \`${serverSecretName}\`.*encrypted Cloudflare Pages runtime secret.*never a \`VITE_\\*\` variable, build variable, committed dotenv value, or repository value`,
       ),
+    );
+    expect(config).toMatch(
+      /only dotenv exception.*ignored `\.dev\.vars`.*separate local-development OAuth client.*never.*production replacement/i,
     );
     expect(config).toMatch(
       /No KV, D1, Durable Object, database, separate Worker, or separate Pages service is required\./,
@@ -987,9 +990,13 @@ describe("browser OAuth public-client flow", () => {
     expect(local).toMatch(
       /real local OAuth.*exact registered client ID.*matching client secret.*ignored `\.dev\.vars`/i,
     );
+    expect(local).toMatch(
+      /ignored `\.dev\.vars`.*only.*separate local-development OAuth client.*never.*production replacement/i,
+    );
   });
 
   it("documents a non-destructive Wrangler configuration preflight", () => {
+    const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
     const preflight = normalizeDocText(
       markdownSubsection(readmeSource, "Wrangler configuration preflight"),
     );
@@ -1001,11 +1008,27 @@ describe("browser OAuth public-client flow", () => {
     );
     expect(preflight).toMatch(/do not run.*repository directory/i);
     expect(preflight).toMatch(
-      /reconcile.*compatibility.*bindings.*build output/i,
+      /reconcile.*compatibility.*public bindings.*build output/i,
     );
     expect(preflight).toMatch(
       /build settings remain dashboard-managed.*supported Function configuration.*`wrangler\.toml`/i,
     );
+    expect(preflight).toMatch(
+      /downloaded.*omits `secret_text`.*cannot verify secret binding names/i,
+    );
+    expect(preflight).toContain(
+      `npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env production`,
+    );
+    expect(preflight).toContain(
+      `npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env preview`,
+    );
+    expect(preflight).toMatch(
+      new RegExp(
+        `verify.*\`${serverSecretName}\` binding name.*both environments.*never.*secret value`,
+        "i",
+      ),
+    );
+    expect(preflight).toMatch(/dashboard.*production.*preview/i);
   });
 
   it("documents an overlapping production and preview secret rotation", () => {

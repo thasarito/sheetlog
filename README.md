@@ -39,10 +39,12 @@ public `GOOGLE_CLIENT_ID` under `[vars]` in `wrangler.toml`. The public
 The existing public client ID, JavaScript origin, and redirect URI must also
 match the Google Web OAuth client configuration.
 
-`GOOGLE_CLIENT_SECRET` is an encrypted Cloudflare Pages runtime secret. It is
-never a `VITE_*` variable, build variable, dotenv value, or repository value.
-No KV, D1, Durable Object, database, separate Worker, or separate Pages service
-is required.
+The production `GOOGLE_CLIENT_SECRET` is an encrypted Cloudflare Pages runtime
+secret. It is never a `VITE_*` variable, build variable, committed dotenv value,
+or repository value. The only dotenv exception is an ignored `.dev.vars` file
+for a separate local-development OAuth client's secret; never put the production
+replacement there. No KV, D1, Durable Object, database, separate Worker, or
+separate Pages service is required.
 
 ### Local account isolation
 
@@ -90,6 +92,8 @@ matching client secret through an ignored `.dev.vars` file. Set
 using a local editor and a password manager rather than a command argument or
 shell history. Keep `VITE_GOOGLE_CLIENT_ID` in the ignored `.env.local` file in
 sync, and register the exact local Pages origin plus redirect path in Google.
+The ignored `.dev.vars` file is only for a separate local-development OAuth
+client's secret; never put the production replacement there.
 
 ### Worktrees
 
@@ -133,10 +137,22 @@ npx --yes wrangler@4.123.0 pages download config sheetlog --cwd "$migration_dir"
 
 Do not run the download command in the repository directory: it can create or
 overwrite a Wrangler configuration file. Reconcile the compatibility date and
-flags, public and secret bindings, and build output before deployment. Pages
-Git build settings remain dashboard-managed, including the build command, root
-directory, production branch, and environment variables; supported Function
-configuration uses the checked-in `wrangler.toml`.
+flags, public bindings, and build output before deployment. Pages Git build
+settings remain dashboard-managed, including the build command, root directory,
+production branch, and environment variables; supported Function configuration
+uses the checked-in `wrangler.toml`.
+
+Downloaded Pages configuration omits `secret_text` and cannot verify secret
+binding names. Always verify the `GOOGLE_CLIENT_SECRET` binding name separately
+in both environments; these commands list names and never reveal a secret value:
+
+```bash
+npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env production
+npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env preview
+```
+
+Alternatively, verify the binding name in the Cloudflare dashboard for both the
+production and preview environments.
 
 `wrangler.toml` is the source of truth for supported Pages Function
 configuration. Keep its public client and redirect bindings in sync with the
