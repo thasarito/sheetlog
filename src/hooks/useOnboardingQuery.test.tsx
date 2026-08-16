@@ -1426,9 +1426,22 @@ describe('settings-backed onboarding hooks', () => {
     });
   });
 
-  it('refreshes durable section errors into cache when reconciliation throws', async () => {
+  it('hides retained result diagnostics when a newer reconciliation throws', async () => {
     const clean = createDefaultSettingsSyncState('user-a');
     await writeSettingsSyncState('sheet-a', 'user-a', clean);
+    const retainedResult: SettingsReconciliationResult = {
+      state: {
+        ...markSettingsSectionDirty(clean, 'accounts'),
+        errors: { accounts: 'Old accounts failure' },
+      },
+      changed: [],
+      pushed: [],
+      conflicts: ['accounts'],
+      errors: { accounts: 'Old accounts failure' },
+      migrationDecision: 'none',
+      migrationApplied: false,
+      status: 'error',
+    };
     runnerMocks.runSettingsReconciliation.mockImplementation(async () => {
       await writeSettingsSyncState('sheet-a', 'user-a', {
         ...markSettingsSectionDirty(clean, 'accounts'),
@@ -1436,7 +1449,11 @@ describe('settings-backed onboarding hooks', () => {
       });
       throw new TypeError('Network unavailable');
     });
-    const { wrapper } = createHarness();
+    const { queryClient, wrapper } = createHarness();
+    queryClient.setQueryData(
+      settingsKeys.sync('sheet-a', 'user-a'),
+      retainedResult,
+    );
     const { result, rerender } = renderHook(() => useOnboarding(), { wrapper });
     await waitFor(() => {
       expect(result.current.settingsSyncState).toEqual(clean);
@@ -1448,12 +1465,16 @@ describe('settings-backed onboarding hooks', () => {
       rerender();
     });
     await waitFor(() => {
-      expect(result.current.settingsSyncStatus).toBe('error');
+      expect(result.current.settingsSyncState).toMatchObject({
+        dirty: ['accounts'],
+        errors: { accounts: 'Remote accounts failed' },
+      });
     });
-    expect(result.current.settingsSyncState).toMatchObject({
-      dirty: ['accounts'],
-      errors: { accounts: 'Remote accounts failed' },
-    });
+    expect(result.current.settingsSyncStatus).toBe('error');
+    expect(result.current.settingsSyncResult).toBeUndefined();
+    expect(result.current.settingsSyncError?.message).toBe(
+      'Network unavailable',
+    );
   });
 
   it('replaces an inactive scoped Quick Notes cache after reconciliation', async () => {

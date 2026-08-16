@@ -397,8 +397,8 @@ export function SettingsDrawer({
   const isSaving = isAccountSaving || isCategorySaving;
   const isSettingsSyncBusy = isSyncing || isImportingLegacyQuickNotes;
   const settingsSectionErrors = {
-    ...(settingsSyncState?.errors ?? {}),
     ...(settingsSyncResult?.errors ?? {}),
+    ...(settingsSyncState?.errors ?? {}),
   };
   const settingsConflicts = SETTINGS_SECTIONS.filter((section) =>
     settingsSyncResult?.conflicts.includes(section),
@@ -611,8 +611,8 @@ export function SettingsDrawer({
     if (!isOnline || isSettingsSyncBusy) return;
     try {
       await refreshSettings();
-    } catch (error) {
-      onToast(error instanceof Error ? error.message : 'Failed to sync settings.');
+    } catch {
+      // The hook exposes the same failure as persistent inline sync diagnostics.
     }
   }
 
@@ -620,8 +620,8 @@ export function SettingsDrawer({
     if (!isOnline || isSettingsSyncBusy) return;
     try {
       await importLegacyQuickNotes();
-    } catch (error) {
-      onToast(error instanceof Error ? error.message : 'Failed to import Quick Notes.');
+    } catch {
+      // The hook exposes the same failure as persistent inline sync diagnostics.
     }
   }
 

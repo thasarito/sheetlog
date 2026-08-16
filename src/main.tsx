@@ -1,4 +1,8 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -28,6 +32,8 @@ if (!rootElement) {
 }
 
 async function startApplication(container: HTMLElement): Promise<void> {
+  onlineManager.setOnline(window.navigator.onLine);
+
   if (IS_DEV_MODE) {
     console.log('[DEV MODE] Mock mode enabled - using mock data');
     try {

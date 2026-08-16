@@ -180,6 +180,36 @@ async function readMockTransactions(page: Page): Promise<StoredTransaction[]> {
   );
 }
 
+async function writeSettingsRecords(
+  page: Page,
+  records: Array<{ key: string; value: unknown }>,
+) {
+  await page.evaluate(async (settingsRecords) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const openRequest = window.indexedDB.open("SheetLogDB");
+      openRequest.onerror = () => reject(openRequest.error);
+      openRequest.onsuccess = () => resolve(openRequest.result);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("settings", "readwrite");
+      const store = transaction.objectStore("settings");
+      for (const record of settingsRecords) {
+        store.put({
+          key: record.key,
+          value: JSON.stringify(record.value),
+          updatedAt: "2026-08-16T12:00:00.000Z",
+        });
+      }
+      transaction.onerror = () => reject(transaction.error);
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+    });
+  }, records);
+}
+
 async function readAutocompleteInputs(page: Page): Promise<string[]> {
   return page.evaluate(
     () =>
@@ -437,6 +467,144 @@ test.describe("Transaction flow - complete history", () => {
     await expect(
       page.getByRole("heading", { name: "Transactions" }),
     ).toHaveCount(0);
+  });
+});
+
+test.describe("Transaction flow - settings sync", () => {
+  test("shows durable offline diagnostics and captures the mobile settings state", async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedTransactions(page, []);
+    await page.goto("/app");
+    await expect(page.getByRole("button", { name: "Open settings" })).toBeVisible();
+    await page.getByRole("button", { name: "Open settings" }).click();
+    await expect(
+      page.getByRole("button", { name: /Sync Settings/ }),
+    ).toContainText("Synced");
+    await page.getByRole("button", { name: "Done" }).click();
+
+    await writeSettingsRecords(page, [
+      {
+        key: "settingsSync:mock-sheet-id-dev:sheetlog-dev-user",
+        value: {
+          targetUserId: "sheetlog-dev-user",
+          baselines: {
+            accounts: "accounts-baseline",
+            categories: "categories-baseline",
+            quickNotes: "quick-notes-baseline",
+          },
+          dirty: ["categories"],
+          errors: {
+            categories:
+              "Category row 4 is invalid. Fix it in Google Sheets, then sync again.",
+          },
+          lastSyncedAt: "2026-08-16T11:55:00.000Z",
+          quickNotesMigration: {
+            intent: "prompt",
+            sourceFingerprint: "legacy-quick-notes",
+            phase: "pending",
+          },
+        },
+      },
+      {
+        key: "quickNotes",
+        value: {
+          "default:expense": [
+            {
+              id: "legacy-lunch",
+              icon: "Utensils",
+              label: "Lunch",
+              note: "Legacy lunch",
+            },
+          ],
+        },
+      },
+    ]);
+
+    await page.addInitScript(() => {
+      Object.defineProperty(window.navigator, "onLine", {
+        configurable: true,
+        get: () => false,
+      });
+    });
+    await page.reload();
+    const persistedSyncState = await page.evaluate(async (key) => {
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const openRequest = window.indexedDB.open("SheetLogDB");
+        openRequest.onerror = () => reject(openRequest.error);
+        openRequest.onsuccess = () => resolve(openRequest.result);
+      });
+      return await new Promise<unknown>((resolve, reject) => {
+        const transaction = database.transaction("settings", "readonly");
+        const request = transaction.objectStore("settings").get(key);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          database.close();
+          resolve(request.result ? JSON.parse(request.result.value) : null);
+        };
+      });
+    }, "settingsSync:mock-sheet-id-dev:sheetlog-dev-user");
+    expect(persistedSyncState).toMatchObject({
+      dirty: ["categories"],
+      errors: {
+        categories:
+          "Category row 4 is invalid. Fix it in Google Sheets, then sync again.",
+      },
+      quickNotesMigration: { intent: "prompt" },
+    });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addStyleTag({
+      content: `
+        *, *::before, *::after {
+          animation-delay: 0s !important;
+          animation-duration: 0s !important;
+          caret-color: transparent !important;
+          transition-delay: 0s !important;
+          transition-duration: 0s !important;
+        }
+      `,
+    });
+
+    await page.getByRole("button", { name: "Open settings" }).click();
+
+    await expect
+      .poll(async () => {
+        const box = await page
+          .getByRole("heading", { name: "Settings", level: 1 })
+          .boundingBox();
+        return box?.y ?? Number.POSITIVE_INFINITY;
+      })
+      .toBeLessThan(300);
+
+    const syncButton = page.getByRole("button", { name: /Sync Settings/ });
+    await expect(syncButton).toContainText("Needs attention");
+    await expect(syncButton).toBeDisabled();
+    await expect(
+      page.getByText(
+        "You’re offline. Changes stay on this device and will sync when you reconnect.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Categories: Category row 4 is invalid. Fix it in Google Sheets, then sync again.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Quick Notes from another Sheet were found on this device. Importing will replace this Sheet’s Quick Notes.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import" })).toBeDisabled();
+
+    const screenshotPath = testInfo.outputPath(
+      "settings-sync-needs-attention.png",
+    );
+    await page.screenshot({ path: screenshotPath, scale: "css" });
+    await testInfo.attach("Settings sync needs attention", {
+      path: screenshotPath,
+      contentType: "image/png",
+    });
   });
 });
 
