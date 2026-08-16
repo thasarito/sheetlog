@@ -1,8 +1,14 @@
-import { createRef } from "react";
-import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createRef, type ReactElement } from "react";
+import {
+  render as testingLibraryRender,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PlaceSuggestion } from "../../lib/googlePlaces";
+import type { TransactionPlace, TransactionType } from "../../lib/types";
 import { StepAmount } from "./StepAmount";
 import { useTransactionForm } from "./useTransactionForm";
 
@@ -11,21 +17,29 @@ const starbucks = {
   name: "Starbucks",
 } satisfies PlaceSuggestion;
 
-const terminal21 = {
-  placeId: "terminal-21",
-  name: "Terminal 21",
-  secondaryText: "Asok",
-} satisfies PlaceSuggestion;
+const stepAmountQueryClients: QueryClient[] = [];
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  stepAmountQueryClients.push(queryClient);
+  return testingLibraryRender(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
 
 function StepAmountHarness({
   suggestions = [],
   isLoading = false,
-  canSearch = false,
+  placesEnabled = suggestions.length > 0 || isLoading,
   initialNote = "",
+  initialPlace,
+  initialType = "expense",
   onSubmit = vi.fn(),
-  onNearbyPlaceSelect = vi.fn(),
-  onSearchPlaces = vi.fn(),
-  searchButtonRef,
   noteInputRef,
   accounts = ["Wallet"],
   initialAmount = "125",
@@ -44,12 +58,11 @@ function StepAmountHarness({
 }: {
   suggestions?: PlaceSuggestion[];
   isLoading?: boolean;
-  canSearch?: boolean;
+  placesEnabled?: boolean;
   initialNote?: string;
+  initialPlace?: TransactionPlace;
+  initialType?: TransactionType;
   onSubmit?: () => void;
-  onNearbyPlaceSelect?: (suggestion: PlaceSuggestion) => void;
-  onSearchPlaces?: () => void;
-  searchButtonRef?: React.Ref<HTMLButtonElement>;
   noteInputRef?: React.Ref<HTMLInputElement>;
   accounts?: string[];
   initialAmount?: string;
@@ -68,12 +81,14 @@ function StepAmountHarness({
 }) {
   const form = useTransactionForm({
     initialValues: {
+      type: initialType,
       category: "Coffee",
       amount: initialAmount,
       currency: initialCurrency,
       account: initialAccount,
       forValue: initialFor,
       note: initialNote,
+      place: initialPlace,
     },
   });
   const values = form.useStore((state) => state.values);
@@ -84,6 +99,8 @@ function StepAmountHarness({
       <output aria-label="Current currency">{values.currency}</output>
       <output aria-label="Current account">{values.account}</output>
       <output aria-label="Current For">{values.forValue}</output>
+      <output aria-label="Current note">{values.note}</output>
+      <output aria-label="Current place">{values.place?.placeId ?? "none"}</output>
       <StepAmount
         form={form}
         accounts={accounts}
@@ -93,15 +110,15 @@ function StepAmountHarness({
         submitLabel={submitLabel}
         customHeader={customHeader}
         optionalAmount={optionalAmount}
-        nearbyPlaceSuggestions={suggestions}
-        isNearbyPlacesLoading={isLoading}
-        canSearchPlaces={canSearch}
-        onNearbyPlaceSelect={(suggestion) => {
-          onNearbyPlaceSelect(suggestion);
-          form.setFieldValue("note", suggestion.name);
-        }}
-        onSearchPlaces={onSearchPlaces}
-        searchButtonRef={searchButtonRef}
+        places={
+          placesEnabled
+            ? {
+                enabled: true,
+                nearbySuggestions: suggestions,
+                isNearbyLoading: isLoading,
+              }
+            : undefined
+        }
         noteInputRef={noteInputRef}
         currencyLocked={currencyLocked}
         forLocked={forLocked}
@@ -115,16 +132,17 @@ function StepAmountHarness({
 
 afterEach(() => {
   window.localStorage.clear();
+  for (const queryClient of stepAmountQueryClients.splice(0)) {
+    queryClient.clear();
+  }
 });
 
 describe("StepAmount nearby place suggestions", () => {
   it("replaces an empty note when a structured place is selected", async () => {
     const user = userEvent.setup();
-    const onNearbyPlaceSelect = vi.fn();
     render(
       <StepAmountHarness
         suggestions={[starbucks]}
-        onNearbyPlaceSelect={onNearbyPlaceSelect}
       />
     );
 
@@ -135,50 +153,8 @@ describe("StepAmount nearby place suggestions", () => {
     expect(screen.getByPlaceholderText("Add a note...")).toHaveValue(
       "Starbucks"
     );
-    expect(onNearbyPlaceSelect).toHaveBeenCalledWith(starbucks);
-  });
-
-  it("replaces an existing note when a place is selected", async () => {
-    const user = userEvent.setup();
-    render(
-      <StepAmountHarness
-        suggestions={[terminal21]}
-        initialNote="Lunch"
-      />
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: "Use Terminal 21 as note" })
-    );
-
-    expect(screen.getByPlaceholderText("Add a note...")).toHaveValue(
-      "Terminal 21"
-    );
-  });
-
-  it("opens place search even when there are no nearby suggestions", async () => {
-    const user = userEvent.setup();
-    const onSearchPlaces = vi.fn();
-    render(
-      <StepAmountHarness
-        canSearch
-        onSearchPlaces={onSearchPlaces}
-      />
-    );
-
-    await user.click(screen.getByRole("button", { name: "Search places" }));
-
-    expect(onSearchPlaces).toHaveBeenCalledTimes(1);
-  });
-
-  it("exposes the Search button ref for focus restoration", () => {
-    const searchButtonRef = createRef<HTMLButtonElement>();
-    render(
-      <StepAmountHarness canSearch searchButtonRef={searchButtonRef} />
-    );
-
-    expect(searchButtonRef.current).toBe(
-      screen.getByRole("button", { name: "Search places" })
+    expect(screen.getByLabelText("Current place")).toHaveTextContent(
+      "starbucks-asok",
     );
   });
 
@@ -202,6 +178,54 @@ describe("StepAmount nearby place suggestions", () => {
     await user.click(submitButton);
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("StepAmount note clearing", () => {
+  it.each([
+    ["create expense", { initialType: "expense" as const }],
+    ["create income", { initialType: "income" as const }],
+    ["create transfer", { initialType: "transfer" as const, accounts: ["Wallet", "Bank"] }],
+    ["edit", { onDelete: vi.fn(), submitLabel: "Save" }],
+    ["reimbursement", { currencyLocked: true, forLocked: true }],
+    ["Quick Note", { customHeader: <h2>Quick Note</h2> }],
+    ["optional amount", { initialAmount: "", optionalAmount: true }],
+  ])("clears note/place and restores focus for %s", async (_name, props) => {
+    const user = userEvent.setup();
+    render(
+      <StepAmountHarness
+        {...props}
+        initialNote="Central Cafe"
+        initialPlace={{ provider: "google", placeId: "central-cafe" }}
+      />,
+    );
+    const input = screen.getByLabelText("Transaction note");
+
+    await user.click(screen.getByRole("button", { name: "Clear note" }));
+
+    expect(screen.getByLabelText("Current note")).toHaveTextContent("");
+    expect(screen.getByLabelText("Current place")).toHaveTextContent("none");
+    expect(screen.queryByRole("button", { name: "Clear note" })).not.toBeInTheDocument();
+    await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("preserves place for nonblank manual edits and clears it for whitespace", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepAmountHarness
+        initialNote="Central Cafe"
+        initialPlace={{ provider: "google", placeId: "central-cafe" }}
+      />,
+    );
+    const input = screen.getByLabelText("Transaction note");
+
+    await user.type(input, " edited");
+    expect(screen.getByLabelText("Current place")).toHaveTextContent(
+      "central-cafe",
+    );
+    await user.clear(input);
+    await user.type(input, "   ");
+    expect(screen.getByLabelText("Current place")).toHaveTextContent("none");
   });
 });
 

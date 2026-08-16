@@ -1,14 +1,21 @@
 import { useCallback, useMemo } from "react";
 import { format } from "date-fns";
-import { Check, ChevronLeft, FileText, Pencil, Trash2 } from "lucide-react";
+import { Check, ChevronLeft, Pencil, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
 import { FOR_OPTIONS } from "./constants";
-import { NearbyPlaceChips } from "./NearbyPlaceChips";
 import { STORAGE_KEYS } from "../../lib/constants";
-import type { PlaceSuggestion } from "../../lib/googlePlaces";
+import {
+  clearTransactionNote,
+  selectGooglePlace,
+  setManualTransactionNote,
+} from "./transactionNoteForm";
+import {
+  TransactionNoteField,
+  type PlaceNoteOptions,
+} from "./TransactionNoteField";
 import type { TransactionFormApi } from "./useTransactionForm";
 
 type StepAmountProps = {
@@ -26,12 +33,7 @@ type StepAmountProps = {
   // Quick note mode props
   customHeader?: React.ReactNode;
   optionalAmount?: boolean;
-  nearbyPlaceSuggestions?: PlaceSuggestion[];
-  isNearbyPlacesLoading?: boolean;
-  canSearchPlaces?: boolean;
-  onNearbyPlaceSelect?: (suggestion: PlaceSuggestion) => void;
-  onSearchPlaces?: () => void;
-  searchButtonRef?: React.Ref<HTMLButtonElement>;
+  places?: PlaceNoteOptions;
   noteInputRef?: React.Ref<HTMLInputElement>;
   currencyLocked?: boolean;
   forLocked?: boolean;
@@ -54,12 +56,7 @@ export function StepAmount({
   submitLabel,
   customHeader,
   optionalAmount = false,
-  nearbyPlaceSuggestions = [],
-  isNearbyPlacesLoading = false,
-  canSearchPlaces = false,
-  onNearbyPlaceSelect,
-  onSearchPlaces,
-  searchButtonRef,
+  places,
   noteInputRef,
   currencyLocked = false,
   forLocked = false,
@@ -74,10 +71,6 @@ export function StepAmount({
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
-  const shouldRenderNearbyPlaces =
-    isNearbyPlacesLoading ||
-    nearbyPlaceSuggestions.length > 0 ||
-    canSearchPlaces;
   const handleAccountChange = useCallback(
     (value: string) => {
       form.setFieldValue("account", value);
@@ -194,36 +187,20 @@ export function StepAmount({
           )}
         </div>
 
-        <div className="mt-4 flex items-center gap-3 border-b border-border/10 pb-2 transition-colors focus-within:border-primary/50">
-          <FileText className="h-4 w-4 text-muted-foreground/50" />
-          <input
-            ref={noteInputRef}
-            type="text"
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
-            placeholder="Add a note..."
-            value={note}
-            onChange={(event) => form.setFieldValue("note", event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (amount || optionalAmount) && !isSubmitting && !isDeleting) {
-                onSubmit();
-              }
-            }}
-            autoComplete="off"
-          />
-        </div>
+        <TransactionNoteField
+          value={note}
+          onManualChange={(value) => setManualTransactionNote(form, value)}
+          onClear={() => clearTransactionNote(form)}
+          onPlaceSelect={(selection) => selectGooglePlace(form, selection)}
+          onSubmit={onSubmit}
+          canSubmit={Boolean(
+            (amount || optionalAmount) && !isSubmitting && !isDeleting,
+          )}
+          inputRef={noteInputRef}
+          places={places}
+        />
 
         {formNotice}
-
-        {shouldRenderNearbyPlaces ? (
-          <NearbyPlaceChips
-            suggestions={nearbyPlaceSuggestions}
-            isLoading={isNearbyPlacesLoading}
-            canSearch={canSearchPlaces}
-            onSelect={(suggestion) => onNearbyPlaceSelect?.(suggestion)}
-            onSearch={() => onSearchPlaces?.()}
-            searchButtonRef={searchButtonRef}
-          />
-        ) : null}
       </div>
 
       {isTransfer && !hasTransferAccounts ? (
