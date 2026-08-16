@@ -6,6 +6,19 @@ export const transactionQueryKeys = {
     sheetId: string | null,
     userId: string | null,
   ) => ["localTransactions", sheetId, userId] as const,
+  history: ["transactionHistory"] as const,
+  historyCache: (
+    sheetId: string | null,
+    userId: string | null,
+  ) => ["transactionHistory", "cache", sheetId, userId] as const,
+  historyRemote: (
+    sheetId: string | null,
+    userId: string | null,
+  ) => ["transactionHistory", "remote", sheetId, userId] as const,
+  historyLocal: (
+    sheetId: string | null,
+    userId: string | null,
+  ) => ["transactionHistory", "local", sheetId, userId] as const,
   reimbursements: ["reimbursementSummary"] as const,
   reimbursement: (
     sheetId: string | null,

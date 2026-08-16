@@ -33,6 +33,7 @@ import {
   withSheetMutationLock,
 } from "../../../lib/sheetMutationLock";
 import { syncPendingTransactions } from "../../../lib/sync";
+import { toLocalTransactionRecord } from "../../../lib/transactionHistory";
 import {
   LEGACY_TRANSACTION_SCOPE_ERROR,
   getTransactionTargetSheetId,
@@ -68,6 +69,8 @@ const updateRow = IS_DEV_MODE ? mockUpdateRow : realUpdateRow;
 class ReimbursementValidationError extends Error {}
 
 class TransactionScopeError extends Error {}
+
+class RemoteTransactionMissingError extends Error {}
 
 const LINKED_CURRENCY_MISMATCH =
   "Linked reimbursement currency mismatch";
@@ -287,6 +290,9 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
       queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
       queryClient.invalidateQueries({
+        queryKey: transactionQueryKeys.history,
+      }),
+      queryClient.invalidateQueries({
         queryKey: transactionQueryKeys.reimbursements,
       }),
       queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
@@ -472,7 +478,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               const currentRow = idMap.get(latestTransaction.id);
 
               if (currentRow === undefined) {
-                return undefined;
+                await mutationGuard.assertOwnership();
+                await db.transactions.delete(latestTransaction.id);
+                throw new RemoteTransactionMissingError(
+                  "Transaction no longer exists in Google Sheets. Refresh history to continue.",
+                );
               }
               const remoteChild = await readTransactionById(
                 accessToken,
@@ -481,8 +491,10 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               );
 
               if (!remoteChild) {
-                throw new TypeError(
-                  "Current transaction row could not be read",
+                await mutationGuard.assertOwnership();
+                await db.transactions.delete(latestTransaction.id);
+                throw new RemoteTransactionMissingError(
+                  "Transaction no longer exists in Google Sheets. Refresh history to continue.",
                 );
               }
 
@@ -565,7 +577,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
               );
               await mutationGuard.assertOwnership();
               await db.transactions.put({
-                ...updatedRecord,
+                ...toLocalTransactionRecord(updatedRecord),
                 status: "synced",
                 updatedAt: now,
                 sheetId,
@@ -595,6 +607,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         } catch (error) {
           if (
             error instanceof ReimbursementValidationError ||
+            error instanceof RemoteTransactionMissingError ||
             error instanceof DuplicateTransactionIdError ||
             error instanceof SheetMutationLockLostError
           ) {
@@ -608,7 +621,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       }
 
       await db.transactions.put({
-        ...prospectiveRecord,
+        ...toLocalTransactionRecord(prospectiveRecord),
         id: transaction.id,
         status: "pending",
         updatedAt: now,

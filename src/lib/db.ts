@@ -1,9 +1,16 @@
 import Dexie, { type Table } from 'dexie';
-import type { SettingRecord, TransactionRecord } from './types';
+import type {
+  CachedTransactionRecord,
+  SettingRecord,
+  TransactionHistoryMeta,
+  TransactionRecord,
+} from './types';
 
 export class SheetLogDB extends Dexie {
   transactions!: Table<TransactionRecord, string>;
   settings!: Table<SettingRecord, string>;
+  transactionHistory!: Table<CachedTransactionRecord, [string, string]>;
+  transactionHistoryMeta!: Table<TransactionHistoryMeta, string>;
 
   constructor(name = 'SheetLogDB') {
     super(name);
@@ -29,6 +36,14 @@ export class SheetLogDB extends Dexie {
             }
           });
       });
+    this.version(3).stores({
+      transactions:
+        'id, status, createdAt, sheetId, targetSheetId, targetUserId, [targetSheetId+targetUserId+status]',
+      settings: 'key',
+      transactionHistory:
+        '[sheetId+id], sheetId, sheetRow, cachedAt, [sheetId+date]',
+      transactionHistoryMeta: 'sheetId',
+    });
   }
 }
 

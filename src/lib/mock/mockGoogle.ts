@@ -4,7 +4,13 @@
  */
 
 import type { ReimbursementLedgerRow } from '../reimbursements';
-import type { AccountItem, CategoryConfigWithMeta, TransactionRecord } from '../types';
+import { createCachedTransactionRecord } from '../transactionHistory';
+import type {
+  AccountItem,
+  CategoryConfigWithMeta,
+  TransactionHistorySnapshot,
+  TransactionRecord,
+} from '../types';
 import {
   getMockAccounts,
   getMockCategories,
@@ -89,7 +95,7 @@ export async function ensureReimbursementHeader(
  */
 export async function appendTransaction(
   _accessToken: string,
-  _spreadsheetId: string,
+  spreadsheetId: string,
   transaction: TransactionRecord,
 ): Promise<number | null> {
   await delay();
@@ -99,7 +105,9 @@ export async function appendTransaction(
 
   const recordWithRow: TransactionRecord = {
     ...transaction,
+    sheetId: spreadsheetId,
     sheetRow: rowIndex,
+    sheetRowValid: Boolean(transaction.id),
     status: 'synced',
   };
 
@@ -135,7 +143,7 @@ export async function readTransactionIdMap(
  */
 export async function updateRow(
   _accessToken: string,
-  _spreadsheetId: string,
+  spreadsheetId: string,
   rowIndex: number,
   transaction: TransactionRecord,
 ): Promise<void> {
@@ -151,7 +159,9 @@ export async function updateRow(
   if (dataIndex >= 0 && dataIndex < transactions.length) {
     transactions[dataIndex] = {
       ...transaction,
+      sheetId: spreadsheetId,
       sheetRow: rowIndex,
+      sheetRowValid: Boolean(transaction.id),
       status: 'synced',
     };
     setMockTransactions(transactions);
@@ -257,9 +267,44 @@ export async function getRecentTransactions(
       ...tx,
       status: 'synced' as const,
       sheetRow: startIndex + index + 2,
+      sheetRowValid: Boolean(tx.id),
       sheetId: spreadsheetId,
     }))
     .reverse();
+}
+
+export async function getTransactionHistorySnapshot(
+  _accessToken: string,
+  spreadsheetId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<TransactionHistorySnapshot> {
+  await delay();
+  if (options.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  const capturedAt = new Date().toISOString();
+  const records = getMockTransactions().map((transaction, index) =>
+    createCachedTransactionRecord(
+      {
+        ...transaction,
+        status: 'synced',
+        sheetId: spreadsheetId,
+        sheetRow: index + 2,
+        sheetRowValid: Boolean(transaction.id),
+      },
+      spreadsheetId,
+      capturedAt,
+    ),
+  );
+  return {
+    records,
+    meta: {
+      sheetId: spreadsheetId,
+      capturedAt,
+      sourceLastRow: records.length + 1,
+      rowCount: records.length,
+    },
+  };
 }
 
 /**
@@ -282,6 +327,7 @@ export async function readTransactionById(
     ...transactions[index],
     status: 'synced',
     sheetRow: index + 2,
+    sheetRowValid: Boolean(transactions[index].id),
     sheetId: spreadsheetId,
   };
 }

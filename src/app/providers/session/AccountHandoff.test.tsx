@@ -1,7 +1,12 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { STORAGE_KEYS } from "../../../lib/constants";
 import { db } from "../../../lib/db";
 import { ensureSheetReady } from "../../../lib/sheets";
 import { syncPendingTransactions } from "../../../lib/sync";
@@ -95,6 +100,7 @@ function HandoffProbe() {
 
 describe("account handoff transaction boundary", () => {
   beforeEach(async () => {
+    onlineManager.setOnline(true);
     window.localStorage.clear();
     await db.transactions.clear();
     vi.mocked(syncPendingTransactions).mockClear();
@@ -102,9 +108,56 @@ describe("account handoff transaction boundary", () => {
   });
 
   afterEach(async () => {
+    onlineManager.setOnline(true);
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     window.localStorage.clear();
     await db.transactions.clear();
+  });
+
+  it("restores the token-bound account and workspace on a cold offline start", async () => {
+    onlineManager.setOnline(false);
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, "token-a");
+    window.localStorage.setItem(
+      STORAGE_KEYS.EXPIRES_AT,
+      String(Date.now() + 60_000),
+    );
+    window.localStorage.setItem(
+      STORAGE_KEYS.USER_PROFILE,
+      JSON.stringify({ id: "account-a", name: "Account A", picture: null }),
+    );
+    window.localStorage.setItem(STORAGE_KEYS.USER_PROFILE_TOKEN, "token-a");
+    window.localStorage.setItem("sheetlog.sheetId:account-a", "sheet-a");
+    window.localStorage.setItem("sheetlog.sheetTabId:account-a", "3");
+    vi.stubGlobal("fetch", vi.fn());
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+
+    const rendered = render(
+      <QueryClientProvider client={queryClient}>
+        <ConnectivityProvider>
+          <SessionProvider>
+            <WorkspaceProvider>
+              <TransactionsProvider>
+                <HandoffProbe />
+              </TransactionsProvider>
+            </WorkspaceProvider>
+          </SessionProvider>
+        </ConnectivityProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("subject")).toHaveTextContent("account-a");
+      expect(screen.getByTestId("sheet")).toHaveTextContent("sheet-a");
+      expect(screen.getByTestId("workspace-ready")).toHaveTextContent("true");
+    });
+    expect(fetch).not.toHaveBeenCalled();
+
+    rendered.unmount();
+    onlineManager.setOnline(true);
   });
 
   it("allows no transaction add or sync under account B until B userinfo is verified", async () => {

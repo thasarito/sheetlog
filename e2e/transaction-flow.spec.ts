@@ -346,6 +346,57 @@ test.describe("Transaction flow - linked reimbursements", () => {
   });
 });
 
+test.describe("Transaction flow - complete history", () => {
+  test("virtualizes the full snapshot and searches beyond the recent window", async ({
+    page,
+  }) => {
+    const start = new Date("2025-01-01T00:00:00.000Z").getTime();
+    const transactions = Array.from({ length: 520 }, (_, index) => {
+      const timestamp = new Date(start + index * 3_600_000).toISOString();
+      return {
+        id: `history-${index}`,
+        type: "expense" as const,
+        amount: index + 1,
+        currency: "THB",
+        account: index === 0 ? "Archive card" : "Wallet",
+        for: "Me",
+        category: index === 0 ? "Ancient archive" : `Category ${index}`,
+        date: timestamp,
+        note: index === 0 ? "Older than recent fifty" : undefined,
+        status: "synced" as const,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        sheetRow: index + 2,
+        sheetId: "mock-sheet-id-dev",
+        sheetRowValid: true,
+      } satisfies StoredTransaction;
+    });
+    await seedTransactions(page, transactions);
+    await page.goto("/app");
+
+    await expect(page.getByText("Ancient archive")).toHaveCount(0);
+    await page.getByRole("button", { name: "View all transactions" }).click();
+    await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible();
+    await expect(page.getByText("520 transactions", { exact: true })).toBeVisible();
+    await expect
+      .poll(() => page.getByTestId("history-transaction-row").count())
+      .toBeLessThan(50);
+
+    await page
+      .getByRole("searchbox", { name: "Search transaction history" })
+      .fill("archive card");
+    await expect(page.getByText("1 transaction", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /Ancient archive/ }).click();
+
+    await expect(page.getByPlaceholder("Add a note...")).toHaveValue(
+      "Older than recent fifty",
+    );
+    await expect(
+      page.getByRole("heading", { name: "Transactions" }),
+    ).toHaveCount(0);
+  });
+});
+
 test.describe("Transaction flow - Places", () => {
   test("shows five nearby places and resolves a searched place into the note", async ({
     context,

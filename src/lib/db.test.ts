@@ -54,4 +54,28 @@ describe("SheetLogDB scope migration", () => {
     expect(fullyUnscoped?.targetUserId).toBeUndefined();
     migratedDb.close();
   });
+
+  it("adds sheet-scoped history tables without dropping migrated transactions", async () => {
+    const oldDb = new Dexie(TEST_DB_NAME);
+    oldDb.version(2).stores({
+      transactions:
+        "id, status, createdAt, targetSheetId, targetUserId, [targetSheetId+targetUserId+status]",
+      settings: "key",
+    });
+    await oldDb.table("transactions").put(oldPending("keep-me", "sheet-a"));
+    oldDb.close();
+
+    const migratedDb = new SheetLogDB(TEST_DB_NAME);
+    await migratedDb.open();
+
+    expect(await migratedDb.transactions.get("keep-me")).toBeDefined();
+    expect(migratedDb.tables.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        "transactions",
+        "transactionHistory",
+        "transactionHistoryMeta",
+      ]),
+    );
+    migratedDb.close();
+  });
 });

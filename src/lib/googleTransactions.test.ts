@@ -4,6 +4,7 @@ import {
   DuplicateTransactionIdError,
   ensureHeaders,
   ensureReimbursementHeader,
+  getTransactionHistorySnapshot,
   getRecentTransactions,
   readLinkedReimbursements,
   readTransactionById,
@@ -247,6 +248,242 @@ describe("Google transaction Sheet APIs", () => {
     });
   });
 
+  it("downloads a complete history snapshot in bounded chunks and keeps legacy rows read-only", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          values: [["expense-1"], [], ["income-1"], ["expense-4"]],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [[1], [2], [3], [4], [5]] }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [legacyRow, [], numericSheetRow] }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          values: [
+            [
+              "2026-08-14T09:00:00.000Z",
+              "expense",
+              12,
+              "Transit",
+              "Train",
+              "2026-08-14T09:00:00.000Z",
+              "PWA",
+              "THB",
+              "Card",
+              "Me",
+              "expense-4",
+            ],
+            [
+              "2026-08-13T09:00:00.000Z",
+              "expense",
+              20,
+              "Legacy",
+              "Cash purchase",
+              "2026-08-13T09:00:00.000Z",
+              "PWA",
+              "THB",
+              "Cash",
+              "Me",
+              "",
+            ],
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          values: [["expense-1"], [], ["income-1"], ["expense-4"]],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [[1], [2], [3], [4], [5]] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const snapshot = await getTransactionHistorySnapshot(
+      ACCESS_TOKEN,
+      SHEET_ID,
+      { chunkSize: 3 },
+    );
+
+    expect(requestAt(fetchMock, 0)[0]).toContain("Transactions!K2:K");
+    expect(requestAt(fetchMock, 1)[0]).toContain("Transactions!A2:A");
+    expect(requestAt(fetchMock, 2)[0]).toContain("Transactions!A2:L4");
+    expect(requestAt(fetchMock, 3)[0]).toContain("Transactions!A5:L6");
+    expect(requestAt(fetchMock, 4)[0]).toContain("Transactions!K2:K");
+    expect(requestAt(fetchMock, 5)[0]).toContain("Transactions!A2:A");
+    expect(snapshot.meta).toMatchObject({
+      sheetId: SHEET_ID,
+      sourceLastRow: 6,
+      rowCount: 4,
+    });
+    expect(snapshot.records.map(({ id }) => id)).toEqual([
+      "expense-1",
+      "income-1",
+      "expense-4",
+      "row-6",
+    ]);
+    expect(snapshot.records[1]).toMatchObject({
+      date: new Date(2026, 7, 15, 9, 30, 0).toISOString(),
+      sheetRow: 4,
+      canEdit: true,
+    });
+    expect(snapshot.records[3]).toMatchObject({
+      id: "row-6",
+      sheetRow: 6,
+      canEdit: false,
+      searchText: "legacy cash purchase cash",
+    });
+  });
+
+  it("returns an empty complete snapshot without requesting row chunks", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const snapshot = await getTransactionHistorySnapshot(
+      ACCESS_TOKEN,
+      SHEET_ID,
+    );
+
+    expect(snapshot.records).toEqual([]);
+    expect(snapshot.meta).toMatchObject({
+      sourceLastRow: 1,
+      rowCount: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("retries instead of caching a snapshot whose A/K boundary changed mid-download", async () => {
+    const fetchMock = vi
+      .fn()
+      // First attempt starts with one row.
+      .mockResolvedValueOnce(jsonResponse({ values: [["expense-1"]] }))
+      .mockResolvedValueOnce(jsonResponse({ values: [[1]] }))
+      .mockResolvedValueOnce(jsonResponse({ values: [legacyRow] }))
+      // An append appears in the ending fingerprint.
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["expense-1"], ["income-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [[1], [2]] }))
+      // The retry observes and downloads the stable two-row Sheet.
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["expense-1"], ["income-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [[1], [2]] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [legacyRow, numericSheetRow] }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["expense-1"], ["income-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [[1], [2]] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const snapshot = await getTransactionHistorySnapshot(
+      ACCESS_TOKEN,
+      SHEET_ID,
+    );
+
+    expect(snapshot.records.map(({ id }) => id)).toEqual([
+      "expense-1",
+      "income-1",
+    ]);
+    expect(snapshot.meta).toMatchObject({
+      sourceLastRow: 3,
+      rowCount: 2,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+  });
+
+  it("rejects duplicate stable IDs instead of caching an incomplete snapshot", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["expense-1"], ["expense-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [[1], [2]] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          values: [
+            legacyRow,
+            [
+              ...legacyRow.slice(0, 3),
+              "Duplicate",
+              ...legacyRow.slice(4),
+            ],
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [["expense-1"], ["expense-1"]] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: [[1], [2]] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getTransactionHistorySnapshot(ACCESS_TOKEN, SHEET_ID),
+    ).rejects.toMatchObject({
+      name: "DuplicateTransactionIdError",
+      transactionId: "expense-1",
+      firstRow: 2,
+      duplicateRow: 3,
+    });
+  });
+
+  it("rejects a stable ID that collides with a synthesized legacy row ID", async () => {
+    const legacyWithoutId = [...legacyRow];
+    legacyWithoutId[10] = "";
+    const stableCollision = [...numericSheetRow];
+    stableCollision[10] = "row-2";
+    const boundaryIds = [[], ["row-2"]];
+    const boundaryDates = [[1], [2]];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ values: boundaryIds }))
+      .mockResolvedValueOnce(jsonResponse({ values: boundaryDates }))
+      .mockResolvedValueOnce(
+        jsonResponse({ values: [legacyWithoutId, stableCollision] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ values: boundaryIds }))
+      .mockResolvedValueOnce(jsonResponse({ values: boundaryDates }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getTransactionHistorySnapshot(ACCESS_TOKEN, SHEET_ID),
+    ).rejects.toMatchObject({
+      name: "DuplicateTransactionIdError",
+      transactionId: "row-2",
+      firstRow: 2,
+      duplicateRow: 3,
+    });
+  });
+
+  it("passes one abort signal through every history request", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      expect(init.signal).toBe(controller.signal);
+      controller.abort();
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getTransactionHistorySnapshot(ACCESS_TOKEN, SHEET_ID, {
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves a transaction's current row from column K before reading its A:L values", async () => {
     const fetchMock = vi
       .fn()
@@ -487,6 +724,7 @@ describe("mock transaction Sheet APIs", () => {
       reimbursesTransactionId: "expense-1",
       sheetId: SHEET_ID,
       sheetRow: 2,
+      sheetRowValid: true,
       status: "synced",
     });
 
@@ -500,6 +738,7 @@ describe("mock transaction Sheet APIs", () => {
       reimbursesTransactionId: "expense-1",
       sheetId: SHEET_ID,
       sheetRow: 2,
+      sheetRowValid: true,
     });
 
     expect(

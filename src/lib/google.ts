@@ -12,9 +12,11 @@ import {
   serializeTransactionRowForUserEntered,
   TRANSACTION_HEADERS,
 } from "./transactionRows";
+import { createCachedTransactionRecord } from "./transactionHistory";
 import type {
   AccountItem,
   CategoryConfigWithMeta,
+  TransactionHistorySnapshot,
   TransactionRecord,
 } from "./types";
 
@@ -66,6 +68,15 @@ export class DuplicateTransactionIdError extends Error {
     this.transactionId = transactionId;
     this.firstRow = firstRow;
     this.duplicateRow = duplicateRow;
+  }
+}
+
+export class TransactionHistoryChangedError extends Error {
+  constructor() {
+    super(
+      "Transactions changed while history was downloading. Retry the refresh.",
+    );
+    this.name = "TransactionHistoryChangedError";
   }
 }
 
@@ -686,6 +697,158 @@ export async function getRecentTransactions(
       sheetId: spreadsheetId,
     }))
     .reverse();
+}
+
+type TransactionHistorySnapshotOptions = {
+  chunkSize?: number;
+  signal?: AbortSignal;
+};
+
+type TransactionHistoryBoundary = {
+  dateValues: unknown[][];
+  idValues: unknown[][];
+  sourceLastRow: number;
+};
+
+async function readTransactionHistoryBoundary(
+  accessToken: string,
+  spreadsheetId: string,
+  signal?: AbortSignal,
+): Promise<TransactionHistoryBoundary> {
+  const countUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!K2:K`;
+  const countData = await fetchWithAuth<{ values?: unknown[][] }>(
+    countUrl,
+    accessToken,
+    { signal },
+  );
+  // Column K is authoritative for stable IDs. Column A keeps older rows that
+  // predate IDs visible, including legacy rows at the end of a Sheet.
+  const legacyCountUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A2:A`;
+  const legacyCountData = await fetchWithAuth<{ values?: unknown[][] }>(
+    legacyCountUrl,
+    accessToken,
+    { signal },
+  );
+  const idValues = countData.values ?? [];
+  const dateValues = legacyCountData.values ?? [];
+  return {
+    idValues,
+    dateValues,
+    sourceLastRow: Math.max(idValues.length, dateValues.length) + 1,
+  };
+}
+
+function transactionHistoryBoundaryMatches(
+  left: TransactionHistoryBoundary,
+  right: TransactionHistoryBoundary,
+): boolean {
+  return (
+    left.sourceLastRow === right.sourceLastRow &&
+    JSON.stringify(left.idValues) === JSON.stringify(right.idValues) &&
+    JSON.stringify(left.dateValues) === JSON.stringify(right.dateValues)
+  );
+}
+
+function rowHasTransactionData(row: unknown[]): boolean {
+  return row.some(
+    (value) =>
+      value !== null &&
+      value !== undefined &&
+      (typeof value !== "string" || value.trim().length > 0),
+  );
+}
+
+async function downloadTransactionHistorySnapshot(
+  accessToken: string,
+  spreadsheetId: string,
+  options: TransactionHistorySnapshotOptions,
+): Promise<TransactionHistorySnapshot | null> {
+  const chunkSize = Math.max(1, Math.floor(options.chunkSize ?? 500));
+  const capturedAt = new Date().toISOString();
+  const startingBoundary = await readTransactionHistoryBoundary(
+    accessToken,
+    spreadsheetId,
+    options.signal,
+  );
+  const { sourceLastRow } = startingBoundary;
+  const records = [];
+  const rowByRecordId = new Map<string, number>();
+  let duplicateError: DuplicateTransactionIdError | null = null;
+
+  for (let startRow = 2; startRow <= sourceLastRow; startRow += chunkSize) {
+    const endRow = Math.min(sourceLastRow, startRow + chunkSize - 1);
+    const range = `${TAB_NAME}!A${startRow}:L${endRow}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
+    const data = await fetchWithAuth<{ values?: unknown[][] }>(
+      url,
+      accessToken,
+      { signal: options.signal },
+    );
+    for (const [offset, row] of (data.values ?? []).entries()) {
+      if (!rowHasTransactionData(row)) {
+        continue;
+      }
+      const rowNumber = startRow + offset;
+      const transaction = parseTransactionRow(row, rowNumber);
+      const firstRow = rowByRecordId.get(transaction.id);
+      if (firstRow !== undefined) {
+        duplicateError ??= new DuplicateTransactionIdError(
+          transaction.id,
+          firstRow,
+          rowNumber,
+        );
+        continue;
+      }
+      rowByRecordId.set(transaction.id, rowNumber);
+      records.push(
+        createCachedTransactionRecord(
+          { ...transaction, sheetId: spreadsheetId },
+          spreadsheetId,
+          capturedAt,
+        ),
+      );
+    }
+  }
+
+  const endingBoundary = await readTransactionHistoryBoundary(
+    accessToken,
+    spreadsheetId,
+    options.signal,
+  );
+  if (!transactionHistoryBoundaryMatches(startingBoundary, endingBoundary)) {
+    return null;
+  }
+  if (duplicateError) {
+    throw duplicateError;
+  }
+
+  return {
+    records,
+    meta: {
+      sheetId: spreadsheetId,
+      capturedAt,
+      sourceLastRow,
+      rowCount: records.length,
+    },
+  };
+}
+
+export async function getTransactionHistorySnapshot(
+  accessToken: string,
+  spreadsheetId: string,
+  options: TransactionHistorySnapshotOptions = {},
+): Promise<TransactionHistorySnapshot> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const snapshot = await downloadTransactionHistorySnapshot(
+      accessToken,
+      spreadsheetId,
+      options,
+    );
+    if (snapshot) {
+      return snapshot;
+    }
+  }
+  throw new TransactionHistoryChangedError();
 }
 
 export async function readTransactionById(

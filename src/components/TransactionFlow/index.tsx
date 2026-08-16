@@ -13,6 +13,7 @@ import { Header } from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
 import { db } from "../../lib/db";
+import { toLocalTransactionRecord } from "../../lib/transactionHistory";
 import type {
   TransactionType,
   CategoryItem,
@@ -32,6 +33,7 @@ import {
   type TransactionFormValues,
 } from "./transactionSchema";
 import { TopDashboard } from "./TopDashboard";
+import { TransactionHistoryDrawer } from "./TransactionHistoryDrawer";
 import { CategoryGridDrawer } from "../CategoryGridDrawer";
 import { DateTimeDrawer } from "../DateTimeDrawer";
 import {
@@ -172,6 +174,7 @@ export function TransactionFlow() {
   } | null>(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [flowGeneration] = useState(() =>
     createFlowGeneration("dashboard"),
@@ -697,6 +700,7 @@ export function TransactionFlow() {
 
   const handleEditTransaction = useCallback(
     async (transaction: TransactionRecord) => {
+      setHistoryDrawerOpen(false);
       if (
         deleteMutation.isPending ||
         sourceDeletionRef.current !== null
@@ -718,7 +722,7 @@ export function TransactionFlow() {
         (!existingTransaction || existingTransaction.status === "synced")
       ) {
         await db.transactions.put({
-          ...transaction,
+          ...toLocalTransactionRecord(transaction),
           targetSheetId: sheetId,
           targetUserId: userProfile.id,
         });
@@ -1489,9 +1493,12 @@ export function TransactionFlow() {
         {/* Main content - full height */}
         <div className="flex-1 min-h-0 pb-6">
           {step === 0 ? (
-            <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
+            <div className="grid h-full grid-rows-[2fr_3fr] gap-3">
               <div className="min-h-0">
-                <TopDashboard onEditTransaction={handleEditTransaction} />
+                <TopDashboard
+                  onEditTransaction={handleEditTransaction}
+                  onViewAll={() => setHistoryDrawerOpen(true)}
+                />
               </div>
               <div className="min-h-0">
                 <StepCard
@@ -1514,6 +1521,14 @@ export function TransactionFlow() {
           )}
         </div>
       </div>
+
+      <TransactionHistoryDrawer
+        open={historyDrawerOpen}
+        onOpenChange={setHistoryDrawerOpen}
+        onEditTransaction={(transaction) => {
+          void handleEditTransaction(transaction);
+        }}
+      />
 
       {flowMode.kind !== "create" ? (
         <DateTimeDrawer

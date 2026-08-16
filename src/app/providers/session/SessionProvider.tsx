@@ -13,6 +13,7 @@ import {
   initiateLogin,
   refreshAccessToken,
 } from "../../../lib/oauth";
+import { clearTransactionHistoryCache } from "../../../lib/transactionHistory";
 import {
   GOOGLE_TOKEN_QUERY_KEY,
   MIN_REFETCH_INTERVAL_MS,
@@ -77,15 +78,62 @@ type RefreshRequestIdentity = {
   generation: number;
 };
 
-function persistProfile(profile: UserProfile | null) {
+function getStoredProfile(accessToken: string | null): UserProfile | undefined {
+  if (typeof window === "undefined" || !accessToken) {
+    return undefined;
+  }
+  if (
+    localStorage.getItem(STORAGE_KEYS.USER_PROFILE_TOKEN) !== accessToken
+  ) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(STORAGE_KEYS.USER_PROFILE) ?? "null",
+    ) as Partial<UserProfile> | null;
+    if (
+      !parsed ||
+      typeof parsed.id !== "string" ||
+      !parsed.id.trim() ||
+      typeof parsed.name !== "string" ||
+      (parsed.picture !== null && typeof parsed.picture !== "string")
+    ) {
+      return undefined;
+    }
+    return {
+      id: parsed.id,
+      name: parsed.name,
+      picture: parsed.picture,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function persistProfile(
+  profile: UserProfile | null,
+  accessToken: string | null,
+) {
   if (typeof window === "undefined") {
     return;
   }
-  if (!profile) {
+  if (!profile || !accessToken) {
+    const persistedProfileToken = localStorage.getItem(
+      STORAGE_KEYS.USER_PROFILE_TOKEN,
+    );
+    if (
+      accessToken &&
+      persistedProfileToken &&
+      persistedProfileToken !== accessToken
+    ) {
+      return;
+    }
     localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE_TOKEN);
     return;
   }
   localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
+  localStorage.setItem(STORAGE_KEYS.USER_PROFILE_TOKEN, accessToken);
 }
 
 function resolveProfileName(info: UserInfoResponse) {
@@ -357,16 +405,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         profileTokenVersionRef.current,
       ] as const
     : ["inactiveUserProfile", profileSessionIdRef.current] as const;
+  const storedProfile = getStoredProfile(activeToken);
 
   const {
     data: userProfile,
     error: profileError,
     isFetching: isProfileFetching,
-  } = useQuery({
+  } = useQuery<UserProfile | null>({
     queryKey: profileQueryKey,
+    ...(storedProfile
+      ? { initialData: storedProfile, initialDataUpdatedAt: 0 }
+      : {}),
     queryFn: ({ signal }) =>
       fetchUserProfile(activeToken ?? "", signal),
     enabled: Boolean(activeToken) && isInitialized,
+    networkMode: "online",
     staleTime: 1000 * 60 * 10,
     retry: (failureCount) => failureCount < 2,
     retryDelay: (attemptIndex) => Math.min(100 * 2 ** attemptIndex, 500),
@@ -377,7 +430,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!isInitialized) {
       return;
     }
-    persistProfile(activeToken && userProfile ? userProfile : null);
+    persistProfile(
+      activeToken && userProfile ? userProfile : null,
+      activeToken,
+    );
   }, [userProfile, activeToken, isInitialized]);
 
   const signOut = useCallback(
@@ -400,6 +456,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       advanceSessionTokenGeneration();
       localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
       localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+      localStorage.removeItem(STORAGE_KEYS.USER_PROFILE_TOKEN);
       localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
       clearOAuthStorage();
 
@@ -407,6 +464,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
       queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
       queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
+      queryClient.removeQueries({ queryKey: ["transactionHistory"] });
+      void clearTransactionHistoryCache().catch((error) => {
+        console.warn("Failed to clear cached transaction history:", error);
+      });
     },
     [queryClient],
   );

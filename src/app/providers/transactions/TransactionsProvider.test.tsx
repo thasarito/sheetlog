@@ -316,6 +316,7 @@ describe("TransactionsProvider", () => {
       expect.arrayContaining([
         transactionQueryKeys.local,
         ["recentTransactions"],
+        transactionQueryKeys.history,
         transactionQueryKeys.reimbursements,
         ["transactionById"],
       ]),
@@ -1081,6 +1082,69 @@ describe("TransactionsProvider", () => {
     });
     expect(await db.transactions.get("remote-missing")).toBeUndefined();
     expect(googleMocks.deleteRow).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("rejects a synced update when its stable ID disappeared without queuing an append", async () => {
+    const stale = transaction("missing-update", {
+      note: "Before",
+      sheetRow: 44,
+    });
+    await db.transactions.add(stale);
+    googleMocks.readTransactionIdMap.mockResolvedValue(new Map());
+    const harness = createProviderHarness();
+    let failure: unknown;
+
+    await act(async () => {
+      try {
+        await harness
+          .getContext()
+          .updateTransaction(stale.id, { note: "After" });
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("no longer exists");
+    expect(await db.transactions.get(stale.id)).toBeUndefined();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("rejects a synced update when its stable ID disappears during the focused read", async () => {
+    const stale = transaction("missing-during-read", {
+      note: "Before",
+      sheetRow: 44,
+    });
+    await db.transactions.add(stale);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[stale.id, 44]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(null);
+    const harness = createProviderHarness();
+    let failure: unknown;
+
+    await act(async () => {
+      try {
+        await harness
+          .getContext()
+          .updateTransaction(stale.id, { note: "After" });
+      } catch (error) {
+        failure = error;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("no longer exists");
+    expect(await db.transactions.get(stale.id)).toBeUndefined();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
 
     harness.rendered.unmount();
     harness.queryClient.clear();
