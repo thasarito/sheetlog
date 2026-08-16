@@ -4,7 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   render: vi.fn(),
   setOnboardingState: vi.fn(),
+  setOnline: vi.fn(),
 }));
+
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    onlineManager: { setOnline: mocks.setOnline },
+  };
+});
 
 vi.mock('react-dom/client', () => ({
   default: {
@@ -34,6 +43,11 @@ describe('application bootstrap', () => {
     vi.resetModules();
     mocks.render.mockReset();
     mocks.setOnboardingState.mockReset();
+    mocks.setOnline.mockReset();
+    Object.defineProperty(window.navigator, 'onLine', {
+      configurable: true,
+      value: true,
+    });
     document.body.innerHTML = '<div id="root"></div>';
   });
 
@@ -51,5 +65,21 @@ describe('application bootstrap', () => {
       'mock-sheet-id-dev',
     );
     expect(renderCallsBeforeSeed).toBe(0);
+  });
+
+  it('initializes TanStack connectivity before rendering an offline reload', async () => {
+    Object.defineProperty(window.navigator, 'onLine', {
+      configurable: true,
+      value: false,
+    });
+    mocks.setOnboardingState.mockResolvedValue(undefined);
+
+    await import('./main');
+    await waitFor(() => expect(mocks.render).toHaveBeenCalledTimes(1));
+
+    expect(mocks.setOnline).toHaveBeenCalledWith(false);
+    expect(mocks.setOnline.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.render.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
   });
 });

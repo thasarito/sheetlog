@@ -47,9 +47,13 @@ export function useOnboarding() {
   const importErrorRef = useRef<unknown>(importMutation.error);
   importErrorRef.current = importMutation.error;
   const onboarding = onboardingQuery.data ?? getDefaultOnboardingState();
-  const settingsSyncResult = settingsSyncQuery.data ?? undefined;
+  const retainedSettingsSyncResult = settingsSyncQuery.data ?? undefined;
+  const settingsSyncResult =
+    settingsSyncQuery.error || importMutation.error
+      ? undefined
+      : retainedSettingsSyncResult;
   const settingsSyncState =
-    settingsStateQuery.data ?? settingsSyncResult?.state ?? null;
+    settingsStateQuery.data ?? retainedSettingsSyncResult?.state ?? null;
   const operationError =
     onboardingQuery.error ??
     settingsStateQuery.error ??

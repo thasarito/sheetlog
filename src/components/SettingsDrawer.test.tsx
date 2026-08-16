@@ -178,7 +178,10 @@ describe('SettingsDrawer settings sync', () => {
       changed: ['quickNotes'],
       pushed: [],
       conflicts: ['quickNotes'],
-      errors: { categories: 'Category row 4 is invalid.' },
+      errors: {
+        accounts: 'Old account error retained by TanStack Query.',
+        categories: 'Category row 4 is invalid.',
+      },
       migrationDecision: 'none',
       migrationApplied: false,
       status: 'error',
@@ -199,12 +202,16 @@ describe('SettingsDrawer settings sync', () => {
     );
   });
 
-  it('keeps the legacy Quick Notes prompt after an explicit import fails', async () => {
+  it('keeps the legacy Quick Notes prompt and relies on its inline alert after import fails', async () => {
     const user = userEvent.setup();
     mocks.sync.hasLegacyQuickNotesMigrationPrompt = true;
-    mocks.sync.importLegacyQuickNotes.mockRejectedValueOnce(new Error('Import failed.'));
+    mocks.sync.importLegacyQuickNotes.mockImplementationOnce(async () => {
+      mocks.sync.settingsSyncStatus = 'error';
+      mocks.sync.settingsSyncError = new Error('Import failed.');
+      throw mocks.sync.settingsSyncError;
+    });
 
-    renderDrawer();
+    const rendered = renderDrawer();
 
     expect(
       screen.getByText(
@@ -217,8 +224,16 @@ describe('SettingsDrawer settings sync', () => {
     await user.click(importButton);
 
     await waitFor(() => expect(mocks.sync.importLegacyQuickNotes).toHaveBeenCalledTimes(1));
+    rendered.rerender(
+      <SettingsDrawer
+        open
+        onOpenChange={mocks.onOpenChange}
+        onToast={mocks.onToast}
+      />,
+    );
     expect(screen.getByRole('button', { name: 'Import' })).toBeVisible();
-    expect(mocks.onToast).toHaveBeenCalledWith('Import failed.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Import failed.');
+    expect(mocks.onToast).not.toHaveBeenCalled();
   });
 
   it('explains offline durability and disables refresh and import actions', () => {
