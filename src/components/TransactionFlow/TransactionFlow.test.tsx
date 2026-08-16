@@ -239,20 +239,18 @@ vi.mock("./useNearbyPlaceSuggestions", () => ({
 
 vi.mock("./usePlaceAutocomplete", () => ({
   usePlaceAutocomplete: () => ({
-    input: "",
-    setInput: vi.fn(),
     suggestions: [],
+    isDebouncing: false,
     isLoading: false,
     isError: false,
     error: null,
+    sessionError: null,
+    hasSearched: false,
     selectionError: null,
     isSelecting: false,
-    retry: vi.fn(),
     selectSuggestion: vi.fn(),
   }),
 }));
-
-vi.mock("./PlaceSearchDrawer", () => ({ PlaceSearchDrawer: () => null }));
 
 vi.mock("./useReimbursementSummary", () => ({
   useReimbursementSummary: (options: {
@@ -388,6 +386,7 @@ vi.mock("./TransactionHistoryDrawer", () => ({
             onOpenChange(false);
             onEditTransaction({
               ...mocks.expense,
+              place: { provider: "google", placeId: "history-place" },
               cachedAt: "2026-08-15T10:00:00.000Z",
               canEdit: true,
               searchText: "food lunch wallet",
@@ -589,6 +588,7 @@ describe("TransactionFlow reimbursement entry", () => {
     await waitFor(() => {
       expect(mocks.dbPut).toHaveBeenCalledWith({
         ...mocks.expense,
+        place: { provider: "google", placeId: "history-place" },
         targetSheetId: "sheet-a",
         targetUserId: "user-a",
       });
