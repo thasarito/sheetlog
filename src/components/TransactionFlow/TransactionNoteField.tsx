@@ -88,6 +88,10 @@ export function TransactionNoteField({
     });
   }, []);
 
+  const blurInput = useCallback(() => {
+    localInputRef.current?.blur();
+  }, []);
+
   const retireLifecycle = useCallback((force = false) => {
     if (!force && !activeRef.current) return;
     activeRef.current = false;
@@ -117,7 +121,10 @@ export function TransactionNoteField({
     onManualChange(nextValue);
   };
 
-  const selectOption = async (suggestion: PlaceSuggestion) => {
+  const selectOption = async (
+    suggestion: PlaceSuggestion,
+    dismissKeyboard = false,
+  ) => {
     const generation = generationRef.current;
     const selectionSessionId = sessionId;
     const selectionValue = value;
@@ -134,7 +141,8 @@ export function TransactionNoteField({
       }
       onPlaceSelect(selection);
       retireLifecycle(true);
-      focusInput();
+      if (dismissKeyboard) blurInput();
+      else focusInput();
     } catch {
       // The generic selection error remains available in the open popup.
     }
@@ -146,7 +154,7 @@ export function TransactionNoteField({
       placeId: suggestion.placeId,
     });
     retireLifecycle(true);
-    focusInput();
+    blurInput();
   };
 
   const handleClear = () => {
@@ -267,7 +275,7 @@ export function TransactionNoteField({
         index === activeIndex && "bg-muted text-foreground",
       )}
       onPointerDown={(event) => event.preventDefault()}
-      onClick={() => void selectOption(suggestion)}
+      onClick={() => void selectOption(suggestion, true)}
     >
       <span>{suggestion.name}</span>
       {suggestion.secondaryText ? (
