@@ -78,7 +78,12 @@ function validateGridSettingsTab(
   if (properties.sheetType !== 'GRID') {
     throw new Error(`Settings tab "${tabTitle}" must be a GRID sheet.`);
   }
-  if (typeof properties.sheetId !== 'number' || !Number.isFinite(properties.sheetId)) {
+  if (
+    typeof properties.sheetId !== 'number' ||
+    !Number.isFinite(properties.sheetId) ||
+    !Number.isInteger(properties.sheetId) ||
+    properties.sheetId < 0
+  ) {
     throw new Error(`Settings tab "${tabTitle}" has an invalid sheetId.`);
   }
   const rowCount = properties.gridProperties?.rowCount;

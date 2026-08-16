@@ -465,6 +465,26 @@ describe('Google settings Sheet replacement', () => {
       error: 'Settings tab "Account" has an invalid sheetId.',
     },
     {
+      name: 'a negative sheetId',
+      properties: {
+        sheetId: -1,
+        title: 'Account',
+        sheetType: 'GRID',
+        gridProperties: { rowCount: 20, columnCount: 3 },
+      },
+      error: 'Settings tab "Account" has an invalid sheetId.',
+    },
+    {
+      name: 'a fractional sheetId',
+      properties: {
+        sheetId: 1.5,
+        title: 'Account',
+        sheetType: 'GRID',
+        gridProperties: { rowCount: 20, columnCount: 3 },
+      },
+      error: 'Settings tab "Account" has an invalid sheetId.',
+    },
+    {
       name: 'missing gridProperties',
       properties: { sheetId: 11, title: 'Account', sheetType: 'GRID' },
       error: 'Settings tab "Account" has invalid grid dimensions.',
