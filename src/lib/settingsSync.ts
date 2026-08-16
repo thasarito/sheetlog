@@ -185,6 +185,13 @@ function validateSettingsSyncState(
   return value as unknown as SettingsSyncState;
 }
 
+function normalizeDirtySections(value: unknown, storageKey: string): SettingsSection[] {
+  if (!Array.isArray(value) || !value.every(isSettingsSection)) {
+    return corrupt(storageKey, 'Sync-state dirty sections are invalid.');
+  }
+  return SETTINGS_SECTIONS.filter((section) => value.includes(section));
+}
+
 async function readStoredJson(key: string): Promise<StoredJsonResult> {
   const record = await db.settings.get(key);
   if (!record) {
@@ -221,10 +228,20 @@ export async function writeSettingsSyncState(
   verifiedUserId: string,
   state: SettingsSyncState,
 ): Promise<void> {
-  if (state.targetUserId !== verifiedUserId) {
-    throw new Error('Settings sync state targetUserId must match the verified user.');
+  const storageKey = getSettingsSyncStorageKey(sheetId, verifiedUserId);
+  if (!isRecord(state)) {
+    return corrupt(storageKey, 'Sync state must be an object.');
   }
-  await writeStoredJson(getSettingsSyncStorageKey(sheetId, verifiedUserId), state);
+  const normalizedState = {
+    ...state,
+    dirty: normalizeDirtySections(state.dirty, storageKey),
+  };
+  const validatedState = validateSettingsSyncState(
+    normalizedState,
+    verifiedUserId,
+    storageKey,
+  );
+  await writeStoredJson(storageKey, validatedState);
 }
 
 export async function readQuickNotesConfig(sheetId: string): Promise<QuickNotesConfig | null> {
@@ -237,7 +254,9 @@ export async function writeQuickNotesConfig(
   sheetId: string,
   config: QuickNotesConfig,
 ): Promise<void> {
-  await writeStoredJson(getQuickNotesStorageKey(sheetId), config);
+  const storageKey = getQuickNotesStorageKey(sheetId);
+  const validatedConfig = validateQuickNotesConfig(config, storageKey);
+  await writeStoredJson(storageKey, validatedConfig);
 }
 
 export async function readLegacyQuickNotesConfig(): Promise<QuickNotesConfig | null> {
