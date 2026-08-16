@@ -13,6 +13,7 @@ import { DynamicIcon } from '../DynamicIcon';
 import { SwipeableListItem } from '../SwipeableListItem';
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '../ui/drawer';
 import { QuickNoteFlow } from './QuickNoteFlow';
+import { persistQuickNotesOptimistically } from './quickNotesPersistence';
 
 interface QuickNotesSettingsProps {
   open: boolean;
@@ -89,6 +90,22 @@ export function QuickNotesSettings({
     onOpenChange(true);
   }
 
+  function persistNotes(updatedNotes: QuickNote[], onSuccess?: () => void) {
+    persistQuickNotesOptimistically({
+      authoritativeNotes: notes,
+      optimisticNotes: updatedNotes,
+      setLocalNotes,
+      mutate: (variables, callbacks) => updateQuickNotes.mutate(variables, callbacks),
+      variables: {
+        type: transactionType,
+        categoryName,
+        notes: updatedNotes,
+      },
+      onToast,
+      onSuccess,
+    });
+  }
+
   function handleSaveNote(noteData: Omit<QuickNote, 'id'> & { id?: string }) {
     const isNew = !noteData.id;
     const newNote: QuickNote = {
@@ -109,47 +126,26 @@ export function QuickNotesSettings({
       updatedNotes = localNotes.map((n) => (n.id === newNote.id ? newNote : n));
     }
 
-    setLocalNotes(updatedNotes);
-    updateQuickNotes.mutate({
-      type: transactionType,
-      categoryName,
-      notes: updatedNotes,
-    });
-    handleCloseEditMode();
+    persistNotes(updatedNotes, handleCloseEditMode);
   }
 
   function handleDeleteNote() {
     if (!editMode.note) return;
     const noteId = editMode.note.id;
     const updatedNotes = localNotes.filter((n) => n.id !== noteId);
-    setLocalNotes(updatedNotes);
-    updateQuickNotes.mutate({
-      type: transactionType,
-      categoryName,
-      notes: updatedNotes,
-    });
-    handleCloseEditMode();
+    persistNotes(updatedNotes, handleCloseEditMode);
   }
 
   function handleRemoveNote(noteId: string) {
     const updatedNotes = localNotes.filter((n) => n.id !== noteId);
-    setLocalNotes(updatedNotes);
-    updateQuickNotes.mutate({
-      type: transactionType,
-      categoryName,
-      notes: updatedNotes,
-    });
+    persistNotes(updatedNotes);
   }
 
   function handleReorderEnd() {
     // Only persist if order actually changed
     const orderChanged = notes.some((n, i) => n.id !== localNotes[i]?.id);
     if (orderChanged) {
-      updateQuickNotes.mutate({
-        type: transactionType,
-        categoryName,
-        notes: localNotes,
-      });
+      persistNotes(localNotes);
     }
   }
 

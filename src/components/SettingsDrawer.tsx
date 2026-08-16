@@ -32,6 +32,7 @@ import type { CategoryItem, QuickNote, TransactionType } from '../lib/types';
 import { AppearancePicker } from './AppearancePicker';
 import { DynamicIcon } from './DynamicIcon';
 import { QuickNoteFlow } from './QuickNotes/QuickNoteFlow';
+import { persistQuickNotesOptimistically } from './QuickNotes/quickNotesPersistence';
 import { SwipeableListItem } from './SwipeableListItem';
 
 type SettingsDrawerProps = {
@@ -648,6 +649,40 @@ export function SettingsDrawer({
         ? { kind: 'default' as const, type: currentScreen.categoryType }
         : null;
 
+  function persistCurrentQuickNotes(
+    updatedNotes: QuickNote[],
+    onSuccess?: () => void,
+  ) {
+    if (!quickNotesTarget) return;
+    if (quickNotesTarget.kind === 'category') {
+      persistQuickNotesOptimistically({
+        authoritativeNotes: quickNotes,
+        optimisticNotes: updatedNotes,
+        setLocalNotes: setLocalQuickNotes,
+        mutate: (variables, callbacks) =>
+          updateQuickNotes.mutate(variables, callbacks),
+        variables: {
+          type: quickNotesTarget.type,
+          categoryName: quickNotesTarget.categoryName,
+          notes: updatedNotes,
+        },
+        onToast,
+        onSuccess,
+      });
+      return;
+    }
+    persistQuickNotesOptimistically({
+      authoritativeNotes: quickNotes,
+      optimisticNotes: updatedNotes,
+      setLocalNotes: setLocalQuickNotes,
+      mutate: (variables, callbacks) =>
+        updateDefaultQuickNotes.mutate(variables, callbacks),
+      variables: { type: quickNotesTarget.type, notes: updatedNotes },
+      onToast,
+      onSuccess,
+    });
+  }
+
   function handleAddQuickNote() {
     if (!canAddMoreQuickNotes) {
       onToast(`Maximum ${MAX_QUICK_NOTES} quick notes per category`);
@@ -685,64 +720,27 @@ export function SettingsDrawer({
       updatedNotes = localQuickNotes.map((n) => (n.id === newNote.id ? newNote : n));
     }
 
-    setLocalQuickNotes(updatedNotes);
-    if (quickNotesTarget.kind === 'category') {
-      updateQuickNotes.mutate({
-        type: quickNotesTarget.type,
-        categoryName: quickNotesTarget.categoryName,
-        notes: updatedNotes,
-      });
-    } else {
-      updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: updatedNotes });
-    }
-    handleCloseQuickNoteEdit();
+    persistCurrentQuickNotes(updatedNotes, handleCloseQuickNoteEdit);
   }
 
   function handleDeleteQuickNote() {
     if (!quickNoteEditMode.note || !quickNotesTarget) return;
     const noteId = quickNoteEditMode.note.id;
     const updatedNotes = localQuickNotes.filter((n) => n.id !== noteId);
-    setLocalQuickNotes(updatedNotes);
-    if (quickNotesTarget.kind === 'category') {
-      updateQuickNotes.mutate({
-        type: quickNotesTarget.type,
-        categoryName: quickNotesTarget.categoryName,
-        notes: updatedNotes,
-      });
-    } else {
-      updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: updatedNotes });
-    }
-    handleCloseQuickNoteEdit();
+    persistCurrentQuickNotes(updatedNotes, handleCloseQuickNoteEdit);
   }
 
   function handleRemoveQuickNote(noteId: string) {
     if (!quickNotesTarget) return;
     const updatedNotes = localQuickNotes.filter((n) => n.id !== noteId);
-    setLocalQuickNotes(updatedNotes);
-    if (quickNotesTarget.kind === 'category') {
-      updateQuickNotes.mutate({
-        type: quickNotesTarget.type,
-        categoryName: quickNotesTarget.categoryName,
-        notes: updatedNotes,
-      });
-    } else {
-      updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: updatedNotes });
-    }
+    persistCurrentQuickNotes(updatedNotes);
   }
 
   function handleQuickNoteReorderEnd() {
     if (!quickNotesTarget) return;
     const orderChanged = quickNotes.some((n, i) => n.id !== localQuickNotes[i]?.id);
     if (orderChanged) {
-      if (quickNotesTarget.kind === 'category') {
-        updateQuickNotes.mutate({
-          type: quickNotesTarget.type,
-          categoryName: quickNotesTarget.categoryName,
-          notes: localQuickNotes,
-        });
-      } else {
-        updateDefaultQuickNotes.mutate({ type: quickNotesTarget.type, notes: localQuickNotes });
-      }
+      persistCurrentQuickNotes(localQuickNotes);
     }
   }
 

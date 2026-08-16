@@ -788,6 +788,57 @@ describe('settings-backed onboarding hooks', () => {
     );
   });
 
+  it('clears a failed import error only after a newer ordinary sync succeeds', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    const clean = createDefaultSettingsSyncState('user-a');
+    runnerMocks.runSettingsReconciliation.mockImplementation(async (options) => {
+      if (options.importLegacyQuickNotes) {
+        await writeSettingsSyncState('sheet-a', 'user-a', {
+          ...markSettingsSectionDirty(clean, 'quickNotes'),
+          errors: { quickNotes: 'Remote import failed' },
+        });
+        throw new TypeError('Import network failed');
+      }
+      await writeSettingsSyncState('sheet-a', 'user-a', clean);
+      return {
+        state: clean,
+        changed: [],
+        pushed: [],
+        conflicts: [],
+        errors: {},
+        migrationDecision: 'none',
+        migrationApplied: false,
+        status: 'synced',
+      };
+    });
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useOnboarding(), { wrapper });
+    await waitFor(() => {
+      expect(result.current.settingsSyncStatus).toBe('synced');
+    });
+
+    await act(async () => {
+      await expect(result.current.importLegacyQuickNotes()).rejects.toThrow(
+        'Import network failed',
+      );
+    });
+    expect(result.current.settingsSyncStatus).toBe('error');
+    expect(result.current.settingsSyncError?.message).toBe(
+      'Import network failed',
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 5));
+      await result.current.refreshSettings();
+    });
+
+    await waitFor(() => {
+      expect(result.current.settingsSyncStatus).toBe('synced');
+      expect(result.current.settingsSyncError).toBeNull();
+    });
+  });
+
   it('keeps a successful local mutation and dirty cache state when Google reconciliation fails', async () => {
     providerState.isOnline = true;
     onlineManager.setOnline(true);
@@ -891,12 +942,227 @@ describe('settings-backed onboarding hooks', () => {
     });
   });
 
-  it('does not follow up an active sync that settles with a durable section error', async () => {
+  it('coordinates one follow-up across simultaneous sync observers', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    const first = deferred<SettingsReconciliationResult>();
+    const followUp = deferred<SettingsReconciliationResult>();
+    const clean = createDefaultSettingsSyncState('user-a');
+    runnerMocks.runSettingsReconciliation
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(followUp.promise);
+    const { wrapper } = createHarness();
+    const { result } = renderHook(
+      () => ({
+        firstSync: useOnboardingSync(),
+        secondSync: useOnboardingSync(),
+        update: useUpdateOnboarding(),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await result.current.update.mutateAsync({
+        accounts: [{ name: 'Concurrent local account' }],
+        accountsConfirmed: true,
+      });
+      first.resolve({
+        state: clean,
+        changed: [],
+        pushed: [],
+        conflicts: [],
+        errors: {},
+        migrationDecision: 'none',
+        migrationApplied: false,
+        status: 'synced',
+      });
+    });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+    });
+
+    expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await writeSettingsSyncState('sheet-a', 'user-a', clean);
+      followUp.resolve({
+        state: clean,
+        changed: [],
+        pushed: ['accounts'],
+        conflicts: [],
+        errors: {},
+        migrationDecision: 'none',
+        migrationApplied: false,
+        status: 'synced',
+      });
+    });
+  });
+
+  it('retains a queued mutation revision across sync observer unmount and remount', async () => {
     providerState.isOnline = true;
     onlineManager.setOnline(true);
     const first = deferred<SettingsReconciliationResult>();
     const clean = createDefaultSettingsSyncState('user-a');
-    runnerMocks.runSettingsReconciliation.mockReturnValueOnce(first.promise);
+    runnerMocks.runSettingsReconciliation
+      .mockReturnValueOnce(first.promise)
+      .mockImplementationOnce(async () => {
+        await writeSettingsSyncState('sheet-a', 'user-a', clean);
+        return {
+          state: clean,
+          changed: [],
+          pushed: ['accounts'],
+          conflicts: [],
+          errors: {},
+          migrationDecision: 'none',
+          migrationApplied: false,
+          status: 'synced',
+        };
+      });
+    const { wrapper } = createHarness();
+    const mounted = renderHook(
+      () => ({
+        sync: useOnboardingSync(),
+        update: useUpdateOnboarding(),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await mounted.result.current.update.mutateAsync({
+        accounts: [{ name: 'Unmounted edit' }],
+        accountsConfirmed: true,
+      });
+    });
+    mounted.unmount();
+
+    await act(async () => {
+      first.resolve({
+        state: clean,
+        changed: [],
+        pushed: [],
+        conflicts: [],
+        errors: {},
+        migrationDecision: 'none',
+        migrationApplied: false,
+        status: 'synced',
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+    });
+    expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(1);
+
+    renderHook(() => useOnboardingSync(), { wrapper });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(2);
+    });
+    await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toMatchObject({
+      dirty: [],
+    });
+  });
+
+  it('runs a later revision after an errored background sync recovers', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    const recovery = deferred<SettingsReconciliationResult>();
+    const clean = createDefaultSettingsSyncState('user-a');
+    runnerMocks.runSettingsReconciliation
+      .mockImplementationOnce(async () => {
+        await writeSettingsSyncState('sheet-a', 'user-a', clean);
+        return {
+          state: clean,
+          changed: [],
+          pushed: [],
+          conflicts: [],
+          errors: {},
+          migrationDecision: 'none',
+          migrationApplied: false,
+          status: 'synced',
+        };
+      })
+      .mockRejectedValueOnce(new TypeError('Background sync failed'))
+      .mockReturnValueOnce(recovery.promise)
+      .mockImplementationOnce(async () => {
+        await writeSettingsSyncState('sheet-a', 'user-a', clean);
+        return {
+          state: clean,
+          changed: [],
+          pushed: ['accounts'],
+          conflicts: [],
+          errors: {},
+          migrationDecision: 'none',
+          migrationApplied: false,
+          status: 'synced',
+        };
+      });
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useOnboarding(), { wrapper });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(1);
+      expect(result.current.settingsSyncStatus).toBe('synced');
+    });
+
+    await act(async () => {
+      await expect(result.current.refreshSettings()).rejects.toThrow(
+        'Background sync failed',
+      );
+    });
+    await waitFor(() => {
+      expect(result.current.settingsSyncStatus).toBe('error');
+    });
+
+    let recoveryRequest!: Promise<SettingsReconciliationResult | undefined>;
+    await act(async () => {
+      recoveryRequest = result.current.refreshSettings();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(3);
+    });
+    await act(async () => {
+      await result.current.updateOnboarding({
+        accounts: [{ name: 'Edit during recovery' }],
+        accountsConfirmed: true,
+      });
+      recovery.resolve({
+        state: clean,
+        changed: [],
+        pushed: [],
+        conflicts: [],
+        errors: {},
+        migrationDecision: 'none',
+        migrationApplied: false,
+        status: 'synced',
+      });
+      await recoveryRequest;
+    });
+
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(4);
+    });
+    await waitFor(() => {
+      expect(result.current.isSyncing).toBe(false);
+      expect(result.current.settingsSyncStatus).toBe('synced');
+    });
+    await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toMatchObject({
+      dirty: [],
+    });
+  });
+
+  it('does not loop after a claimed revision settles with a durable section error', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    const first = deferred<SettingsReconciliationResult>();
+    const followUp = deferred<SettingsReconciliationResult>();
+    const clean = createDefaultSettingsSyncState('user-a');
+    runnerMocks.runSettingsReconciliation
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(followUp.promise);
     const { wrapper } = createHarness();
     const { result } = renderHook(() => useOnboarding(), { wrapper });
     await waitFor(() => {
@@ -908,14 +1174,28 @@ describe('settings-backed onboarding hooks', () => {
         accountsConfirmed: true,
       });
     });
+    await act(async () => {
+      first.resolve({
+        state: clean,
+        changed: [],
+        pushed: [],
+        conflicts: [],
+        errors: {},
+        migrationDecision: 'none',
+        migrationApplied: false,
+        status: 'synced',
+      });
+    });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(2);
+    });
     const failedState = {
       ...markSettingsSectionDirty(clean, 'accounts'),
       errors: { accounts: 'Remote accounts failed' },
     };
-    await writeSettingsSyncState('sheet-a', 'user-a', failedState);
-
     await act(async () => {
-      first.resolve({
+      await writeSettingsSyncState('sheet-a', 'user-a', failedState);
+      followUp.resolve({
         state: failedState,
         changed: [],
         pushed: [],
@@ -928,16 +1208,19 @@ describe('settings-backed onboarding hooks', () => {
       await new Promise((resolve) => window.setTimeout(resolve, 30));
     });
 
-    expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(1);
+    expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(2);
     expect(result.current.settingsSyncStatus).toBe('error');
   });
 
-  it('does not follow up an active sync that settles with a migration prompt', async () => {
+  it('does not loop after a claimed revision settles with a migration prompt', async () => {
     providerState.isOnline = true;
     onlineManager.setOnline(true);
     const first = deferred<SettingsReconciliationResult>();
+    const followUp = deferred<SettingsReconciliationResult>();
     const clean = createDefaultSettingsSyncState('user-a');
-    runnerMocks.runSettingsReconciliation.mockReturnValueOnce(first.promise);
+    runnerMocks.runSettingsReconciliation
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(followUp.promise);
     const { wrapper } = createHarness();
     const { result } = renderHook(() => useOnboarding(), { wrapper });
     await waitFor(() => {
@@ -949,6 +1232,21 @@ describe('settings-backed onboarding hooks', () => {
         accountsConfirmed: true,
       });
     });
+    await act(async () => {
+      first.resolve({
+        state: clean,
+        changed: [],
+        pushed: [],
+        conflicts: [],
+        errors: {},
+        migrationDecision: 'none',
+        migrationApplied: false,
+        status: 'synced',
+      });
+    });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(2);
+    });
     const promptState = {
       ...markSettingsSectionDirty(clean, 'quickNotes'),
       quickNotesMigration: {
@@ -957,10 +1255,9 @@ describe('settings-backed onboarding hooks', () => {
         phase: 'pending' as const,
       },
     };
-    await writeSettingsSyncState('sheet-a', 'user-a', promptState);
-
     await act(async () => {
-      first.resolve({
+      await writeSettingsSyncState('sheet-a', 'user-a', promptState);
+      followUp.resolve({
         state: promptState,
         changed: [],
         pushed: [],
@@ -973,7 +1270,7 @@ describe('settings-backed onboarding hooks', () => {
       await new Promise((resolve) => window.setTimeout(resolve, 30));
     });
 
-    expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(1);
+    expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(2);
     expect(result.current.hasLegacyQuickNotesMigrationPrompt).toBe(true);
   });
 
