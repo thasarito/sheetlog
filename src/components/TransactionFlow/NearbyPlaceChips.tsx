@@ -1,7 +1,6 @@
 import { Loader2, MapPin, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { PlaceSuggestion } from "../../lib/googlePlaces";
-import { GoogleMapsAttribution } from "./GoogleMapsAttribution";
 
 type NearbyPlaceChipsProps = {
   suggestions: PlaceSuggestion[];
@@ -76,7 +75,6 @@ export function NearbyPlaceChips({
             ) : null}
           </div>
         ) : null}
-        <GoogleMapsAttribution />
       </div>
     </div>
   );

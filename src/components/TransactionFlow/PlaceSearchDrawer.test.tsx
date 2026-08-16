@@ -52,15 +52,16 @@ describe("PlaceSearchDrawer", () => {
     expect(props.onInputChange).toHaveBeenCalledWith("tea");
   });
 
-  it("renders place names, addresses, and Google Maps attribution", () => {
+  it("renders place names and addresses without attribution", () => {
     renderDrawer();
 
     expect(screen.getByRole("dialog", { name: "Search places" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Coffee House.*123 Main Street/i })).toBeVisible();
     expect(screen.getByText("Coffee House")).toBeVisible();
     expect(screen.getByText("123 Main Street")).toBeVisible();
-    expect(screen.getByText("Google Maps")).toHaveClass("text-xs", "font-normal");
-    expect(screen.getByText("Google Maps")).toHaveAttribute("translate", "no");
+    expect(
+      screen.queryByText("Google Maps", { exact: true })
+    ).not.toBeInTheDocument();
   });
 
   it("emits a place suggestion and disables result buttons while selecting", async () => {

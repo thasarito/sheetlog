@@ -371,7 +371,7 @@ test.describe("Transaction flow - Places", () => {
 
     const searchButton = page.getByRole("button", { name: "Search places" });
     await expectBefore(nearbyChips.last(), searchButton);
-    await expect(page.getByText("Google Maps", { exact: true })).toBeVisible();
+    await expect(page.getByText("Google Maps", { exact: true })).toHaveCount(0);
 
     await searchButton.click();
     const searchInput = page.getByRole("searchbox", { name: "Search places" });

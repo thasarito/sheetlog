@@ -58,7 +58,9 @@ describe("NearbyPlaceChips", () => {
 
     expect(screen.getByText("Nearby")).toBeInTheDocument();
     expect(screen.getByText("Finding places")).toBeInTheDocument();
-    expect(screen.getByText("Google Maps")).toHaveAttribute("translate", "no");
+    expect(
+      screen.queryByText("Google Maps", { exact: true })
+    ).not.toBeInTheDocument();
   });
 
   it("keeps Search available while nearby places are loading", () => {
@@ -69,7 +71,9 @@ describe("NearbyPlaceChips", () => {
       screen.getByRole("button", { name: "Search places" })
     ).toBeInTheDocument();
     expect(screen.queryByText("Finding places")).not.toBeInTheDocument();
-    expect(screen.getByText("Google Maps")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Google Maps", { exact: true })
+    ).not.toBeInTheDocument();
   });
 
   it("caps nearby results at five and renders Search last", () => {
@@ -86,14 +90,16 @@ describe("NearbyPlaceChips", () => {
     expect(buttons.at(-1)).toHaveAccessibleName("Search places");
   });
 
-  it("renders Search with attribution when nearby results are empty", async () => {
+  it("renders Search without attribution when nearby results are empty", async () => {
     const user = userEvent.setup();
     const onSearch = vi.fn();
     renderChips({ canSearch: true, onSearch });
 
     const searchButton = screen.getByRole("button", { name: "Search places" });
     expect(searchButton).toBeInTheDocument();
-    expect(screen.getByText("Google Maps")).toHaveAttribute("translate", "no");
+    expect(
+      screen.queryByText("Google Maps", { exact: true })
+    ).not.toBeInTheDocument();
 
     await user.click(searchButton);
 

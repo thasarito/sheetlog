@@ -8,7 +8,6 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "../ui/drawer";
-import { GoogleMapsAttribution } from "./GoogleMapsAttribution";
 
 type PlaceSearchDrawerProps = {
   open: boolean;
@@ -151,7 +150,6 @@ export function PlaceSearchDrawer({
               <p className="py-2 text-sm text-muted-foreground">Selecting place…</p>
             ) : null}
           </div>
-          <GoogleMapsAttribution />
         </div>
       </DrawerContent>
     </Drawer>
