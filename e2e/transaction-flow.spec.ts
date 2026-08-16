@@ -467,6 +467,36 @@ test.describe("Transaction flow - Places", () => {
       `,
     });
 
+    const safeAreaStyle = await page.addStyleTag({
+      content: `body { padding-top: 59px !important; padding-bottom: 34px !important; }`,
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const root = document.getElementById("root")?.getBoundingClientRect();
+          const canvas = document
+            .querySelector('[data-testid="transaction-canvas"]')
+            ?.getBoundingClientRect();
+          return root && canvas
+            ? {
+                rootTop: Math.round(root.top),
+                rootBottom: Math.round(root.bottom),
+                canvasTop: Math.round(canvas.top),
+                canvasBottom: Math.round(canvas.bottom),
+              }
+            : null;
+        }),
+      )
+      .toEqual({
+        rootTop: 59,
+        rootBottom: 810,
+        canvasTop: 59,
+        canvasBottom: 810,
+      });
+    await safeAreaStyle.evaluate((element) => element.remove());
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+
     await page.getByRole("button", { name: "Dining Out" }).click();
     await page.getByRole("button", { name: "Done" }).click();
     await replaceKeypadAmount(page, "25");
@@ -512,9 +542,8 @@ test.describe("Transaction flow - Places", () => {
       throw new Error("Expected note results, keypad, and Submit geometry");
     }
 
-    expect(Math.abs(afterKeypad.x - beforeKeypad.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(afterKeypad.y - beforeKeypad.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(afterSubmit.y - beforeSubmit.y)).toBeLessThanOrEqual(1);
+    expectSameBox(afterKeypad, beforeKeypad);
+    expectSameBox(afterSubmit, beforeSubmit);
     expect(listboxBox.y + listboxBox.height).toBeGreaterThan(afterKeypad.y);
     expect(await listbox.evaluate((element) => getComputedStyle(element).boxShadow)).toBe(
       "none",
@@ -567,8 +596,8 @@ test.describe("Transaction flow - Places", () => {
       throw new Error("Expected transaction geometry with keyboard visible");
     }
     expectSameBox(keyboardNote, resultsNote);
-    expectSameBox(keyboardKeypad, beforeKeypad);
-    expectSameBox(keyboardSubmit, beforeSubmit);
+    expectSameBox(keyboardKeypad, afterKeypad);
+    expectSameBox(keyboardSubmit, afterSubmit);
 
     const autocompleteResult = page.getByRole("option", {
       name: /Central Cafe.*123 Test Street/,
@@ -588,8 +617,8 @@ test.describe("Transaction flow - Places", () => {
       throw new Error("Expected restored transaction geometry");
     }
     expectSameBox(restoredNote, resultsNote);
-    expectSameBox(restoredKeypad, beforeKeypad);
-    expectSameBox(restoredSubmit, beforeSubmit);
+    expectSameBox(restoredKeypad, afterKeypad);
+    expectSameBox(restoredSubmit, afterSubmit);
 
     const clear = page.getByRole("button", { name: "Clear note" });
     const clearBox = await clear.boundingBox();
