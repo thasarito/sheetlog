@@ -69,7 +69,7 @@ function getFromStorage<T>(key: string, defaultValue: T): T {
   } catch {
     // Ignore parse errors
   }
-  return defaultValue;
+  return JSON.parse(JSON.stringify(defaultValue)) as T;
 }
 
 function setToStorage<T>(key: string, value: T): void {

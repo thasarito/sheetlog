@@ -1,5 +1,5 @@
 import type { SettingsSection, SheetSettingsConfig } from './settingsSync';
-import { fetchWithAuth } from './google';
+import { encodeA1Range, fetchWithAuth } from './google';
 import {
   DEFAULT_ACCOUNT_COLOR,
   DEFAULT_ACCOUNT_ICON,
@@ -27,27 +27,92 @@ export interface SheetSettingsReadResult {
 }
 
 interface SheetProperties {
+  sheetId?: unknown;
+  title?: unknown;
+  sheetType?: unknown;
+  gridProperties?: {
+    rowCount?: unknown;
+    columnCount?: unknown;
+  };
+}
+
+interface GridSheetProperties {
   sheetId: number;
   title: string;
+  sheetType: 'GRID';
   gridProperties: {
     rowCount: number;
     columnCount: number;
   };
 }
 
-const SETTINGS_METADATA_FIELDS =
-  'sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))';
+interface SheetsMetadataResponse {
+  sheets?: Array<{ properties?: SheetProperties }>;
+}
 
-const EMPTY_CATEGORIES: SheetSettingsConfig['categories'] = {
-  expense: [],
-  income: [],
-  transfer: [],
-};
+const SETTINGS_METADATA_FIELDS =
+  'sheets(properties(sheetId,title,sheetType,gridProperties(rowCount,columnCount)))';
+
+function emptyCategories(): SheetSettingsConfig['categories'] {
+  return { expense: [], income: [], transfer: [] };
+}
 
 const ACCOUNT_HEADERS = ['Account', 'Icon', 'Color'] as const;
 const CATEGORY_HEADERS = ['Type', 'Category', 'Icon', 'Color'] as const;
 
 class SettingsSectionValidationError extends Error {}
+
+function sheetProperties(metadata: SheetsMetadataResponse): SheetProperties[] {
+  if (!Array.isArray(metadata.sheets)) {
+    return [];
+  }
+  return metadata.sheets.flatMap((sheet) =>
+    sheet?.properties && typeof sheet.properties === 'object' ? [sheet.properties] : [],
+  );
+}
+
+function validateGridSettingsTab(
+  properties: SheetProperties,
+  tabTitle: string,
+): GridSheetProperties {
+  if (properties.sheetType !== 'GRID') {
+    throw new Error(`Settings tab "${tabTitle}" must be a GRID sheet.`);
+  }
+  if (typeof properties.sheetId !== 'number' || !Number.isFinite(properties.sheetId)) {
+    throw new Error(`Settings tab "${tabTitle}" has an invalid sheetId.`);
+  }
+  const rowCount = properties.gridProperties?.rowCount;
+  const columnCount = properties.gridProperties?.columnCount;
+  if (
+    typeof rowCount !== 'number' ||
+    !Number.isInteger(rowCount) ||
+    rowCount <= 0 ||
+    typeof columnCount !== 'number' ||
+    !Number.isInteger(columnCount) ||
+    columnCount <= 0
+  ) {
+    throw new Error(`Settings tab "${tabTitle}" has invalid grid dimensions.`);
+  }
+  return {
+    sheetId: properties.sheetId,
+    title: tabTitle,
+    sheetType: 'GRID',
+    gridProperties: { rowCount, columnCount },
+  };
+}
+
+function nextAvailableSheetId(properties: readonly SheetProperties[]): number {
+  const usedIds = new Set(
+    properties.flatMap(({ sheetId }) =>
+      typeof sheetId === 'number' && Number.isInteger(sheetId) && sheetId >= 0 ? [sheetId] : [],
+    ),
+  );
+  let candidate = 0;
+  while (usedIds.has(candidate)) {
+    candidate += 1;
+  }
+  return candidate;
+}
 
 function trimmedCell(value: unknown): string {
   return value === null || value === undefined ? '' : String(value).trim();
@@ -146,21 +211,21 @@ export async function readSheetSettingsConfig(
   accessToken: string,
   spreadsheetId: string,
 ): Promise<SheetSettingsReadResult> {
-  const metadata = await fetchWithAuth<{
-    sheets?: Array<{ properties: SheetProperties }>;
-  }>(
+  const metadata = await fetchWithAuth<SheetsMetadataResponse>(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=${encodeURIComponent(SETTINGS_METADATA_FIELDS)}`,
     accessToken,
   );
   const tabs = new Map(
-    (metadata.sheets ?? []).map(({ properties }) => [properties.title, properties]),
+    sheetProperties(metadata).flatMap((properties) =>
+      typeof properties.title === 'string' ? [[properties.title, properties] as const] : [],
+    ),
   );
   const accountTab = tabs.get('Account');
   const categoryTab = tabs.get('Category');
   const quickNoteTab = tabs.get('Quick Note');
   const accounts = accountTab
     ? await fetchWithAuth<{ values?: unknown[][] }>(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Account!A2:C`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeA1Range('Account', 'A2:C')}`,
         accessToken,
       ).then(({ values }) => {
         try {
@@ -180,7 +245,7 @@ export async function readSheetSettingsConfig(
 
   const categories = categoryTab
     ? await fetchWithAuth<{ values?: unknown[][] }>(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Category!A2:D`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeA1Range('Category', 'A2:D')}`,
         accessToken,
       ).then(({ values }) => {
         try {
@@ -192,10 +257,10 @@ export async function readSheetSettingsConfig(
           return invalidSection(error);
         }
       })
-    : ({ status: 'ok', present: false, value: EMPTY_CATEGORIES } as const);
+    : ({ status: 'ok', present: false, value: emptyCategories() } as const);
   const quickNotes = quickNoteTab
     ? await fetchWithAuth<{ values?: unknown[][] }>(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Quick Note!A2:M`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeA1Range('Quick Note', 'A2:M')}`,
         accessToken,
       ).then(({ values }) => {
         try {
@@ -247,62 +312,47 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
             ]),
           )
         : serializeQuickNoteRows(value as SheetSettingsConfig['quickNotes']);
-  const readRange =
-    section === 'accounts'
-      ? 'Account!A2:C'
-      : section === 'categories'
-        ? 'Category!A2:D'
-        : 'Quick Note!A2:M';
-
-  const metadata = await fetchWithAuth<{
-    sheets?: Array<{ properties: SheetProperties }>;
-  }>(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=${encodeURIComponent(SETTINGS_METADATA_FIELDS)}`,
-    accessToken,
-  );
-  let targetTab = metadata.sheets
-    ?.map(({ properties }) => properties)
-    .find(({ title }) => title === tabTitle);
-  if (!targetTab) {
-    const creation = await fetchWithAuth<{
-      replies?: Array<{
-        addSheet?: { properties?: SheetProperties };
-      }>;
-    }>(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
-      accessToken,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          requests: [{ addSheet: { properties: { title: tabTitle } } }],
-        }),
-      },
-    );
-    targetTab = creation.replies?.[0]?.addSheet?.properties;
-    if (!targetTab) {
-      const refreshedMetadata = await fetchWithAuth<{
-        sheets?: Array<{ properties: SheetProperties }>;
-      }>(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=${encodeURIComponent(SETTINGS_METADATA_FIELDS)}`,
-        accessToken,
-      );
-      targetTab = refreshedMetadata.sheets
-        ?.map(({ properties }) => properties)
-        .find(({ title }) => title === tabTitle);
-    }
-    if (!targetTab) {
-      throw new Error(`Created ${tabTitle} tab metadata was not returned by Google Sheets.`);
-    }
-  }
-
+  const readRange = section === 'accounts' ? 'A1:C' : section === 'categories' ? 'A1:D' : 'A1:M';
   const rows = [[...headers], ...dataRows].map((row) => ({
     values: row.map((cell) => ({ userEnteredValue: { stringValue: cell } })),
   }));
   const requiredRowCount = rows.length;
   const requiredColumnCount = headers.length;
+
+  const metadata = await fetchWithAuth<SheetsMetadataResponse>(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=${encodeURIComponent(SETTINGS_METADATA_FIELDS)}`,
+    accessToken,
+  );
+  const allSheetProperties = sheetProperties(metadata);
+  const existingTargetTab = allSheetProperties.find(({ title }) => title === tabTitle);
+  const targetTab = existingTargetTab
+    ? validateGridSettingsTab(existingTargetTab, tabTitle)
+    : {
+        sheetId: nextAvailableSheetId(allSheetProperties),
+        title: tabTitle,
+        sheetType: 'GRID' as const,
+        gridProperties: {
+          rowCount: requiredRowCount,
+          columnCount: requiredColumnCount,
+        },
+      };
   const existingRowCount = targetTab.gridProperties.rowCount;
   const existingColumnCount = targetTab.gridProperties.columnCount;
   const requests: unknown[] = [];
+  if (!existingTargetTab) {
+    requests.push({
+      addSheet: {
+        properties: {
+          sheetId: targetTab.sheetId,
+          title: tabTitle,
+          gridProperties: {
+            rowCount: requiredRowCount,
+            columnCount: requiredColumnCount,
+          },
+        },
+      },
+    });
+  }
   if (requiredRowCount > existingRowCount) {
     requests.push({
       appendDimension: {
@@ -346,19 +396,30 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
   );
 
   const readBack = await fetchWithAuth<{ values?: unknown[][] }>(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${readRange}`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeA1Range(tabTitle, readRange)}`,
     accessToken,
   );
+  const [readBackHeader = [], ...readBackRows] = readBack.values ?? [];
+  const headerMatches =
+    readBackHeader.length === headers.length &&
+    headers.every((header, index) => readBackHeader[index] === header);
+  if (!headerMatches) {
+    return {
+      status: 'invalid',
+      present: true,
+      error: `Settings tab "${tabTitle}" header must be exactly: ${headers.join(' | ')}.`,
+    };
+  }
   try {
     return {
       status: 'ok',
       present: true,
       value:
         section === 'accounts'
-          ? parseAccountRows(readBack.values ?? [])
+          ? parseAccountRows(readBackRows)
           : section === 'categories'
-            ? parseCategoryRows(readBack.values ?? [])
-            : parseQuickNoteRows(readBack.values ?? []),
+            ? parseCategoryRows(readBackRows)
+            : parseQuickNoteRows(readBackRows),
     } as SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>;
   } catch (error) {
     if (
