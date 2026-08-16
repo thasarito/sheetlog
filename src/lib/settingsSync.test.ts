@@ -5,7 +5,7 @@ import {
   clearSettingsSectionDirty,
   clearSettingsSectionError,
   createDefaultSettingsSyncState,
-  deleteLegacyQuickNotesConfig,
+  deleteLegacyQuickNotesConfigIfUnchanged,
   fingerprintSettingsSection,
   getQuickNotesStorageKey,
   getSettingsSyncStorageKey,
@@ -14,6 +14,7 @@ import {
   readQuickNotesConfig,
   readSettingsSyncState,
   setSettingsSectionError,
+  updateSettingsSyncState,
   writeQuickNotesConfig,
   writeSettingsSyncState,
   type SettingsSyncState,
@@ -125,6 +126,32 @@ describe('portable settings sync state', () => {
     expect(state.dirty).toEqual(['quickNotes', 'accounts', 'quickNotes']);
   });
 
+  it('atomically preserves dirty work added by concurrent state updates', async () => {
+    await writeSettingsSyncState(
+      'sheet-a',
+      'user-a',
+      createDefaultSettingsSyncState('user-a'),
+    );
+    await Promise.all([
+      updateSettingsSyncState('sheet-a', 'user-a', (state) =>
+        markSettingsSectionDirty(
+          state ?? createDefaultSettingsSyncState('user-a'),
+          'accounts',
+        ),
+      ),
+      updateSettingsSyncState('sheet-a', 'user-a', (state) =>
+        markSettingsSectionDirty(
+          state ?? createDefaultSettingsSyncState('user-a'),
+          'categories',
+        ),
+      ),
+    ]);
+
+    await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toMatchObject({
+      dirty: ['accounts', 'categories'],
+    });
+  });
+
   it('rejects a malformed sync state before put and preserves the previous readable record', async () => {
     const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
     const previous = {
@@ -165,6 +192,40 @@ describe('portable settings sync state', () => {
     });
 
     await expectStorageCorruption(() => readSettingsSyncState('sheet-a', 'user-a'), storageKey);
+  });
+
+  it.each(['auto-import', 'prompt', 'explicit-import'] as const)(
+    'persists resumable Quick Note migration intent %s',
+    async (intent) => {
+      const state = {
+        ...createDefaultSettingsSyncState('user-a'),
+        quickNotesMigration: {
+          intent,
+          sourceFingerprint: '{"default:expense":[]}',
+        },
+      } satisfies SettingsSyncState;
+
+      await writeSettingsSyncState('sheet-a', 'user-a', state);
+
+      await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toEqual(state);
+    },
+  );
+
+  it('rejects malformed persisted Quick Note migration state', async () => {
+    const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
+    const malformed = {
+      ...createDefaultSettingsSyncState('user-a'),
+      quickNotesMigration: {
+        intent: 'automatic',
+        sourceFingerprint: 42,
+      },
+    } as unknown as SettingsSyncState;
+
+    await expectStorageCorruption(
+      () => writeSettingsSyncState('sheet-a', 'user-a', malformed),
+      storageKey,
+    );
+    expect(await db.settings.get(storageKey)).toBeUndefined();
   });
 
   it.each([
@@ -256,23 +317,24 @@ describe('portable settings sync state', () => {
     expect(await db.settings.get('quickNotes')).toEqual(legacyRecord);
   });
 
-  it('deletes only legacy Quick Notes after a successful migration', async () => {
-    const legacy: QuickNotesConfig = {
+  it('conditionally deletes legacy Quick Notes only when the source is unchanged', async () => {
+    const expected: QuickNotesConfig = {
       'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Coffee' }],
     };
-    const scoped: QuickNotesConfig = {
-      'default:income': [{ id: 'scoped', icon: 'Wallet', label: 'Salary' }],
+    const newer: QuickNotesConfig = {
+      'default:expense': [{ id: 'newer', icon: 'Coffee', label: 'Newer edit' }],
     };
     await db.settings.put({
       key: 'quickNotes',
-      value: JSON.stringify(legacy),
+      value: JSON.stringify(newer),
       updatedAt: '2026-08-16T01:02:03.000Z',
     });
-    await writeQuickNotesConfig('sheet-a', scoped);
-    await deleteLegacyQuickNotesConfig();
 
-    expect(await db.settings.get('quickNotes')).toBeUndefined();
-    await expect(readQuickNotesConfig('sheet-a')).resolves.toEqual(scoped);
+    await expect(deleteLegacyQuickNotesConfigIfUnchanged(expected)).resolves.toBe(false);
+    await expect(readLegacyQuickNotesConfig()).resolves.toEqual(newer);
+
+    await expect(deleteLegacyQuickNotesConfigIfUnchanged(newer)).resolves.toBe(true);
+    await expect(readLegacyQuickNotesConfig()).resolves.toBeNull();
   });
 
   it('rejects six Quick Notes before put and preserves the previous readable record', async () => {
