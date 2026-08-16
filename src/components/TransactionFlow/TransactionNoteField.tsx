@@ -100,6 +100,11 @@ export function TransactionNoteField({
   const handleManualChange = (nextValue: string) => {
     generationRef.current += 1;
     setActiveIndex(-1);
+    if (!nextValue.trim()) {
+      onManualChange(nextValue);
+      retireLifecycle(true);
+      return;
+    }
     if (
       !activeRef.current ||
       autocomplete.sessionError ||

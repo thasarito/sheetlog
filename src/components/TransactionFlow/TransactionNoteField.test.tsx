@@ -325,6 +325,22 @@ describe("TransactionNoteField", () => {
     await waitFor(() => expect(input).toHaveFocus());
   });
 
+  it("retires the owner session when manual deletion clears the note", async () => {
+    const user = userEvent.setup();
+    renderField({ activeResults: [centralCafe] });
+    const input = screen.getByRole("combobox", { name: "Transaction note" });
+
+    await user.type(input, "central");
+    const sessionBeforeClear = hookState.observedSessionIds.at(-1);
+
+    await user.clear(input);
+    const sessionAfterClear = hookState.observedSessionIds.at(-1);
+    expect(sessionAfterClear).not.toBe(sessionBeforeClear);
+
+    await user.type(input, "cafe");
+    expect(hookState.observedSessionIds.at(-1)).not.toBe(sessionBeforeClear);
+  });
+
   it("drops a deferred selection after Places eligibility is lost", async () => {
     const user = userEvent.setup();
     const selected = deferredSelection();
