@@ -54,6 +54,7 @@ export async function findExistingSheet(
  */
 export async function createSheet(_accessToken: string): Promise<string> {
   await delay();
+  setMockQuickNotes({});
   return MOCK_SHEET_ID;
 }
 

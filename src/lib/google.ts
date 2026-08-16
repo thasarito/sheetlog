@@ -86,6 +86,16 @@ export function isUnauthorizedError(error: unknown): boolean {
   return error instanceof GoogleApiError && error.status === 401;
 }
 
+const SIMPLE_A1_SHEET_TITLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export function encodeA1Range(sheetTitle: string, gridRange: string): string {
+  const escapedTitle = sheetTitle.replaceAll("'", "''");
+  const a1Title = SIMPLE_A1_SHEET_TITLE.test(sheetTitle)
+    ? escapedTitle
+    : `'${escapedTitle}'`;
+  return encodeURIComponent(`${a1Title}!${gridRange}`);
+}
+
 // Google Identity Services (GIS) client code removed in favor of @react-oauth/google
 
 function parseGoogleErrorBody(body: string): {
@@ -277,7 +287,8 @@ async function ensureQuickNotesHeaders(
   accessToken: string,
   spreadsheetId: string
 ): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${QUICK_NOTE_TAB}!A1:M1?valueInputOption=RAW`;
+  const range = encodeA1Range(QUICK_NOTE_TAB, "A1:M1");
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
     body: JSON.stringify({ values: [QUICK_NOTE_HEADERS] }),

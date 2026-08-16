@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSheet, GoogleApiError } from './google';
+import { createSheet, encodeA1Range, GoogleApiError } from './google';
 import { readSheetSettingsConfig, replaceSheetSettingsSection } from './googleSettings';
 import {
+  createSheet as createMockSheet,
   readSheetSettingsConfig as readMockSheetSettingsConfig,
   replaceSheetSettingsSection as replaceMockSheetSettingsSection,
 } from './mock/mockGoogle';
@@ -22,24 +23,36 @@ function settingsMetadata(
   ...sheets: Array<{
     sheetId: number;
     title: string;
+    sheetType?: string;
     rowCount?: number;
     columnCount?: number;
   }>
 ) {
   return {
-    sheets: sheets.map(({ sheetId, title, rowCount = 20, columnCount = 13 }) => ({
-      properties: {
-        sheetId,
-        title,
-        gridProperties: { rowCount, columnCount },
-      },
-    })),
+    sheets: sheets.map(
+      ({ sheetId, title, sheetType = 'GRID', rowCount = 20, columnCount = 13 }) => ({
+        properties: {
+          sheetId,
+          title,
+          sheetType,
+          gridProperties: { rowCount, columnCount },
+        },
+      }),
+    ),
   };
 }
 
 function requestAt(fetchMock: ReturnType<typeof vi.fn>, index: number) {
   return fetchMock.mock.calls[index] as [string, RequestInit];
 }
+
+describe('Google Sheets A1 ranges', () => {
+  it('quotes titles that need it and doubles embedded apostrophes before encoding', () => {
+    expect(encodeA1Range("Owner's Notes", 'A1:B2')).toBe(
+      "'Owner''s%20Notes'!A1%3AB2",
+    );
+  });
+});
 
 describe('Google settings Sheet reads', () => {
   afterEach(() => {
@@ -78,8 +91,8 @@ describe('Google settings Sheet reads', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id?fields=sheets(properties(sheetId%2Ctitle%2CgridProperties(rowCount%2CcolumnCount)))',
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A2:C',
+      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id?fields=sheets(properties(sheetId%2Ctitle%2CsheetType%2CgridProperties(rowCount%2CcolumnCount)))',
+      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A2%3AC',
     ]);
   });
 
@@ -251,7 +264,7 @@ describe('Google settings Sheet reads', () => {
       },
     });
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Quick Note!A2:M',
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A2%3AM",
     );
   });
 
@@ -314,10 +327,47 @@ describe('Google settings Sheet reads', () => {
       quickNotes: { status: 'ok', present: true, value: {} },
     });
     expect(fetchMock.mock.calls.slice(1).map(([url]) => url)).toEqual([
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A2:C',
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Category!A2:D',
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Quick Note!A2:M',
+      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A2%3AC',
+      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Category!A2%3AD',
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A2%3AM",
     ]);
+  });
+
+  it('returns fresh complete values for missing sections on every read', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(jsonResponse({ sheets: [] })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await readSheetSettingsConfig(ACCESS_TOKEN, SHEET_ID);
+    if (
+      first.accounts.status !== 'ok' ||
+      first.categories.status !== 'ok' ||
+      first.quickNotes.status !== 'ok'
+    ) {
+      throw new Error('Expected complete missing-section values.');
+    }
+    first.accounts.value.push({ name: 'Leaked account' });
+    first.categories.value.expense.push({ name: 'Leaked category' });
+    first.quickNotes.value['default:expense'] = [
+      { id: 'leaked', icon: 'Coffee', label: 'Leaked' },
+    ];
+
+    try {
+      const second = await readSheetSettingsConfig(ACCESS_TOKEN, SHEET_ID);
+      if (
+        second.accounts.status !== 'ok' ||
+        second.categories.status !== 'ok' ||
+        second.quickNotes.status !== 'ok'
+      ) {
+        throw new Error('Expected complete missing-section values.');
+      }
+      expect(second.accounts.value).toEqual([]);
+      expect(second.categories.value).toEqual({ expense: [], income: [], transfer: [] });
+      expect(second.quickNotes.value).toEqual({});
+    } finally {
+      first.categories.value.expense.length = 0;
+    }
   });
 
   it.each([
@@ -377,7 +427,7 @@ describe('Google settings Sheet creation', () => {
     expect(fetchMock).toHaveBeenCalledTimes(5);
     const [quickNoteUrl, quickNoteInit] = requestAt(fetchMock, 4);
     expect(quickNoteUrl).toBe(
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Quick Note!A1:M1?valueInputOption=RAW',
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A1%3AM1?valueInputOption=RAW",
     );
     expect(JSON.parse(String(quickNoteInit.body))).toEqual({ values: [QUICK_NOTE_HEADERS] });
   });
@@ -389,6 +439,56 @@ describe('Google settings Sheet replacement', () => {
     vi.restoreAllMocks();
   });
 
+  it('rejects a present non-GRID settings tab before attempting a write', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(
+        settingsMetadata({ sheetId: 11, title: 'Account', sheetType: 'OBJECT' }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'accounts', []),
+    ).rejects.toThrow('Settings tab "Account" must be a GRID sheet.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      name: 'a non-finite sheetId',
+      properties: {
+        sheetId: 'invalid',
+        title: 'Account',
+        sheetType: 'GRID',
+        gridProperties: { rowCount: 20, columnCount: 3 },
+      },
+      error: 'Settings tab "Account" has an invalid sheetId.',
+    },
+    {
+      name: 'missing gridProperties',
+      properties: { sheetId: 11, title: 'Account', sheetType: 'GRID' },
+      error: 'Settings tab "Account" has invalid grid dimensions.',
+    },
+    {
+      name: 'non-positive grid dimensions',
+      properties: {
+        sheetId: 11,
+        title: 'Account',
+        sheetType: 'GRID',
+        gridProperties: { rowCount: 0, columnCount: 3 },
+      },
+      error: 'Settings tab "Account" has invalid grid dimensions.',
+    },
+  ])('rejects partial settings metadata with $name', async ({ properties, error }) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ sheets: [{ properties }] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'accounts', []),
+    ).rejects.toThrow(error);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('atomically replaces the full Account grid with literal cells and returns the read-back winner', async () => {
     const fetchMock = vi
       .fn()
@@ -398,7 +498,14 @@ describe('Google settings Sheet replacement', () => {
         ),
       )
       .mockResolvedValueOnce(jsonResponse({ replies: [{}] }))
-      .mockResolvedValueOnce(jsonResponse({ values: [['Remote winner', 'Wallet', '#6366f1']] }));
+      .mockResolvedValueOnce(
+        jsonResponse({
+          values: [
+            ['Account', 'Icon', 'Color'],
+            ['Remote winner', 'Wallet', '#6366f1'],
+          ],
+        }),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'accounts', [
@@ -459,7 +566,7 @@ describe('Google settings Sheet replacement', () => {
     });
     expect(String(batchInit.body)).not.toContain('formulaValue');
     expect(requestAt(fetchMock, 2)[0]).toBe(
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A2:C',
+      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A1%3AC',
     );
     expect(fetchMock.mock.calls.some(([url, init]) => {
       const requestUrl = String(url);
@@ -476,7 +583,7 @@ describe('Google settings Sheet replacement', () => {
         ),
       )
       .mockResolvedValueOnce(jsonResponse({}))
-      .mockResolvedValueOnce(jsonResponse({}));
+      .mockResolvedValueOnce(jsonResponse({ values: [['Account', 'Icon', 'Color']] }));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'accounts', []);
@@ -513,6 +620,7 @@ describe('Google settings Sheet replacement', () => {
       .mockResolvedValueOnce(
         jsonResponse({
           values: [
+            ['Type', 'Category', 'Icon', 'Color'],
             ['expense', 'Food', 'Tag', '#111111'],
             ['income', 'Salary', 'BadgeDollarSign', '#222222'],
             ['transfer', 'Savings', 'PiggyBank', '#333333'],
@@ -568,6 +676,7 @@ describe('Google settings Sheet replacement', () => {
       'transfer:Savings': [],
     };
     const quickNoteRows = [
+      [...QUICK_NOTE_HEADERS],
       [
         'default',
         'expense',
@@ -588,22 +697,12 @@ describe('Google settings Sheet replacement', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        jsonResponse(settingsMetadata({ sheetId: 0, title: 'Transactions' })),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          replies: [
-            {
-              addSheet: {
-                properties: {
-                  sheetId: 13,
-                  title: 'Quick Note',
-                  gridProperties: { rowCount: 1, columnCount: 5 },
-                },
-              },
-            },
-          ],
-        }),
+        jsonResponse(
+          settingsMetadata(
+            { sheetId: 0, title: 'Transactions' },
+            { sheetId: 2, title: 'Other' },
+          ),
+        ),
       )
       .mockResolvedValueOnce(jsonResponse({}))
       .mockResolvedValueOnce(jsonResponse({ values: quickNoteRows }));
@@ -617,19 +716,20 @@ describe('Google settings Sheet replacement', () => {
     );
 
     expect(result).toEqual({ status: 'ok', present: true, value: quickNotes });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(JSON.parse(String(requestAt(fetchMock, 1)[1].body))).toEqual({
-      requests: [{ addSheet: { properties: { title: 'Quick Note' } } }],
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const replacementBody = JSON.parse(String(requestAt(fetchMock, 1)[1].body));
+    expect(replacementBody.requests[0]).toEqual({
+      addSheet: {
+        properties: {
+          sheetId: 1,
+          title: 'Quick Note',
+          gridProperties: { rowCount: 3, columnCount: 13 },
+        },
+      },
     });
-
-    const replacementBody = JSON.parse(String(requestAt(fetchMock, 2)[1].body));
-    expect(replacementBody.requests.slice(0, 2)).toEqual([
-      { appendDimension: { sheetId: 13, dimension: 'ROWS', length: 2 } },
-      { appendDimension: { sheetId: 13, dimension: 'COLUMNS', length: 8 } },
-    ]);
-    const updateCells = replacementBody.requests[2].updateCells;
+    const updateCells = replacementBody.requests[1].updateCells;
     expect(updateCells.range).toEqual({
-      sheetId: 13,
+      sheetId: 1,
       startRowIndex: 0,
       endRowIndex: 3,
       startColumnIndex: 0,
@@ -644,10 +744,91 @@ describe('Google settings Sheet replacement', () => {
     expect(updateCells.rows[1].values[8]).toEqual({
       userEnteredValue: { stringValue: '=SUM(A1:A2)' },
     });
-    expect(String(requestAt(fetchMock, 2)[1].body)).not.toContain('formulaValue');
-    expect(requestAt(fetchMock, 3)[0]).toBe(
-      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Quick Note!A2:M',
+    expect(String(requestAt(fetchMock, 1)[1].body)).not.toContain('formulaValue');
+    expect(requestAt(fetchMock, 2)[0]).toBe(
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A1%3AM",
     );
+  });
+
+  it('returns an invalid section when the post-write header changed', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          settingsMetadata({ sheetId: 11, title: 'Account', rowCount: 5, columnCount: 3 }),
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          values: [
+            ['Wrong', 'Icon', 'Color'],
+            ['Remote winner', 'Wallet', '#6366f1'],
+          ],
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'accounts', [{ name: 'Local' }]),
+    ).resolves.toEqual({
+      status: 'invalid',
+      present: true,
+      error: 'Settings tab "Account" header must be exactly: Account | Icon | Color.',
+    });
+    expect(requestAt(fetchMock, 2)[0]).toBe(
+      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A1%3AC',
+    );
+  });
+
+  it('does not leave a created tab behind when a lazy replacement batch fails', async () => {
+    const batchError = new Error('Atomic replacement rejected');
+    let addOnlyBatchCommitted = false;
+    const fetchMock = vi.fn().mockImplementation((_url, init?: RequestInit) => {
+      if (fetchMock.mock.calls.length === 1) {
+        return Promise.resolve(
+          jsonResponse(
+            settingsMetadata(
+              { sheetId: 0, title: 'Transactions' },
+              { sheetId: 1, title: 'Other' },
+            ),
+          ),
+        );
+      }
+      const body = JSON.parse(String(init?.body));
+      const requests = body.requests as Array<Record<string, unknown>>;
+      if (requests.length === 1 && requests[0]?.addSheet) {
+        addOnlyBatchCommitted = true;
+        return Promise.resolve(
+          jsonResponse({
+            replies: [
+              {
+                addSheet: {
+                  properties: {
+                    sheetId: 2,
+                    title: 'Quick Note',
+                    sheetType: 'GRID',
+                    gridProperties: { rowCount: 1, columnCount: 13 },
+                  },
+                },
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.reject(batchError);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'quickNotes', {}),
+    ).rejects.toBe(batchError);
+
+    expect(addOnlyBatchCommitted).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const requests = JSON.parse(String(requestAt(fetchMock, 1)[1].body)).requests;
+    expect(requests[0].addSheet.properties.sheetId).toBe(2);
+    expect(requests[1].updateCells.range.sheetId).toBe(2);
   });
 });
 
@@ -670,6 +851,39 @@ describe('mock settings Sheet parity', () => {
 
     const reread = await readMockSheetSettingsConfig(ACCESS_TOKEN, SHEET_ID);
     expect(reread.quickNotes).toEqual({ status: 'ok', present: true, value: {} });
+  });
+
+  it('marks Quick Note present and empty when a mock Sheet is created', async () => {
+    clearMockData();
+
+    await createMockSheet(ACCESS_TOKEN);
+
+    const result = await readMockSheetSettingsConfig(ACCESS_TOKEN, SHEET_ID);
+    expect(result.quickNotes).toEqual({ status: 'ok', present: true, value: {} });
+  });
+
+  it('isolates mock defaults from mutations made by callers', async () => {
+    clearMockData();
+    const first = await readMockSheetSettingsConfig(ACCESS_TOKEN, SHEET_ID);
+    if (first.accounts.status !== 'ok' || first.categories.status !== 'ok') {
+      throw new Error('Expected complete mock defaults.');
+    }
+    const originalAccountName = first.accounts.value[0]?.name;
+    const originalCategoryName = first.categories.value.expense[0]?.name;
+    first.accounts.value[0].name = 'Mutated account';
+    first.categories.value.expense[0].name = 'Mutated category';
+
+    try {
+      const second = await readMockSheetSettingsConfig(ACCESS_TOKEN, SHEET_ID);
+      if (second.accounts.status !== 'ok' || second.categories.status !== 'ok') {
+        throw new Error('Expected complete mock defaults.');
+      }
+      expect(second.accounts.value[0]?.name).toBe('Cash');
+      expect(second.categories.value.expense[0]?.name).toBe('Food Delivery');
+    } finally {
+      first.accounts.value[0].name = originalAccountName ?? 'Cash';
+      first.categories.value.expense[0].name = originalCategoryName ?? 'Food Delivery';
+    }
   });
 
   it('replaces all mock sections, including complete empty values', async () => {
