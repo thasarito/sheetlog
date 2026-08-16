@@ -72,6 +72,8 @@ function renderDashboard(
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-08-15T08:00:00.000Z"));
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -86,6 +88,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
