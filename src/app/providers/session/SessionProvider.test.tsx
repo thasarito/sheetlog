@@ -83,6 +83,7 @@ describe("SessionProvider account identity", () => {
     await Promise.all([
       db.transactionHistory.clear(),
       db.transactionHistoryMeta.clear(),
+      db.settings.clear(),
     ]);
   });
 
@@ -489,5 +490,43 @@ describe("SessionProvider account identity", () => {
         queryKey: ["transactionHistory"],
       }),
     ).toHaveLength(0);
+  });
+
+  it("clears settings query families on signout without deleting durable scoped settings", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(userInfo("account-a")));
+    const queryClient = renderSession();
+    expect(await screen.findByText("account-a")).toBeInTheDocument();
+    await db.settings.put({
+      key: "quickNotes:sheet-a",
+      value: JSON.stringify({}),
+      updatedAt: "2026-08-16T00:00:00.000Z",
+    });
+    queryClient.setQueryData(
+      ["onboarding", "state", "sheet-a", "account-a"],
+      { private: "onboarding" },
+    );
+    queryClient.setQueryData(
+      ["settings", "sync", "sheet-a", "account-a"],
+      { private: "sync" },
+    );
+    queryClient.setQueryData(
+      ["quickNotes", "state", "sheet-a", "account-a"],
+      { private: "notes" },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryCache().findAll({ queryKey: ["onboarding"] }),
+      ).toHaveLength(0);
+      expect(
+        queryClient.getQueryCache().findAll({ queryKey: ["settings"] }),
+      ).toHaveLength(0);
+      expect(
+        queryClient.getQueryCache().findAll({ queryKey: ["quickNotes"] }),
+      ).toHaveLength(0);
+    });
+    expect(await db.settings.get("quickNotes:sheet-a")).toBeDefined();
   });
 });

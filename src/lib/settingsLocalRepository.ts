@@ -76,7 +76,9 @@ function validateOnboardingState(
   }
 }
 
-async function readOnboardingState(sheetId: string): Promise<OnboardingState> {
+export async function readLocalOnboardingState(
+  sheetId: string,
+): Promise<OnboardingState> {
   const storageKey = getOnboardingStateKey(sheetId);
   const record = await db.settings.get(storageKey);
   if (!record) {
@@ -136,7 +138,7 @@ async function writeOnboardingState(
 
 async function readSettingsRecords(sheetId: string): Promise<LocalSettingsSnapshot> {
   const [onboardingState, storedQuickNotes] = await Promise.all([
-    readOnboardingState(sheetId),
+    readLocalOnboardingState(sheetId),
     readQuickNotesConfig(sheetId),
   ]);
   return {
@@ -191,7 +193,7 @@ async function writeSection<Section extends SettingsSection>(
     );
     return;
   }
-  const onboardingState = await readOnboardingState(sheetId);
+  const onboardingState = await readLocalOnboardingState(sheetId);
   if (section === 'accounts') {
     await writeOnboardingState(sheetId, {
       ...onboardingState,
@@ -282,7 +284,7 @@ async function mutateLocalOnboardingInTransaction(
   forceDirty: readonly SettingsSection[],
 ): Promise<SettingsLocalMutationResult> {
   const [currentOnboarding, currentQuickNotes, currentState] = await Promise.all([
-    readOnboardingState(sheetId),
+    readLocalOnboardingState(sheetId),
     readQuickNotesConfig(sheetId),
     readSettingsSyncState(sheetId, verifiedUserId),
   ]);
@@ -400,6 +402,24 @@ export async function mutateLocalQuickNotes(
   return db.transaction('rw', db.settings, async () =>
     mutateLocalQuickNotesInTransaction(sheetId, verifiedUserId, update),
   );
+}
+
+export async function mutateLegacyQuickNotes(
+  update: (current: QuickNotesConfig) => QuickNotesConfig,
+): Promise<QuickNotesConfig> {
+  return db.transaction('rw', db.settings, async () => {
+    const current = (await readLegacyQuickNotesConfig()) ?? {};
+    const next = validateQuickNotesConfig(
+      update(cloneJson(current)),
+      'quickNotes',
+    );
+    await db.settings.put({
+      key: 'quickNotes',
+      value: JSON.stringify(next),
+      updatedAt: new Date().toISOString(),
+    });
+    return next;
+  });
 }
 
 function mutateLocalOnboardingSection<Section extends 'accounts' | 'categories'>(

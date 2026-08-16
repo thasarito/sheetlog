@@ -3,9 +3,45 @@ import type {
   CategoryConfigWithMeta,
   QuickNotesConfig,
 } from './types';
+import { STORAGE_KEYS } from './constants';
 import { db } from './db';
 
 export const SETTINGS_SECTIONS = ['accounts', 'categories', 'quickNotes'] as const;
+
+export interface SettingsWorkspaceStorage {
+  readonly length: number;
+  key(index: number): string | null;
+  getItem(key: string): string | null;
+}
+
+export interface CurrentSettingsWorkspace {
+  verifiedUserId: string;
+  sheetId: string;
+}
+
+export function countRememberedSettingsWorkspaces(
+  storage: SettingsWorkspaceStorage | null | undefined,
+  current: CurrentSettingsWorkspace | null | undefined,
+): number {
+  const prefix = `${STORAGE_KEYS.SHEET_ID}:`;
+  const workspaces = new Set<string>();
+  if (storage) {
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (!key?.startsWith(prefix) || key.length === prefix.length) continue;
+      const sheetId = storage.getItem(key)?.trim();
+      if (sheetId) workspaces.add(`${key}\u0000${sheetId}`);
+    }
+  }
+  const verifiedUserId = current?.verifiedUserId.trim();
+  const sheetId = current?.sheetId.trim();
+  if (verifiedUserId && sheetId) {
+    workspaces.add(
+      `${prefix}${encodeURIComponent(verifiedUserId)}\u0000${sheetId}`,
+    );
+  }
+  return workspaces.size;
+}
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 

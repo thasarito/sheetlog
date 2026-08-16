@@ -465,6 +465,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
       queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
       queryClient.removeQueries({ queryKey: ["transactionHistory"] });
+      queryClient.removeQueries({ queryKey: ["onboarding"] });
+      queryClient.removeQueries({ queryKey: ["settings"] });
+      queryClient.removeQueries({ queryKey: ["quickNotes"] });
       void clearTransactionHistoryCache().catch((error) => {
         console.warn("Failed to clear cached transaction history:", error);
       });
