@@ -1,27 +1,24 @@
-import { Loader2, MapPin, Search } from "lucide-react";
+import { Loader2, MapPin } from "lucide-react";
+import type React from "react";
 import { useEffect, useState } from "react";
 import type { PlaceSuggestion } from "../../lib/googlePlaces";
 
 type NearbyPlaceChipsProps = {
   suggestions: PlaceSuggestion[];
   isLoading: boolean;
-  canSearch: boolean;
   onSelect: (suggestion: PlaceSuggestion) => void;
-  onSearch: () => void;
-  searchButtonRef?: React.Ref<HTMLButtonElement>;
+  onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
 };
 
 export function NearbyPlaceChips({
   suggestions,
   isLoading,
-  canSearch,
   onSelect,
-  onSearch,
-  searchButtonRef,
+  onPointerDown,
 }: NearbyPlaceChipsProps) {
   const [showLoading, setShowLoading] = useState(false);
   const visibleSuggestions = suggestions.slice(0, 5);
-  const hasChipContent = visibleSuggestions.length > 0 || canSearch;
+  const hasChipContent = visibleSuggestions.length > 0;
 
   useEffect(() => {
     if (!isLoading) {
@@ -56,23 +53,12 @@ export function NearbyPlaceChips({
                 type="button"
                 className="min-h-8 shrink-0 rounded-full border border-border bg-surface px-3 text-xs font-medium text-foreground transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 aria-label={`Use ${suggestion.name} as note`}
+                onPointerDown={onPointerDown}
                 onClick={() => onSelect(suggestion)}
               >
                 {suggestion.name}
               </button>
             ))}
-            {canSearch ? (
-              <button
-                ref={searchButtonRef}
-                type="button"
-                className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-xs font-medium text-foreground transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                aria-label="Search places"
-                onClick={onSearch}
-              >
-                <Search className="h-3.5 w-3.5" aria-hidden="true" />
-                Search
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>

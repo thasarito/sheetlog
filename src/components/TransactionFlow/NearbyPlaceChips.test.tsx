@@ -15,23 +15,17 @@ const suggestions: PlaceSuggestion[] = Array.from(
 function renderChips({
   places = [],
   isLoading = false,
-  canSearch = false,
   onSelect = vi.fn(),
-  onSearch = vi.fn(),
 }: {
   places?: PlaceSuggestion[];
   isLoading?: boolean;
-  canSearch?: boolean;
   onSelect?: (suggestion: PlaceSuggestion) => void;
-  onSearch?: () => void;
 } = {}) {
   return render(
     <NearbyPlaceChips
       suggestions={places}
       isLoading={isLoading}
-      canSearch={canSearch}
       onSelect={onSelect}
-      onSearch={onSearch}
     />
   );
 }
@@ -41,7 +35,7 @@ afterEach(() => {
 });
 
 describe("NearbyPlaceChips", () => {
-  it("renders nothing without loading, suggestions, or search", () => {
+  it("renders nothing without loading or suggestions", () => {
     const { container } = renderChips();
 
     expect(container).toBeEmptyDOMElement();
@@ -63,47 +57,18 @@ describe("NearbyPlaceChips", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps Search available while nearby places are loading", () => {
-    vi.useFakeTimers();
-    renderChips({ isLoading: true, canSearch: true });
-
-    expect(
-      screen.getByRole("button", { name: "Search places" })
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Finding places")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Google Maps", { exact: true })
-    ).not.toBeInTheDocument();
-  });
-
-  it("caps nearby results at five and renders Search last", () => {
-    renderChips({ places: suggestions, canSearch: true });
+  it("caps nearby results at five without a Search control", () => {
+    renderChips({ places: suggestions });
 
     const buttons = screen.getAllByRole("button");
-    expect(buttons).toHaveLength(6);
+    expect(buttons).toHaveLength(5);
     expect(
       screen.getByRole("button", { name: "Use Place 4 as note" })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Use Place 5 as note" })
     ).not.toBeInTheDocument();
-    expect(buttons.at(-1)).toHaveAccessibleName("Search places");
-  });
-
-  it("renders Search without attribution when nearby results are empty", async () => {
-    const user = userEvent.setup();
-    const onSearch = vi.fn();
-    renderChips({ canSearch: true, onSearch });
-
-    const searchButton = screen.getByRole("button", { name: "Search places" });
-    expect(searchButton).toBeInTheDocument();
-    expect(
-      screen.queryByText("Google Maps", { exact: true })
-    ).not.toBeInTheDocument();
-
-    await user.click(searchButton);
-
-    expect(onSearch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Search places" })).not.toBeInTheDocument();
   });
 
   it("passes the selected structured suggestion to the owner", async () => {
