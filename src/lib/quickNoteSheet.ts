@@ -360,12 +360,14 @@ export function sanitizeQuickNotesAgainstReadySettings(
     ? settings.accounts
     : Array.from(
         new Set(
-          Object.entries(config).flatMap(([target, notes]) =>
-            notes.flatMap(({ account, forValue }) => [
+          Object.entries(config).flatMap(([target, notes]) => {
+            const targetType =
+              defaultTargetType(target) ?? categoryTarget(target)?.type;
+            return notes.flatMap(({ account, forValue }) => [
               ...(account ? [account] : []),
-              ...(target.startsWith('transfer:') && forValue ? [forValue] : []),
-            ]),
-          ),
+              ...(targetType === 'transfer' && forValue ? [forValue] : []),
+            ]);
+          }),
         ),
         (name) => ({ name }),
       );

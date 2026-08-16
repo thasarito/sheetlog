@@ -544,6 +544,14 @@ describe('settings reconciliation', () => {
           account: 'Removed draft account',
         },
       ],
+      'default:transfer': [
+        {
+          id: 'draft-transfer',
+          icon: 'ArrowRightLeft',
+          label: 'Draft transfer',
+          forValue: 'Removed draft destination',
+        },
+      ],
     };
     const initial = localSnapshot({
       accounts: [],
