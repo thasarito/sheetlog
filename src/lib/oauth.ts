@@ -13,7 +13,7 @@ import { SCOPES } from "../app/providers/session";
 
 // OAuth endpoints
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const OAUTH_TOKEN_PROXY_URL = "/api/oauth/token";
 
 // Storage keys for OAuth flow
 export const OAUTH_STORAGE_KEYS = {
@@ -36,6 +36,127 @@ export interface TokenData {
   expires_in: number;
   expires_at: number;
   refresh_token?: string;
+}
+
+interface ParsedOAuthTokenError {
+  code: string | null;
+  error: Error;
+}
+
+interface ValidatedTokenResponse {
+  access_token: string;
+  expires_in: number;
+  refresh_token?: string;
+}
+
+const SAFE_PROXY_ERROR_MESSAGES: Record<string, string> = {
+  invalid_upstream_response: "OAuth provider returned an invalid response.",
+  server_configuration_error: "OAuth token service is not configured.",
+  upstream_unavailable: "OAuth provider is unavailable.",
+};
+const INVALID_TOKEN_RESPONSE_MESSAGE = "OAuth token response was invalid.";
+
+function hasOwn(value: object, key: PropertyKey): boolean {
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn is unavailable in older supported browsers.
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+async function parseOAuthTokenError(
+  response: Response,
+): Promise<ParsedOAuthTokenError> {
+  try {
+    const payload = (await response.clone().json()) as unknown;
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      !Array.isArray(payload) &&
+      hasOwn(payload, "error")
+    ) {
+      const errorCode = (payload as Record<string, unknown>).error;
+      if (
+        typeof errorCode === "string" &&
+        /^[a-z][a-z0-9_]{0,63}$/.test(errorCode)
+      ) {
+        const safeMessage = hasOwn(SAFE_PROXY_ERROR_MESSAGES, errorCode)
+          ? SAFE_PROXY_ERROR_MESSAGES[errorCode]
+          : undefined;
+        return {
+          code: errorCode,
+          error: new Error(
+            safeMessage ?? `OAuth token request failed (${errorCode}).`,
+          ),
+        };
+      }
+    }
+  } catch {
+    // Fall through to the safe status-only message.
+  }
+
+  return {
+    code: null,
+    error: new Error(`OAuth token request failed: ${response.status}`),
+  };
+}
+
+function invalidTokenResponseError(): Error {
+  return new Error(INVALID_TOKEN_RESPONSE_MESSAGE);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+async function parseTokenResponse(
+  response: Response,
+): Promise<ValidatedTokenResponse> {
+  try {
+    const payload = (await response.json()) as unknown;
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      Array.isArray(payload)
+    ) {
+      throw invalidTokenResponseError();
+    }
+
+    const tokenPayload = payload as Record<string, unknown>;
+    const hasRefreshToken = hasOwn(tokenPayload, "refresh_token");
+    if (
+      !hasOwn(tokenPayload, "access_token") ||
+      !hasOwn(tokenPayload, "expires_in") ||
+      !isNonEmptyString(tokenPayload.access_token) ||
+      typeof tokenPayload.expires_in !== "number" ||
+      !Number.isSafeInteger(tokenPayload.expires_in) ||
+      tokenPayload.expires_in <= 0 ||
+      (hasRefreshToken && !isNonEmptyString(tokenPayload.refresh_token))
+    ) {
+      throw invalidTokenResponseError();
+    }
+
+    return {
+      access_token: tokenPayload.access_token,
+      expires_in: tokenPayload.expires_in,
+      ...(hasRefreshToken
+        ? { refresh_token: tokenPayload.refresh_token as string }
+        : {}),
+    };
+  } catch {
+    throw invalidTokenResponseError();
+  }
+}
+
+function createTokenData(data: ValidatedTokenResponse): TokenData {
+  const expiresAt = Date.now() + data.expires_in * 1000;
+  if (!Number.isFinite(expiresAt) || !Number.isSafeInteger(expiresAt)) {
+    throw invalidTokenResponseError();
+  }
+
+  return {
+    access_token: data.access_token,
+    expires_in: data.expires_in,
+    expires_at: expiresAt,
+    refresh_token: data.refresh_token,
+  };
 }
 
 function requireWebCrypto(): Crypto {
@@ -192,7 +313,7 @@ export async function exchangeCodeForTokens(
     code_verifier: codeVerifier,
   };
 
-  const response = await fetch(GOOGLE_TOKEN_URL, {
+  const response = await fetch(OAUTH_TOKEN_PROXY_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -201,11 +322,12 @@ export async function exchangeCodeForTokens(
   });
 
   if (!response.ok) {
-    throw new Error(`Token exchange failed: ${response.status}`);
+    const tokenError = await parseOAuthTokenError(response);
+    throw tokenError.error;
   }
 
-  const data = (await response.json()) as TokenResponse;
-  const now = Date.now();
+  const data = await parseTokenResponse(response);
+  const tokenData = createTokenData(data);
 
   // A successful exchange starts a new credential generation. Never retain a
   // refresh token from the previous session when Google omits a replacement.
@@ -215,12 +337,7 @@ export async function exchangeCodeForTokens(
     localStorage.removeItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
   }
 
-  return {
-    access_token: data.access_token,
-    expires_in: data.expires_in,
-    expires_at: now + data.expires_in * 1000,
-    refresh_token: data.refresh_token,
-  };
+  return tokenData;
 }
 
 /**
@@ -241,7 +358,7 @@ export async function refreshAccessToken(signal?: AbortSignal): Promise<TokenDat
     refresh_token: refreshToken,
   };
 
-  const response = await fetch(GOOGLE_TOKEN_URL, {
+  const response = await fetch(OAUTH_TOKEN_PROXY_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -251,24 +368,25 @@ export async function refreshAccessToken(signal?: AbortSignal): Promise<TokenDat
   });
 
   if (!response.ok) {
-    // If refresh fails with 400/401, the refresh token is likely revoked
+    const tokenError = await parseOAuthTokenError(response);
     if (
-      (response.status === 400 || response.status === 401) &&
+      response.status === 400 &&
+      tokenError.code === "invalid_grant" &&
       localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN) === refreshToken
     ) {
       localStorage.removeItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
     }
-    if (response.status === 400 || response.status === 401) {
+    if (response.status === 400 && tokenError.code === "invalid_grant") {
       throw new Error(
         "Refresh token expired or revoked - user must re-authenticate"
       );
     }
 
-    throw new Error(`Token refresh failed: ${response.status}`);
+    throw tokenError.error;
   }
 
-  const data = (await response.json()) as TokenResponse;
-  const now = Date.now();
+  const data = await parseTokenResponse(response);
+  const tokenData = createTokenData(data);
 
   // Google may return a new refresh token (though typically doesn't)
   if (
@@ -278,12 +396,7 @@ export async function refreshAccessToken(signal?: AbortSignal): Promise<TokenDat
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);
   }
 
-  return {
-    access_token: data.access_token,
-    expires_in: data.expires_in,
-    expires_at: now + data.expires_in * 1000,
-    refresh_token: data.refresh_token,
-  };
+  return tokenData;
 }
 
 /**

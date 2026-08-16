@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/vite.js dev",
-    "build": "vite build",
+    "build": "vite build && node scripts/check-browser-oauth-boundary.mjs",
     "preview": "node scripts/vite.js preview",
     "start": "node scripts/vite.js preview",
     "worktree": "bash scripts/worktree.sh",

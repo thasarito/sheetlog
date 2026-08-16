@@ -19,6 +19,6 @@
       "@testing-library/jest-dom"
     ]
   },
-  "include": ["src", "vite-env.d.ts", "global.d.ts"],
+  "include": ["src", "functions", "tests", "vite-env.d.ts", "global.d.ts"],
   "exclude": ["node_modules"]
 }

@@ -87,7 +87,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-describe("useOAuthCallback account handoff", () => {
+describe("useOAuthCallback", () => {
   beforeEach(() => {
     window.localStorage.clear();
     routerState.navigate.mockReset();
@@ -105,9 +105,89 @@ describe("useOAuthCallback account handoff", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
+
+  it("does nothing when no OAuth parameters are present", () => {
+    routerState.search = {};
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(() => useOAuthCallback(), {
+      wrapper: createHarness(queryClient),
+    });
+
+    expect(result.current).toEqual({ isProcessing: false, error: null });
+    expect(exchangeCodeForTokens).not.toHaveBeenCalled();
+    expect(routerState.navigate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      errorCode: "access_denied",
+      expected: "Google sign-in was canceled.",
+      label: "canceled sign-in",
+    },
+    {
+      errorCode: "temporarily_unavailable",
+      expected: "OAuth authorization failed (temporarily_unavailable).",
+      label: "other valid error code",
+    },
+    {
+      errorCode: "Access_Denied",
+      expected: "OAuth authorization failed",
+      label: "mixed-case error code",
+    },
+    {
+      errorCode: "invalid-grant",
+      expected: "OAuth authorization failed",
+      label: "invalid error code",
+    },
+    {
+      errorCode: `a${"b".repeat(64)}`,
+      expected: "OAuth authorization failed",
+      label: "overlong error code",
+    },
+  ])(
+    "uses a bounded local message for $label without exposing provider details",
+    async ({ errorCode, expected }) => {
+      const providerDescription =
+        "Sensitive authorization-code-private-marker pkce-verifier-private-marker";
+      routerState.search = {
+        error: errorCode,
+        error_description: providerDescription,
+      };
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+
+      const { result } = renderHook(() => useOAuthCallback(), {
+        wrapper: createHarness(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.error).toBe(expected);
+      });
+      expect(result.current.error).not.toContain(providerDescription);
+      expect(result.current.error).not.toContain(
+        "authorization-code-private-marker",
+      );
+      expect(result.current.error).not.toContain("pkce-verifier-private-marker");
+      expect(exchangeCodeForTokens).not.toHaveBeenCalled();
+      expect(routerState.navigate).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it("clears the old profile and workspace before publishing a replacement token", async () => {
     const queryClient = new QueryClient({
@@ -189,7 +269,7 @@ describe("useOAuthCallback account handoff", () => {
     );
     const tokenRequests: URLSearchParams[] = [];
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === "https://oauth2.googleapis.com/token") {
+      if (url === "/api/oauth/token") {
         const requestBody = new URLSearchParams(init?.body as URLSearchParams);
         tokenRequests.push(requestBody);
         if (requestBody.get("grant_type") === "authorization_code") {
@@ -289,7 +369,7 @@ describe("useOAuthCallback account handoff", () => {
     routerState.search = {};
     const oldRefresh = deferred<Response>();
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === "https://oauth2.googleapis.com/token") {
+      if (url === "/api/oauth/token") {
         return oldRefresh.promise;
       }
       const authorization = new Headers(init?.headers).get("Authorization");
@@ -339,7 +419,7 @@ describe("useOAuthCallback account handoff", () => {
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(
-          ([url]) => url === "https://oauth2.googleapis.com/token",
+          ([url]) => url === "/api/oauth/token",
         ),
       ).toHaveLength(1);
     });
@@ -399,7 +479,7 @@ describe("useOAuthCallback account handoff", () => {
     routerState.search = {};
     const oldRefresh = deferred<Response>();
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === "https://oauth2.googleapis.com/token") {
+      if (url === "/api/oauth/token") {
         return oldRefresh.promise;
       }
       const authorization = new Headers(init?.headers).get("Authorization");
@@ -448,7 +528,7 @@ describe("useOAuthCallback account handoff", () => {
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(
-          ([url]) => url === "https://oauth2.googleapis.com/token",
+          ([url]) => url === "/api/oauth/token",
         ),
       ).toHaveLength(1);
     });
@@ -484,5 +564,118 @@ describe("useOAuthCallback account handoff", () => {
     expect(
       window.localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN),
     ).toBe("refresh-b");
+  });
+
+  it("renders and logs no sensitive provider details from a failed exchange", async () => {
+    const actualOAuth = await vi.importActual<typeof import("../lib/oauth")>(
+      "../lib/oauth",
+    );
+    vi.mocked(exchangeCodeForTokens).mockImplementation(
+      actualOAuth.exchangeCodeForTokens,
+    );
+    window.localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "oauth-state");
+    window.localStorage.setItem(
+      OAUTH_STORAGE_KEYS.CODE_VERIFIER,
+      "pkce-verifier-private-marker",
+    );
+    const providerDescription =
+      "Rejected authorization-code and pkce-verifier-private-marker";
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json(
+        {
+          error: "invalid_grant",
+          error_description: providerDescription,
+        },
+        { status: 400 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(() => useOAuthCallback(), {
+      wrapper: createHarness(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(
+        "OAuth token request failed (invalid_grant).",
+      );
+    });
+    expect(result.current.error).not.toContain(providerDescription);
+    expect(result.current.error).not.toContain("authorization-code");
+    expect(result.current.error).not.toContain("pkce-verifier-private-marker");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/oauth/token",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not publish an invalid successful token response", async () => {
+    const actualOAuth = await vi.importActual<typeof import("../lib/oauth")>(
+      "../lib/oauth",
+    );
+    vi.mocked(exchangeCodeForTokens).mockImplementation(
+      actualOAuth.exchangeCodeForTokens,
+    );
+    const oldToken = token("token-a");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, oldToken);
+    window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, "token-a");
+    window.localStorage.setItem(
+      STORAGE_KEYS.EXPIRES_AT,
+      oldToken.expires_at.toString(),
+    );
+    window.localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    window.localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "oauth-state");
+    window.localStorage.setItem(
+      OAUTH_STORAGE_KEYS.CODE_VERIFIER,
+      "pkce-verifier",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          access_token: "",
+          expires_in: "NaN",
+          refresh_token: "refresh-b",
+        }),
+      ),
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    const { result } = renderHook(() => useOAuthCallback(), {
+      wrapper: createHarness(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("OAuth token response was invalid.");
+    });
+    expect(queryClient.getQueryData(GOOGLE_TOKEN_QUERY_KEY)).toEqual(oldToken);
+    expect(window.localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)).toBe(
+      "token-a",
+    );
+    expect(window.localStorage.getItem(STORAGE_KEYS.EXPIRES_AT)).toBe(
+      oldToken.expires_at.toString(),
+    );
+    expect(window.localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+    expect(routerState.navigate).not.toHaveBeenCalled();
+    expect(suspendWorkspace).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

@@ -4,11 +4,10 @@ An install-first PWA for lightning-fast logging to Google Sheets (Money tracker 
 
 ## Setup
 
-1. Create a Google OAuth client for the app and configure its exact JavaScript
-   origins and redirect URIs. The browser build may use only a public OAuth
-   client with PKCE; never give it an OAuth client secret. If the selected OAuth
-   client requires a secret, perform the code and refresh-token exchanges in a
-   server-side service instead.
+1. Create a Google Web OAuth client for the app and configure its exact
+   JavaScript origins and redirect URIs. Authorization remains a browser PKCE
+   flow. Authorization-code and refresh-token grants go through the
+   same-origin Cloudflare Pages Function at `/api/oauth/token`.
 2. In a Google Maps Platform project with billing enabled, enable the
    **Maps JavaScript API** and **Places API (New)** for the Places picker.
 3. Create a browser API key. Set its application restriction to **Websites** and
@@ -30,6 +29,22 @@ cp .env.example .env.local
 It is not a secret; referrer and API restrictions are required to limit its use.
 All `VITE_*` values are embedded in the browser bundle. Never put an OAuth
 client secret in a Vite environment file or another browser build variable.
+
+### OAuth token proxy configuration
+
+`VITE_GOOGLE_CLIENT_ID` remains a public build variable. It must match the
+public `GOOGLE_CLIENT_ID` under `[vars]` in `wrangler.toml`. The public
+`OAUTH_REDIRECT_PATH` Function binding must match the normalized
+`VITE_BASE_PATH` after trailing-slash normalization; both are `/` in production.
+The existing public client ID, JavaScript origin, and redirect URI must also
+match the Google Web OAuth client configuration.
+
+The production `GOOGLE_CLIENT_SECRET` is an encrypted Cloudflare Pages runtime
+secret. It is never a `VITE_*` variable, build variable, committed dotenv value,
+or repository value. The only dotenv exception is an ignored `.dev.vars` file
+for a separate local-development OAuth client's secret; never put the production
+replacement there. No KV, D1, Durable Object, database, separate Worker, or
+separate Pages service is required.
 
 ### Local account isolation
 
@@ -54,6 +69,31 @@ App: `/app`
 `npm run dev` chooses a stable port based on the git worktree path (so multiple
 worktrees can run side-by-side). Override with `SHEETLOG_DEV_PORT`, or adjust
 `SHEETLOG_DEV_PORT_BASE` / `SHEETLOG_DEV_PORT_RANGE`.
+
+### Local OAuth proxy smoke test
+
+The Vite development server does not run Pages Functions. To exercise the
+browser and `/api/oauth/token` together, build first and run the generated
+`dist` directory in the pinned Pages runtime. The dummy bindings below prove
+that the proxy route is present and reaches Google's validation path. They
+cannot complete real Google OAuth and are never production values.
+
+```bash
+npm run build
+npx --yes wrangler@4.123.0 pages dev dist \
+  --binding GOOGLE_CLIENT_ID=local-browser-client-id \
+  --binding GOOGLE_CLIENT_SECRET=dummy-local-secret \
+  --binding OAUTH_REDIRECT_PATH=/
+```
+
+For real local OAuth, build with the exact registered client ID and provide its
+matching client secret through an ignored `.dev.vars` file. Set
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `OAUTH_REDIRECT_PATH` there,
+using a local editor and a password manager rather than a command argument or
+shell history. Keep `VITE_GOOGLE_CLIENT_ID` in the ignored `.env.local` file in
+sync, and register the exact local Pages origin plus redirect path in Google.
+The ignored `.dev.vars` file is only for a separate local-development OAuth
+client's secret; never put the production replacement there.
 
 ### Worktrees
 
@@ -82,10 +122,104 @@ The production build is emitted to `dist/`.
   `VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_MAPS_API_KEY`, and optionally
   `VITE_BASE_PATH`
 
-Do not configure an OAuth client secret as a Cloudflare Pages build variable.
-Cloudflare passes the value to Vite, which would expose it in the generated
-browser JavaScript. Use public-client OAuth with PKCE, or keep any required
-secret and token exchange in a server-side service.
+### Wrangler configuration preflight
+
+Before the first deployment that makes `wrangler.toml` the Function
+configuration source of truth, compare the existing Pages project configuration
+with this repository in the Cloudflare dashboard. Reconcile the compatibility
+date and flags, public bindings, and build output before deployment. Pages Git
+build settings remain dashboard-managed, including the build command, root
+directory, production branch, and environment variables; supported Function
+configuration uses the checked-in `wrangler.toml`.
+
+Do not run `wrangler pages download config` for this project. It can materialize
+environment values, including legacy secrets, into a generated local TOML file.
+Verify the `GOOGLE_CLIENT_SECRET` binding name separately in production with a
+command that lists names and never reveals a secret value:
+
+```bash
+npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env production
+```
+
+Preview must not expose the production secret to a Git-connected preview
+Function. Confirm that the production binding is absent from preview by listing
+preview names (never values):
+
+```bash
+npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env preview
+```
+
+Alternatively, verify the production binding and its preview absence in the
+Cloudflare dashboard.
+
+`wrangler.toml` is the source of truth for supported Pages Function
+configuration. Keep its public client and redirect bindings in sync with the
+browser build and Google OAuth configuration. Its `enable_request_signal` and
+`request_signal_passthrough` compatibility flags allow browser request
+cancellation to reach Google's token subrequest; the existing refresh
+compare-and-swap and session-generation checks still protect against a late
+completion.
+
+### Production OAuth rollout
+
+Use an overlapping rotation so the deployed application always has a working
+credential:
+
+1. Add a replacement Google OAuth client secret while the previously exposed
+   old secret remains enabled.
+2. Configure the replacement in Pages production only. Enter the value only at
+   Wrangler's interactive prompt:
+
+```bash
+npx --yes wrangler@4.123.0 pages secret put GOOGLE_CLIENT_SECRET --project-name sheetlog --env production
+```
+
+Do not configure the production secret in preview: an unreviewed Git branch can
+change its Function and exfiltrate any preview binding. Preview OAuth is
+disabled by default; with the missing secret, `/api/oauth/token` safely returns
+503 while the preview build and the rest of the app continue to work. If you
+intentionally test preview OAuth, use a separate preview OAuth client and
+secret, register its exact preview redirect URI, and expose it only to a trusted,
+reviewed preview workflow.
+
+3. Deploy the Function, then verify the fake-code probe, a real login from the
+   installed PWA, and silent refresh while the old secret is still enabled.
+4. Delete the old Vite-prefixed Cloudflare binding after the new production
+   deployment is healthy:
+
+```bash
+npx --yes wrangler@4.123.0 pages secret delete VITE_GOOGLE_CLIENT_SECRET --project-name sheetlog --env production
+```
+
+5. Disable the old Google secret only after all production checks pass.
+6. Monitor OAuth failures and refresh behavior for a rollback window.
+7. Delete the old Google secret after the monitoring window remains healthy.
+
+Never expose a secret value in a command argument, chat, log, build variable,
+dotenv example, or repository file. Confirm again before release that the
+existing public client ID and root redirect URI match the Google Web OAuth
+client configuration.
+
+### OAuth security and operations
+
+`Origin` validation is browser CSRF protection, not authentication. The server
+binds every accepted request to SheetLog's configured client ID and redirect
+path, allowlists the supported grants and fields, and applies bounded input
+parsing. Monitor `/api/oauth/token` request volume and failures in production;
+add a Cloudflare rate-limit rule for the route if abuse appears.
+
+### Post-deployment OAuth checklist
+
+- Send a harmless fake authorization code through the production route. The
+  provider may reject the code, but the response must not report that
+  `client_secret` is missing.
+- Complete a real login from the installed `https://sheetlog.com` PWA.
+- Confirm silent refresh succeeds without another authorization prompt.
+- Scan the production JavaScript bundle for the rotated secret value,
+  any Vite-prefixed OAuth client-secret variable, `client_secret`, and Google's
+  direct token endpoint; none may be present.
+- Confirm Cloudflare logs contain no authorization codes, PKCE verifiers,
+  refresh tokens, access tokens, or secret values.
 
 Use a production Maps browser key restricted to the exact deployed HTTPS
 referrer (for example, `https://sheetlog.example.com/*`) and to only the Maps
