@@ -227,6 +227,10 @@ JavaScript API and Places API (New). Add a preview referrer only when previews
 need Places, preferably with a separate preview key. Confirm billing, API
 quotas, budget thresholds, and billing alerts before deployment.
 
+Selected place identity is written as Place Provider and Place ID in transaction
+columns M/N. The display name remains the Note in column E; SheetLog does not
+persist raw coordinates or formatted addresses.
+
 ### Google place-name storage release gate
 
 Standard [Google Maps Platform Terms](https://cloud.google.com/maps-platform/terms)

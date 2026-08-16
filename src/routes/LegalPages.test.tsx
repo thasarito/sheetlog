@@ -16,16 +16,15 @@ describe("Places legal disclosures", () => {
     const copy = document.body.textContent ?? "";
     expect(copy).toContain("Effective date: 2026-08-15");
     expect(copy).toContain("precise location");
-    expect(copy).toContain("place-search text");
+    expect(copy).toContain(
+      "typing at least two characters in an eligible transaction note",
+    );
     expect(copy).toContain("directly from your browser to Google Maps");
     expect(copy).toContain(
-      "selected place display name into your transaction note and Google Sheet",
+      "selected place display name, provider, and Place ID",
     );
-    expect(copy).toContain("raw coordinates");
-    expect(copy).toContain("location history");
-    expect(copy).toContain("unselected place suggestions");
     expect(copy).toContain(
-      "temporarily processes raw coordinates, place-search text, and returned suggestions in browser memory",
+      "does not persist raw coordinates, formatted addresses, search history, or unselected place suggestions",
     );
     expect(copy).toContain(
       "clears them when the Places session closes or shortly afterward",
@@ -33,6 +32,9 @@ describe("Places legal disclosures", () => {
     expect(copy).toContain("does not persist");
     expect(copy).toContain("IP address");
     expect(copy).toContain("browser's location permission prompt");
+    expect(copy).toContain(
+      "does not add a separate in-app location consent flow",
+    );
     expect(copy).toContain("stable Google account identifier");
 
     expect(screen.getByRole("link", { name: "Google Privacy Policy" })).toHaveAttribute(
