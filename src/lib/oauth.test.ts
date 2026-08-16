@@ -10,6 +10,7 @@ import {
 
 const CLIENT_ID = "browser-client-id.apps.googleusercontent.com";
 const TOKEN_URL = "/api/oauth/token";
+const INVALID_TOKEN_RESPONSE_MESSAGE = "OAuth token response was invalid.";
 const browserProductionSources = import.meta.glob(
   ["../**/*", "!../**/*.test.*", "!../test/**"],
   {
@@ -49,6 +50,22 @@ function oauthErrorResponse(
     },
     { status },
   );
+}
+
+function tokenResponseWithJson(payload: unknown): Response {
+  return {
+    json: vi.fn().mockResolvedValue(payload),
+    ok: true,
+    status: 200,
+  } as unknown as Response;
+}
+
+function oauthErrorResponseWithJson(status: number, payload: unknown): Response {
+  return {
+    clone: () => tokenResponseWithJson(payload),
+    ok: false,
+    status,
+  } as unknown as Response;
 }
 
 function parseRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
@@ -161,6 +178,106 @@ describe("browser OAuth public-client flow", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    {
+      label: "malformed JSON",
+      response: () =>
+        new Response("{sensitive-provider-parser-marker", { status: 200 }),
+    },
+    {
+      label: "null JSON",
+      response: () => Response.json(null),
+    },
+    {
+      label: "array JSON",
+      response: () => Response.json([]),
+    },
+    {
+      label: "missing token fields",
+      response: () => Response.json({}),
+    },
+    {
+      label: "inherited token fields",
+      response: () =>
+        tokenResponseWithJson(
+          Object.create({
+            access_token: "inherited-access-token",
+            expires_in: 3600,
+          }),
+        ),
+    },
+    {
+      label: "blank access token",
+      response: () =>
+        successfulTokenResponse({
+          access_token: " ",
+          refresh_token: "replacement-refresh-token",
+        }),
+    },
+    {
+      label: "non-string access token",
+      response: () => successfulTokenResponse({ access_token: 7 }),
+    },
+    {
+      label: "zero expiry",
+      response: () => successfulTokenResponse({ expires_in: 0 }),
+    },
+    {
+      label: "negative expiry",
+      response: () => successfulTokenResponse({ expires_in: -1 }),
+    },
+    {
+      label: "string NaN expiry",
+      response: () => successfulTokenResponse({ expires_in: "NaN" }),
+    },
+    {
+      label: "numeric NaN expiry",
+      response: () =>
+        tokenResponseWithJson({
+          access_token: "access-token",
+          expires_in: Number.NaN,
+        }),
+    },
+    {
+      label: "empty refresh token",
+      response: () => successfulTokenResponse({ refresh_token: "" }),
+    },
+    {
+      label: "non-string refresh token",
+      response: () => successfulTokenResponse({ refresh_token: 42 }),
+    },
+  ])(
+    "rejects a 2xx $label without changing the prior refresh credential",
+    async ({ response }) => {
+      localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+      localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+      localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response()));
+
+      const error = await exchangeCodeForTokens(
+        "authorization-code",
+        "expected-state",
+      ).catch((reason: unknown) => reason);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(INVALID_TOKEN_RESPONSE_MESSAGE);
+      expect((error as Error).message).not.toContain(
+        "sensitive-provider-parser-marker",
+      );
+      expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+        "refresh-a",
+      );
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects a state mismatch without logging either state value", async () => {
     const storedState = "stored-private-state";
@@ -343,6 +460,70 @@ describe("browser OAuth public-client flow", () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      expected: "OAuth token request failed (invalid_client).",
+      label: "400 invalid_client",
+      response: () => oauthErrorResponse(400, "invalid_client"),
+    },
+    {
+      expected: "OAuth token request failed (invalid_request).",
+      label: "400 invalid_request",
+      response: () => oauthErrorResponse(400, "invalid_request"),
+    },
+    {
+      expected: "OAuth token request failed: 400",
+      label: "400 malformed body",
+      response: () => new Response("sensitive malformed body", { status: 400 }),
+    },
+    {
+      expected: "OAuth token request failed: 400",
+      label: "400 invalid error code",
+      response: () => oauthErrorResponse(400, "INVALID_GRANT"),
+    },
+    {
+      expected: "OAuth token request failed: 400",
+      label: "400 inherited invalid_grant",
+      response: () =>
+        oauthErrorResponseWithJson(
+          400,
+          Object.create({ error: "invalid_grant" }),
+        ),
+    },
+    {
+      expected: "OAuth token request failed (invalid_grant).",
+      label: "401 invalid_grant",
+      response: () => oauthErrorResponse(401, "invalid_grant"),
+    },
+    {
+      expected: "OAuth token service is not configured.",
+      label: "503 server configuration error",
+      response: () =>
+        oauthErrorResponse(503, "server_configuration_error"),
+    },
+    {
+      expected: "OAuth token request failed (invalid_grant).",
+      label: "500 invalid_grant",
+      response: () => oauthErrorResponse(500, "invalid_grant"),
+    },
+  ])(
+    "preserves the initiating refresh token for $label",
+    async ({ expected, response }) => {
+      localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response()));
+
+      const error = await refreshAccessToken().catch(
+        (reason: unknown) => reason,
+      );
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(expected);
+      expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+        "refresh-a",
+      );
+    },
+  );
+
   it("uses safe proxy errors for non-reauthentication refresh failures", async () => {
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
     vi.stubGlobal(
@@ -379,6 +560,46 @@ describe("browser OAuth public-client flow", () => {
     );
   });
 
+  it("preserves the initiating refresh token for an invalid 2xx token response", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        successfulTokenResponse({
+          access_token: "",
+          refresh_token: "rotated-refresh-a",
+        }),
+      ),
+    );
+
+    await expect(refreshAccessToken()).rejects.toThrow(
+      INVALID_TOKEN_RESPONSE_MESSAGE,
+    );
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+  });
+
+  it("preserves a replacement refresh token when an older 2xx response is invalid", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    const response = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+
+    const request = refreshAccessToken();
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-b");
+    response.resolve(
+      successfulTokenResponse({
+        expires_in: "NaN",
+        refresh_token: "rotated-refresh-a",
+      }),
+    );
+
+    await expect(request).rejects.toThrow(INVALID_TOKEN_RESPONSE_MESSAGE);
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-b",
+    );
+  });
+
   it("does not delete a replacement refresh token when an older request is revoked", async () => {
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
     const response = deferred<Response>();
@@ -390,10 +611,27 @@ describe("browser OAuth public-client flow", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-b");
-    response.resolve(new Response("revoked", { status: 400 }));
+    response.resolve(oauthErrorResponse(400, "invalid_grant"));
 
     await expect(request).rejects.toThrow(
       "Refresh token expired or revoked - user must re-authenticate",
+    );
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-b",
+    );
+  });
+
+  it("preserves a replacement refresh token when an older request is not revoked", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    const response = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+
+    const request = refreshAccessToken();
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-b");
+    response.resolve(oauthErrorResponse(400, "invalid_client"));
+
+    await expect(request).rejects.toThrow(
+      "OAuth token request failed (invalid_client).",
     );
     expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
       "refresh-b",
@@ -448,6 +686,9 @@ describe("browser OAuth public-client flow", () => {
       ...browserProductionSources,
       "../../vite-env.d.ts": envTypesSource,
     };
+    expect(Object.keys(sources)).toEqual(
+      expect.arrayContaining(["./oauth.ts", "../hooks/useOAuthCallback.ts"]),
+    );
     const violations = Object.entries(sources).flatMap(([file, source]) => {
       return [directTokenEndpoint, forbiddenEnvName, forbiddenFormField]
         .filter((term) => source.includes(term))

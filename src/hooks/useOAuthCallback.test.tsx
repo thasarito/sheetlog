@@ -617,4 +617,65 @@ describe("useOAuthCallback", () => {
     expect(logSpy).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
   });
+
+  it("does not publish an invalid successful token response", async () => {
+    const actualOAuth = await vi.importActual<typeof import("../lib/oauth")>(
+      "../lib/oauth",
+    );
+    vi.mocked(exchangeCodeForTokens).mockImplementation(
+      actualOAuth.exchangeCodeForTokens,
+    );
+    const oldToken = token("token-a");
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, oldToken);
+    window.localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, "token-a");
+    window.localStorage.setItem(
+      STORAGE_KEYS.EXPIRES_AT,
+      oldToken.expires_at.toString(),
+    );
+    window.localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    window.localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "oauth-state");
+    window.localStorage.setItem(
+      OAUTH_STORAGE_KEYS.CODE_VERIFIER,
+      "pkce-verifier",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          access_token: "",
+          expires_in: "NaN",
+          refresh_token: "refresh-b",
+        }),
+      ),
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    const { result } = renderHook(() => useOAuthCallback(), {
+      wrapper: createHarness(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("OAuth token response was invalid.");
+    });
+    expect(queryClient.getQueryData(GOOGLE_TOKEN_QUERY_KEY)).toEqual(oldToken);
+    expect(window.localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)).toBe(
+      "token-a",
+    );
+    expect(window.localStorage.getItem(STORAGE_KEYS.EXPIRES_AT)).toBe(
+      oldToken.expires_at.toString(),
+    );
+    expect(window.localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+    expect(routerState.navigate).not.toHaveBeenCalled();
+    expect(suspendWorkspace).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
 });
