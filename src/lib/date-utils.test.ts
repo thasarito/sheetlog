@@ -2,6 +2,8 @@ import { isValid } from 'date-fns';
 import { describe, expect, it } from 'vitest';
 import { parseDate, serialNumberToDate } from './date-utils';
 
+const MILLISECONDS_PER_DAY = 86_400_000;
+
 describe('serialNumberToDate', () => {
   it('should convert Excel serial number to Date', () => {
     // Serial 46023 = Jan 1, 2026 00:00:00
@@ -34,6 +36,36 @@ describe('serialNumberToDate', () => {
     expect(result.getDate()).toBe(1);
     expect(result.getHours()).toBe(13);
     expect(result.getMinutes()).toBe(26);
+  });
+
+  it('preserves milliseconds while keeping serial date components in local time', () => {
+    const millisecondsSinceMidnight =
+      ((10 * 60 + 45) * 60 + 30) * 1_000 + 789;
+    const result = serialNumberToDate(
+      46249 + millisecondsSinceMidnight / MILLISECONDS_PER_DAY,
+    );
+
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(7);
+    expect(result.getDate()).toBe(15);
+    expect(result.getHours()).toBe(10);
+    expect(result.getMinutes()).toBe(45);
+    expect(result.getSeconds()).toBe(30);
+    expect(result.getMilliseconds()).toBe(789);
+  });
+
+  it('rolls sub-millisecond precision at day end into the next local day', () => {
+    const result = serialNumberToDate(
+      46023 + (MILLISECONDS_PER_DAY - 0.4) / MILLISECONDS_PER_DAY,
+    );
+
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(2);
+    expect(result.getHours()).toBe(0);
+    expect(result.getMinutes()).toBe(0);
+    expect(result.getSeconds()).toBe(0);
+    expect(result.getMilliseconds()).toBe(0);
   });
 });
 

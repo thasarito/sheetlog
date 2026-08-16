@@ -48,9 +48,12 @@ export function InlinePicker({
 
   const handlePickerChange = useCallback(
     (nextValue: InlinePickerValue) => {
+      if (disabled) {
+        return;
+      }
       onChange(nextValue.selection);
     },
-    [onChange]
+    [disabled, onChange]
   );
 
   return (
@@ -82,13 +85,14 @@ export function InlinePicker({
           wheelMode="natural"
           className={cn("min-w-0 flex-1", pickerClassName)}
           aria-label={label}
+          aria-disabled={disabled}
         >
           <Picker.Column
             name="selection"
             className={cn("text-sm font-semibold", columnClassName)}
           >
             {options.map((item) => (
-              <Picker.Item key={item} value={item}>
+              <Picker.Item key={item} value={item} disabled={disabled}>
                 {({ selected }) => (
                   <span className={selected ? "text-primary" : "text-muted"}>
                     {item}

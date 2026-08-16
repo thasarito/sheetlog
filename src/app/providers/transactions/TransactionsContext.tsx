@@ -2,12 +2,14 @@ import { createContext, useContext } from "react";
 import type {
   RecentCategories,
   TransactionInput,
+  TransactionRecord,
   TransactionType,
 } from "../../../lib/types";
 
 export interface UndoResult {
   ok: boolean;
   message: string;
+  outcome: "deleted" | "pending" | "error";
 }
 
 export interface TransactionsContextValue {
@@ -16,8 +18,11 @@ export interface TransactionsContextValue {
   lastSyncError: string | null;
   lastSyncErrorAt: string | null;
   lastSyncAt: string | null;
-  addTransaction: (input: TransactionInput) => Promise<void>;
-  updateTransaction: (id: string, input: Partial<TransactionInput>) => Promise<void>;
+  addTransaction: (input: TransactionInput) => Promise<TransactionRecord>;
+  updateTransaction: (
+    id: string,
+    input: Partial<TransactionInput>,
+  ) => Promise<TransactionRecord | undefined>;
   deleteTransaction: (id: string) => Promise<UndoResult>;
   undoLast: () => Promise<UndoResult>;
   syncNow: () => Promise<void>;
@@ -34,4 +39,3 @@ export function useTransactions() {
   }
   return context;
 }
-

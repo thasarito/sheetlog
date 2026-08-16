@@ -1,6 +1,10 @@
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { STORAGE_KEYS } from "../../../lib/constants";
 import {
@@ -13,7 +17,12 @@ import {
   GOOGLE_TOKEN_QUERY_KEY,
   MIN_REFETCH_INTERVAL_MS,
   REFRESH_BUFFER_MS,
+  USER_PROFILE_QUERY_KEY,
 } from "./session.constants";
+import {
+  advanceSessionTokenGeneration,
+  getSessionTokenGeneration,
+} from "./session.generation";
 import type {
   SessionContextValue,
   SessionStatus,
@@ -23,29 +32,50 @@ import type {
 import { SessionContext } from "./SessionContext";
 
 const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo";
-const USER_PROFILE_QUERY_KEY = ["userProfile"] as const;
+let nextProfileSessionId = 0;
 
 type UserInfoResponse = {
+  sub?: string;
   name?: string;
   given_name?: string;
   family_name?: string;
   picture?: string;
 };
 
-function readStoredProfile(): UserProfile | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as UserProfile;
-  } catch {
-    return null;
+class TokenBoundRefreshError extends Error {
+  readonly expectedAccessToken: string | null;
+  readonly generation: number;
+
+  constructor(
+    error: unknown,
+    expectedAccessToken: string | null,
+    generation: number,
+  ) {
+    super(
+      error instanceof Error ? error.message : "Failed to refresh access token",
+    );
+    this.name = "TokenBoundRefreshError";
+    this.expectedAccessToken = expectedAccessToken;
+    this.generation = generation;
   }
 }
+
+class SupersededRefreshError extends Error {
+  readonly expectedAccessToken: string | null;
+  readonly generation: number;
+
+  constructor(expectedAccessToken: string | null, generation: number) {
+    super("Superseded Google token refresh ignored");
+    this.name = "SupersededRefreshError";
+    this.expectedAccessToken = expectedAccessToken;
+    this.generation = generation;
+  }
+}
+
+type RefreshRequestIdentity = {
+  expectedAccessToken: string | null;
+  generation: number;
+};
 
 function persistProfile(profile: UserProfile | null) {
   if (typeof window === "undefined") {
@@ -74,18 +104,34 @@ async function fetchUserProfile(
   accessToken: string,
   signal: AbortSignal
 ): Promise<UserProfile | null> {
-  const response = await fetch(USERINFO_ENDPOINT, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(USERINFO_ENDPOINT, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal,
+    });
+  } catch (error) {
+    if (signal.aborted) {
+      throw error;
+    }
+    throw new Error(
+      "Could not verify this Google account. Check your connection, then try again.",
+    );
+  }
   if (!response.ok) {
-    throw new Error(`Failed to load user profile: ${response.status}`);
+    throw new Error(
+      `Could not verify this Google account (Google returned ${response.status}). Sign in again.`,
+    );
   }
   const data = (await response.json()) as UserInfoResponse;
-  if (!data.name && !data.given_name && !data.family_name && !data.picture) {
-    return null;
+  const subject = data.sub?.trim();
+  if (!subject) {
+    throw new Error(
+      "Google did not return a stable Google account identity. Sign in again.",
+    );
   }
   return {
+    id: subject,
     name: resolveProfileName(data),
     picture: data.picture ?? null,
   };
@@ -108,6 +154,53 @@ function getStoredToken(): TokenData | undefined {
     expires_in: expiresIn,
     expires_at: expiresAt,
   };
+}
+
+function getQueryToken(queryClient: QueryClient) {
+  return queryClient.getQueryData<TokenData | null>(GOOGLE_TOKEN_QUERY_KEY);
+}
+
+function refreshRequestIsCurrent(
+  queryClient: QueryClient,
+  request: RefreshRequestIdentity,
+): boolean {
+  if (request.generation !== getSessionTokenGeneration()) {
+    return false;
+  }
+  const queryAccessToken = getQueryToken(queryClient)?.access_token ?? null;
+  const storedAccessToken = getStoredToken()?.access_token ?? null;
+  if (
+    queryAccessToken !== null &&
+    queryAccessToken !== request.expectedAccessToken
+  ) {
+    return false;
+  }
+  if (
+    storedAccessToken !== null &&
+    storedAccessToken !== request.expectedAccessToken
+  ) {
+    return false;
+  }
+  return !(
+    request.expectedAccessToken !== null &&
+    queryAccessToken === null &&
+    storedAccessToken === null
+  );
+}
+
+function getReplacementToken(
+  queryClient: QueryClient,
+  expectedAccessToken: string | null,
+): TokenData | null {
+  const storedToken = getStoredToken();
+  if (storedToken && storedToken.access_token !== expectedAccessToken) {
+    return storedToken;
+  }
+  const queryToken = getQueryToken(queryClient);
+  if (queryToken && queryToken.access_token !== expectedAccessToken) {
+    return queryToken;
+  }
+  return null;
 }
 
 function persistToken(token: TokenData) {
@@ -138,6 +231,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [isInitialized, setIsInitialized] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const profileSessionIdRef = useRef<number | null>(null);
+  const profileTokenRef = useRef<string | null>(null);
+  const profileTokenVersionRef = useRef(0);
+  const activeTokenRef = useRef<string | null>(null);
+
+  if (profileSessionIdRef.current === null) {
+    nextProfileSessionId += 1;
+    profileSessionIdRef.current = nextProfileSessionId;
+  }
 
   useEffect(() => {
     setIsInitialized(true);
@@ -153,15 +255,63 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   } = useQuery<TokenData | null>({
     queryKey: GOOGLE_TOKEN_QUERY_KEY,
     ...(storedToken ? { initialData: storedToken } : {}),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!refreshTokenAvailable) {
         return null;
       }
-      return refreshAccessToken();
+      const request: RefreshRequestIdentity = {
+        expectedAccessToken:
+          getQueryToken(queryClient)?.access_token ??
+          getStoredToken()?.access_token ??
+          null,
+        generation: getSessionTokenGeneration(),
+      };
+      try {
+        const refreshedToken = await refreshAccessToken(signal);
+        if (refreshRequestIsCurrent(queryClient, request)) {
+          return refreshedToken;
+        }
+        const replacementToken = getReplacementToken(
+          queryClient,
+          request.expectedAccessToken,
+        );
+        if (replacementToken) {
+          return replacementToken;
+        }
+        throw new SupersededRefreshError(
+          request.expectedAccessToken,
+          request.generation,
+        );
+      } catch (error) {
+        if (error instanceof SupersededRefreshError) {
+          throw error;
+        }
+        if (!refreshRequestIsCurrent(queryClient, request)) {
+          const replacementToken = getReplacementToken(
+            queryClient,
+            request.expectedAccessToken,
+          );
+          if (replacementToken) {
+            return replacementToken;
+          }
+          throw new SupersededRefreshError(
+            request.expectedAccessToken,
+            request.generation,
+          );
+        }
+        throw new TokenBoundRefreshError(
+          error,
+          request.expectedAccessToken,
+          request.generation,
+        );
+      }
     },
     refetchInterval: (query) => getRefreshDelay(query.state.data),
     refetchIntervalInBackground: true,
     retry: (failureCount, error) => {
+      if (error instanceof SupersededRefreshError) {
+        return false;
+      }
       if (isTerminalRefreshError(error)) {
         return false;
       }
@@ -177,40 +327,89 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tokenData]);
 
-  const { data: userProfile } = useQuery({
-    queryKey: USER_PROFILE_QUERY_KEY,
+  const activeToken = tokenData?.access_token ?? null;
+  activeTokenRef.current = activeToken;
+  const effectiveRefreshError = useMemo(() => {
+    if (!refreshError || refreshError instanceof SupersededRefreshError) {
+      return null;
+    }
+    if (refreshError instanceof TokenBoundRefreshError) {
+      if (activeToken !== refreshError.expectedAccessToken) {
+        return null;
+      }
+      return refreshRequestIsCurrent(queryClient, {
+        expectedAccessToken: refreshError.expectedAccessToken,
+        generation: refreshError.generation,
+      })
+        ? refreshError
+        : null;
+    }
+    return refreshError;
+  }, [activeToken, queryClient, refreshError]);
+  if (profileTokenRef.current !== activeToken) {
+    profileTokenRef.current = activeToken;
+    profileTokenVersionRef.current += 1;
+  }
+  const profileQueryKey = activeToken
+    ? [
+        ...USER_PROFILE_QUERY_KEY,
+        profileSessionIdRef.current,
+        profileTokenVersionRef.current,
+      ] as const
+    : ["inactiveUserProfile", profileSessionIdRef.current] as const;
+
+  const {
+    data: userProfile,
+    error: profileError,
+    isFetching: isProfileFetching,
+  } = useQuery({
+    queryKey: profileQueryKey,
     queryFn: ({ signal }) =>
-      fetchUserProfile(tokenData?.access_token ?? "", signal),
-    enabled: Boolean(tokenData?.access_token) && isInitialized,
-    placeholderData: readStoredProfile(),
+      fetchUserProfile(activeToken ?? "", signal),
+    enabled: Boolean(activeToken) && isInitialized,
     staleTime: 1000 * 60 * 10,
-    retry: false,
+    retry: (failureCount) => failureCount < 2,
+    retryDelay: (attemptIndex) => Math.min(100 * 2 ** attemptIndex, 500),
+    refetchOnReconnect: "always",
   });
 
   useEffect(() => {
     if (!isInitialized) {
       return;
     }
-    if (!tokenData?.access_token) {
-      persistProfile(null);
-      return;
-    }
-    if (userProfile) {
-      persistProfile(userProfile);
-    }
-  }, [userProfile, tokenData?.access_token, isInitialized]);
+    persistProfile(activeToken && userProfile ? userProfile : null);
+  }, [userProfile, activeToken, isInitialized]);
 
-  const signOut = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-    localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
-    clearOAuthStorage();
+  const signOut = useCallback(
+    (expectedAccessToken?: string | null) => {
+      const currentAccessToken =
+        getQueryToken(queryClient)?.access_token ?? activeTokenRef.current;
+      const persistedAccessToken =
+        typeof window === "undefined"
+          ? null
+          : localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (
+        expectedAccessToken !== undefined &&
+        (currentAccessToken !== expectedAccessToken ||
+          (persistedAccessToken !== null &&
+            persistedAccessToken !== expectedAccessToken))
+      ) {
+        return;
+      }
 
-    queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
-    queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
-    queryClient.setQueryData(USER_PROFILE_QUERY_KEY, null);
-    queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
-  }, [queryClient]);
+      advanceSessionTokenGeneration();
+      localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+      localStorage.removeItem(STORAGE_KEYS.EXPIRES_AT);
+      clearOAuthStorage();
+
+      activeTokenRef.current = null;
+      queryClient.setQueryData(GOOGLE_TOKEN_QUERY_KEY, null);
+      queryClient.removeQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
+      queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
+    },
+    [queryClient],
+  );
 
   const connect = useCallback(async () => {
     setIsConnecting(true);
@@ -225,23 +424,40 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (refreshError && isTerminalRefreshError(refreshError)) {
-      signOut();
+    if (effectiveRefreshError && isTerminalRefreshError(effectiveRefreshError)) {
+      signOut(
+        effectiveRefreshError instanceof TokenBoundRefreshError
+          ? effectiveRefreshError.expectedAccessToken
+          : activeToken,
+      );
     }
-  }, [refreshError, signOut]);
+  }, [activeToken, effectiveRefreshError, signOut]);
 
   const status: SessionStatus = useMemo(() => {
     if (!isInitialized) return "initializing";
-    if (refreshError) return "error";
+    if (effectiveRefreshError) return "error";
+    if (activeToken && profileError) return "error";
     if (isConnecting || (isFetching && !tokenData)) return "authenticating";
     if (!tokenData?.access_token) return "unauthenticated";
+    if (isProfileFetching || !userProfile?.id) return "authenticating";
     return "authenticated";
-  }, [isInitialized, refreshError, isConnecting, isFetching, tokenData]);
+  }, [
+    isInitialized,
+    effectiveRefreshError,
+    activeToken,
+    profileError,
+    isConnecting,
+    isFetching,
+    tokenData,
+    isProfileFetching,
+    userProfile,
+  ]);
 
-  const error = useMemo(() => {
-    if (refreshError instanceof Error) return refreshError;
+  const sessionError = useMemo(() => {
+    if (effectiveRefreshError instanceof Error) return effectiveRefreshError;
+    if (profileError instanceof Error) return profileError;
     return null;
-  }, [refreshError]);
+  }, [effectiveRefreshError, profileError]);
 
   const value = useMemo<SessionContextValue>(() => {
     const isExpired = tokenData?.expires_at
@@ -250,22 +466,27 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     return {
       accessToken: !isExpired ? tokenData?.access_token ?? null : null,
-      userProfile: userProfile ?? null,
-      isConnecting: isConnecting || (isFetching && !tokenData),
+      userProfile: activeToken ? userProfile ?? null : null,
+      isConnecting:
+        isConnecting ||
+        (isFetching && !tokenData) ||
+        Boolean(activeToken && isProfileFetching),
       isInitialized,
       status,
-      error,
+      error: sessionError,
       connect,
       signOut,
     };
   }, [
     tokenData,
+    activeToken,
     userProfile,
     isConnecting,
     isFetching,
+    isProfileFetching,
     isInitialized,
     status,
-    error,
+    sessionError,
     connect,
     signOut,
   ]);

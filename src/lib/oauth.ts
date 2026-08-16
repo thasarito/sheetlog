@@ -1,5 +1,6 @@
 /**
- * OAuth 2.0 utilities for Authorization Code flow with PKCE
+ * OAuth 2.0 utilities for a browser public-client Authorization Code flow with
+ * PKCE. Browser bundles cannot keep client credentials secret.
  *
  * This module handles the complete OAuth flow:
  * 1. Generate PKCE code verifier and challenge
@@ -98,17 +99,16 @@ function base64UrlEncode(buffer: Uint8Array): string {
 }
 
 /**
- * Get OAuth client configuration from environment
+ * Get the public OAuth client configuration from the browser environment
  */
 function getOAuthConfig() {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
 
   if (!clientId) {
     throw new Error("Missing VITE_GOOGLE_CLIENT_ID environment variable");
   }
 
-  return { clientId, clientSecret };
+  return { clientId };
 }
 
 /**
@@ -157,20 +157,10 @@ export async function exchangeCodeForTokens(
   code: string,
   state: string
 ): Promise<TokenData> {
-  const { clientId, clientSecret } = getOAuthConfig();
+  const { clientId } = getOAuthConfig();
 
   // Verify state to prevent CSRF
   const storedState = localStorage.getItem(OAUTH_STORAGE_KEYS.STATE);
-
-  // Debug logging
-  console.log("[OAuth] State validation:", {
-    receivedState: state,
-    storedState,
-    stateMatch: storedState === state,
-    storageKeys: Object.keys(localStorage).filter((k) =>
-      k.startsWith("sheetlog")
-    ),
-  });
 
   if (!storedState) {
     throw new Error(
@@ -179,12 +169,7 @@ export async function exchangeCodeForTokens(
   }
 
   if (storedState !== state) {
-    throw new Error(
-      `OAuth state mismatch. Expected: ${storedState.substring(
-        0,
-        8
-      )}..., Got: ${state.substring(0, 8)}...`
-    );
+    throw new Error("OAuth state mismatch");
   }
 
   // Get stored code verifier
@@ -207,11 +192,6 @@ export async function exchangeCodeForTokens(
     code_verifier: codeVerifier,
   };
 
-  // Include client_secret if available (required by Google even for public clients)
-  if (clientSecret) {
-    body.client_secret = clientSecret;
-  }
-
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -221,17 +201,18 @@ export async function exchangeCodeForTokens(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Token exchange failed:", errorText);
     throw new Error(`Token exchange failed: ${response.status}`);
   }
 
   const data = (await response.json()) as TokenResponse;
   const now = Date.now();
 
-  // Store refresh token if provided
+  // A successful exchange starts a new credential generation. Never retain a
+  // refresh token from the previous session when Google omits a replacement.
   if (data.refresh_token) {
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);
+  } else {
+    localStorage.removeItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
   }
 
   return {
@@ -246,8 +227,8 @@ export async function exchangeCodeForTokens(
  * Refreshes the access token using the stored refresh token
  * This is the key function for silent token refresh
  */
-export async function refreshAccessToken(): Promise<TokenData> {
-  const { clientId, clientSecret } = getOAuthConfig();
+export async function refreshAccessToken(signal?: AbortSignal): Promise<TokenData> {
+  const { clientId } = getOAuthConfig();
   const refreshToken = localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
 
   if (!refreshToken) {
@@ -260,26 +241,24 @@ export async function refreshAccessToken(): Promise<TokenData> {
     refresh_token: refreshToken,
   };
 
-  // Include client_secret if available
-  if (clientSecret) {
-    body.client_secret = clientSecret;
-  }
-
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams(body),
+    signal,
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Token refresh failed:", errorText);
-
     // If refresh fails with 400/401, the refresh token is likely revoked
-    if (response.status === 400 || response.status === 401) {
+    if (
+      (response.status === 400 || response.status === 401) &&
+      localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN) === refreshToken
+    ) {
       localStorage.removeItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN);
+    }
+    if (response.status === 400 || response.status === 401) {
       throw new Error(
         "Refresh token expired or revoked - user must re-authenticate"
       );
@@ -292,7 +271,10 @@ export async function refreshAccessToken(): Promise<TokenData> {
   const now = Date.now();
 
   // Google may return a new refresh token (though typically doesn't)
-  if (data.refresh_token) {
+  if (
+    data.refresh_token &&
+    localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN) === refreshToken
+  ) {
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);
   }
 

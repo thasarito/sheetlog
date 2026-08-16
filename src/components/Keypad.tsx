@@ -5,12 +5,16 @@ import { Delete } from "lucide-react";
 interface KeypadProps {
   value: string;
   onChange: (next: string) => void;
+  disabled?: boolean;
 }
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "DEL"];
 
-export function Keypad({ value, onChange }: KeypadProps) {
+export function Keypad({ value, onChange, disabled = false }: KeypadProps) {
   function handleKey(key: string) {
+    if (disabled) {
+      return;
+    }
     if (key === "DEL") {
       onChange(value.slice(0, -1));
       return;
@@ -26,17 +30,27 @@ export function Keypad({ value, onChange }: KeypadProps) {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <fieldset
+      className="m-0 grid grid-cols-3 gap-3 border-0 p-0"
+      disabled={disabled}
+    >
+      <legend className="sr-only">Amount keypad</legend>
       {KEYS.map((key) => (
         <button
           key={key}
           type="button"
-          className="flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface"
+          aria-label={key === "DEL" ? "Delete digit" : key}
+          className="flex h-14 items-center justify-center text-lg font-semibold text-foreground transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => handleKey(key)}
+          disabled={disabled}
         >
-          {key === "DEL" ? <Delete className="h-5 w-5" /> : key}
+          {key === "DEL" ? (
+            <Delete aria-hidden="true" className="h-5 w-5" />
+          ) : (
+            key
+          )}
         </button>
       ))}
-    </div>
+    </fieldset>
   );
 }

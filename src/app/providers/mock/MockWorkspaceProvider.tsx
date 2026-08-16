@@ -17,17 +17,21 @@ export function MockWorkspaceProvider({ children }: { children: React.ReactNode 
     console.log("[DEV MODE] Mock clearWorkspace called");
   }, []);
 
+  const suspendWorkspace = useCallback(() => {
+    // No-op in mock mode - the workspace is intentionally fixed.
+  }, []);
+
   const value = useMemo<WorkspaceContextValue>(
     () => ({
       sheetId: MOCK_SHEET_ID,
       sheetTabId: MOCK_SHEET_TAB_ID,
       isInitialized: true,
       ensureSheet,
+      suspendWorkspace,
       clearWorkspace,
     }),
-    [ensureSheet, clearWorkspace]
+    [ensureSheet, suspendWorkspace, clearWorkspace]
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }
-

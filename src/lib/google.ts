@@ -1,4 +1,3 @@
-import { parseDate } from "./date-utils";
 import {
   DEFAULT_ACCOUNT_COLOR,
   DEFAULT_ACCOUNT_ICON,
@@ -7,6 +6,12 @@ import {
   SUGGESTED_CATEGORY_COLORS,
   SUGGESTED_CATEGORY_ICONS,
 } from "./icons";
+import type { ReimbursementLedgerRow } from "./reimbursements";
+import {
+  parseTransactionRow,
+  serializeTransactionRowForUserEntered,
+  TRANSACTION_HEADERS,
+} from "./transactionRows";
 import type {
   AccountItem,
   CategoryConfigWithMeta,
@@ -17,19 +22,6 @@ const SHEET_NAME = "SheetLog_DB";
 const TAB_NAME = "Transactions";
 const ACCOUNT_TAB = "Account";
 const CATEGORY_TAB = "Category";
-const HEADER_ROW = [
-  "Date",
-  "Type",
-  "Amount",
-  "Category",
-  "Note",
-  "Timestamp",
-  "Device/Source",
-  "Currency",
-  "Account",
-  "For",
-  "Id",
-];
 const ACCOUNT_HEADER_ROW = ["Account", "Icon", "Color"];
 const CATEGORY_HEADER_ROW = ["Type", "Category", "Icon", "Color"];
 
@@ -54,6 +46,26 @@ export class GoogleApiError extends Error {
     this.status = status;
     this.code = code;
     this.detail = detail;
+  }
+}
+
+export class DuplicateTransactionIdError extends Error {
+  readonly transactionId: string;
+  readonly firstRow: number;
+  readonly duplicateRow: number;
+
+  constructor(
+    transactionId: string,
+    firstRow: number,
+    duplicateRow: number,
+  ) {
+    super(
+      `Duplicate transaction ID "${transactionId}" found in ${TAB_NAME}!K at rows ${firstRow} and ${duplicateRow}. Remove the duplicate row before syncing.`,
+    );
+    this.name = "DuplicateTransactionIdError";
+    this.transactionId = transactionId;
+    this.firstRow = firstRow;
+    this.duplicateRow = duplicateRow;
   }
 }
 
@@ -193,10 +205,21 @@ export async function ensureHeaders(
   accessToken: string,
   spreadsheetId: string
 ): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:K1?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:L1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
-    body: JSON.stringify({ values: [HEADER_ROW] }),
+    body: JSON.stringify({ values: [TRANSACTION_HEADERS] }),
+  });
+}
+
+export async function ensureReimbursementHeader(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<void> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!L1:L1?valueInputOption=RAW`;
+  await fetchWithAuth(url, accessToken, {
+    method: "PUT",
+    body: JSON.stringify({ values: [[TRANSACTION_HEADERS[11]]] }),
   });
 }
 
@@ -296,31 +319,8 @@ export async function appendTransaction(
   spreadsheetId: string,
   transaction: TransactionRecord
 ): Promise<number | null> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:K:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-  let note = transaction.note ?? "";
-  let currency = transaction.currency ?? "";
-  if (!currency && note) {
-    const match = note.match(/^\[([A-Z]{3})\]\s*/);
-    if (match) {
-      currency = match[1];
-      note = note.slice(match[0].length);
-    }
-  }
-  const values = [
-    [
-      transaction.date,
-      transaction.type,
-      transaction.amount,
-      transaction.category,
-      note,
-      transaction.createdAt,
-      "PWA",
-      currency,
-      transaction.account ?? "",
-      transaction.for ?? "",
-      transaction.id,
-    ],
-  ];
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const values = [serializeTransactionRowForUserEntered(transaction)];
 
   const data = await fetchWithAuth<{ updates?: { updatedRange?: string } }>(
     url,
@@ -353,8 +353,16 @@ export async function readTransactionIdMap(
       continue;
     }
     const id = String(rawValue).trim();
-    if (!id || map.has(id)) {
+    if (!id) {
       continue;
+    }
+    const existingRow = map.get(id);
+    if (existingRow !== undefined) {
+      throw new DuplicateTransactionIdError(
+        id,
+        existingRow,
+        index + 2,
+      );
     }
     map.set(id, index + 2);
   }
@@ -400,33 +408,9 @@ export async function updateRow(
     throw new Error("Refusing to update header row");
   }
 
-  let note = transaction.note ?? "";
-  let currency = transaction.currency ?? "";
-  if (!currency && note) {
-    const match = note.match(/^\[([A-Z]{3})\]\s*/);
-    if (match) {
-      currency = match[1];
-      note = note.slice(match[0].length);
-    }
-  }
+  const values = [serializeTransactionRowForUserEntered(transaction)];
 
-  const values = [
-    [
-      transaction.date,
-      transaction.type,
-      transaction.amount,
-      transaction.category,
-      note,
-      transaction.createdAt,
-      "PWA",
-      currency,
-      transaction.account ?? "",
-      transaction.for ?? "",
-      transaction.id,
-    ],
-  ];
-
-  const range = `${TAB_NAME}!A${rowIndex}:K${rowIndex}`;
+  const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
 
   await fetchWithAuth(url, accessToken, {
@@ -688,7 +672,7 @@ export async function getRecentTransactions(
   // Data starts at row 2. Last row index is totalRows + 1.
   const lastRowIndex = totalRows + 1;
   const startRowIndex = Math.max(2, lastRowIndex - limit + 1);
-  const range = `${TAB_NAME}!A${startRowIndex}:K${lastRowIndex}`;
+  const range = `${TAB_NAME}!A${startRowIndex}:L${lastRowIndex}`;
 
   // 3. Fetch the data
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
@@ -697,52 +681,102 @@ export async function getRecentTransactions(
 
   // 4. Parse and reverse (newest first)
   return rows
-    .map((row, index) => parseTransactionRow(row, startRowIndex + index))
+    .map((row, index) => ({
+      ...parseTransactionRow(row, startRowIndex + index),
+      sheetId: spreadsheetId,
+    }))
     .reverse();
 }
 
-function parseTransactionRow(row: unknown[], rowIndex: number): TransactionRecord {
-  // Column mapping based on HEADER_ROW:
-  // 0: Date, 1: Type, 2: Amount, 3: Category, 4: Note, 5: Timestamp,
-  // 6: Device, 7: Currency, 8: Account, 9: For, 10: Id
+export async function readTransactionById(
+  accessToken: string,
+  spreadsheetId: string,
+  id: string
+): Promise<TransactionRecord | null> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const rowIndex = (
+      await readTransactionIdMap(accessToken, spreadsheetId)
+    ).get(id);
+    if (rowIndex === undefined) {
+      return null;
+    }
 
-  const [
-    date,
-    typeRaw,
-    amountRaw,
-    category,
-    note,
-    createdAt,
-    _device,
-    currency,
-    account,
-    forValue,
-    id,
-  ] = row;
+    const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
+    const data = await fetchWithAuth<{ values?: unknown[][] }>(url, accessToken);
+    const row = data.values?.[0];
+    if (!row) {
+      continue;
+    }
 
-  // Handle amount safe parsing (it might be a number or a string if unformatted)
-  const amount = typeof amountRaw === "number" ? amountRaw : Number(amountRaw);
+    const transaction = parseTransactionRow(row, rowIndex);
+    if (transaction.id === id) {
+      return {
+        ...transaction,
+        sheetId: spreadsheetId,
+      };
+    }
+  }
 
-  return {
-    id: String(id || `row-${rowIndex}`), // Ensure ID is string
-    date:
-      typeof date === "string" || typeof date === "number"
-        ? parseDate(date).toISOString()
-        : new Date().toISOString(),
-    type: (["expense", "income", "transfer"].includes(
-      String(typeRaw || "").toLowerCase()
-    )
-      ? String(typeRaw).toLowerCase()
-      : "expense") as "expense" | "income" | "transfer",
-    amount: Number.isNaN(amount) ? 0 : amount,
-    category: String(category || "Uncategorized"),
-    note: note ? String(note) : undefined,
-    createdAt: String(createdAt || new Date().toISOString()),
-    updatedAt: String(createdAt || new Date().toISOString()), // Use createdAt as fallback
-    currency: String(currency || "THB"),
-    account: String(account || ""),
-    for: String(forValue || ""),
-    status: "synced",
-    sheetRow: rowIndex,
-  };
+  return null;
+}
+
+function finiteSheetAmount(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+export async function readLinkedReimbursements(
+  accessToken: string,
+  spreadsheetId: string,
+  sourceId: string
+): Promise<ReimbursementLedgerRow[]> {
+  const params = new URLSearchParams();
+  params.append("ranges", `${TAB_NAME}!B2:C`);
+  params.append("ranges", `${TAB_NAME}!H2:L`);
+  params.set("valueRenderOption", "UNFORMATTED_VALUE");
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${params.toString()}`;
+  const data = await fetchWithAuth<{
+    valueRanges?: Array<{ values?: unknown[][] }>;
+  }>(url, accessToken);
+  const typeAndAmountRows = data.valueRanges?.[0]?.values ?? [];
+  const linkedFieldRows = data.valueRanges?.[1]?.values ?? [];
+  const rowCount = Math.max(typeAndAmountRows.length, linkedFieldRows.length);
+  const rows: ReimbursementLedgerRow[] = [];
+
+  for (let offset = 0; offset < rowCount; offset += 1) {
+    const [type, amountRaw] = typeAndAmountRows[offset] ?? [];
+    const [currencyRaw, _account, _forValue, idRaw, relationRaw] =
+      linkedFieldRows[offset] ?? [];
+    const amount = finiteSheetAmount(amountRaw);
+    const id = String(idRaw ?? "").trim();
+    const relation = String(relationRaw ?? "").trim();
+
+    if (
+      type !== "income" ||
+      amount === null ||
+      id.length === 0 ||
+      relation !== sourceId
+    ) {
+      continue;
+    }
+
+    rows.push({
+      id,
+      type,
+      amount,
+      currency: String(currencyRaw ?? "").trim(),
+      reimbursesTransactionId: relation,
+      status: "synced",
+      sheetRow: offset + 2,
+    });
+  }
+
+  return rows;
 }

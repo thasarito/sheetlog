@@ -1,7 +1,70 @@
 export {};
 
 declare global {
+  type GooglePlaceDisplayName = string | { text?: string };
+
+  type GoogleNearbyPlace = {
+    id?: string;
+    displayName?: GooglePlaceDisplayName;
+    formattedAddress?: string;
+  };
+
+  type GoogleAutocompleteSessionToken = object;
+
+  type GooglePlacePrediction = {
+    placeId?: string;
+    text?: GooglePlaceDisplayName;
+    mainText?: GooglePlaceDisplayName;
+    secondaryText?: GooglePlaceDisplayName;
+    types: string[];
+    toPlace?: () => GooglePlace;
+  };
+
+  type GoogleAutocompleteSuggestion = {
+    placePrediction?: GooglePlacePrediction;
+  };
+
+  type GooglePlace = {
+    displayName?: GooglePlaceDisplayName;
+    fetchFields: (request: {
+      fields: string[];
+    }) => Promise<{ place: GooglePlace }>;
+  };
+
+  type GooglePlacesLibrary = {
+    Place?: {
+      searchNearby: (request: {
+        fields: string[];
+        locationRestriction: {
+          center: { lat: number; lng: number };
+          radius: number;
+        };
+        maxResultCount: number;
+        rankPreference: unknown;
+      }) => Promise<{ places?: GoogleNearbyPlace[] }>;
+    };
+    SearchNearbyRankPreference?: {
+      POPULARITY: unknown;
+      DISTANCE?: unknown;
+    };
+    AutocompleteSessionToken?: new () => GoogleAutocompleteSessionToken;
+    AutocompleteSuggestion?: {
+      fetchAutocompleteSuggestions: (request: {
+        input: string;
+        sessionToken: GoogleAutocompleteSessionToken;
+        locationBias?: {
+          center: { lat: number; lng: number };
+          radius: number;
+        };
+      }) => Promise<{ suggestions?: GoogleAutocompleteSuggestion[] }>;
+    };
+  };
+
   interface Window {
-    google?: unknown;
+    google?: {
+      maps?: {
+        importLibrary?: (library: "places") => Promise<GooglePlacesLibrary>;
+      };
+    };
   }
 }

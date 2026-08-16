@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
 import { Loader2, XCircle } from "lucide-react";
-import type { TransactionType } from "../../lib/types";
+import type { TransactionStatus, TransactionType } from "../../lib/types";
 import {
   CircleCheckIcon,
   type CircleCheckIconHandle,
@@ -26,6 +26,14 @@ type StepReceiptProps = ReceiptData & {
   errorMessage?: string;
   onDone?: () => void;
   onUndo?: () => void;
+  variant?: "transaction" | "reimbursement";
+  syncStatus?: TransactionStatus;
+  doneLabel?: string;
+  undoLabel?: string;
+  showTimedProgress?: boolean;
+  actionsDisabled?: boolean;
+  undoOutcome?: "pending" | "error";
+  undoErrorMessage?: string;
 };
 
 const TYPE_LABELS: Record<TransactionType, string> = {
@@ -49,6 +57,14 @@ export function StepReceipt({
   errorMessage,
   onDone,
   onUndo,
+  variant = "transaction",
+  syncStatus,
+  doneLabel,
+  undoLabel,
+  showTimedProgress,
+  actionsDisabled = false,
+  undoOutcome,
+  undoErrorMessage,
 }: StepReceiptProps) {
   const amountLabel = amount ? amount : "0";
   const amountDisplay = `${currency} ${amountLabel}`;
@@ -59,27 +75,69 @@ export function StepReceipt({
     : isError
     ? "error"
     : "loading";
-  const statusTitle =
-    normalizedStatus === "loading"
-      ? "Saving transaction"
-      : normalizedStatus === "success"
-      ? "Payment Successful"
-      : "Save failed";
-  const statusDescription =
-    normalizedStatus === "loading"
-      ? "Hang tight while we log this entry."
-      : normalizedStatus === "success"
-      ? "Transaction added to your ledger."
-      : errorMessage || "Check your connection and try again.";
+  const isReimbursement = variant === "reimbursement";
+  const isUndoPending = isReimbursement && undoOutcome === "pending";
+  const isUndoError = isReimbursement && undoOutcome === "error";
+  const presentationStatus = isUndoPending
+    ? "loading"
+    : isUndoError
+    ? "error"
+    : normalizedStatus;
+  const isStatusSuccess = presentationStatus === "success";
+  const isStatusError = presentationStatus === "error";
+  const hasSuccessfulReceipt = normalizedStatus === "success";
+  let statusTitle: string;
+  let statusDescription: string;
+
+  if (isUndoPending) {
+    statusTitle = "Undo queued";
+    statusDescription =
+      "This reimbursement stays counted until it is removed from Google Sheets.";
+  } else if (isUndoError) {
+    statusTitle = "Undo failed";
+    statusDescription =
+      undoErrorMessage || "Retry when Google Sheets is available.";
+  } else if (normalizedStatus === "loading") {
+    statusTitle = isReimbursement
+      ? "Saving reimbursement"
+      : "Saving transaction";
+    statusDescription = isReimbursement
+      ? "Hang tight while we record this reimbursement."
+      : "Hang tight while we log this entry.";
+  } else if (normalizedStatus === "error") {
+    statusTitle = isReimbursement ? "Reimbursement failed" : "Save failed";
+    statusDescription =
+      errorMessage || "Check your connection and try again.";
+  } else if (isReimbursement && syncStatus === "synced") {
+    statusTitle = "Reimbursement recorded";
+    statusDescription = "Saved to Google Sheets.";
+  } else if (isReimbursement) {
+    statusTitle = "Reimbursement queued";
+    statusDescription = "Saved locally and will sync to Google Sheets.";
+  } else {
+    statusTitle = "Payment Successful";
+    statusDescription = "Transaction added to your ledger.";
+  }
+
+  const resolvedDoneLabel = doneLabel ?? "Done";
+  const resolvedUndoLabel =
+    undoLabel ??
+    (isUndoError
+      ? "Retry undo"
+      : isReimbursement
+      ? "Undo reimbursement"
+      : "Undo");
+  const shouldShowTimedProgress =
+    showTimedProgress ?? variant === "transaction";
   const accountLabel = type === "transfer" ? "From" : "Account";
   const forLabel = type === "transfer" ? "To" : "For";
   const checkIconRef = useRef<CircleCheckIconHandle | null>(null);
 
   useEffect(() => {
-    if (isSuccess) {
+    if (isStatusSuccess) {
       checkIconRef.current?.startAnimation();
     }
-  }, [isSuccess]);
+  }, [isStatusSuccess]);
 
   const summaryRows = useMemo(
     () => [
@@ -110,10 +168,13 @@ export function StepReceipt({
     <div className="flex h-full flex-col justify-between gap-6 pb-6 px-4">
       <div className="space-y-6">
         <div
+          role={isStatusError ? "alert" : "status"}
+          aria-live={isStatusError ? undefined : "polite"}
+          aria-atomic="true"
           className={
-            isSuccess
+            isStatusSuccess
               ? "rounded-[28px] border border-success/20 bg-gradient-to-b from-success/15 via-background to-background p-5"
-              : isError
+              : isStatusError
               ? "rounded-[28px] border border-danger/20 bg-card p-5"
               : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5"
           }
@@ -121,20 +182,21 @@ export function StepReceipt({
           <div className="flex items-start gap-4">
             <span
               className={
-                isSuccess
+                isStatusSuccess
                   ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-success/15 text-success"
-                  : isError
+                  : isStatusError
                   ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-danger/10 text-danger"
                   : "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-card text-muted-foreground"
               }
+              aria-hidden="true"
             >
-              {isSuccess ? (
+              {isStatusSuccess ? (
                 <CircleCheckIcon
                   ref={checkIconRef}
                   size={22}
                   className="text-success"
                 />
-              ) : isError ? (
+              ) : isStatusError ? (
                 <XCircle className="h-5 w-5 text-danger" />
               ) : (
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -146,14 +208,14 @@ export function StepReceipt({
               </p>
               <p
                 className={
-                  isSuccess
+                  isStatusSuccess
                     ? "text-2xl font-semibold text-success"
                     : "text-xl font-semibold text-foreground"
                 }
               >
                 {amountDisplay}
               </p>
-              {isSuccess ? null : (
+              {isStatusSuccess && !isReimbursement ? null : (
                 <p className="text-xs text-muted-foreground">
                   {statusDescription}
                 </p>
@@ -189,29 +251,36 @@ export function StepReceipt({
         </div>
       </div>
 
-      {isSuccess ? (
+      {hasSuccessfulReceipt ? (
         <div className="space-y-3">
           <button
             type="button"
-            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground"
+            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60"
             onClick={onDone}
+            disabled={actionsDisabled}
           >
-            <span className="relative z-10">Done</span>
-            <motion.span
-              aria-hidden="true"
-              className="absolute bottom-0 left-0 h-1 w-full origin-left bg-success-foreground/35"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 2, ease: "linear" }}
-            />
+            <span className="relative z-10">{resolvedDoneLabel}</span>
+            {shouldShowTimedProgress ? (
+              <motion.span
+                data-testid="receipt-timed-progress"
+                aria-hidden="true"
+                className="absolute bottom-0 left-0 h-1 w-full origin-left bg-success-foreground/35"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 2, ease: "linear" }}
+              />
+            ) : null}
           </button>
-          <button
-            type="button"
-            className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground"
-            onClick={onUndo}
-          >
-            Undo
-          </button>
+          {isUndoPending ? null : (
+            <button
+              type="button"
+              className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onUndo}
+              disabled={actionsDisabled}
+            >
+              {resolvedUndoLabel}
+            </button>
+          )}
         </div>
       ) : null}
     </div>

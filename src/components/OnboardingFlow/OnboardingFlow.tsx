@@ -33,7 +33,7 @@ interface OnboardingFlowProps {
 
 export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
   const manifestUrl = `${import.meta.env.BASE_URL}manifest.webmanifest`;
-  const { accessToken, isConnecting, connect } = useSession();
+  const { accessToken, isConnecting, connect, error: sessionError } = useSession();
   const { sheetId, ensureSheet } = useWorkspace();
   const { onboarding, updateOnboarding } = useOnboarding();
   const { phase, accountsReady, categoriesReady } = useAppPhase();
@@ -296,6 +296,7 @@ export function OnboardingFlow({ onToast }: OnboardingFlowProps) {
             <ConnectScreen
               meta={screenMeta}
               isConnecting={isConnecting}
+              errorMessage={phase === 'error' ? sessionError?.message : null}
               onConnect={handleConnect}
             />
           </motion.div>

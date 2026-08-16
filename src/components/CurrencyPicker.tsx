@@ -4,9 +4,14 @@ import { InlinePicker } from "./ui/inline-picker";
 interface CurrencyPickerProps {
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }
 
-export function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
+export function CurrencyPicker({
+  value,
+  onChange,
+  disabled = false,
+}: CurrencyPickerProps) {
   return (
     <InlinePicker
       label="Select currency"
@@ -14,6 +19,7 @@ export function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
       value={value}
       options={CURRENCIES}
       onChange={onChange}
+      disabled={disabled}
       itemHeight={24}
       visibleItems={3}
       stretch={false}

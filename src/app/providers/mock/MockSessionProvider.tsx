@@ -5,6 +5,7 @@ import { SessionContext } from "../session/SessionContext";
 import type { SessionContextValue, UserProfile } from "../session/session.types";
 
 const MOCK_USER_PROFILE: UserProfile = {
+  id: "sheetlog-dev-user",
   name: "Dev User",
   picture: null,
 };
@@ -18,7 +19,7 @@ export function MockSessionProvider({ children }: { children: React.ReactNode })
     setIsConnecting(false);
   }, []);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback((_expectedAccessToken?: string | null) => {
     // No-op in mock mode
     console.log("[DEV MODE] Mock signOut called");
   }, []);
@@ -39,4 +40,3 @@ export function MockSessionProvider({ children }: { children: React.ReactNode })
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
-

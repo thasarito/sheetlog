@@ -10,15 +10,23 @@ export interface TransactionInput {
   category: string;
   date: string;
   note?: string;
+  reimbursesTransactionId?: string;
 }
 
 export interface TransactionRecord extends TransactionInput {
   id: string;
   status: TransactionStatus;
+  /** Durable request to remove this exact stable ID from Google Sheets. */
+  deleteIntent?: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Immutable local queue destination. Never serialized to Google Sheets. */
+  targetSheetId?: string;
+  /** Immutable Google account subject that created the local queue entry. */
+  targetUserId?: string;
   sheetRow?: number;
   sheetId?: string;
+  sheetRowValid?: boolean;
   error?: string;
 }
 

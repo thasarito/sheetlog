@@ -3,6 +3,7 @@
  * All operations read/write to localStorage via mockStorage
  */
 
+import type { ReimbursementLedgerRow } from '../reimbursements';
 import type { AccountItem, CategoryConfigWithMeta, TransactionRecord } from '../types';
 import {
   getMockAccounts,
@@ -70,6 +71,16 @@ export async function getSheetTabId(
  * Ensure headers - no-op in mock mode
  */
 export async function ensureHeaders(_accessToken: string, _spreadsheetId: string): Promise<void> {
+  await delay();
+}
+
+/**
+ * Ensure reimbursement headers - no-op in mock mode
+ */
+export async function ensureReimbursementHeader(
+  _accessToken: string,
+  _spreadsheetId: string,
+): Promise<void> {
   await delay();
 }
 
@@ -231,21 +242,82 @@ export async function listFolders(
  */
 export async function getRecentTransactions(
   _accessToken: string,
-  _spreadsheetId: string,
+  spreadsheetId: string,
   limit: number = 50,
 ): Promise<TransactionRecord[]> {
   await delay();
 
   const transactions = getMockTransactions();
+  const startIndex = Math.max(0, transactions.length - limit);
 
   // Return the most recent transactions (newest first)
   return transactions
-    .slice(-limit)
-    .reverse()
-    .map((tx, index, arr) => ({
+    .slice(startIndex)
+    .map((tx, index) => ({
       ...tx,
-      sheetRow: transactions.length - arr.length + index + 2,
-    }));
+      status: 'synced' as const,
+      sheetRow: startIndex + index + 2,
+      sheetId: spreadsheetId,
+    }))
+    .reverse();
+}
+
+/**
+ * Read one mock transaction by its stable ID
+ */
+export async function readTransactionById(
+  _accessToken: string,
+  spreadsheetId: string,
+  id: string,
+): Promise<TransactionRecord | null> {
+  await delay();
+
+  const transactions = getMockTransactions();
+  const index = transactions.findIndex((transaction) => transaction.id === id);
+  if (index < 0) {
+    return null;
+  }
+
+  return {
+    ...transactions[index],
+    status: 'synced',
+    sheetRow: index + 2,
+    sheetId: spreadsheetId,
+  };
+}
+
+/**
+ * Read focused mock reimbursement ledger rows linked to a source expense
+ */
+export async function readLinkedReimbursements(
+  _accessToken: string,
+  _spreadsheetId: string,
+  sourceId: string,
+): Promise<ReimbursementLedgerRow[]> {
+  await delay();
+
+  return getMockTransactions().flatMap((transaction, index) => {
+    if (
+      transaction.type !== 'income' ||
+      !Number.isFinite(transaction.amount) ||
+      !transaction.id ||
+      transaction.reimbursesTransactionId !== sourceId
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        id: transaction.id,
+        type: transaction.type,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        reimbursesTransactionId: transaction.reimbursesTransactionId,
+        status: 'synced' as const,
+        sheetRow: index + 2,
+      },
+    ];
+  });
 }
 
 // Re-export the error class and helper for compatibility

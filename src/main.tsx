@@ -6,7 +6,6 @@ import { onboardingKeys } from './hooks/useOnboardingQuery';
 import { IS_DEV_MODE, MOCK_ONBOARDING_STATE } from './lib/mock';
 import { getOnboardingState, setOnboardingState } from './lib/settings';
 import { router } from './router';
-import { STORAGE_KEYS } from './lib/constants';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -31,18 +30,9 @@ if (IS_DEV_MODE) {
     queryClient.setQueryData(onboardingKeys.state(devSheetId), MOCK_ONBOARDING_STATE);
   });
 } else {
-  const storedSheetId =
-    typeof window === 'undefined' ? null : localStorage.getItem(STORAGE_KEYS.SHEET_ID);
-
   getOnboardingState(null).then((state) => {
     queryClient.setQueryData(onboardingKeys.state(null), state);
   });
-
-  if (storedSheetId) {
-    getOnboardingState(storedSheetId).then((state) => {
-      queryClient.setQueryData(onboardingKeys.state(storedSheetId), state);
-    });
-  }
 }
 
 const rootElement = document.getElementById('root');

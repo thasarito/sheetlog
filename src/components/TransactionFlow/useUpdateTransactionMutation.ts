@@ -1,12 +1,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { TransactionInput } from "../../lib/types";
+import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { useTransactions } from "../../app/providers";
+import { transactionQueryKeys } from "./transactionQueryKeys";
+
+export class UpdateTransactionRecordError extends Error {
+  readonly record: TransactionRecord;
+
+  constructor(message: string, record: TransactionRecord) {
+    super(message);
+    this.name = "UpdateTransactionRecordError";
+    this.record = record;
+  }
+}
 
 export function useUpdateTransactionMutation() {
   const { updateTransaction } = useTransactions();
   const queryClient = useQueryClient();
 
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({
       id,
       input,
@@ -14,10 +26,27 @@ export function useUpdateTransactionMutation() {
       id: string;
       input: Partial<TransactionInput>;
     }) => {
-      await updateTransaction(id, input);
+      const record = await updateTransaction(id, input);
+      if (!record) {
+        throw new Error("Transaction no longer exists. Refresh and try again.");
+      }
+      if (record.status === "error") {
+        throw new UpdateTransactionRecordError(
+          record.error ?? "Transaction could not be synced. Retry or delete it.",
+          record,
+        );
+      }
+      return record;
     },
-    onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["recentTransactions"] });
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
+        queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
+        queryClient.invalidateQueries({
+          queryKey: transactionQueryKeys.reimbursements,
+        }),
+        queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
+      ]);
     },
   });
 }

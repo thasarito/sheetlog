@@ -9,12 +9,12 @@ import {
   AnimatePresence,
 } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { db } from "../../lib/db";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import { useTransactions } from "../../app/providers";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { Skeleton } from "../ui/skeleton";
+import { useLocalTransactionsQuery } from "./useLocalTransactionsQuery";
 import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
 
 type TopDashboardProps = {
@@ -28,11 +28,8 @@ export function TopDashboard({
   transactionsOverride,
   isLoadingOverride,
 }: TopDashboardProps) {
-  const { queueCount, lastSyncAt } = useTransactions();
+  const { lastSyncAt } = useTransactions();
   const queryClient = useQueryClient();
-  const [pendingTransactions, setPendingTransactions] = useState<
-    TransactionRecord[]
-  >([]);
   const [visibleDate, setVisibleDate] = useState<string>(() =>
     format(new Date(), "yyyy-MM-dd")
   );
@@ -52,7 +49,10 @@ export function TopDashboard({
   // Fetch recent transactions from Google Sheet
   const { data: sheetTransactions, isLoading: isSheetLoading } =
     useRecentTransactionsQuery();
-  const isLoading = isLoadingOverride ?? isSheetLoading;
+  const { data: localTransactions, isLoading: isLocalLoading } =
+    useLocalTransactionsQuery();
+  const isLoading =
+    isLoadingOverride ?? (isSheetLoading || isLocalLoading);
 
   // Invalidate query when sync completes
   useEffect(() => {
@@ -64,28 +64,11 @@ export function TopDashboard({
     }
   }, [lastSyncAt, queryClient, transactionsOverride]);
 
-  // Fetch pending transactions from local DB
-  // biome-ignore lint/correctness/useExhaustiveDependencies: queueCount is a trigger for re-fetching
-  useEffect(() => {
-    if (transactionsOverride) {
-      return;
-    }
-    async function loadPending() {
-      const pending = await db.transactions
-        .where("status")
-        .equals("pending")
-        .reverse()
-        .sortBy("createdAt");
-      setPendingTransactions(pending);
-    }
-    void loadPending();
-  }, [queueCount, transactionsOverride]);
-
   const transactions = useMemo(() => {
     const remote = sheetTransactions ?? [];
     const combined = transactionsOverride
       ? transactionsOverride
-      : [...pendingTransactions, ...remote];
+      : [...(localTransactions ?? []), ...remote];
     const seen = new Set<string>();
     const unique: TransactionRecord[] = [];
 
@@ -95,13 +78,20 @@ export function TopDashboard({
       unique.push(t);
     }
 
-    // Sort by createdAt descending (newest first)
+    // Local rows are inserted first so they win duplicate IDs. Sort the
+    // reconciled records deterministically after deduplication.
     return unique.sort((a, b) => {
       const caA = new Date(a.createdAt).getTime();
       const caB = new Date(b.createdAt).getTime();
-      return caB - caA;
+      const createdDifference =
+        (Number.isFinite(caB) ? caB : 0) -
+        (Number.isFinite(caA) ? caA : 0);
+      if (createdDifference !== 0) {
+        return createdDifference;
+      }
+      return a.id.localeCompare(b.id);
     });
-  }, [pendingTransactions, sheetTransactions, transactionsOverride]);
+  }, [localTransactions, sheetTransactions, transactionsOverride]);
 
   const today = useMemo(() => new Date(), []);
 
@@ -356,7 +346,7 @@ export function TopDashboard({
                         {format(parseDate(t.date), "HH:mm")}
                       </span>
 
-                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                      <div className="flex min-w-0 flex-col pr-2">
                         <span className="text-foreground truncate font-medium">
                           {t.category}
                           {t.note && (
@@ -365,6 +355,19 @@ export function TopDashboard({
                             </span>
                           )}
                         </span>
+                        {t.status === "error" ? (
+                          <span className="flex min-w-0 items-center gap-1 text-[10px] text-danger">
+                            <output aria-label="Sync failed">
+                              Sync failed
+                            </output>
+                            {t.error ? (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="truncate">{t.error}</span>
+                              </>
+                            ) : null}
+                          </span>
+                        ) : null}
                       </div>
 
                       <span

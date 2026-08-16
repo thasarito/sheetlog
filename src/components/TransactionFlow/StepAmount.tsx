@@ -6,7 +6,9 @@ import { CurrencyPicker } from "../CurrencyPicker";
 import { Keypad } from "../Keypad";
 import { InlinePicker } from "../ui/inline-picker";
 import { FOR_OPTIONS } from "./constants";
+import { NearbyPlaceChips } from "./NearbyPlaceChips";
 import { STORAGE_KEYS } from "../../lib/constants";
+import type { PlaceSuggestion } from "../../lib/googlePlaces";
 import type { TransactionFormApi } from "./useTransactionForm";
 
 type StepAmountProps = {
@@ -24,6 +26,19 @@ type StepAmountProps = {
   // Quick note mode props
   customHeader?: React.ReactNode;
   optionalAmount?: boolean;
+  nearbyPlaceSuggestions?: PlaceSuggestion[];
+  isNearbyPlacesLoading?: boolean;
+  canSearchPlaces?: boolean;
+  onNearbyPlaceSelect?: (suggestion: PlaceSuggestion) => void;
+  onSearchPlaces?: () => void;
+  searchButtonRef?: React.Ref<HTMLButtonElement>;
+  noteInputRef?: React.Ref<HTMLInputElement>;
+  currencyLocked?: boolean;
+  forLocked?: boolean;
+  amountLocked?: boolean;
+  preserveCurrencyOnAccountChange?: boolean;
+  middleAction?: React.ReactNode;
+  formNotice?: React.ReactNode;
 };
 
 export function StepAmount({
@@ -39,6 +54,19 @@ export function StepAmount({
   submitLabel,
   customHeader,
   optionalAmount = false,
+  nearbyPlaceSuggestions = [],
+  isNearbyPlacesLoading = false,
+  canSearchPlaces = false,
+  onNearbyPlaceSelect,
+  onSearchPlaces,
+  searchButtonRef,
+  noteInputRef,
+  currencyLocked = false,
+  forLocked = false,
+  amountLocked = false,
+  preserveCurrencyOnAccountChange = false,
+  middleAction,
+  formNotice,
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
@@ -46,10 +74,17 @@ export function StepAmount({
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
   const selectedFor = forValue || null;
+  const shouldRenderNearbyPlaces =
+    isNearbyPlacesLoading ||
+    nearbyPlaceSuggestions.length > 0 ||
+    canSearchPlaces;
   const handleAccountChange = useCallback(
     (value: string) => {
       form.setFieldValue("account", value);
-      if (typeof window === "undefined") {
+      if (
+        preserveCurrencyOnAccountChange ||
+        typeof window === "undefined"
+      ) {
         return;
       }
       const accountCurrency = window.localStorage.getItem(
@@ -66,7 +101,7 @@ export function StepAmount({
         form.setFieldValue("currency", fallbackCurrency);
       }
     },
-    [form]
+    [form, preserveCurrencyOnAccountChange]
   );
   const toAccountOptions = useMemo(() => {
     if (!isTransfer || !hasTransferAccounts) {
@@ -88,8 +123,9 @@ export function StepAmount({
             <button
               type="button"
               aria-label="Go back"
-              className="rounded-full p-2 hover:bg-muted transition-colors -ml-2"
+              className="rounded-full p-2 hover:bg-muted transition-colors -ml-2 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={onBack}
+              disabled={isDeleting}
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -127,6 +163,7 @@ export function StepAmount({
           <CurrencyPicker
             value={currency}
             onChange={(value) => form.setFieldValue("currency", value)}
+            disabled={currencyLocked}
           />
         </div>
 
@@ -144,7 +181,7 @@ export function StepAmount({
               value={selectedFor}
               options={toAccountOptions}
               onChange={(value) => form.setFieldValue("forValue", value)}
-              disabled={!hasTransferAccounts}
+              disabled={!hasTransferAccounts || forLocked}
             />
           ) : (
             <InlinePicker
@@ -152,6 +189,7 @@ export function StepAmount({
               value={selectedFor}
               options={FOR_OPTIONS}
               onChange={(value) => form.setFieldValue("forValue", value)}
+              disabled={forLocked}
             />
           )}
         </div>
@@ -159,6 +197,7 @@ export function StepAmount({
         <div className="mt-4 flex items-center gap-3 border-b border-border/10 pb-2 transition-colors focus-within:border-primary/50">
           <FileText className="h-4 w-4 text-muted-foreground/50" />
           <input
+            ref={noteInputRef}
             type="text"
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
             placeholder="Add a note..."
@@ -172,6 +211,19 @@ export function StepAmount({
             autoComplete="off"
           />
         </div>
+
+        {formNotice}
+
+        {shouldRenderNearbyPlaces ? (
+          <NearbyPlaceChips
+            suggestions={nearbyPlaceSuggestions}
+            isLoading={isNearbyPlacesLoading}
+            canSearch={canSearchPlaces}
+            onSelect={(suggestion) => onNearbyPlaceSelect?.(suggestion)}
+            onSearch={() => onSearchPlaces?.()}
+            searchButtonRef={searchButtonRef}
+          />
+        ) : null}
       </div>
 
       {isTransfer && !hasTransferAccounts ? (
@@ -184,12 +236,14 @@ export function StepAmount({
         <Keypad
           value={amount}
           onChange={(value) => form.setFieldValue("amount", value)}
+          disabled={amountLocked}
         />
 
         <div className="flex items-center gap-2">
           {onDelete && (
             <button
               type="button"
+              aria-label="Delete transaction"
               className={cn(
                 "flex items-center justify-center gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive",
                 (isSubmitting || isDeleting) && "opacity-60"
@@ -200,6 +254,7 @@ export function StepAmount({
               <Trash2 className="h-4 w-4" />
             </button>
           )}
+          {middleAction}
           <button
             type="button"
             className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
