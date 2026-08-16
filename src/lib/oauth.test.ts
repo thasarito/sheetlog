@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import envExampleSource from "../../.env.example?raw";
+import gitignoreSource from "../../.gitignore?raw";
 import readmeSource from "../../README.md?raw";
 import envTypesSource from "../../vite-env.d.ts?raw";
-import oauthCallbackTestSource from "../hooks/useOAuthCallback.test.tsx?raw";
 
 import {
   buildAuthorizationUrl,
@@ -106,6 +106,63 @@ function parseRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
   return Object.fromEntries(
     new URLSearchParams(init.body as URLSearchParams).entries()
   );
+}
+
+function markdownSubsection(source: string, title: string) {
+  const marker = `### ${title}`;
+  const start = source.indexOf(marker);
+  if (start === -1) {
+    return "";
+  }
+
+  const contentStart = start + marker.length;
+  const possibleEnds = [
+    source.indexOf("\n### ", contentStart),
+    source.indexOf("\n## ", contentStart),
+  ].filter((index) => index !== -1);
+  const end = possibleEnds.length > 0 ? Math.min(...possibleEnds) : source.length;
+  return source.slice(contentStart, end);
+}
+
+function normalizeDocText(source: string) {
+  return source.replace(/\s+/g, " ").trim();
+}
+
+function expectPatternsInOrder(source: string, patterns: RegExp[]) {
+  let previousIndex = -1;
+
+  for (const pattern of patterns) {
+    const index = source.search(pattern);
+    expect(index, `Missing or out-of-order documentation: ${pattern}`).toBeGreaterThan(
+      previousIndex,
+    );
+    previousIndex = index;
+  }
+}
+
+function isIgnoredByRootGitignore(path: string) {
+  let ignored = false;
+
+  for (const rawRule of gitignoreSource.split("\n")) {
+    const rule = rawRule.trim();
+    if (rule.length === 0 || rule.startsWith("#")) {
+      continue;
+    }
+
+    const negated = rule.startsWith("!");
+    const pattern = negated ? rule.slice(1) : rule;
+    const expression = new RegExp(
+      `^${pattern
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+        .replaceAll("*", ".*")
+        .replaceAll("?", ".")}$`,
+    );
+    if (expression.test(path)) {
+      ignored = !negated;
+    }
+  }
+
+  return ignored;
 }
 
 describe("browser OAuth public-client flow", () => {
@@ -878,7 +935,6 @@ describe("browser OAuth public-client flow", () => {
     const sources = {
       ...browserProductionSources,
       "../../vite-env.d.ts": envTypesSource,
-      "../hooks/useOAuthCallback.test.tsx": oauthCallbackTestSource,
     };
     expect(Object.keys(sources)).toEqual(
       expect.arrayContaining(["./oauth.ts", "../hooks/useOAuthCallback.ts"]),
@@ -892,56 +948,154 @@ describe("browser OAuth public-client flow", () => {
     expect(violations).toEqual([]);
   });
 
-  it("documents the Pages OAuth token proxy operations contract", () => {
+  it("documents the browser and Pages OAuth configuration boundary", () => {
     const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
-    const secretFormField = ["client", "secret"].join("_");
-    const normalizedReadmeSource = readmeSource.replace(/\s+/g, " ");
-    const requiredReadmeText = [
-      "browser PKCE",
-      "same-origin Cloudflare Pages Function",
-      "`VITE_GOOGLE_CLIENT_ID` remains a public build variable",
-      "`[vars]`",
-      "`GOOGLE_CLIENT_ID`",
-      "must match the normalized `VITE_BASE_PATH`",
-      "`/` in production",
-      `\`${serverSecretName}\` is an encrypted Cloudflare Pages runtime secret`,
-      "No KV, D1, Durable Object, database, separate Worker, or separate Pages service is required.",
-      "npx --yes wrangler@4.123.0 pages dev dist \\",
-      `--binding ${serverSecretName}=local-development-secret \\`,
-      "--binding OAUTH_REDIRECT_PATH=/",
-      `npx --yes wrangler@4.123.0 pages secret put ${serverSecretName} --project-name sheetlog`,
-      "Rotate the previously browser-exposed Google OAuth client secret",
-      "must not be deployed or merged until the encrypted runtime secret is configured",
-      "the source of truth for Pages configuration",
-      "`enable_request_signal`",
-      "`request_signal_passthrough`",
-      "browser CSRF protection, not authentication",
-      "bounded input",
-      "Cloudflare rate-limit rule",
-      `must not report that \`${secretFormField}\` is missing`,
-      "installed `https://sheetlog.com` PWA",
-      "silent refresh",
-      "Vite-prefixed OAuth client-secret variable",
-      "Cloudflare logs contain no authorization codes, PKCE verifiers, refresh tokens, access tokens, or secret values",
-    ];
+    const setup = normalizeDocText(readmeSource);
+    const config = normalizeDocText(
+      markdownSubsection(readmeSource, "OAuth token proxy configuration"),
+    );
 
-    for (const text of requiredReadmeText) {
-      expect(normalizedReadmeSource, `README.md is missing: ${text}`).toContain(
-        text,
-      );
-    }
+    expect(setup).toMatch(
+      /Authorization remains a browser PKCE flow\..*authorization-code and refresh-token grants.*same-origin Cloudflare Pages Function/i,
+    );
+    expect(config).toMatch(
+      /`VITE_GOOGLE_CLIENT_ID` remains a public build variable.*public `GOOGLE_CLIENT_ID` under `\[vars\]`/,
+    );
+    expect(config).toMatch(
+      /`OAUTH_REDIRECT_PATH`.*must match the normalized `VITE_BASE_PATH`.*`\/` in production/,
+    );
+    expect(config).toMatch(
+      new RegExp(
+        `\`${serverSecretName}\` is an encrypted Cloudflare Pages runtime secret.*never a \`VITE_\\*\` variable, build variable, dotenv value, or repository value`,
+      ),
+    );
+    expect(config).toMatch(
+      /No KV, D1, Durable Object, database, separate Worker, or separate Pages service is required\./,
+    );
   });
 
-  it("keeps the OAuth client secret out of the Vite environment example", () => {
+  it("documents a local proxy smoke test without promising real OAuth", () => {
+    const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
+    const local = normalizeDocText(
+      markdownSubsection(readmeSource, "Local OAuth proxy smoke test"),
+    );
+
+    expect(readmeSource).not.toContain("### Local full-stack OAuth");
+    expect(local).toMatch(/npm run build.*wrangler@4\.123\.0 pages dev dist/);
+    expect(local).toContain(`--binding ${serverSecretName}=dummy-local-secret`);
+    expect(local).toMatch(/dummy.*cannot complete real Google (?:OAuth|authentication)/i);
+    expect(local).toMatch(
+      /real local OAuth.*exact registered client ID.*matching client secret.*ignored `\.dev\.vars`/i,
+    );
+  });
+
+  it("documents a non-destructive Wrangler configuration preflight", () => {
+    const preflight = normalizeDocText(
+      markdownSubsection(readmeSource, "Wrangler configuration preflight"),
+    );
+
+    expect(preflight).toMatch(/before the first deployment/i);
+    expect(preflight).toMatch(/throwaway directory.*mktemp -d/i);
+    expect(preflight).toMatch(
+      /pages download config sheetlog --cwd "\$migration_dir"/,
+    );
+    expect(preflight).toMatch(/do not run.*repository directory/i);
+    expect(preflight).toMatch(
+      /reconcile.*compatibility.*bindings.*build output/i,
+    );
+    expect(preflight).toMatch(
+      /build settings remain dashboard-managed.*supported Function configuration.*`wrangler\.toml`/i,
+    );
+  });
+
+  it("documents an overlapping production and preview secret rotation", () => {
+    const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
+    const rollout = normalizeDocText(
+      markdownSubsection(readmeSource, "Production OAuth rollout"),
+    );
+
+    expect(rollout).toContain(
+      `npx --yes wrangler@4.123.0 pages secret put ${serverSecretName} --project-name sheetlog --env production`,
+    );
+    expect(rollout).toContain(
+      `npx --yes wrangler@4.123.0 pages secret put ${serverSecretName} --project-name sheetlog --env preview`,
+    );
+    expect(rollout).toMatch(/Wrangler defaults.*production.*`--env`.*explicit/i);
+    expect(rollout).toMatch(
+      /preview secret.*before.*PR.*Git-connected preview deployment.*even if.*preview login.*disabled/i,
+    );
+    expectPatternsInOrder(rollout, [
+      /1\. Create.*replacement.*old.*enabled/i,
+      /2\. Configure.*replacement.*production.*preview/i,
+      /3\. Deploy.*fake-code.*real login.*silent refresh/i,
+      /4\. Disable.*old/i,
+      /5\. Monitor/i,
+      /6\. Delete.*old/i,
+    ]);
+    expect(rollout).toMatch(/never.*secret value.*command.*chat.*log/i);
+  });
+
+  it("documents the proxy security and post-deployment checks", () => {
+    const secretFormField = ["client", "secret"].join("_");
+    const security = normalizeDocText(
+      markdownSubsection(readmeSource, "OAuth security and operations"),
+    );
+    const postDeployment = normalizeDocText(
+      markdownSubsection(readmeSource, "Post-deployment OAuth checklist"),
+    );
+
+    expect(security).toMatch(
+      /`Origin` validation is browser CSRF protection, not authentication.*binds every accepted request.*bounded input.*Cloudflare rate-limit rule/,
+    );
+    expect(postDeployment).toMatch(
+      new RegExp(
+        `fake authorization code.*must not report that \`${secretFormField}\` is missing`,
+        "i",
+      ),
+    );
+    expect(postDeployment).toMatch(
+      /installed `https:\/\/sheetlog\.com` PWA.*silent refresh.*production JavaScript bundle.*Cloudflare logs contain no authorization codes, PKCE verifiers, refresh tokens, access tokens, or secret values/i,
+    );
+  });
+
+  it("keeps the OAuth client secret out of dotenv example assignments", () => {
     const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
     const forbiddenViteSecretName = ["VITE_GOOGLE_CLIENT", "SECRET"].join(
       "_",
     );
     const safeComment = `# ${serverSecretName} is a server-only Pages runtime secret; do not add it here.`;
+    const serverSecretAssignment = new RegExp(
+      `^(?!\\s*#)\\s*(?:export\\s+)?${serverSecretName}\\s*=`,
+      "m",
+    );
 
     expect(envExampleSource).toContain(safeComment);
     expect(envExampleSource).toContain(serverSecretName);
     expect(envExampleSource).not.toContain(forbiddenViteSecretName);
+    expect(envExampleSource).not.toMatch(serverSecretAssignment);
+    expect(`${serverSecretName} = unsafe-value`).toMatch(serverSecretAssignment);
+    expect(`  export ${serverSecretName}=unsafe-value`).toMatch(
+      serverSecretAssignment,
+    );
+    expect(safeComment).not.toMatch(serverSecretAssignment);
+  });
+
+  it("ignores dotenv and Pages development secret files except the example", () => {
+    const sensitivePaths = [
+      ".env",
+      ".env.local",
+      ".env.production",
+      ".env.preview.local",
+      ".dev.vars",
+      ".dev.vars.preview",
+    ];
+
+    for (const path of sensitivePaths) {
+      expect(isIgnoredByRootGitignore(path), `${path} must be ignored`).toBe(
+        true,
+      );
+    }
+    expect(isIgnoredByRootGitignore(".env.example")).toBe(false);
   });
 });
 

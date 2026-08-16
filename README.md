@@ -68,20 +68,28 @@ App: `/app`
 worktrees can run side-by-side). Override with `SHEETLOG_DEV_PORT`, or adjust
 `SHEETLOG_DEV_PORT_BASE` / `SHEETLOG_DEV_PORT_RANGE`.
 
-### Local full-stack OAuth
+### Local OAuth proxy smoke test
 
 The Vite development server does not run Pages Functions. To exercise the
 browser and `/api/oauth/token` together, build first and run the generated
-`dist` directory in the pinned Pages runtime. Use the same public client ID as
-the build; the local secret below is a dummy binding, never a production value.
+`dist` directory in the pinned Pages runtime. The dummy bindings below prove
+that the proxy route is present and reaches Google's validation path. They
+cannot complete real Google OAuth and are never production values.
 
 ```bash
 npm run build
 npx --yes wrangler@4.123.0 pages dev dist \
   --binding GOOGLE_CLIENT_ID=local-browser-client-id \
-  --binding GOOGLE_CLIENT_SECRET=local-development-secret \
+  --binding GOOGLE_CLIENT_SECRET=dummy-local-secret \
   --binding OAUTH_REDIRECT_PATH=/
 ```
+
+For real local OAuth, build with the exact registered client ID and provide its
+matching client secret through an ignored `.dev.vars` file. Set
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `OAUTH_REDIRECT_PATH` there,
+using a local editor and a password manager rather than a command argument or
+shell history. Keep `VITE_GOOGLE_CLIENT_ID` in the ignored `.env.local` file in
+sync, and register the exact local Pages origin plus redirect path in Google.
 
 ### Worktrees
 
@@ -110,28 +118,65 @@ The production build is emitted to `dist/`.
   `VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_MAPS_API_KEY`, and optionally
   `VITE_BASE_PATH`
 
-`wrangler.toml` is the source of truth for Pages configuration. Keep its public
-client and redirect bindings in sync with the browser build and Google OAuth
-configuration. Its `enable_request_signal` and `request_signal_passthrough`
-compatibility flags allow browser request cancellation to reach Google's token
-subrequest; the existing refresh compare-and-swap and session-generation checks
-still protect against a late completion.
+### Wrangler configuration preflight
+
+Before the first deployment that makes `wrangler.toml` the Function
+configuration source of truth, compare the existing Pages project configuration
+with this repository. Either inspect the Cloudflare dashboard or download the
+current supported configuration into a throwaway directory created by
+`mktemp -d`:
+
+```bash
+migration_dir="$(mktemp -d)"
+npx --yes wrangler@4.123.0 pages download config sheetlog --cwd "$migration_dir"
+```
+
+Do not run the download command in the repository directory: it can create or
+overwrite a Wrangler configuration file. Reconcile the compatibility date and
+flags, public and secret bindings, and build output before deployment. Pages
+Git build settings remain dashboard-managed, including the build command, root
+directory, production branch, and environment variables; supported Function
+configuration uses the checked-in `wrangler.toml`.
+
+`wrangler.toml` is the source of truth for supported Pages Function
+configuration. Keep its public client and redirect bindings in sync with the
+browser build and Google OAuth configuration. Its `enable_request_signal` and
+`request_signal_passthrough` compatibility flags allow browser request
+cancellation to reach Google's token subrequest; the existing refresh
+compare-and-swap and session-generation checks still protect against a late
+completion.
 
 ### Production OAuth rollout
 
-Rotate the previously browser-exposed Google OAuth client secret before any
-rollout. Then configure the replacement as an encrypted Pages runtime secret;
-enter the value only at Wrangler's interactive prompt:
+Use an overlapping rotation so the deployed application always has a working
+credential:
+
+1. Create a replacement Google OAuth client secret while the previously exposed
+   old secret remains enabled.
+2. Configure the replacement in both Pages production and preview. Enter the
+   value only at Wrangler's interactive prompt for each command:
 
 ```bash
-npx --yes wrangler@4.123.0 pages secret put GOOGLE_CLIENT_SECRET --project-name sheetlog
+npx --yes wrangler@4.123.0 pages secret put GOOGLE_CLIENT_SECRET --project-name sheetlog --env production
+npx --yes wrangler@4.123.0 pages secret put GOOGLE_CLIENT_SECRET --project-name sheetlog --env preview
 ```
 
-The Function must not be deployed or merged until the encrypted runtime secret
-is configured. Do not put the secret in Cloudflare's build variables,
-`.env.example`, any `.env*` file, a command-line argument, or the repository.
-Confirm again that the existing public client ID and root redirect URI match the
-Google Web OAuth client before release.
+Wrangler defaults to production when `--env` is omitted; the explicit
+environment flags make both targets auditable. The preview secret must be
+configured before opening a PR or allowing a Git-connected preview deployment,
+even if Google preview login is intentionally disabled. The Function must not
+be deployed or merged while either required environment is unconfigured.
+
+3. Deploy the Function, then verify the fake-code probe, a real login from the
+   installed PWA, and silent refresh while the old secret is still enabled.
+4. Disable the old secret only after all production checks pass.
+5. Monitor OAuth failures and refresh behavior for a rollback window.
+6. Delete the old secret after the monitoring window remains healthy.
+
+Never expose a secret value in a command argument, chat, log, build variable,
+dotenv example, or repository file. Confirm again before release that the
+existing public client ID and root redirect URI match the Google Web OAuth
+client configuration.
 
 ### OAuth security and operations
 

@@ -3,9 +3,10 @@ node_modules
 out
 dist
 dev-dist
-.env.local
+.env*
+!.env.example
+.dev.vars*
 .DS_Store
-.env
 playwright-report/
 test-results/
 .worktrees/
