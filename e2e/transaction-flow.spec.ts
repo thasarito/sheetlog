@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { serializeTransactionRowForUserEntered } from "../src/lib/transactionRows";
 
 const MOCK_TRANSACTIONS_KEY = "sheetlog.mock.transactions";
 const SOURCE_ID = "expense-source-1";
@@ -14,6 +15,7 @@ type StoredTransaction = {
   date: string;
   note?: string;
   reimbursesTransactionId?: string;
+  place?: { provider: "google"; placeId: string };
   status: "pending" | "synced" | "error";
   createdAt: string;
   updatedAt: string;
@@ -159,6 +161,29 @@ async function readMockStoreState(page: Page) {
   }, MOCK_TRANSACTIONS_KEY);
 }
 
+async function readMockTransactions(page: Page): Promise<StoredTransaction[]> {
+  return page.evaluate(
+    (key) =>
+      JSON.parse(
+        window.localStorage.getItem(key) ?? "[]",
+      ) as StoredTransaction[],
+    MOCK_TRANSACTIONS_KEY,
+  );
+}
+
+async function readAutocompleteInputs(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      [
+        ...(
+          window as typeof window & {
+            __sheetlogMapsAutocompleteInputs: string[];
+          }
+        ).__sheetlogMapsAutocompleteInputs,
+      ],
+  );
+}
+
 async function installGoogleMapsStub(page: Page) {
   await page.route(/^https:\/\/maps\.googleapis\.com\/maps\/api\/js\?/, async (route) => {
     await route.fulfill({
@@ -178,6 +203,15 @@ async function installGoogleMapsStub(page: Page) {
 
           window.__sheetlogMapsAutocompleteInputs = [];
 
+          const autocompletePlaces = [
+            ["central-cafe", "Central Cafe", "123 Test Street"],
+            ["central-bakery", "Central Bakery", "124 Test Street"],
+            ["central-market", "Central Market", "125 Test Street"],
+            ["central-kitchen", "Central Kitchen", "126 Test Street"],
+            ["central-coffee", "Central Coffee", "127 Test Street"],
+            ["central-park", "Central Park Cafe", "128 Test Street"],
+          ];
+
           const placesLibrary = {
             Place: {
               searchNearby: async () => ({ places: nearbyPlaces }),
@@ -189,22 +223,22 @@ async function installGoogleMapsStub(page: Page) {
                 window.__sheetlogMapsAutocompleteInputs.push(input);
                 return {
                   suggestions: input
-                    ? [
-                        {
+                    ? autocompletePlaces.map(
+                        ([placeId, displayName, secondaryText]) => ({
                           placePrediction: {
-                            placeId: "central-cafe",
-                            mainText: "Central Cafe",
-                            secondaryText: "123 Test Street",
-                            text: "Central Cafe, 123 Test Street",
+                            placeId,
+                            mainText: displayName,
+                            secondaryText,
+                            text: displayName + ", " + secondaryText,
                             types: ["establishment", "cafe"],
                             toPlace: () => ({
                               fetchFields: async () => ({
-                                place: { displayName: "Central Cafe" },
+                                place: { displayName },
                               }),
                             }),
                           },
-                        },
-                      ]
+                        }),
+                      )
                     : [],
                 };
               },
@@ -398,11 +432,160 @@ test.describe("Transaction flow - complete history", () => {
 });
 
 test.describe("Transaction flow - Places", () => {
-  test("shows five nearby places and resolves a searched place into the note", async ({
+  test("renders inline note results over the keypad and preserves selected metadata", async ({
+    context,
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.clock.install({ time: new Date("2026-08-15T10:00:00.000Z") });
+    await seedTransactions(page, []);
+    await context.grantPermissions(["geolocation"], {
+      origin: "http://localhost:5174",
+    });
+    await context.setGeolocation({ latitude: 13.7563, longitude: 100.5018 });
+    await installGoogleMapsStub(page);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/app");
+    await page.addStyleTag({
+      content: `
+        *, *::before, *::after {
+          animation-delay: 0s !important;
+          animation-duration: 0s !important;
+          caret-color: transparent !important;
+          transition-delay: 0s !important;
+          transition-duration: 0s !important;
+        }
+      `,
+    });
+
+    await page.getByRole("button", { name: "Dining Out" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
+    await replaceKeypadAmount(page, "25");
+    await page.getByRole("button", { name: "Cash", exact: true }).click();
+
+    const nearbyChips = page.locator('button[aria-label^="Use "][aria-label$=" as note"]');
+    await expect(nearbyChips).toHaveCount(5);
+    const note = page.getByRole("combobox", { name: "Transaction note" });
+    const keypad = page.getByRole("group", { name: "Amount keypad" });
+    const submit = page.getByRole("button", { name: "Submit" });
+    await expect(note).toBeVisible();
+    await expect(submit).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Search places" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Search places" })).toHaveCount(0);
+    await expect(page.getByRole("searchbox", { name: "Search places" })).toHaveCount(0);
+    await expect(page.getByText("Google Maps", { exact: true })).toHaveCount(0);
+
+    const beforeKeypad = await keypad.boundingBox();
+    const beforeSubmit = await submit.boundingBox();
+    expect(beforeKeypad).not.toBeNull();
+    expect(beforeSubmit).not.toBeNull();
+
+    await page.clock.pauseAt(new Date("2026-08-15T10:10:00.000Z"));
+    await note.fill("c");
+    await page.clock.runFor(300);
+    expect(await readAutocompleteInputs(page)).toEqual([]);
+    await note.fill("  central   ");
+    await page.clock.runFor(300);
+    // TanStack Query batches resolved-query notifications on a zero-delay timer.
+    await page.clock.runFor(1);
+    await expect.poll(() => readAutocompleteInputs(page)).toEqual(["central"]);
+
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+    await expect(page.getByRole("option")).toHaveCount(6);
+
+    const afterKeypad = await keypad.boundingBox();
+    const afterSubmit = await submit.boundingBox();
+    const listboxBox = await listbox.boundingBox();
+    expect(afterKeypad).not.toBeNull();
+    expect(afterSubmit).not.toBeNull();
+    expect(listboxBox).not.toBeNull();
+    if (!beforeKeypad || !beforeSubmit || !afterKeypad || !afterSubmit || !listboxBox) {
+      throw new Error("Expected note results, keypad, and Submit geometry");
+    }
+
+    expect(Math.abs(afterKeypad.x - beforeKeypad.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterKeypad.y - beforeKeypad.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterSubmit.y - beforeSubmit.y)).toBeLessThanOrEqual(1);
+    expect(listboxBox.y + listboxBox.height).toBeGreaterThan(afterKeypad.y);
+    expect(await listbox.evaluate((element) => getComputedStyle(element).boxShadow)).toBe(
+      "none",
+    );
+    expect(
+      await listbox.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
+
+    const overlapLeft = Math.max(listboxBox.x, afterKeypad.x);
+    const overlapRight = Math.min(
+      listboxBox.x + listboxBox.width,
+      afterKeypad.x + afterKeypad.width,
+    );
+    const overlapTop = Math.max(listboxBox.y, afterKeypad.y);
+    const overlapBottom = Math.min(
+      listboxBox.y + listboxBox.height,
+      afterKeypad.y + afterKeypad.height,
+    );
+    expect(overlapRight).toBeGreaterThan(overlapLeft);
+    expect(overlapBottom).toBeGreaterThan(overlapTop);
+    const overlapPoint = {
+      x: overlapLeft + (overlapRight - overlapLeft) / 2,
+      y: overlapTop + Math.min(10, (overlapBottom - overlapTop) / 2),
+    };
+    expect(
+      await listbox.evaluate((element, point) => {
+        const hit = document.elementFromPoint(point.x, point.y);
+        return Boolean(hit && (hit === element || element.contains(hit)));
+      }, overlapPoint),
+    ).toBe(true);
+    await expect(submit).toBeEnabled();
+
+    const screenshotPath = testInfo.outputPath(
+      "note-place-combobox-results.png",
+    );
+    await page.screenshot({ path: screenshotPath, scale: "css" });
+    await testInfo.attach("Inline note Places results", {
+      path: screenshotPath,
+      contentType: "image/png",
+    });
+
+    const autocompleteResult = page.getByRole("option", {
+      name: /Central Cafe.*123 Test Street/,
+    });
+    await expect(autocompleteResult).toBeVisible();
+    await autocompleteResult.click();
+    await expect(note).toHaveValue("Central Cafe");
+
+    const clear = page.getByRole("button", { name: "Clear note" });
+    const clearBox = await clear.boundingBox();
+    expect(clearBox).not.toBeNull();
+    expect(clearBox?.width).toBeGreaterThanOrEqual(44);
+    expect(clearBox?.height).toBeGreaterThanOrEqual(44);
+
+    await page.clock.runFor(300);
+    expect(await readAutocompleteInputs(page)).toEqual(["central"]);
+
+    await note.fill("Edited Central Cafe");
+    await submit.click();
+    await page.clock.resume();
+
+    await expect.poll(async () => (await readMockTransactions(page)).length).toBe(1);
+    const [row] = await readMockTransactions(page);
+    expect(row).toMatchObject({
+      note: "Edited Central Cafe",
+      place: { provider: "google", placeId: "central-cafe" },
+    });
+    expect(serializeTransactionRowForUserEntered(row).slice(12, 14)).toEqual([
+      "google",
+      "central-cafe",
+    ]);
+  });
+
+  test("clear removes note metadata and nearby selection can add it again", async ({
     context,
     page,
   }) => {
-    await page.clock.install({ time: new Date("2026-08-15T10:00:00.000Z") });
     await seedTransactions(page, []);
     await context.grantPermissions(["geolocation"], {
       origin: "http://localhost:5174",
@@ -413,53 +596,47 @@ test.describe("Transaction flow - Places", () => {
 
     await page.getByRole("button", { name: "Dining Out" }).click();
     await page.getByRole("button", { name: "Done" }).click();
+    await replaceKeypadAmount(page, "25");
+    await page.getByRole("button", { name: "Cash", exact: true }).click();
 
-    const nearbyChips = page.locator('button[aria-label^="Use "][aria-label$=" as note"]');
-    await expect(nearbyChips).toHaveCount(5);
-    await expect(page.getByRole("button", { name: "Use Nearby One as note" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Use Nearby Five as note" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Use Nearby Six as note" })).toHaveCount(0);
-
-    const searchButton = page.getByRole("button", { name: "Search places" });
-    await expectBefore(nearbyChips.last(), searchButton);
-    await expect(page.getByText("Google Maps", { exact: true })).toHaveCount(0);
-
-    await searchButton.click();
-    const searchInput = page.getByRole("searchbox", { name: "Search places" });
-    await expect(searchInput).toBeFocused();
-    await page.clock.pauseAt(new Date("2026-08-15T10:10:00.000Z"));
-    await searchInput.fill("ce");
-    await searchInput.fill("central");
-
-    const autocompleteInputs = () =>
-      page.evaluate(
-        () =>
-          (
-            window as typeof window & {
-              __sheetlogMapsAutocompleteInputs: string[];
-            }
-          ).__sheetlogMapsAutocompleteInputs,
-      );
-    expect(await autocompleteInputs()).toEqual([]);
-    await page.clock.runFor(249);
-    expect(await autocompleteInputs()).toEqual([]);
-    await page.clock.runFor(1);
-    await expect.poll(autocompleteInputs).toEqual(["central"]);
-    // TanStack Query batches resolved-query notifications on a zero-delay timer.
-    await page.clock.runFor(1);
-
-    const autocompleteResult = page.getByRole("button", {
-      name: /Central Cafe.*123 Test Street/,
+    const note = page.getByRole("combobox", { name: "Transaction note" });
+    const nearbyOne = page.getByRole("button", {
+      name: "Use Nearby One as note",
     });
-    await expect(autocompleteResult).toBeVisible();
-    await expect(page.getByText("123 Test Street", { exact: true })).toBeVisible();
-    await page.clock.resume();
-    await autocompleteResult.click();
+    await expect(nearbyOne).toBeVisible();
+    await nearbyOne.click();
+    await expect(note).toHaveValue("Nearby One");
 
-    await expect(page.getByRole("dialog", { name: "Search places" })).toHaveAttribute(
-      "data-state",
-      "closed",
-    );
-    await expect(page.getByPlaceholder("Add a note...")).toHaveValue("Central Cafe");
+    let clear = page.getByRole("button", { name: "Clear note" });
+    const clearBox = await clear.boundingBox();
+    expect(clearBox).not.toBeNull();
+    expect(clearBox?.width).toBeGreaterThanOrEqual(44);
+    expect(clearBox?.height).toBeGreaterThanOrEqual(44);
+    await clear.click();
+    await expect(note).toHaveValue("");
+    await expect(note).toBeFocused();
+    await expect(clear).toHaveCount(0);
+    await expect(nearbyOne).toBeVisible();
+
+    await page
+      .getByRole("button", { name: "Use Nearby Two as note" })
+      .click();
+    await expect(note).toHaveValue("Nearby Two");
+    clear = page.getByRole("button", { name: "Clear note" });
+    await clear.click();
+    await expect(note).toHaveValue("");
+    await expect(note).toBeFocused();
+    await expect(nearbyOne).toBeVisible();
+
+    await page.getByRole("button", { name: "Submit" }).click();
+    await expect.poll(async () => (await readMockTransactions(page)).length).toBe(1);
+    const [row] = await readMockTransactions(page);
+    expect(row.note).toBeUndefined();
+    expect(row.place).toBeUndefined();
+    expect(Object.hasOwn(row, "place")).toBe(false);
+    expect(serializeTransactionRowForUserEntered(row).slice(12, 14)).toEqual([
+      "",
+      "",
+    ]);
   });
 });
