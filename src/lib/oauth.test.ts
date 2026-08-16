@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import envExampleSource from "../../.env.example?raw";
+import readmeSource from "../../README.md?raw";
 import envTypesSource from "../../vite-env.d.ts?raw";
+import oauthCallbackTestSource from "../hooks/useOAuthCallback.test.tsx?raw";
 
 import {
   buildAuthorizationUrl,
@@ -875,6 +878,7 @@ describe("browser OAuth public-client flow", () => {
     const sources = {
       ...browserProductionSources,
       "../../vite-env.d.ts": envTypesSource,
+      "../hooks/useOAuthCallback.test.tsx": oauthCallbackTestSource,
     };
     expect(Object.keys(sources)).toEqual(
       expect.arrayContaining(["./oauth.ts", "../hooks/useOAuthCallback.ts"]),
@@ -886,6 +890,58 @@ describe("browser OAuth public-client flow", () => {
     });
 
     expect(violations).toEqual([]);
+  });
+
+  it("documents the Pages OAuth token proxy operations contract", () => {
+    const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
+    const secretFormField = ["client", "secret"].join("_");
+    const normalizedReadmeSource = readmeSource.replace(/\s+/g, " ");
+    const requiredReadmeText = [
+      "browser PKCE",
+      "same-origin Cloudflare Pages Function",
+      "`VITE_GOOGLE_CLIENT_ID` remains a public build variable",
+      "`[vars]`",
+      "`GOOGLE_CLIENT_ID`",
+      "must match the normalized `VITE_BASE_PATH`",
+      "`/` in production",
+      `\`${serverSecretName}\` is an encrypted Cloudflare Pages runtime secret`,
+      "No KV, D1, Durable Object, database, separate Worker, or separate Pages service is required.",
+      "npx --yes wrangler@4.123.0 pages dev dist \\",
+      `--binding ${serverSecretName}=local-development-secret \\`,
+      "--binding OAUTH_REDIRECT_PATH=/",
+      `npx --yes wrangler@4.123.0 pages secret put ${serverSecretName} --project-name sheetlog`,
+      "Rotate the previously browser-exposed Google OAuth client secret",
+      "must not be deployed or merged until the encrypted runtime secret is configured",
+      "the source of truth for Pages configuration",
+      "`enable_request_signal`",
+      "`request_signal_passthrough`",
+      "browser CSRF protection, not authentication",
+      "bounded input",
+      "Cloudflare rate-limit rule",
+      `must not report that \`${secretFormField}\` is missing`,
+      "installed `https://sheetlog.com` PWA",
+      "silent refresh",
+      "Vite-prefixed OAuth client-secret variable",
+      "Cloudflare logs contain no authorization codes, PKCE verifiers, refresh tokens, access tokens, or secret values",
+    ];
+
+    for (const text of requiredReadmeText) {
+      expect(normalizedReadmeSource, `README.md is missing: ${text}`).toContain(
+        text,
+      );
+    }
+  });
+
+  it("keeps the OAuth client secret out of the Vite environment example", () => {
+    const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
+    const forbiddenViteSecretName = ["VITE_GOOGLE_CLIENT", "SECRET"].join(
+      "_",
+    );
+    const safeComment = `# ${serverSecretName} is a server-only Pages runtime secret; do not add it here.`;
+
+    expect(envExampleSource).toContain(safeComment);
+    expect(envExampleSource).toContain(serverSecretName);
+    expect(envExampleSource).not.toContain(forbiddenViteSecretName);
   });
 });
 
