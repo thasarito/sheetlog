@@ -5,8 +5,6 @@ import { SettingsDrawer } from './SettingsDrawer';
 
 type HeaderProps = {
   showSettings?: boolean;
-  onResync?: () => void;
-  isResyncing?: boolean;
   onToast?: (message: string) => void;
 };
 
@@ -14,8 +12,6 @@ const iconUrl = `${import.meta.env.BASE_URL}icon.svg`;
 
 export function Header({
   showSettings = false,
-  onResync,
-  isResyncing = false,
   onToast,
 }: HeaderProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -44,12 +40,10 @@ export function Header({
       </div>
 
       {/* Settings Drawer */}
-      {showSettings && onResync && onToast && (
+      {showSettings && onToast && (
         <SettingsDrawer
           open={isDrawerOpen}
           onOpenChange={setIsDrawerOpen}
-          onResync={onResync}
-          isResyncing={isResyncing}
           onToast={onToast}
         />
       )}

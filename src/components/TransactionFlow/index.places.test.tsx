@@ -93,7 +93,6 @@ vi.mock("../../hooks/useOnboarding", () => ({
         transfer: [{ name: "Transfer" }],
       },
     },
-    refreshOnboarding: vi.fn(async () => false),
   }),
 }));
 
