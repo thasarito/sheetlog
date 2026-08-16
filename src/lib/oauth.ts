@@ -56,6 +56,11 @@ const SAFE_PROXY_ERROR_MESSAGES: Record<string, string> = {
 };
 const INVALID_TOKEN_RESPONSE_MESSAGE = "OAuth token response was invalid.";
 
+function hasOwn(value: object, key: PropertyKey): boolean {
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: Object.hasOwn is unavailable in older supported browsers.
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 async function parseOAuthTokenError(
   response: Response,
 ): Promise<ParsedOAuthTokenError> {
@@ -65,17 +70,14 @@ async function parseOAuthTokenError(
       typeof payload === "object" &&
       payload !== null &&
       !Array.isArray(payload) &&
-      Object.hasOwn(payload, "error")
+      hasOwn(payload, "error")
     ) {
       const errorCode = (payload as Record<string, unknown>).error;
       if (
         typeof errorCode === "string" &&
         /^[a-z][a-z0-9_]{0,63}$/.test(errorCode)
       ) {
-        const safeMessage = Object.hasOwn(
-          SAFE_PROXY_ERROR_MESSAGES,
-          errorCode,
-        )
+        const safeMessage = hasOwn(SAFE_PROXY_ERROR_MESSAGES, errorCode)
           ? SAFE_PROXY_ERROR_MESSAGES[errorCode]
           : undefined;
         return {
@@ -118,10 +120,10 @@ async function parseTokenResponse(
     }
 
     const tokenPayload = payload as Record<string, unknown>;
-    const hasRefreshToken = Object.hasOwn(tokenPayload, "refresh_token");
+    const hasRefreshToken = hasOwn(tokenPayload, "refresh_token");
     if (
-      !Object.hasOwn(tokenPayload, "access_token") ||
-      !Object.hasOwn(tokenPayload, "expires_in") ||
+      !hasOwn(tokenPayload, "access_token") ||
+      !hasOwn(tokenPayload, "expires_in") ||
       !isNonEmptyString(tokenPayload.access_token) ||
       typeof tokenPayload.expires_in !== "number" ||
       !Number.isSafeInteger(tokenPayload.expires_in) ||

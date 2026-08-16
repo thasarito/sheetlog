@@ -11,6 +11,14 @@ import {
 const CLIENT_ID = "browser-client-id.apps.googleusercontent.com";
 const TOKEN_URL = "/api/oauth/token";
 const INVALID_TOKEN_RESPONSE_MESSAGE = "OAuth token response was invalid.";
+const nativeObjectHasOwn = Object.hasOwn;
+const OAUTH_OWN_PROPERTY_KEYS = new Set<PropertyKey>([
+  "access_token",
+  "error",
+  "expires_in",
+  "refresh_token",
+  "server_configuration_error",
+]);
 const browserProductionSources = import.meta.glob(
   ["../**/*", "!../**/*.test.*", "!../test/**"],
   {
@@ -66,6 +74,23 @@ function oauthErrorResponseWithJson(status: number, payload: unknown): Response 
     ok: false,
     status,
   } as unknown as Response;
+}
+
+function makeObjectHasOwnUnavailable() {
+  return vi.spyOn(Object, "hasOwn").mockImplementation((value, key) => {
+    if (OAUTH_OWN_PROPERTY_KEYS.has(key)) {
+      throw new Error("Object.hasOwn is unavailable");
+    }
+    return nativeObjectHasOwn(value, key);
+  });
+}
+
+function expectOAuthObjectHasOwnUnused(
+  hasOwnSpy: ReturnType<typeof makeObjectHasOwnUnavailable>,
+) {
+  expect(
+    hasOwnSpy.mock.calls.some(([, key]) => OAUTH_OWN_PROPERTY_KEYS.has(key)),
+  ).toBe(false);
 }
 
 function parseRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
@@ -177,6 +202,127 @@ describe("browser OAuth public-client flow", () => {
       "No refresh token available - user must re-authenticate",
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("exchanges a valid token response without Object.hasOwn", async () => {
+    const hasOwnSpy = makeObjectHasOwnUnavailable();
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          tokenResponseWithJson({
+            access_token: "access-token",
+            expires_in: 3600,
+            refresh_token: "new-refresh-token",
+          }),
+        ),
+    );
+
+    const result = await exchangeCodeForTokens(
+      "authorization-code",
+      "expected-state",
+    );
+    expectOAuthObjectHasOwnUnused(hasOwnSpy);
+    hasOwnSpy.mockRestore();
+    expect(result).toMatchObject({
+      access_token: "access-token",
+      refresh_token: "new-refresh-token",
+    });
+  });
+
+  it("parses a safe proxy error without Object.hasOwn", async () => {
+    const hasOwnSpy = makeObjectHasOwnUnavailable();
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          oauthErrorResponse(503, "server_configuration_error"),
+        ),
+    );
+
+    await expect(
+      exchangeCodeForTokens("authorization-code", "expected-state"),
+    ).rejects.toThrow("OAuth token service is not configured.");
+    expectOAuthObjectHasOwnUnused(hasOwnSpy);
+  });
+
+  it("refreshes a valid token response without Object.hasOwn", async () => {
+    const hasOwnSpy = makeObjectHasOwnUnavailable();
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        tokenResponseWithJson({
+          access_token: "access-token",
+          expires_in: 3600,
+        }),
+      ),
+    );
+
+    const result = await refreshAccessToken();
+    expectOAuthObjectHasOwnUnused(hasOwnSpy);
+    hasOwnSpy.mockRestore();
+    expect(result).toMatchObject({
+      access_token: "access-token",
+      expires_in: 3600,
+    });
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+  });
+
+  it("rejects inherited token fields without Object.hasOwn", async () => {
+    const hasOwnSpy = makeObjectHasOwnUnavailable();
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        tokenResponseWithJson(
+          Object.create({
+            access_token: "inherited-access-token",
+            expires_in: 3600,
+          }),
+        ),
+      ),
+    );
+
+    await expect(
+      exchangeCodeForTokens("authorization-code", "expected-state"),
+    ).rejects.toThrow(INVALID_TOKEN_RESPONSE_MESSAGE);
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+    expectOAuthObjectHasOwnUnused(hasOwnSpy);
+  });
+
+  it("ignores inherited error codes without Object.hasOwn", async () => {
+    const hasOwnSpy = makeObjectHasOwnUnavailable();
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        oauthErrorResponseWithJson(
+          400,
+          Object.create({ error: "invalid_grant" }),
+        ),
+      ),
+    );
+
+    await expect(refreshAccessToken()).rejects.toThrow(
+      "OAuth token request failed: 400",
+    );
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+    expectOAuthObjectHasOwnUnused(hasOwnSpy);
   });
 
   it.each([
