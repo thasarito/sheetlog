@@ -9,9 +9,11 @@ import {
   clearSettingsSectionError,
   createDefaultSettingsSyncState,
   fingerprintSettingsSection,
+  fingerprintQuickNotesConfig,
   markSettingsSectionDirty,
   setSettingsSectionError,
   type LegacyQuickNotesMigrationDecision,
+  type QuickNotesMigrationState,
   type SettingsSection,
   type SettingsSyncState,
   type SheetSettingsConfig,
@@ -24,25 +26,39 @@ export interface LocalSettingsSnapshot extends SheetSettingsConfig {
   quickNotesPresent: boolean;
 }
 
+export interface LocalSettingsSectionSnapshot<Section extends SettingsSection> {
+  value: SheetSettingsConfig[Section];
+  ready: boolean;
+}
+
+export interface LocalSettingsCompareAndSetResult {
+  applied: boolean;
+  settings: LocalSettingsSnapshot;
+}
+
 export interface SettingsLocalRepository {
   readSettings(sheetId: string): Promise<LocalSettingsSnapshot>;
-  writeSection<Section extends SettingsSection>(
-    sheetId: string,
-    section: Section,
-    value: SheetSettingsConfig[Section],
-  ): Promise<void>;
-  readSyncState(sheetId: string, verifiedUserId: string): Promise<SettingsSyncState | null>;
-  writeSyncState(
+  updateSyncState(
     sheetId: string,
     verifiedUserId: string,
-    state: SettingsSyncState,
-  ): Promise<void>;
+    update: (state: SettingsSyncState | null) => SettingsSyncState,
+  ): Promise<SettingsSyncState>;
+  compareAndSetSection<Section extends SettingsSection>(
+    sheetId: string,
+    section: Section,
+    expected: LocalSettingsSectionSnapshot<Section>,
+    value: SheetSettingsConfig[Section],
+  ): Promise<LocalSettingsCompareAndSetResult>;
   readLegacyQuickNotes(): Promise<QuickNotesConfig | null>;
-  deleteLegacyQuickNotes(): Promise<void>;
+  deleteLegacyQuickNotesIfUnchanged(expected: QuickNotesConfig): Promise<boolean>;
 }
 
 export interface SettingsRemoteAdapter {
   readSettings(sheetId: string): Promise<SheetSettingsReadResult>;
+  readSection<Section extends SettingsSection>(
+    sheetId: string,
+    section: Section,
+  ): Promise<SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>>;
   replaceSection<Section extends SettingsSection>(
     sheetId: string,
     section: Section,
@@ -78,26 +94,38 @@ function errorMessage(error: unknown): string {
   return typeof error === 'string' && error ? error : 'Settings sync failed.';
 }
 
+function withoutQuickNotesMigration(state: SettingsSyncState): SettingsSyncState {
+  const { quickNotesMigration: _migration, ...rest } = state;
+  return rest;
+}
+
 export async function reconcileSettings(
   options: ReconcileSettingsOptions,
 ): Promise<SettingsReconciliationResult> {
   const { sheetId, verifiedUserId, local, remote } = options;
   const initialSettings = await local.readSettings(sheetId);
-  const storedState = await local.readSyncState(sheetId, verifiedUserId);
-  let state = storedState ?? createDefaultSettingsSyncState(verifiedUserId);
-
-  if (!storedState) {
+  let state = await local.updateSyncState(sheetId, verifiedUserId, (storedState) => {
+    if (storedState) return storedState;
+    let initialState = createDefaultSettingsSyncState(verifiedUserId);
     if (initialSettings.accountsConfirmed) {
-      state = markSettingsSectionDirty(state, 'accounts');
+      initialState = markSettingsSectionDirty(initialState, 'accounts');
     }
     if (initialSettings.categoriesConfirmed) {
-      state = markSettingsSectionDirty(state, 'categories');
+      initialState = markSettingsSectionDirty(initialState, 'categories');
     }
     if (initialSettings.quickNotesPresent) {
-      state = markSettingsSectionDirty(state, 'quickNotes');
+      initialState = markSettingsSectionDirty(initialState, 'quickNotes');
     }
-  }
-  await local.writeSyncState(sheetId, verifiedUserId, state);
+    return initialState;
+  });
+  const updateState = async (
+    update: (latest: SettingsSyncState) => SettingsSyncState,
+  ): Promise<SettingsSyncState> => {
+    state = await local.updateSyncState(sheetId, verifiedUserId, (latest) =>
+      update(latest ?? createDefaultSettingsSyncState(verifiedUserId)),
+    );
+    return state;
+  };
 
   const remoteSettings = await remote.readSettings(sheetId);
   let currentSettings = initialSettings;
@@ -105,14 +133,66 @@ export async function reconcileSettings(
   const pushed: SettingsSection[] = [];
   const conflicts: SettingsSection[] = [];
   const legacyQuickNotes = await local.readLegacyQuickNotes();
-  const migrationDecision = classifyLegacyQuickNotesMigration({
-    legacyConfig: legacyQuickNotes,
-    scopedConfig: initialSettings.quickNotesPresent ? initialSettings.quickNotes : null,
-    verifiedWorkspaceCount: options.verifiedWorkspaceCount,
-    remoteQuickNoteTabExists: remoteSettings.quickNotes.present,
+  const legacySourceFingerprint = legacyQuickNotes
+    ? fingerprintQuickNotesConfig(legacyQuickNotes)
+    : null;
+  let migrationState: QuickNotesMigrationState | undefined = state.quickNotesMigration;
+  const hadPersistedMigrationState = migrationState !== undefined;
+  if (!legacyQuickNotes || !legacySourceFingerprint) {
+    migrationState = undefined;
+  } else if (
+    migrationState &&
+    migrationState.sourceFingerprint !== legacySourceFingerprint
+  ) {
+    migrationState = {
+      intent: 'prompt',
+      sourceFingerprint: legacySourceFingerprint,
+    };
+  } else if (!migrationState) {
+    const classified = classifyLegacyQuickNotesMigration({
+      legacyConfig: legacyQuickNotes,
+      scopedConfig: initialSettings.quickNotesPresent ? initialSettings.quickNotes : null,
+      verifiedWorkspaceCount: options.verifiedWorkspaceCount,
+      remoteQuickNoteTabExists: remoteSettings.quickNotes.present,
+    });
+    migrationState =
+      classified === 'none'
+        ? undefined
+        : { intent: classified, sourceFingerprint: legacySourceFingerprint };
+  }
+  if (
+    options.importLegacyQuickNotes &&
+    migrationState?.intent === 'prompt' &&
+    legacySourceFingerprint
+  ) {
+    migrationState = {
+      intent: 'explicit-import',
+      sourceFingerprint: legacySourceFingerprint,
+    };
+  }
+  await updateState((latest) => {
+    let next = migrationState
+      ? { ...latest, quickNotesMigration: migrationState }
+      : withoutQuickNotesMigration(latest);
+    if (migrationState?.intent === 'auto-import' && !hadPersistedMigrationState) {
+      next = markSettingsSectionDirty(
+        {
+          ...next,
+          baselines: { ...next.baselines, quickNotes: '' },
+        },
+        'quickNotes',
+      );
+    }
+    return next;
   });
+  let migrationDecision: LegacyQuickNotesMigrationDecision =
+    migrationState?.intent === 'auto-import'
+      ? 'auto-import'
+      : migrationState
+        ? 'prompt'
+        : 'none';
   let migrationApplied = false;
-  let quickNotesMigrationPushSucceeded = false;
+  let quickNotesMigrationUploadVerified = false;
 
   const sectionFingerprint = (
     section: SettingsSection,
@@ -125,53 +205,110 @@ export async function reconcileSettings(
   const remember = (list: SettingsSection[], section: SettingsSection): void => {
     if (!list.includes(section)) list.push(section);
   };
+  const sectionReady = (
+    settings: LocalSettingsSnapshot,
+    section: SettingsSection,
+  ): boolean => {
+    if (section === 'accounts') return settings.accountsConfirmed;
+    if (section === 'categories') return settings.categoriesConfirmed;
+    return settings.quickNotesPresent;
+  };
+  const compareAndSetWinner = async <Section extends SettingsSection>(
+    section: Section,
+    observed: LocalSettingsSnapshot,
+    value: SheetSettingsConfig[Section],
+  ): Promise<boolean> => {
+    const expected = {
+      value: observed[section] as SheetSettingsConfig[Section],
+      ready: sectionReady(observed, section),
+    };
+    const valueChanged =
+      !expected.ready ||
+      fingerprintSettingsSection(observed, section) !==
+        fingerprintSettingsSection(
+          { ...observed, [section]: value } as SheetSettingsConfig,
+          section,
+        );
+    const result = await local.compareAndSetSection(sheetId, section, expected, value);
+    currentSettings = result.settings;
+    if (result.applied && valueChanged) remember(changed, section);
+    return result.applied;
+  };
 
   for (const section of ['accounts', 'categories', 'quickNotes'] as const) {
+    currentSettings = await local.readSettings(sheetId);
+    const observedLocalFingerprint = sectionFingerprint(
+      section,
+      currentSettings[section] as SheetSettingsConfig[SettingsSection],
+    );
+    await updateState((latest) =>
+      sectionReady(currentSettings, section) &&
+      observedLocalFingerprint !== latest.baselines[section]
+        ? markSettingsSectionDirty(latest, section)
+        : latest,
+    );
+
     if (
       section === 'quickNotes' &&
-      migrationDecision === 'prompt' &&
-      !options.importLegacyQuickNotes
+      migrationState?.intent === 'prompt'
     ) {
       const readResult = remoteSettings.quickNotes;
       if (readResult.status === 'invalid') {
-        state = setSettingsSectionError(state, 'quickNotes', readResult.error);
+        await updateState((latest) =>
+          setSettingsSectionError(latest, 'quickNotes', readResult.error),
+        );
       } else {
         const remoteFingerprint = readResult.present
           ? sectionFingerprint('quickNotes', readResult.value)
           : '';
-        state = {
-          ...clearSettingsSectionDirty(clearSettingsSectionError(state, 'quickNotes'), 'quickNotes'),
-          baselines: { ...state.baselines, quickNotes: remoteFingerprint },
-        };
+        await updateState((latest) => ({
+          ...clearSettingsSectionDirty(
+            clearSettingsSectionError(latest, 'quickNotes'),
+            'quickNotes',
+          ),
+          baselines: { ...latest.baselines, quickNotes: remoteFingerprint },
+        }));
       }
-      await local.writeSyncState(sheetId, verifiedUserId, state);
       continue;
     }
 
     if (
       section === 'quickNotes' &&
       legacyQuickNotes &&
-      (migrationDecision === 'auto-import' ||
-        (migrationDecision === 'prompt' && options.importLegacyQuickNotes))
+      (migrationState?.intent === 'auto-import' ||
+        migrationState?.intent === 'explicit-import')
     ) {
-      await local.writeSection(sheetId, 'quickNotes', legacyQuickNotes);
-      currentSettings = await local.readSettings(sheetId);
-      state = markSettingsSectionDirty(state, 'quickNotes');
-      migrationApplied = true;
-      remember(changed, 'quickNotes');
+      const imported = await compareAndSetWinner(
+        'quickNotes',
+        currentSettings,
+        legacyQuickNotes,
+      );
+      const importedFingerprint = sectionFingerprint(
+        'quickNotes',
+        currentSettings.quickNotes,
+      );
+      await updateState((latest) =>
+        importedFingerprint === latest.baselines.quickNotes
+          ? clearSettingsSectionDirty(latest, 'quickNotes')
+          : markSettingsSectionDirty(latest, 'quickNotes'),
+      );
+      migrationApplied = imported;
 
-      if (migrationDecision === 'prompt' && remoteSettings.quickNotes.status === 'ok') {
-        state = {
-          ...state,
+      if (
+        migrationState.intent === 'explicit-import' &&
+        remoteSettings.quickNotes.status === 'ok'
+      ) {
+        const remoteQuickNotesFingerprint = remoteSettings.quickNotes.present
+          ? sectionFingerprint('quickNotes', remoteSettings.quickNotes.value)
+          : '';
+        await updateState((latest) => ({
+          ...latest,
           baselines: {
-            ...state.baselines,
-            quickNotes: remoteSettings.quickNotes.present
-              ? sectionFingerprint('quickNotes', remoteSettings.quickNotes.value)
-              : '',
+            ...latest.baselines,
+            quickNotes: remoteQuickNotesFingerprint,
           },
-        };
+        }));
       }
-      await local.writeSyncState(sheetId, verifiedUserId, state);
     }
 
     if (section === 'quickNotes' && currentSettings.quickNotesPresent) {
@@ -184,40 +321,72 @@ export async function reconcileSettings(
         sectionFingerprint('quickNotes', sanitized) !==
         sectionFingerprint('quickNotes', currentSettings.quickNotes)
       ) {
-        await local.writeSection(sheetId, 'quickNotes', sanitized);
-        state = markSettingsSectionDirty(state, 'quickNotes');
-        remember(changed, 'quickNotes');
-        currentSettings = await local.readSettings(sheetId);
+        await compareAndSetWinner('quickNotes', currentSettings, sanitized);
+        await updateState((latest) => markSettingsSectionDirty(latest, 'quickNotes'));
       }
     }
-    const readResult = remoteSettings[section];
+    let readResult: SheetSettingsSectionReadResult<
+      SheetSettingsConfig[SettingsSection]
+    > = remoteSettings[section];
     if (readResult.status === 'ok') {
       const localValue = currentSettings[section] as SheetSettingsConfig[SettingsSection];
       const localFingerprint = sectionFingerprint(section, localValue);
-      const remoteFingerprint = readResult.present
+      let remoteFingerprint = readResult.present
         ? sectionFingerprint(section, readResult.value)
         : '';
       const baseline = state.baselines[section];
+      if (
+        section === 'quickNotes' &&
+        migrationState &&
+        readResult.present &&
+        remoteFingerprint === migrationState.sourceFingerprint &&
+        localFingerprint === remoteFingerprint
+      ) {
+        quickNotesMigrationUploadVerified = true;
+      }
 
       if (state.dirty.includes(section)) {
-        const initialRemoteMatch =
+        let initialRemoteMatch =
           baseline === '' && remoteFingerprint !== '' && localFingerprint === remoteFingerprint;
-        const remoteIsEmpty =
-          sectionFingerprint(section, readResult.value) ===
-          sectionFingerprint(
-            section,
-            section === 'accounts'
-              ? []
-              : section === 'categories'
-                ? { expense: [], income: [], transfer: [] }
-                : {},
-          );
+        if (!initialRemoteMatch && baseline === remoteFingerprint) {
+          try {
+            readResult = await remote.readSection(sheetId, section);
+          } catch (error) {
+            await updateState((latest) =>
+              setSettingsSectionError(latest, section, errorMessage(error)),
+            );
+            throw error;
+          }
+          if (readResult.status === 'invalid') {
+            const invalidError = readResult.error;
+            await updateState((latest) =>
+              setSettingsSectionError(latest, section, invalidError),
+            );
+            continue;
+          }
+          remoteFingerprint = readResult.present
+            ? sectionFingerprint(section, readResult.value)
+            : '';
+          if (
+            section === 'quickNotes' &&
+            migrationState &&
+            readResult.present &&
+            remoteFingerprint === migrationState.sourceFingerprint &&
+            localFingerprint === remoteFingerprint
+          ) {
+            quickNotesMigrationUploadVerified = true;
+          }
+          initialRemoteMatch =
+            baseline === '' &&
+            remoteFingerprint !== '' &&
+            localFingerprint === remoteFingerprint;
+        }
         if (initialRemoteMatch) {
-          state = {
-            ...clearSettingsSectionDirty(clearSettingsSectionError(state, section), section),
-            baselines: { ...state.baselines, [section]: remoteFingerprint },
-          };
-        } else if (baseline === remoteFingerprint || (baseline === '' && remoteIsEmpty)) {
+          await updateState((latest) => ({
+            ...clearSettingsSectionDirty(clearSettingsSectionError(latest, section), section),
+            baselines: { ...latest.baselines, [section]: remoteFingerprint },
+          }));
+        } else if (baseline === remoteFingerprint) {
           const attemptedValue = localValue;
           let writeResult: SheetSettingsSectionReadResult<
             SheetSettingsConfig[SettingsSection]
@@ -225,87 +394,165 @@ export async function reconcileSettings(
           try {
             writeResult = await remote.replaceSection(sheetId, section, attemptedValue);
           } catch (error) {
-            state = setSettingsSectionError(state, section, errorMessage(error));
-            await local.writeSyncState(sheetId, verifiedUserId, state);
+            await updateState((latest) =>
+              setSettingsSectionError(latest, section, errorMessage(error)),
+            );
             throw error;
           }
           if (writeResult.status === 'ok') {
             pushed.push(section);
-            state = {
-              ...state,
-              baselines: {
-                ...state.baselines,
-                [section]: sectionFingerprint(section, writeResult.value),
-              },
-            };
-            const latestSettings = await local.readSettings(sheetId);
-            const latestValue = latestSettings[section] as SheetSettingsConfig[SettingsSection];
-            if (sectionFingerprint(section, latestValue) === localFingerprint) {
-              if (sectionFingerprint(section, writeResult.value) !== localFingerprint) {
-                await local.writeSection(sheetId, section, writeResult.value);
-                remember(changed, section);
-              }
-              state = clearSettingsSectionDirty(state, section);
+            const readbackFingerprint = sectionFingerprint(section, writeResult.value);
+            const readbackDiverged = readbackFingerprint !== localFingerprint;
+            if (readbackDiverged) {
+              remember(conflicts, section);
             }
-            state = clearSettingsSectionError(state, section);
+            if (
+              section === 'quickNotes' &&
+              migrationState &&
+              (readbackDiverged ||
+                readbackFingerprint !== migrationState.sourceFingerprint)
+            ) {
+              migrationState = { ...migrationState, intent: 'prompt' };
+              migrationDecision = 'prompt';
+            }
+            const localRevisionUnchanged = await compareAndSetWinner(
+              section,
+              currentSettings,
+              writeResult.value,
+            );
+            await updateState((latest) => {
+              let next = {
+                ...latest,
+                baselines: {
+                  ...latest.baselines,
+                  [section]: sectionFingerprint(section, writeResult.value),
+                },
+              };
+              if (localRevisionUnchanged) {
+                next = clearSettingsSectionDirty(next, section);
+              }
+              if (section === 'quickNotes' && migrationState) {
+                next = { ...next, quickNotesMigration: migrationState };
+              }
+              return clearSettingsSectionError(next, section);
+            });
             currentSettings = await local.readSettings(sheetId);
-            if (section === 'quickNotes' && migrationApplied) {
-              quickNotesMigrationPushSucceeded = true;
+            if (
+              section === 'quickNotes' &&
+              migrationState &&
+              sectionFingerprint(section, writeResult.value) ===
+                migrationState.sourceFingerprint
+            ) {
+              quickNotesMigrationUploadVerified = true;
             }
           } else {
-            state = setSettingsSectionError(state, section, writeResult.error);
+            await updateState((latest) =>
+              setSettingsSectionError(latest, section, writeResult.error),
+            );
           }
         } else {
-          if (remoteFingerprint !== localFingerprint) {
-            await local.writeSection(sheetId, section, readResult.value);
-            remember(changed, section);
-            currentSettings = await local.readSettings(sheetId);
-          }
-          state = {
-            ...clearSettingsSectionDirty(clearSettingsSectionError(state, section), section),
-            baselines: { ...state.baselines, [section]: remoteFingerprint },
-          };
+          const winnerValue =
+            section === 'quickNotes'
+              ? sanitizeQuickNotes(
+                  readResult.value as SheetSettingsConfig['quickNotes'],
+                  currentSettings.accounts,
+                  currentSettings.categories,
+                )
+              : readResult.value;
+          const winnerFingerprint = sectionFingerprint(section, winnerValue);
+          const winnerNeedsPush = winnerFingerprint !== remoteFingerprint;
+          const localWinnerApplied =
+            winnerFingerprint === localFingerprint &&
+            sectionReady(currentSettings, section)
+              ? true
+              : await compareAndSetWinner(section, currentSettings, winnerValue);
+          await updateState((latest) => {
+            let next = {
+              ...latest,
+              baselines: { ...latest.baselines, [section]: remoteFingerprint },
+            };
+            next = localWinnerApplied && !winnerNeedsPush
+              ? clearSettingsSectionDirty(next, section)
+              : markSettingsSectionDirty(next, section);
+            return clearSettingsSectionError(next, section);
+          });
           conflicts.push(section);
         }
       } else {
         if (baseline !== remoteFingerprint) {
-          if (localFingerprint !== remoteFingerprint) {
-            await local.writeSection(sheetId, section, readResult.value);
-            remember(changed, section);
-            currentSettings = await local.readSettings(sheetId);
-          }
-          state = {
-            ...state,
-            baselines: { ...state.baselines, [section]: remoteFingerprint },
-          };
+          const winnerValue =
+            section === 'quickNotes'
+              ? sanitizeQuickNotes(
+                  readResult.value as SheetSettingsConfig['quickNotes'],
+                  currentSettings.accounts,
+                  currentSettings.categories,
+                )
+              : readResult.value;
+          const winnerFingerprint = sectionFingerprint(section, winnerValue);
+          const winnerNeedsPush = winnerFingerprint !== remoteFingerprint;
+          const localWinnerApplied =
+            localFingerprint === winnerFingerprint &&
+            sectionReady(currentSettings, section)
+              ? true
+              : await compareAndSetWinner(section, currentSettings, winnerValue);
+          await updateState((latest) => {
+            const next = {
+              ...latest,
+              baselines: { ...latest.baselines, [section]: remoteFingerprint },
+            };
+            return localWinnerApplied && !winnerNeedsPush
+              ? next
+              : markSettingsSectionDirty(next, section);
+          });
         }
-        state = clearSettingsSectionError(state, section);
+        await updateState((latest) => clearSettingsSectionError(latest, section));
       }
     } else {
-      state = setSettingsSectionError(state, section, readResult.error);
+      const sectionError = readResult.error;
+      await updateState((latest) => setSettingsSectionError(latest, section, sectionError));
     }
-    await local.writeSyncState(sheetId, verifiedUserId, state);
-    if (section === 'quickNotes' && quickNotesMigrationPushSucceeded) {
-      await local.deleteLegacyQuickNotes();
+    await updateState((latest) => latest);
+    if (
+      section === 'quickNotes' &&
+      quickNotesMigrationUploadVerified &&
+      legacyQuickNotes
+    ) {
+      const deleted = await local.deleteLegacyQuickNotesIfUnchanged(legacyQuickNotes);
+      if (deleted) {
+        migrationState = undefined;
+        await updateState(withoutQuickNotesMigration);
+      } else {
+        const latestLegacy = await local.readLegacyQuickNotes();
+        if (latestLegacy) {
+          migrationState = {
+            intent: 'prompt',
+            sourceFingerprint: fingerprintQuickNotesConfig(latestLegacy),
+          };
+          migrationDecision = 'prompt';
+          await updateState((latest) => ({
+            ...latest,
+            quickNotesMigration: migrationState,
+          }));
+        }
+      }
     }
   }
 
-  if (
-    state.dirty.length === 0 &&
-    Object.keys(state.errors).length === 0 &&
-    (migrationDecision !== 'prompt' || migrationApplied)
-  ) {
-    state = {
-      ...state,
-      lastSyncedAt: (options.now ?? (() => new Date().toISOString()))(),
-    };
-    await local.writeSyncState(sheetId, verifiedUserId, state);
-  }
+  await updateState((latest) =>
+    latest.dirty.length === 0 &&
+    Object.keys(latest.errors).length === 0 &&
+    migrationState === undefined
+      ? {
+          ...latest,
+          lastSyncedAt: (options.now ?? (() => new Date().toISOString()))(),
+        }
+      : latest,
+  );
 
   const status: SettingsReconciliationStatus =
     Object.keys(state.errors).length > 0
       ? 'error'
-      : state.dirty.length > 0 || (migrationDecision === 'prompt' && !migrationApplied)
+      : state.dirty.length > 0 || migrationState !== undefined
         ? 'pending'
         : 'synced';
 
@@ -314,7 +561,7 @@ export async function reconcileSettings(
     changed,
     pushed,
     conflicts,
-    errors: state.errors,
+    errors: { ...state.errors },
     migrationDecision,
     migrationApplied,
     status,

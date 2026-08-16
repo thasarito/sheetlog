@@ -21,6 +21,14 @@ export interface SettingsSyncState {
   dirty: SettingsSection[];
   errors: Partial<Record<SettingsSection, string>>;
   lastSyncedAt?: string;
+  quickNotesMigration?: QuickNotesMigrationState;
+}
+
+export type QuickNotesMigrationIntent = 'auto-import' | 'prompt' | 'explicit-import';
+
+export interface QuickNotesMigrationState {
+  intent: QuickNotesMigrationIntent;
+  sourceFingerprint: string;
 }
 
 export type LegacyQuickNotesMigrationDecision = 'auto-import' | 'prompt' | 'none';
@@ -182,6 +190,22 @@ function validateSettingsSyncState(
   if (value.lastSyncedAt !== undefined && typeof value.lastSyncedAt !== 'string') {
     return corrupt(storageKey, 'Sync-state lastSyncedAt must be a string when present.');
   }
+  if (value.quickNotesMigration !== undefined) {
+    if (!isRecord(value.quickNotesMigration)) {
+      return corrupt(storageKey, 'Quick Note migration state must be an object when present.');
+    }
+    const { intent, sourceFingerprint } = value.quickNotesMigration;
+    if (
+      intent !== 'auto-import' &&
+      intent !== 'prompt' &&
+      intent !== 'explicit-import'
+    ) {
+      return corrupt(storageKey, 'Quick Note migration intent is invalid.');
+    }
+    if (typeof sourceFingerprint !== 'string' || sourceFingerprint.length === 0) {
+      return corrupt(storageKey, 'Quick Note migration source fingerprint is invalid.');
+    }
+  }
   return value as unknown as SettingsSyncState;
 }
 
@@ -244,6 +268,35 @@ export async function writeSettingsSyncState(
   await writeStoredJson(storageKey, validatedState);
 }
 
+export async function updateSettingsSyncState(
+  sheetId: string,
+  verifiedUserId: string,
+  update: (state: SettingsSyncState | null) => SettingsSyncState,
+): Promise<SettingsSyncState> {
+  const storageKey = getSettingsSyncStorageKey(sheetId, verifiedUserId);
+  return db.transaction('rw', db.settings, async () => {
+    const stored = await readStoredJson(storageKey);
+    const current =
+      stored.status === 'missing'
+        ? null
+        : validateSettingsSyncState(stored.value, verifiedUserId, storageKey);
+    const next = update(current);
+    if (!isRecord(next)) {
+      return corrupt(storageKey, 'Sync state must be an object.');
+    }
+    const validated = validateSettingsSyncState(
+      {
+        ...next,
+        dirty: normalizeDirtySections(next.dirty, storageKey),
+      },
+      verifiedUserId,
+      storageKey,
+    );
+    await writeStoredJson(storageKey, validated);
+    return validated;
+  });
+}
+
 export async function readQuickNotesConfig(sheetId: string): Promise<QuickNotesConfig | null> {
   const storageKey = getQuickNotesStorageKey(sheetId);
   const stored = await readStoredJson(storageKey);
@@ -264,8 +317,20 @@ export async function readLegacyQuickNotesConfig(): Promise<QuickNotesConfig | n
   return stored.status === 'missing' ? null : validateQuickNotesConfig(stored.value, 'quickNotes');
 }
 
-export async function deleteLegacyQuickNotesConfig(): Promise<void> {
-  await db.settings.delete('quickNotes');
+export async function deleteLegacyQuickNotesConfigIfUnchanged(
+  expectedConfig: QuickNotesConfig,
+): Promise<boolean> {
+  const expected = validateQuickNotesConfig(expectedConfig, 'quickNotes');
+  return db.transaction('rw', db.settings, async () => {
+    const stored = await readStoredJson('quickNotes');
+    if (stored.status === 'missing') return false;
+    const current = validateQuickNotesConfig(stored.value, 'quickNotes');
+    if (fingerprintQuickNotesConfig(current) !== fingerprintQuickNotesConfig(expected)) {
+      return false;
+    }
+    await db.settings.delete('quickNotes');
+    return true;
+  });
 }
 
 export function markSettingsSectionDirty(
@@ -334,6 +399,10 @@ export function fingerprintSettingsSection(
   section: SettingsSection,
 ): string {
   return JSON.stringify(canonicalize(config[section]));
+}
+
+export function fingerprintQuickNotesConfig(config: QuickNotesConfig): string {
+  return JSON.stringify(canonicalize(config));
 }
 
 export function classifyLegacyQuickNotesMigration(
