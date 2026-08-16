@@ -3,6 +3,7 @@ import {
   appendTransaction as realAppendTransaction,
   deleteRow as realDeleteRow,
   DuplicateTransactionIdError,
+  ensurePlaceHeaders as realEnsurePlaceHeaders,
   ensureReimbursementHeader as realEnsureReimbursementHeader,
   getSheetTabId as realGetSheetTabId,
   readLinkedReimbursements as realReadLinkedReimbursements,
@@ -15,6 +16,7 @@ import {
   IS_DEV_MODE,
   appendTransaction as mockAppendTransaction,
   deleteRow as mockDeleteRow,
+  ensurePlaceHeaders as mockEnsurePlaceHeaders,
   ensureReimbursementHeader as mockEnsureReimbursementHeader,
   getSheetTabId as mockGetSheetTabId,
   readLinkedReimbursements as mockReadLinkedReimbursements,
@@ -27,6 +29,12 @@ import {
   isReimbursableExpense,
   validateReimbursementAmount,
 } from './reimbursements';
+import {
+  normalizeTransactionInput,
+  normalizeTransactionPlace,
+  sameTransactionPlace,
+  withoutTransactionPlace,
+} from './transactionPlace';
 import type { TransactionRecord } from './types';
 import { isTransactionInSheetScope } from './transactionScope';
 import {
@@ -42,6 +50,9 @@ const REMOTE_TRANSACTION_MISSING_ERROR =
 
 const appendTransaction = IS_DEV_MODE ? mockAppendTransaction : realAppendTransaction;
 const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
+const ensurePlaceHeaders = IS_DEV_MODE
+  ? mockEnsurePlaceHeaders
+  : realEnsurePlaceHeaders;
 const ensureReimbursementHeader = IS_DEV_MODE
   ? mockEnsureReimbursementHeader
   : realEnsureReimbursementHeader;
@@ -143,11 +154,12 @@ function hasSameTransactionContent(
     (left.note ?? '') === (right.note ?? '') &&
     Boolean(left.deleteIntent) === Boolean(right.deleteIntent) &&
     (left.reimbursesTransactionId ?? '') ===
-      (right.reimbursesTransactionId ?? '')
+      (right.reimbursesTransactionId ?? '') &&
+    sameTransactionPlace(left.place, right.place)
   );
 }
 
-function applyAuthoritativeRelation(
+function applyAuthoritativeSheetFields(
   pending: TransactionRecord,
   remote: TransactionRecord,
 ): TransactionRecord {
@@ -170,6 +182,35 @@ function applyAuthoritativeRelation(
   };
 }
 
+function applyAuthoritativePlace(
+  pending: TransactionRecord,
+  remote: TransactionRecord,
+): TransactionRecord {
+  switch (pending.placeUpdateIntent) {
+    case 'preserve':
+      return remote.place
+        ? { ...pending, place: remote.place }
+        : withoutTransactionPlace(pending);
+    case 'set':
+      return {
+        ...pending,
+        place: normalizeTransactionPlace(pending.place),
+      };
+    case 'clear':
+      return withoutTransactionPlace(pending);
+    default:
+      return pending;
+  }
+}
+
+function withoutPlaceUpdateIntent(
+  transaction: TransactionRecord,
+): TransactionRecord {
+  const remoteTransaction = { ...transaction };
+  delete remoteTransaction.placeUpdateIntent;
+  return remoteTransaction;
+}
+
 function isSamePendingRevision(
   current: TransactionRecord,
   attempted: TransactionRecord,
@@ -180,6 +221,7 @@ function isSamePendingRevision(
     current.targetUserId === attempted.targetUserId &&
     current.createdAt === attempted.createdAt &&
     current.updatedAt === attempted.updatedAt &&
+    current.placeUpdateIntent === attempted.placeUpdateIntent &&
     hasSameTransactionContent(current, attempted)
   );
 }
@@ -188,6 +230,7 @@ async function updatePendingRevision(
   attempted: TransactionRecord,
   updates: Partial<TransactionRecord>,
   mutationGuard: SheetMutationGuard,
+  clearPlaceUpdateIntent = false,
 ): Promise<boolean> {
   await mutationGuard.assertOwnership();
   return db.transaction('rw', db.transactions, async () => {
@@ -195,7 +238,14 @@ async function updatePendingRevision(
     if (!current || !isSamePendingRevision(current, attempted)) {
       return false;
     }
-    await db.transactions.update(attempted.id, updates);
+    const next = { ...current, ...updates };
+    if (Object.hasOwn(updates, 'place') && updates.place === undefined) {
+      delete next.place;
+    }
+    if (clearPlaceUpdateIntent) {
+      delete next.placeUpdateIntent;
+    }
+    await db.transactions.put(next);
     return true;
   });
 }
@@ -321,10 +371,15 @@ async function rollbackDeletedUpdate(
     return;
   }
   await mutationGuard.assertOwnership();
-  await updateRow(accessToken, sheetId, currentRow, {
-    ...original,
-    sheetRow: currentRow,
-  });
+  await updateRow(
+    accessToken,
+    sheetId,
+    currentRow,
+    withoutPlaceUpdateIntent({
+      ...original,
+      sheetRow: currentRow,
+    }),
+  );
 }
 
 async function syncPendingTransactionsUnlocked(
@@ -350,6 +405,7 @@ async function syncPendingTransactionsUnlocked(
   let syncedCount = 0;
   let syncFailure: unknown = null;
   let reimbursementHeaderReady = false;
+  let placeHeadersReady = false;
   let existingIds: Map<string, number> | null = null;
 
   const ensureLinkedHeader = async () => {
@@ -359,6 +415,15 @@ async function syncPendingTransactionsUnlocked(
     await mutationGuard.assertOwnership();
     await ensureReimbursementHeader(accessToken, sheetId);
     reimbursementHeaderReady = true;
+  };
+
+  const ensurePlaceHeader = async () => {
+    if (placeHeadersReady) {
+      return;
+    }
+    await mutationGuard.assertOwnership();
+    await ensurePlaceHeaders(accessToken, sheetId);
+    placeHeadersReady = true;
   };
 
   for (const snapshotItem of pendingSnapshot) {
@@ -425,7 +490,10 @@ async function syncPendingTransactionsUnlocked(
           continue;
         }
 
-        const itemForWrite = applyAuthoritativeRelation(item, remote);
+        const authoritativeFields = applyAuthoritativeSheetFields(item, remote);
+        const itemForWrite = normalizeTransactionInput(
+          applyAuthoritativePlace(authoritativeFields, remote),
+        );
         const currentRow = remote.sheetRow ?? existingRow;
         if (itemForWrite.reimbursesTransactionId) {
           await ensureLinkedHeader();
@@ -438,13 +506,23 @@ async function syncPendingTransactionsUnlocked(
             );
           }
         }
-        const didUpdateRemote = !hasSameTransactionContent(
-          remote,
-          itemForWrite,
-        );
+        const explicitPlaceWrite =
+          item.placeUpdateIntent === 'set' ||
+          item.placeUpdateIntent === 'clear';
+        if (explicitPlaceWrite || itemForWrite.place) {
+          await ensurePlaceHeader();
+        }
+        const didUpdateRemote =
+          explicitPlaceWrite ||
+          !hasSameTransactionContent(remote, itemForWrite);
         if (didUpdateRemote) {
           await mutationGuard.assertOwnership();
-          await updateRow(accessToken, sheetId, currentRow, itemForWrite);
+          await updateRow(
+            accessToken,
+            sheetId,
+            currentRow,
+            withoutPlaceUpdateIntent(itemForWrite),
+          );
         }
 
         const didMarkSynced = await updatePendingRevision(item, {
@@ -454,13 +532,14 @@ async function syncPendingTransactionsUnlocked(
           for: itemForWrite.for,
           createdAt: itemForWrite.createdAt,
           reimbursesTransactionId: itemForWrite.reimbursesTransactionId,
+          place: itemForWrite.place,
           status: 'synced',
           sheetRow: currentRow,
           sheetRowValid: true,
           sheetId,
           error: undefined,
           updatedAt: new Date().toISOString(),
-        }, mutationGuard);
+        }, mutationGuard, true);
         if (didMarkSynced) {
           syncedCount += 1;
         } else if (didUpdateRemote) {
@@ -494,13 +573,28 @@ async function syncPendingTransactionsUnlocked(
         continue;
       }
 
-      if (item.reimbursesTransactionId) {
+      const appendItem = normalizeTransactionInput(item);
+
+      if (appendItem.reimbursesTransactionId) {
         await ensureLinkedHeader();
-        await validateLinkedTransaction(accessToken, sheetId, userId, item);
+        await validateLinkedTransaction(
+          accessToken,
+          sheetId,
+          userId,
+          appendItem,
+        );
+      }
+
+      if (appendItem.place) {
+        await ensurePlaceHeader();
       }
 
       await mutationGuard.assertOwnership();
-      const rowIndex = await appendTransaction(accessToken, sheetId, item);
+      const rowIndex = await appendTransaction(
+        accessToken,
+        sheetId,
+        withoutPlaceUpdateIntent(appendItem),
+      );
       if (rowIndex !== null) {
         existingIds.set(item.id, rowIndex);
       }
@@ -520,13 +614,14 @@ async function syncPendingTransactionsUnlocked(
       }
 
       const didMarkSynced = await updatePendingRevision(item, {
+        place: appendItem.place,
         status: 'synced',
         sheetRow: rowIndex ?? undefined,
         sheetRowValid: rowIndex !== null,
         sheetId,
         error: undefined,
         updatedAt: new Date().toISOString(),
-      }, mutationGuard);
+      }, mutationGuard, true);
       if (didMarkSynced) {
         syncedCount += 1;
       } else {
