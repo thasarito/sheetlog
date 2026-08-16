@@ -107,6 +107,10 @@ function forwardedForm(mock: ReturnType<typeof upstreamFetch>) {
   };
 }
 
+function activeTomlLines(source: string, assignment: RegExp) {
+  return source.split(/\r?\n/).filter((line) => assignment.test(line));
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -268,6 +272,7 @@ describe("OAuth token Pages Function", () => {
     });
 
     await expectJsonError(response, 405, "method_not_allowed");
+    expect(response.headers.get("Allow")).toBe("POST");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -561,6 +566,63 @@ describe("OAuth token Pages Function", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("cancels remaining streamed input when fatal UTF-8 decoding fails", async () => {
+    const cancel = vi.fn();
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulls += 1;
+          controller.enqueue(
+            pulls === 1
+              ? new Uint8Array([0xc3, 0x28])
+              : new TextEncoder().encode("must-not-be-read"),
+          );
+        },
+        cancel,
+      },
+      { highWaterMark: 0 },
+    );
+    const fetchMock = upstreamFetch();
+
+    const response = await createOAuthTokenHandler(fetchMock)({
+      request: request(stream, { duplex: "half" }),
+      env: ENV,
+    });
+
+    await expectJsonError(response, 400, "invalid_request");
+    expect(pulls).toBe(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels the reader when reading the request stream rejects", async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const releaseLock = vi.fn();
+    const reader = {
+      read: vi.fn().mockRejectedValue(new Error("stream read failed")),
+      cancel,
+      releaseLock,
+    };
+    const incomingRequest = request(refreshParams());
+    Object.defineProperty(incomingRequest, "body", {
+      value: {
+        getReader: () => reader,
+      } as unknown as ReadableStream<Uint8Array>,
+    });
+    const fetchMock = upstreamFetch();
+
+    const response = await createOAuthTokenHandler(fetchMock)({
+      request: incomingRequest,
+      env: ENV,
+    });
+
+    await expectJsonError(response, 400, "invalid_request");
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(releaseLock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("accepts a body that is exactly 8 KiB", async () => {
     const params = refreshParams();
     params.set("padding", "");
@@ -662,15 +724,69 @@ describe("OAuth token Pages Function", () => {
 
 describe("Cloudflare Pages Function configuration", () => {
   it("pins the production binding and request-signal compatibility flags", () => {
-    expect(wranglerSource).toContain('compatibility_date = "2026-08-16"');
-    expect(wranglerSource).toMatch(
-      /compatibility_flags\s*=\s*\[[^\]]*"enable_request_signal"[^\]]*"request_signal_passthrough"[^\]]*\]/s,
+    const compatibilityDateLines = activeTomlLines(
+      wranglerSource,
+      /^\s*compatibility_date\s*=/,
     );
-    expect(wranglerSource).toContain("[vars]");
-    expect(wranglerSource).toContain(
+    expect(compatibilityDateLines).toHaveLength(1);
+    expect(compatibilityDateLines[0]).toMatch(
+      /^\s*compatibility_date\s*=\s*"2026-08-16"\s*$/,
+    );
+
+    const compatibilityFlagLines = activeTomlLines(
+      wranglerSource,
+      /^\s*compatibility_flags\s*=/,
+    );
+    expect(compatibilityFlagLines).toHaveLength(1);
+    expect(compatibilityFlagLines[0]).toMatch(
+      /^\s*compatibility_flags\s*=\s*\[\s*"enable_request_signal"\s*,\s*"request_signal_passthrough"\s*\]\s*$/,
+    );
+
+    expect(activeTomlLines(wranglerSource, /^\s*\[vars\]\s*$/)).toHaveLength(1);
+
+    const clientIdLines = activeTomlLines(
+      wranglerSource,
+      /^\s*GOOGLE_CLIENT_ID\s*=/,
+    );
+    expect(clientIdLines).toHaveLength(1);
+    expect(clientIdLines[0]).toBe(
       `GOOGLE_CLIENT_ID = "${PRODUCTION_CLIENT_ID}"`,
     );
-    expect(wranglerSource).toContain('OAUTH_REDIRECT_PATH = "/"');
+
+    const redirectPathLines = activeTomlLines(
+      wranglerSource,
+      /^\s*OAUTH_REDIRECT_PATH\s*=/,
+    );
+    expect(redirectPathLines).toHaveLength(1);
+    expect(redirectPathLines[0]).toMatch(
+      /^\s*OAUTH_REDIRECT_PATH\s*=\s*"\/"\s*$/,
+    );
+  });
+
+  it("does not count commented Wrangler settings as active configuration", () => {
+    const commentedSettings = [
+      '# compatibility_date = "2026-08-16"',
+      '# compatibility_flags = ["enable_request_signal", "request_signal_passthrough"]',
+      "# [vars]",
+      `# GOOGLE_CLIENT_ID = "${PRODUCTION_CLIENT_ID}"`,
+      '# OAUTH_REDIRECT_PATH = "/"',
+    ].join("\n");
+
+    expect(
+      activeTomlLines(commentedSettings, /^\s*compatibility_date\s*=/),
+    ).toHaveLength(0);
+    expect(
+      activeTomlLines(commentedSettings, /^\s*compatibility_flags\s*=/),
+    ).toHaveLength(0);
+    expect(
+      activeTomlLines(commentedSettings, /^\s*\[vars\]\s*$/),
+    ).toHaveLength(0);
+    expect(
+      activeTomlLines(commentedSettings, /^\s*GOOGLE_CLIENT_ID\s*=/),
+    ).toHaveLength(0);
+    expect(
+      activeTomlLines(commentedSettings, /^\s*OAUTH_REDIRECT_PATH\s*=/),
+    ).toHaveLength(0);
   });
 
   it("typechecks the deployed Function and external Function tests", () => {

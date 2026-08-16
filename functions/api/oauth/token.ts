@@ -43,12 +43,18 @@ const MAX_FIELD_LENGTHS: Record<string, number> = {
   refresh_token: 4096,
 };
 
-function jsonError(status: number, error: string, description: string) {
+function jsonError(
+  status: number,
+  error: string,
+  description: string,
+  headers: Record<string, string> = {},
+) {
   return Response.json(
     { error, error_description: description },
     {
       status,
       headers: {
+        ...headers,
         "Cache-Control": "no-store",
         Pragma: "no-cache",
       },
@@ -157,6 +163,13 @@ async function readBodyWithLimit(
 
       result += decoder.decode(chunk.value, { stream: true });
     }
+  } catch (error) {
+    try {
+      await reader.cancel("OAuth token request body is invalid.");
+    } catch {
+      // Preserve the original read or decode failure.
+    }
+    throw error;
   } finally {
     reader.releaseLock();
   }
@@ -171,6 +184,7 @@ export function createOAuthTokenHandler(
         405,
         "method_not_allowed",
         "Use POST for OAuth token requests.",
+        { Allow: "POST" },
       );
     }
 
