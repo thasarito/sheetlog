@@ -126,33 +126,31 @@ The production build is emitted to `dist/`.
 
 Before the first deployment that makes `wrangler.toml` the Function
 configuration source of truth, compare the existing Pages project configuration
-with this repository. Either inspect the Cloudflare dashboard or download the
-current supported configuration into a throwaway directory created by
-`mktemp -d`:
+with this repository in the Cloudflare dashboard. Reconcile the compatibility
+date and flags, public bindings, and build output before deployment. Pages Git
+build settings remain dashboard-managed, including the build command, root
+directory, production branch, and environment variables; supported Function
+configuration uses the checked-in `wrangler.toml`.
 
-```bash
-migration_dir="$(mktemp -d)"
-npx --yes wrangler@4.123.0 pages download config sheetlog --cwd "$migration_dir"
-```
-
-Do not run the download command in the repository directory: it can create or
-overwrite a Wrangler configuration file. Reconcile the compatibility date and
-flags, public bindings, and build output before deployment. Pages Git build
-settings remain dashboard-managed, including the build command, root directory,
-production branch, and environment variables; supported Function configuration
-uses the checked-in `wrangler.toml`.
-
-Downloaded Pages configuration omits `secret_text` and cannot verify secret
-binding names. Always verify the `GOOGLE_CLIENT_SECRET` binding name separately
-in both environments; these commands list names and never reveal a secret value:
+Do not run `wrangler pages download config` for this project. It can materialize
+environment values, including legacy secrets, into a generated local TOML file.
+Verify the `GOOGLE_CLIENT_SECRET` binding name separately in production with a
+command that lists names and never reveals a secret value:
 
 ```bash
 npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env production
+```
+
+Preview must not expose the production secret to a Git-connected preview
+Function. Confirm that the production binding is absent from preview by listing
+preview names (never values):
+
+```bash
 npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env preview
 ```
 
-Alternatively, verify the binding name in the Cloudflare dashboard for both the
-production and preview environments.
+Alternatively, verify the production binding and its preview absence in the
+Cloudflare dashboard.
 
 `wrangler.toml` is the source of truth for supported Pages Function
 configuration. Keep its public client and redirect bindings in sync with the
@@ -167,27 +165,35 @@ completion.
 Use an overlapping rotation so the deployed application always has a working
 credential:
 
-1. Create a replacement Google OAuth client secret while the previously exposed
+1. Add a replacement Google OAuth client secret while the previously exposed
    old secret remains enabled.
-2. Configure the replacement in both Pages production and preview. Enter the
-   value only at Wrangler's interactive prompt for each command:
+2. Configure the replacement in Pages production only. Enter the value only at
+   Wrangler's interactive prompt:
 
 ```bash
 npx --yes wrangler@4.123.0 pages secret put GOOGLE_CLIENT_SECRET --project-name sheetlog --env production
-npx --yes wrangler@4.123.0 pages secret put GOOGLE_CLIENT_SECRET --project-name sheetlog --env preview
 ```
 
-Wrangler defaults to production when `--env` is omitted; the explicit
-environment flags make both targets auditable. The preview secret must be
-configured before opening a PR or allowing a Git-connected preview deployment,
-even if Google preview login is intentionally disabled. The Function must not
-be deployed or merged while either required environment is unconfigured.
+Do not configure the production secret in preview: an unreviewed Git branch can
+change its Function and exfiltrate any preview binding. Preview OAuth is
+disabled by default; with the missing secret, `/api/oauth/token` safely returns
+503 while the preview build and the rest of the app continue to work. If you
+intentionally test preview OAuth, use a separate preview OAuth client and
+secret, register its exact preview redirect URI, and expose it only to a trusted,
+reviewed preview workflow.
 
 3. Deploy the Function, then verify the fake-code probe, a real login from the
    installed PWA, and silent refresh while the old secret is still enabled.
-4. Disable the old secret only after all production checks pass.
-5. Monitor OAuth failures and refresh behavior for a rollback window.
-6. Delete the old secret after the monitoring window remains healthy.
+4. Delete the old Vite-prefixed Cloudflare binding after the new production
+   deployment is healthy:
+
+```bash
+npx --yes wrangler@4.123.0 pages secret delete VITE_GOOGLE_CLIENT_SECRET --project-name sheetlog --env production
+```
+
+5. Disable the old Google secret only after all production checks pass.
+6. Monitor OAuth failures and refresh behavior for a rollback window.
+7. Delete the old Google secret after the monitoring window remains healthy.
 
 Never expose a secret value in a command argument, chat, log, build variable,
 dotenv example, or repository file. Confirm again before release that the

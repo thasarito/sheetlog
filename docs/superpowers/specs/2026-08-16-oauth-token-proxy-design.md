@@ -120,22 +120,30 @@ must not be merged to production until the runtime secret is available.
 
 After implementation:
 
-1. rotate the previously browser-exposed secret for the existing Google OAuth
-   Web client;
+1. add a replacement secret for the existing Google OAuth Web client while the
+   previously browser-exposed secret remains enabled;
 2. confirm the public `GOOGLE_CLIENT_ID` and `OAUTH_REDIRECT_PATH` values in
    `wrangler.toml` match the Vite build and OAuth callback configuration, then
    add the replacement secret as an encrypted Cloudflare Pages runtime secret
-   named `GOOGLE_CLIENT_SECRET` for production (and preview when preview login
-   is intentionally tested);
+   named `GOOGLE_CLIENT_SECRET` for production only;
 3. deploy the hotfix;
 4. verify a harmless invalid-code request reaches Google without returning
    `client_secret is missing`;
 5. verify real login and a refresh from the installed `sheetlog.com` PWA;
 6. confirm the browser bundle contains no client secret value or
-   `VITE_GOOGLE_CLIENT_SECRET` path.
+   `VITE_GOOGLE_CLIENT_SECRET` path;
+7. remove the old Vite-prefixed Cloudflare binding, then disable and eventually
+   delete the old Google secret after a healthy monitoring window.
 
-The feature branch and pull request remain unmerged until step 2 is complete, so
-the deployed app does not gain an unconfigured Function.
+Git-connected preview deployments remain without the production secret. A
+missing preview secret intentionally makes the token route return a safe 503
+without failing the preview build. If preview OAuth is deliberately enabled,
+it uses a separate preview OAuth client and secret, an exact registered preview
+redirect URI, and only trusted reviewed preview code.
+
+The feature branch and pull request remain unmerged until the production part of
+step 2 is complete, so the deployed app does not gain an unconfigured production
+Function.
 
 ## Testing
 

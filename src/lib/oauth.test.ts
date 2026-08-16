@@ -995,43 +995,38 @@ describe("browser OAuth public-client flow", () => {
     );
   });
 
-  it("documents a non-destructive Wrangler configuration preflight", () => {
+  it("documents a secret-safe Wrangler configuration preflight", () => {
     const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
     const preflight = normalizeDocText(
       markdownSubsection(readmeSource, "Wrangler configuration preflight"),
     );
 
     expect(preflight).toMatch(/before the first deployment/i);
-    expect(preflight).toMatch(/throwaway directory.*mktemp -d/i);
+    expect(preflight).not.toMatch(/npx .*pages download config/i);
     expect(preflight).toMatch(
-      /pages download config sheetlog --cwd "\$migration_dir"/,
+      /do not run.*download config.*materialize.*environment values.*legacy secrets/i,
     );
-    expect(preflight).toMatch(/do not run.*repository directory/i);
     expect(preflight).toMatch(
-      /reconcile.*compatibility.*public bindings.*build output/i,
+      /Cloudflare dashboard.*reconcile.*compatibility.*public bindings.*build output/i,
     );
     expect(preflight).toMatch(
       /build settings remain dashboard-managed.*supported Function configuration.*`wrangler\.toml`/i,
     );
-    expect(preflight).toMatch(
-      /downloaded.*omits `secret_text`.*cannot verify secret binding names/i,
-    );
     expect(preflight).toContain(
       `npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env production`,
     );
-    expect(preflight).toContain(
-      `npx --yes wrangler@4.123.0 pages secret list --project-name sheetlog --env preview`,
-    );
     expect(preflight).toMatch(
       new RegExp(
-        `verify.*\`${serverSecretName}\` binding name.*both environments.*never.*secret value`,
+        `verify.*\`${serverSecretName}\` binding name.*production.*never.*secret value`,
         "i",
       ),
     );
-    expect(preflight).toMatch(/dashboard.*production.*preview/i);
+    expect(preflight).toMatch(
+      /preview.*must not expose.*production.*secret.*Git-connected preview/i,
+    );
   });
 
-  it("documents an overlapping production and preview secret rotation", () => {
+  it("documents an overlapping production-only secret rotation", () => {
     const serverSecretName = ["GOOGLE_CLIENT", "SECRET"].join("_");
     const rollout = normalizeDocText(
       markdownSubsection(readmeSource, "Production OAuth rollout"),
@@ -1040,20 +1035,23 @@ describe("browser OAuth public-client flow", () => {
     expect(rollout).toContain(
       `npx --yes wrangler@4.123.0 pages secret put ${serverSecretName} --project-name sheetlog --env production`,
     );
-    expect(rollout).toContain(
-      `npx --yes wrangler@4.123.0 pages secret put ${serverSecretName} --project-name sheetlog --env preview`,
-    );
-    expect(rollout).toMatch(/Wrangler defaults.*production.*`--env`.*explicit/i);
     expect(rollout).toMatch(
-      /preview secret.*before.*PR.*Git-connected preview deployment.*even if.*preview login.*disabled/i,
+      /do not configure.*production.*secret.*preview.*unreviewed.*Function.*exfiltrate/i,
+    );
+    expect(rollout).toMatch(
+      /preview OAuth.*disabled.*missing secret.*safe.*503/i,
+    );
+    expect(rollout).toMatch(
+      /intentionally test.*preview.*separate.*OAuth client.*secret.*exact.*redirect/i,
     );
     expectPatternsInOrder(rollout, [
-      /1\. Create.*replacement.*old.*enabled/i,
-      /2\. Configure.*replacement.*production.*preview/i,
+      /1\. Add.*replacement.*old.*enabled/i,
+      /2\. Configure.*replacement.*production/i,
       /3\. Deploy.*fake-code.*real login.*silent refresh/i,
-      /4\. Disable.*old/i,
-      /5\. Monitor/i,
-      /6\. Delete.*old/i,
+      /4\. Delete.*Vite-prefixed.*Cloudflare/i,
+      /5\. Disable.*old/i,
+      /6\. Monitor/i,
+      /7\. Delete.*old/i,
     ]);
     expect(rollout).toMatch(/never.*secret value.*command.*chat.*log/i);
   });

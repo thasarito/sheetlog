@@ -571,13 +571,20 @@ npx --yes wrangler@4.123.0 pages dev dist \
   --binding OAUTH_REDIRECT_PATH=/
 ```
 
-- Production setup uses:
+- Production setup uses (the production secret is deliberately absent from
+  arbitrary Git-connected previews):
 
 ```bash
 npx --yes wrangler@4.123.0 pages secret put GOOGLE_CLIENT_SECRET --project-name sheetlog
 ```
 
-- State that the previously exposed Google secret must be rotated before rollout.
+- State that Google secret rotation overlaps: add the replacement while the old
+  secret remains enabled, deploy and verify production, then disable/delete the
+  old secret.
+- State that preview OAuth is disabled by default and a missing preview secret
+  safely returns 503. Intentional preview OAuth requires a separate client and
+  secret plus an exact redirect URI and trusted reviewed code; never reuse the
+  production secret in arbitrary branch previews.
 - State that code must not be deployed until the runtime secret is configured.
 - Include the post-deploy fake-code diagnostic and real installed-PWA login/refresh checks without printing secrets.
 
