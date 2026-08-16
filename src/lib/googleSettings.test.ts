@@ -594,6 +594,39 @@ describe('Google settings Sheet replacement', () => {
     })).toBe(false);
   });
 
+  it('writes the same canonical Account values that a Sheet read returns', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          settingsMetadata({ sheetId: 11, title: 'Account', rowCount: 5, columnCount: 3 }),
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          values: [
+            ['Account', 'Icon', 'Color'],
+            ['Wallet', 'Wallet', '#6366f1'],
+          ],
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'accounts', [
+      { name: '  Wallet  ', icon: ' ', color: '' },
+    ]);
+
+    const body = JSON.parse(String(requestAt(fetchMock, 1)[1].body));
+    expect(body.requests[0].updateCells.rows[1]).toEqual({
+      values: [
+        { userEnteredValue: { stringValue: 'Wallet' } },
+        { userEnteredValue: { stringValue: 'Wallet' } },
+        { userEnteredValue: { stringValue: '#6366f1' } },
+      ],
+    });
+  });
+
   it('writes only the Account header while clearing stale rows for an empty replacement', async () => {
     const fetchMock = vi
       .fn()
@@ -930,6 +963,21 @@ describe('mock settings Sheet parity', () => {
         value: { expense: [], income: [], transfer: [] },
       },
       quickNotes: { status: 'ok', present: true, value: quickNotes },
+    });
+  });
+
+  it('uses the same Account canonicalization in the mock adapter', async () => {
+    const result = await replaceMockSheetSettingsSection(
+      ACCESS_TOKEN,
+      SHEET_ID,
+      'accounts',
+      [{ name: '  Wallet  ', icon: '', color: ' ' }],
+    );
+
+    expect(result).toEqual({
+      status: 'ok',
+      present: true,
+      value: [{ name: 'Wallet', icon: 'Wallet', color: '#6366f1' }],
     });
   });
 });

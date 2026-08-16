@@ -114,7 +114,7 @@ function requiredQuickNoteString(
   return fieldValue;
 }
 
-function validateQuickNotesConfig(value: unknown, storageKey: string): QuickNotesConfig {
+export function validateQuickNotesConfig(value: unknown, storageKey: string): QuickNotesConfig {
   if (!isRecord(value)) {
     return corrupt(storageKey, 'Quick Notes must be an object.');
   }

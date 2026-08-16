@@ -339,3 +339,55 @@ export function sanitizeQuickNotes(
   }
   return sanitized;
 }
+
+export interface QuickNoteSanitationSettings {
+  accounts: readonly AccountItem[];
+  accountsConfirmed: boolean;
+  categories: CategoryConfigWithMeta;
+  categoriesConfirmed: boolean;
+}
+
+/**
+ * Sanitize only against settings that are ready to sync. Unconfirmed
+ * onboarding values are still drafts, so they cannot authoritatively remove
+ * Quick Note references yet.
+ */
+export function sanitizeQuickNotesAgainstReadySettings(
+  config: QuickNotesConfig,
+  settings: QuickNoteSanitationSettings,
+): QuickNotesConfig {
+  const accounts = settings.accountsConfirmed
+    ? settings.accounts
+    : Array.from(
+        new Set(
+          Object.entries(config).flatMap(([target, notes]) =>
+            notes.flatMap(({ account, forValue }) => [
+              ...(account ? [account] : []),
+              ...(target.startsWith('transfer:') && forValue ? [forValue] : []),
+            ]),
+          ),
+        ),
+        (name) => ({ name }),
+      );
+  const categories = settings.categoriesConfirmed
+    ? settings.categories
+    : {
+        expense: settings.categories.expense.map((category) => ({ ...category })),
+        income: settings.categories.income.map((category) => ({ ...category })),
+        transfer: settings.categories.transfer.map((category) => ({ ...category })),
+      };
+
+  if (!settings.categoriesConfirmed) {
+    for (const target of Object.keys(config)) {
+      if (target.startsWith('default:')) continue;
+      const separator = target.indexOf(':');
+      const type = target.slice(0, separator) as TransactionType;
+      const name = target.slice(separator + 1);
+      if (!categories[type].some((category) => category.name === name)) {
+        categories[type].push({ name });
+      }
+    }
+  }
+
+  return sanitizeQuickNotes(config, accounts, categories);
+}

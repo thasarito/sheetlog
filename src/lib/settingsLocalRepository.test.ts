@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from './db';
+import { DEFAULT_ACCOUNT_COLOR, DEFAULT_ACCOUNT_ICON } from './icons';
 import {
   dexieSettingsLocalRepository,
   mutateLocalOnboarding,
+  mutateLocalQuickNotes,
   mutateLocalSettingsSection,
 } from './settingsLocalRepository';
 import {
@@ -74,6 +76,21 @@ describe('Dexie settings local repository', () => {
     await db.settings.clear();
   });
 
+  it('deep-clones default category items for each caller', () => {
+    const first = getDefaultOnboardingState();
+    const originalName = first.categories.expense[0]?.name;
+    if (!originalName) throw new Error('Expected a default expense category.');
+
+    try {
+      first.categories.expense[0].name = 'Mutated default';
+      expect(getDefaultOnboardingState().categories.expense[0]?.name).toBe(
+        originalName,
+      );
+    } finally {
+      first.categories.expense[0].name = originalName;
+    }
+  });
+
   it('distinguishes a missing Quick Notes record from an authoritative empty record', async () => {
     const missing = await dexieSettingsLocalRepository.readSettings(SHEET_ID);
 
@@ -98,6 +115,66 @@ describe('Dexie settings local repository', () => {
     });
   });
 
+  it('migrates a scoped legacy string-array onboarding record before strict reads', async () => {
+    await db.settings.put({
+      key: 'onboardingState:sheet/a',
+      value: JSON.stringify({
+        sheetFolderId: 'folder-a',
+        accounts: ['Wallet'],
+        accountsConfirmed: true,
+        categories: {
+          expense: ['Food'],
+          income: ['Salary'],
+          transfer: ['Savings'],
+        },
+        categoriesConfirmed: true,
+      }),
+      updatedAt: '2026-08-16T00:00:00.000Z',
+    });
+
+    const settings = await dexieSettingsLocalRepository.readSettings(SHEET_ID);
+
+    expect(settings.accounts).toEqual([
+      expect.objectContaining({ name: 'Wallet', icon: expect.any(String), color: expect.any(String) }),
+    ]);
+    expect(settings.categories.expense).toEqual([
+      expect.objectContaining({ name: 'Food', icon: expect.any(String), color: expect.any(String) }),
+    ]);
+    const migrated = JSON.parse(
+      (await db.settings.get('onboardingState:sheet/a'))?.value ?? 'null',
+    ) as OnboardingState;
+    expect(migrated.accounts[0]).toEqual(settings.accounts[0]);
+    expect(migrated.categories).toEqual(settings.categories);
+  });
+
+  it('imports the global legacy onboarding record into the requested Sheet scope', async () => {
+    await db.settings.put({
+      key: 'onboardingState',
+      value: JSON.stringify({
+        accounts: ['Cash'],
+        accountsConfirmed: true,
+        categories: {
+          expense: ['Food'],
+          income: [],
+          transfer: [],
+        },
+        categoriesConfirmed: true,
+      }),
+      updatedAt: '2026-08-16T00:00:00.000Z',
+    });
+
+    const settings = await dexieSettingsLocalRepository.readSettings(SHEET_ID);
+
+    expect(settings.accounts[0]).toEqual(
+      expect.objectContaining({ name: 'Cash', icon: expect.any(String), color: expect.any(String) }),
+    );
+    expect(settings.categories.expense[0]).toEqual(
+      expect.objectContaining({ name: 'Food', icon: expect.any(String), color: expect.any(String) }),
+    );
+    expect(await db.settings.get('onboardingState:sheet/a')).toBeDefined();
+    expect(await db.settings.get('onboardingState')).toBeDefined();
+  });
+
   it('binds durable dirty state to the verified account and Sheet', async () => {
     await mutateLocalSettingsSection(SHEET_ID, USER_ID, 'accounts', ACCOUNTS);
 
@@ -107,6 +184,102 @@ describe('Dexie settings local repository', () => {
     });
     await expect(readSettingsSyncState(SHEET_ID, 'other-user')).resolves.toBeNull();
     await expect(readSettingsSyncState('other-sheet', USER_ID)).resolves.toBeNull();
+  });
+
+  it('rejects a blank Sheet ID at the repository boundary', async () => {
+    await expect(dexieSettingsLocalRepository.readSettings('   ')).rejects.toThrow(
+      'Sheet ID is required.',
+    );
+    expect(await db.settings.count()).toBe(0);
+  });
+
+  it.each([
+    {
+      boundary: 'sync-state update',
+      operation: () =>
+        dexieSettingsLocalRepository.updateSyncState(SHEET_ID, ' ', (state) =>
+          state ?? createDefaultSettingsSyncState(USER_ID),
+        ),
+    },
+    {
+      boundary: 'section commit',
+      operation: () =>
+        dexieSettingsLocalRepository.commitSection(
+          ' ',
+          USER_ID,
+          'accounts',
+          { value: [], ready: false },
+          [],
+          (state) => state ?? createDefaultSettingsSyncState(USER_ID),
+        ),
+    },
+    {
+      boundary: 'onboarding mutation',
+      operation: () => mutateLocalOnboarding(SHEET_ID, ' ', (current) => current),
+    },
+    {
+      boundary: 'Quick Notes mutation',
+      operation: () => mutateLocalQuickNotes(' ', USER_ID, (current) => current),
+    },
+    {
+      boundary: 'section mutation',
+      operation: () =>
+        mutateLocalSettingsSection(SHEET_ID, ' ', 'accounts', ACCOUNTS),
+    },
+  ])('rejects blank scope at the $boundary boundary', async ({ operation }) => {
+    await expect(operation()).rejects.toMatchObject({
+      name: 'SettingsRepositoryScopeError',
+    });
+    expect(await db.settings.count()).toBe(0);
+  });
+
+  it('canonicalizes local Accounts before persistence and fingerprinting', async () => {
+    const result = await mutateLocalSettingsSection(SHEET_ID, USER_ID, 'accounts', [
+      { name: '  Wallet  ', icon: '  ', color: '' },
+    ]);
+
+    expect(result.settings.accounts).toEqual([
+      {
+        name: 'Wallet',
+        icon: DEFAULT_ACCOUNT_ICON,
+        color: DEFAULT_ACCOUNT_COLOR,
+      },
+    ]);
+    const stored = await getOnboardingState(SHEET_ID);
+    expect(stored.accounts).toEqual(result.settings.accounts);
+  });
+
+  it('canonicalizes Categories and rejects case-insensitive duplicate names atomically', async () => {
+    const result = await mutateLocalSettingsSection(
+      SHEET_ID,
+      USER_ID,
+      'categories',
+      {
+        expense: [{ name: '  Food  ', icon: '', color: ' ' }],
+        income: [],
+        transfer: [],
+      },
+    );
+    expect(result.settings.categories.expense).toEqual([
+      expect.objectContaining({
+        name: 'Food',
+        icon: expect.any(String),
+        color: expect.any(String),
+      }),
+    ]);
+    const previous = result.settings.categories;
+
+    await expect(
+      mutateLocalSettingsSection(SHEET_ID, USER_ID, 'categories', {
+        expense: [{ name: 'Food' }, { name: ' food ' }],
+        income: [],
+        transfer: [],
+      }),
+    ).rejects.toMatchObject({ name: 'SettingsStorageCorruptionError' });
+
+    expect((await dexieSettingsLocalRepository.readSettings(SHEET_ID)).categories).toEqual(
+      previous,
+    );
   });
 
   it('atomically commits a section winner and its reduced sync state when expected value and readiness match', async () => {
@@ -239,6 +412,133 @@ describe('Dexie settings local repository', () => {
     await expect(readSettingsSyncState(SHEET_ID, USER_ID)).resolves.toEqual(result.state);
   });
 
+  it('sanitizes a full Quick Notes replacement against confirmed settings', async () => {
+    await setOnboardingState(onboarding(), SHEET_ID);
+    const result = await mutateLocalSettingsSection(
+      SHEET_ID,
+      USER_ID,
+      'quickNotes',
+      {
+        'expense:Removed': [
+          { id: 'removed', icon: 'Trash', label: 'Removed category' },
+        ],
+        'default:expense': [
+          {
+            id: 'expense',
+            icon: 'Receipt',
+            label: 'Expense',
+            account: 'Missing account',
+          },
+        ],
+        'transfer:Savings': [
+          {
+            id: 'transfer',
+            icon: 'ArrowRightLeft',
+            label: 'Transfer',
+            account: 'Wallet',
+            forValue: 'Missing account',
+          },
+        ],
+      },
+    );
+
+    expect(result.settings.quickNotes).toEqual({
+      'default:expense': [
+        { id: 'expense', icon: 'Receipt', label: 'Expense' },
+      ],
+      'transfer:Savings': [
+        {
+          id: 'transfer',
+          icon: 'ArrowRightLeft',
+          label: 'Transfer',
+          account: 'Wallet',
+        },
+      ],
+    });
+    expect(result.state.dirty).toContain('quickNotes');
+  });
+
+  it('atomically preserves concurrent Quick Note target edits and sanitizes stale references', async () => {
+    await setOnboardingState(onboarding(), SHEET_ID);
+
+    await Promise.all([
+      mutateLocalQuickNotes(SHEET_ID, USER_ID, (current) => ({
+        ...current,
+        'default:expense': [
+          { id: 'coffee', icon: 'Coffee', label: 'Coffee', account: 'Wallet' },
+        ],
+      })),
+      mutateLocalQuickNotes(SHEET_ID, USER_ID, (current) => {
+        current['transfer:Savings'] = [
+          {
+            id: 'move',
+            icon: 'ArrowRightLeft',
+            label: 'Move',
+            account: 'Missing account',
+            forValue: 'Bank',
+          },
+        ];
+        return current;
+      }),
+    ]);
+
+    const result = await dexieSettingsLocalRepository.readSettings(SHEET_ID);
+    expect(result.quickNotes).toEqual({
+      'default:expense': [
+        { id: 'coffee', icon: 'Coffee', label: 'Coffee', account: 'Wallet' },
+      ],
+      'transfer:Savings': [
+        {
+          id: 'move',
+          icon: 'ArrowRightLeft',
+          label: 'Move',
+          forValue: 'Bank',
+        },
+      ],
+    });
+    await expect(readSettingsSyncState(SHEET_ID, USER_ID)).resolves.toMatchObject({
+      dirty: ['quickNotes'],
+    });
+  });
+
+  it('preserves Quick Note references that only point at unconfirmed drafts', async () => {
+    await setOnboardingState(
+      onboarding({
+        accounts: [{ name: 'Draft account' }],
+        accountsConfirmed: false,
+        categories: {
+          expense: [{ name: 'Draft category' }],
+          income: [],
+          transfer: [],
+        },
+        categoriesConfirmed: false,
+      }),
+      SHEET_ID,
+    );
+
+    const result = await mutateLocalQuickNotes(SHEET_ID, USER_ID, () => ({
+      'expense:Draft category': [
+        {
+          id: 'draft',
+          icon: 'NotebookPen',
+          label: 'Draft',
+          account: 'Draft account',
+        },
+      ],
+    }));
+
+    expect(result.settings.quickNotes).toEqual({
+      'expense:Draft category': [
+        {
+          id: 'draft',
+          icon: 'NotebookPen',
+          label: 'Draft',
+          account: 'Draft account',
+        },
+      ],
+    });
+  });
+
   it('marks an explicitly written section dirty even when its canonical value is unchanged', async () => {
     await setOnboardingState(onboarding(), SHEET_ID);
 
@@ -278,7 +578,13 @@ describe('Dexie settings local repository', () => {
 
     await expect(getOnboardingState(SHEET_ID)).resolves.toEqual({
       ...original,
-      accounts: [{ name: 'Cash' }],
+      accounts: [
+        {
+          name: 'Cash',
+          icon: DEFAULT_ACCOUNT_ICON,
+          color: DEFAULT_ACCOUNT_COLOR,
+        },
+      ],
       accountsConfirmed: true,
     });
   });
@@ -359,7 +665,73 @@ describe('Dexie settings local repository', () => {
       ...current,
       accountsConfirmed: false,
     }));
-    expect(confirmation.state.dirty).toEqual(['accounts']);
+    expect(confirmation.state.dirty).toEqual([]);
+  });
+
+  it('persists an unconfirmed account draft without queueing or sanitizing it', async () => {
+    const draftQuickNotes: QuickNotesConfig = {
+      'default:expense': [
+        {
+          id: 'legacy-card',
+          icon: 'CreditCard',
+          label: 'Legacy card',
+          account: 'Closed account',
+        },
+      ],
+    };
+    await setOnboardingState(
+      onboarding({
+        accounts: [...ACCOUNTS, { name: 'Closed account' }],
+      }),
+      SHEET_ID,
+    );
+    await writeQuickNotesConfig(SHEET_ID, draftQuickNotes);
+    await writeSettingsSyncState(
+      SHEET_ID,
+      USER_ID,
+      markSettingsSectionDirty(createDefaultSettingsSyncState(USER_ID), 'accounts'),
+    );
+
+    const result = await mutateLocalOnboarding(SHEET_ID, USER_ID, (current) => ({
+      ...current,
+      accounts: ACCOUNTS,
+      accountsConfirmed: false,
+    }));
+
+    expect(result.settings.accounts).toEqual(ACCOUNTS);
+    expect(result.settings.accountsConfirmed).toBe(false);
+    expect(result.settings.quickNotes).toEqual(draftQuickNotes);
+    expect(result.state.dirty).toEqual([]);
+  });
+
+  it('queues and sanitizes the final account draft when it becomes confirmed', async () => {
+    const draftQuickNotes: QuickNotesConfig = {
+      'default:expense': [
+        {
+          id: 'legacy-card',
+          icon: 'CreditCard',
+          label: 'Legacy card',
+          account: 'Closed account',
+        },
+      ],
+    };
+    await setOnboardingState(
+      onboarding({ accounts: ACCOUNTS, accountsConfirmed: false }),
+      SHEET_ID,
+    );
+    await writeQuickNotesConfig(SHEET_ID, draftQuickNotes);
+
+    const result = await mutateLocalOnboarding(SHEET_ID, USER_ID, (current) => ({
+      ...current,
+      accountsConfirmed: true,
+    }));
+
+    expect(result.settings.quickNotes).toEqual({
+      'default:expense': [
+        { id: 'legacy-card', icon: 'CreditCard', label: 'Legacy card' },
+      ],
+    });
+    expect(result.state.dirty).toEqual(['accounts', 'quickNotes']);
   });
 
   it('detects changes made by an in-place onboarding updater', async () => {

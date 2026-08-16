@@ -1,13 +1,10 @@
 import type { SettingsSection, SheetSettingsConfig } from './settingsSync';
 import { encodeA1Range, fetchWithAuth } from './google';
 import {
-  DEFAULT_ACCOUNT_COLOR,
-  DEFAULT_ACCOUNT_ICON,
-  DEFAULT_CATEGORY_COLORS,
-  DEFAULT_CATEGORY_ICONS,
-  SUGGESTED_CATEGORY_COLORS,
-  SUGGESTED_CATEGORY_ICONS,
-} from './icons';
+  normalizeAccounts,
+  normalizeCategories,
+  SettingsSectionValidationError,
+} from './settingsSections';
 import {
   parseQuickNoteRows,
   QUICK_NOTE_HEADERS,
@@ -59,8 +56,6 @@ function emptyCategories(): SheetSettingsConfig['categories'] {
 
 const ACCOUNT_HEADERS = ['Account', 'Icon', 'Color'] as const;
 const CATEGORY_HEADERS = ['Type', 'Category', 'Icon', 'Color'] as const;
-
-class SettingsSectionValidationError extends Error {}
 
 function sheetProperties(metadata: SheetsMetadataResponse): SheetProperties[] {
   if (!Array.isArray(metadata.sheets)) {
@@ -124,8 +119,8 @@ function trimmedCell(value: unknown): string {
 }
 
 function parseAccountRows(rows: readonly (readonly unknown[])[]): SheetSettingsConfig['accounts'] {
-  const accounts: SheetSettingsConfig['accounts'] = [];
-  const seen = new Set<string>();
+  const accounts: Array<{ name: string; icon: string; color: string }> = [];
+  const rowNumbers: number[] = [];
 
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
@@ -134,24 +129,13 @@ function parseAccountRows(rows: readonly (readonly unknown[])[]): SheetSettingsC
       return;
     }
     const [name, icon, color] = cells;
-    if (!name) {
-      throw new SettingsSectionValidationError(`Account row ${rowNumber}: Name is required.`);
-    }
-    const key = name.toLowerCase();
-    if (seen.has(key)) {
-      throw new SettingsSectionValidationError(
-        `Account row ${rowNumber}: Duplicate name "${name}".`,
-      );
-    }
-    seen.add(key);
-    accounts.push({
-      name,
-      icon: icon || DEFAULT_ACCOUNT_ICON,
-      color: color || DEFAULT_ACCOUNT_COLOR,
-    });
+    rowNumbers.push(rowNumber);
+    accounts.push({ name, icon, color });
   });
 
-  return accounts;
+  return normalizeAccounts(accounts, {
+    itemLabel: (index) => `Account row ${rowNumbers[index]}`,
+  });
 }
 
 function isTransactionType(value: string): value is TransactionType {
@@ -166,10 +150,10 @@ function parseCategoryRows(
     income: [],
     transfer: [],
   };
-  const seen: Record<TransactionType, Set<string>> = {
-    expense: new Set(),
-    income: new Set(),
-    transfer: new Set(),
+  const rowNumbers: Record<TransactionType, number[]> = {
+    expense: [],
+    income: [],
+    transfer: [],
   };
 
   rows.forEach((row, index) => {
@@ -185,24 +169,13 @@ function parseCategoryRows(
         `Category row ${rowNumber}: Type must be "expense", "income", or "transfer".`,
       );
     }
-    if (!name) {
-      throw new SettingsSectionValidationError(`Category row ${rowNumber}: Name is required.`);
-    }
-    const key = name.toLowerCase();
-    if (seen[type].has(key)) {
-      throw new SettingsSectionValidationError(
-        `Category row ${rowNumber}: Duplicate ${type} name "${name}".`,
-      );
-    }
-    seen[type].add(key);
-    categories[type].push({
-      name,
-      icon: icon || SUGGESTED_CATEGORY_ICONS[name] || DEFAULT_CATEGORY_ICONS[type],
-      color: color || SUGGESTED_CATEGORY_COLORS[name] || DEFAULT_CATEGORY_COLORS[type],
-    });
+    rowNumbers[type].push(rowNumber);
+    categories[type].push({ name, icon, color });
   });
 
-  return categories;
+  return normalizeCategories(categories, {
+    itemLabel: (type, index) => `Category row ${rowNumbers[type][index]}`,
+  });
 }
 
 function invalidSection(error: unknown): never {
@@ -300,23 +273,26 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
       : section === 'categories'
         ? CATEGORY_HEADERS
         : QUICK_NOTE_HEADERS;
+  const normalizedValue =
+    section === 'accounts'
+      ? normalizeAccounts(value)
+      : section === 'categories'
+        ? normalizeCategories(value)
+        : value;
   const dataRows =
     section === 'accounts'
-      ? (value as SheetSettingsConfig['accounts']).map(({ name, icon, color }) => [
+      ? (normalizedValue as SheetSettingsConfig['accounts']).map(({ name, icon, color }) => [
           name,
-          icon ?? '',
-          color ?? '',
+          icon,
+          color,
         ])
       : section === 'categories'
         ? (['expense', 'income', 'transfer'] as const).flatMap((type) =>
-            (value as SheetSettingsConfig['categories'])[type].map(({ name, icon, color }) => [
-              type,
-              name,
-              icon ?? '',
-              color ?? '',
-            ]),
+            (normalizedValue as SheetSettingsConfig['categories'])[type].map(
+              ({ name, icon, color }) => [type, name, icon, color],
+            ),
           )
-        : serializeQuickNoteRows(value as SheetSettingsConfig['quickNotes']);
+        : serializeQuickNoteRows(normalizedValue as SheetSettingsConfig['quickNotes']);
   const readRange = section === 'accounts' ? 'A1:C' : section === 'categories' ? 'A1:D' : 'A1:M';
   const rows = [[...headers], ...dataRows].map((row) => ({
     values: row.map((cell) => ({ userEnteredValue: { stringValue: cell } })),

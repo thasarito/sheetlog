@@ -9,6 +9,7 @@ import type {
   SheetSettingsSectionReadResult,
 } from '../googleSettings';
 import type { SettingsSection, SheetSettingsConfig } from '../settingsSync';
+import { normalizeAccounts, normalizeCategories } from '../settingsSections';
 import { createCachedTransactionRecord } from '../transactionHistory';
 import type {
   AccountItem,
@@ -250,11 +251,11 @@ export async function writeOnboardingConfig(
   await delay();
 
   if (updates.accounts) {
-    setMockAccounts(updates.accounts);
+    setMockAccounts(normalizeAccounts(updates.accounts));
   }
 
   if (updates.categories) {
-    setMockCategories(updates.categories);
+    setMockCategories(normalizeCategories(updates.categories));
   }
 }
 
@@ -282,9 +283,9 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
 ): Promise<SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>> {
   await delay();
   if (section === 'accounts') {
-    setMockAccounts(value as SheetSettingsConfig['accounts']);
+    setMockAccounts(normalizeAccounts(value));
   } else if (section === 'categories') {
-    setMockCategories(value as SheetSettingsConfig['categories']);
+    setMockCategories(normalizeCategories(value));
   } else {
     setMockQuickNotes(value as SheetSettingsConfig['quickNotes']);
   }

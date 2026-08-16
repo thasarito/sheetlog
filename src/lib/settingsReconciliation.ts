@@ -2,7 +2,7 @@ import type {
   SheetSettingsReadResult,
   SheetSettingsSectionReadResult,
 } from './googleSettings';
-import { sanitizeQuickNotes } from './quickNoteSheet';
+import { sanitizeQuickNotesAgainstReadySettings } from './quickNoteSheet';
 import {
   classifyLegacyQuickNotesMigration,
   clearSettingsSectionDirty,
@@ -262,6 +262,20 @@ export async function reconcileSettings(
     if (section === 'categories') return settings.categoriesConfirmed;
     return settings.quickNotesPresent;
   };
+  const remoteSectionIsEmpty = (
+    section: 'accounts' | 'categories',
+    value: SheetSettingsConfig['accounts'] | SheetSettingsConfig['categories'],
+  ): boolean => {
+    if (section === 'accounts') {
+      return (value as SheetSettingsConfig['accounts']).length === 0;
+    }
+    const categories = value as SheetSettingsConfig['categories'];
+    return (
+      categories.expense.length === 0 &&
+      categories.income.length === 0 &&
+      categories.transfer.length === 0
+    );
+  };
   const commitWinner = async <Section extends SettingsSection>(
     section: Section,
     observed: LocalSettingsSnapshot,
@@ -303,12 +317,16 @@ export async function reconcileSettings(
       section,
       currentSettings[section] as SheetSettingsConfig[SettingsSection],
     );
-    await updateState((latest) =>
-      sectionReady(currentSettings, section) &&
-      observedLocalFingerprint !== latest.baselines[section]
+    await updateState((latest) => {
+      if (!sectionReady(currentSettings, section)) {
+        return section === 'quickNotes'
+          ? latest
+          : clearSettingsSectionDirty(latest, section);
+      }
+      return observedLocalFingerprint !== latest.baselines[section]
         ? markSettingsSectionDirty(latest, section)
-        : latest,
-    );
+        : latest;
+    });
 
     if (
       section === 'quickNotes' &&
@@ -386,10 +404,9 @@ export async function reconcileSettings(
     }
 
     if (section === 'quickNotes' && currentSettings.quickNotesPresent) {
-      const sanitized = sanitizeQuickNotes(
+      const sanitized = sanitizeQuickNotesAgainstReadySettings(
         currentSettings.quickNotes,
-        currentSettings.accounts,
-        currentSettings.categories,
+        currentSettings,
       );
       if (
         sectionFingerprint('quickNotes', sanitized) !==
@@ -413,6 +430,28 @@ export async function reconcileSettings(
         ? sectionFingerprint(section, readResult.value)
         : '';
       const baseline = state.baselines[section];
+      if (
+        section !== 'quickNotes' &&
+        !sectionReady(currentSettings, section) &&
+        (!readResult.present ||
+          remoteSectionIsEmpty(
+            section,
+            readResult.value as
+              | SheetSettingsConfig['accounts']
+              | SheetSettingsConfig['categories'],
+          ))
+      ) {
+        await updateState((latest) =>
+          clearSettingsSectionError(
+            {
+              ...clearSettingsSectionDirty(latest, section),
+              baselines: { ...latest.baselines, [section]: remoteFingerprint },
+            },
+            section,
+          ),
+        );
+        continue;
+      }
       if (
         section === 'quickNotes' &&
         migrationState &&
@@ -494,10 +533,9 @@ export async function reconcileSettings(
             );
             const readbackValue =
               section === 'quickNotes'
-                ? sanitizeQuickNotes(
+                ? sanitizeQuickNotesAgainstReadySettings(
                     writeResult.value as SheetSettingsConfig['quickNotes'],
-                    currentSettings.accounts,
-                    currentSettings.categories,
+                    currentSettings,
                   )
                 : writeResult.value;
             const winnerFingerprint = sectionFingerprint(section, readbackValue);
@@ -597,10 +635,9 @@ export async function reconcileSettings(
         } else {
           const winnerValue =
             section === 'quickNotes'
-              ? sanitizeQuickNotes(
+              ? sanitizeQuickNotesAgainstReadySettings(
                   readResult.value as SheetSettingsConfig['quickNotes'],
-                  currentSettings.accounts,
-                  currentSettings.categories,
+                  currentSettings,
                 )
               : readResult.value;
           const winnerFingerprint = sectionFingerprint(section, winnerValue);
@@ -635,10 +672,9 @@ export async function reconcileSettings(
         if (baseline !== remoteFingerprint) {
           const winnerValue =
             section === 'quickNotes'
-              ? sanitizeQuickNotes(
+              ? sanitizeQuickNotesAgainstReadySettings(
                   readResult.value as SheetSettingsConfig['quickNotes'],
-                  currentSettings.accounts,
-                  currentSettings.categories,
+                  currentSettings,
                 )
               : readResult.value;
           const winnerFingerprint = sectionFingerprint(section, winnerValue);
