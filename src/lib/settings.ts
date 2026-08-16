@@ -1,21 +1,16 @@
 import { DEFAULT_CATEGORIES } from './categories';
 import { db } from './db';
 import {
-  DEFAULT_ACCOUNT_COLOR,
-  DEFAULT_ACCOUNT_ICON,
-  DEFAULT_CATEGORY_COLORS,
-  DEFAULT_CATEGORY_ICONS,
-  SUGGESTED_CATEGORY_COLORS,
-  SUGGESTED_CATEGORY_ICONS,
-} from './icons';
+  normalizeAccounts,
+  normalizeCategories,
+  SettingsSectionValidationError,
+} from './settingsSections';
 import { isSheetlogAppId, type SheetlogAppId } from './sheetlogApps';
 import type {
   AccountItem,
   CategoryConfigWithMeta,
-  CategoryItem,
   OnboardingState,
   RecentCategories,
-  TransactionType,
 } from './types';
 
 const DEFAULT_RECENTS: RecentCategories = {
@@ -32,53 +27,160 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   categoriesConfirmed: false,
 };
 
-const LEGACY_ONBOARDING_STATE_KEY = 'onboardingState';
+export const LEGACY_ONBOARDING_STATE_KEY = 'onboardingState';
 const ONBOARDING_STATE_KEY_PREFIX = 'onboardingState:';
 const PRE_SHEET_ONBOARDING_STATE_KEY = `${ONBOARDING_STATE_KEY_PREFIX}preSheet`;
 const SELECTED_APP_ID_KEY = 'selectedAppId';
+
+export class OnboardingStateValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OnboardingStateValidationError';
+  }
+}
+
+export interface StoredOnboardingStateResult {
+  state: OnboardingState;
+  migrated: boolean;
+}
 
 export function getOnboardingStateKey(sheetId: string | null | undefined): string {
   return sheetId ? `${ONBOARDING_STATE_KEY_PREFIX}${sheetId}` : PRE_SHEET_ONBOARDING_STATE_KEY;
 }
 
-// Migration helpers for legacy string[] data
-function migrateAccounts(accounts: unknown[]): AccountItem[] {
-  if (accounts.length === 0) return [];
-  // Check if already migrated (first item is an object with 'name')
-  if (typeof accounts[0] === 'object' && accounts[0] !== null && 'name' in accounts[0]) {
-    return accounts as AccountItem[];
+function onboardingValidationError(message: string): never {
+  throw new OnboardingStateValidationError(message);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasLegacyStrings(value: unknown): boolean {
+  return Array.isArray(value) && value.some((item) => typeof item === 'string');
+}
+
+function normalizeOnboardingSection<Value>(read: () => Value): Value {
+  try {
+    return read();
+  } catch (error) {
+    if (error instanceof SettingsSectionValidationError) {
+      return onboardingValidationError(error.message);
+    }
+    throw error;
   }
-  // Migrate from string[]
-  return (accounts as string[]).map((name) => ({
-    name,
-    icon: DEFAULT_ACCOUNT_ICON,
-    color: DEFAULT_ACCOUNT_COLOR,
-  }));
+}
+
+function migrateAccounts(accounts: unknown, useDefaults: boolean): AccountItem[] {
+  if (accounts === undefined && useDefaults) return [];
+  if (!Array.isArray(accounts)) {
+    return onboardingValidationError('Accounts must be an array.');
+  }
+  if (hasLegacyStrings(accounts)) {
+    if (!accounts.every((item) => typeof item === 'string')) {
+      return onboardingValidationError('Legacy Accounts cannot mix names and objects.');
+    }
+    return normalizeOnboardingSection(() =>
+      normalizeAccounts(accounts.map((name) => ({ name }))),
+    );
+  }
+  return normalizeOnboardingSection(() => normalizeAccounts(accounts));
 }
 
 function migrateCategories(
-  categories: Record<string, unknown[]>,
-  type: TransactionType,
-): CategoryItem[] {
-  const items = categories[type];
-  if (!items || items.length === 0) return [];
-  // Check if already migrated
-  if (typeof items[0] === 'object' && items[0] !== null && 'name' in items[0]) {
-    return items as CategoryItem[];
+  categories: unknown,
+  useDefaults: boolean,
+): CategoryConfigWithMeta {
+  if (categories === undefined && useDefaults) {
+    return getDefaultOnboardingState().categories;
   }
-  // Migrate from string[]
-  return (items as string[]).map((name) => ({
-    name,
-    icon: SUGGESTED_CATEGORY_ICONS[name] ?? DEFAULT_CATEGORY_ICONS[type],
-    color: SUGGESTED_CATEGORY_COLORS[name] ?? DEFAULT_CATEGORY_COLORS[type],
-  }));
+  if (!isRecord(categories)) {
+    return onboardingValidationError('Categories must be a section object.');
+  }
+  const migrated = {} as Record<string, unknown[]>;
+  for (const type of ['expense', 'income', 'transfer'] as const) {
+    const items = categories[type];
+    if (items === undefined && useDefaults) {
+      migrated[type] = getDefaultOnboardingState().categories[type];
+      continue;
+    }
+    if (!Array.isArray(items)) {
+      return onboardingValidationError(`Categories ${type} must be an array.`);
+    }
+    if (hasLegacyStrings(items)) {
+      if (!items.every((item) => typeof item === 'string')) {
+        return onboardingValidationError(
+          `Legacy ${type} Categories cannot mix names and objects.`,
+        );
+      }
+      migrated[type] = items.map((name) => ({ name }));
+      continue;
+    }
+    migrated[type] = items;
+  }
+  return normalizeOnboardingSection(() => normalizeCategories(migrated));
 }
 
-function migrateCategoryConfig(categories: Record<string, unknown[]>): CategoryConfigWithMeta {
+export function migrateStoredOnboardingState(
+  value: unknown,
+  options: { legacySource?: boolean } = {},
+): StoredOnboardingStateResult {
+  if (!isRecord(value)) {
+    return onboardingValidationError('Onboarding state must be an object.');
+  }
+  const categoryRecord = isRecord(value.categories) ? value.categories : undefined;
+  const containsLegacyStrings =
+    hasLegacyStrings(value.accounts) ||
+    (categoryRecord !== undefined &&
+      (hasLegacyStrings(categoryRecord.expense) ||
+        hasLegacyStrings(categoryRecord.income) ||
+        hasLegacyStrings(categoryRecord.transfer)));
+  const legacyFormat = options.legacySource === true || containsLegacyStrings;
+  if (
+    value.sheetFolderId !== undefined &&
+    value.sheetFolderId !== null &&
+    typeof value.sheetFolderId !== 'string'
+  ) {
+    return onboardingValidationError('sheetFolderId must be a string or null.');
+  }
+  if (!legacyFormat && value.sheetFolderId === undefined) {
+    return onboardingValidationError('sheetFolderId must be a string or null.');
+  }
+  if (
+    value.accountsConfirmed !== undefined &&
+    typeof value.accountsConfirmed !== 'boolean'
+  ) {
+    return onboardingValidationError('accountsConfirmed must be a boolean.');
+  }
+  if (!legacyFormat && value.accountsConfirmed === undefined) {
+    return onboardingValidationError('accountsConfirmed must be a boolean.');
+  }
+  if (
+    value.categoriesConfirmed !== undefined &&
+    typeof value.categoriesConfirmed !== 'boolean'
+  ) {
+    return onboardingValidationError('categoriesConfirmed must be a boolean.');
+  }
+  if (!legacyFormat && value.categoriesConfirmed === undefined) {
+    return onboardingValidationError('categoriesConfirmed must be a boolean.');
+  }
+  const state: OnboardingState = {
+    sheetFolderId:
+      typeof value.sheetFolderId === 'string' ? value.sheetFolderId : null,
+    accounts: migrateAccounts(value.accounts, legacyFormat),
+    accountsConfirmed:
+      typeof value.accountsConfirmed === 'boolean'
+        ? value.accountsConfirmed
+        : false,
+    categories: migrateCategories(value.categories, legacyFormat),
+    categoriesConfirmed:
+      typeof value.categoriesConfirmed === 'boolean'
+        ? value.categoriesConfirmed
+        : false,
+  };
   return {
-    expense: migrateCategories(categories, 'expense'),
-    income: migrateCategories(categories, 'income'),
-    transfer: migrateCategories(categories, 'transfer'),
+    state,
+    migrated: legacyFormat || JSON.stringify(state) !== JSON.stringify(value),
   };
 }
 
@@ -119,9 +221,9 @@ export function getDefaultOnboardingState(): OnboardingState {
     ...DEFAULT_ONBOARDING_STATE,
     accounts: [...DEFAULT_ONBOARDING_STATE.accounts],
     categories: {
-      expense: [...DEFAULT_ONBOARDING_STATE.categories.expense],
-      income: [...DEFAULT_ONBOARDING_STATE.categories.income],
-      transfer: [...DEFAULT_ONBOARDING_STATE.categories.transfer],
+      expense: DEFAULT_ONBOARDING_STATE.categories.expense.map((item) => ({ ...item })),
+      income: DEFAULT_ONBOARDING_STATE.categories.income.map((item) => ({ ...item })),
+      transfer: DEFAULT_ONBOARDING_STATE.categories.transfer.map((item) => ({ ...item })),
     },
   };
 }
@@ -134,34 +236,12 @@ export async function getOnboardingState(sheetId?: string | null): Promise<Onboa
       const legacy = await db.settings.get(LEGACY_ONBOARDING_STATE_KEY);
       if (legacy?.value) {
         try {
-          const parsed = JSON.parse(legacy.value) as Record<string, unknown>;
-          const defaults = getDefaultOnboardingState();
-
-          const accounts = Array.isArray(parsed.accounts)
-            ? migrateAccounts(parsed.accounts)
-            : defaults.accounts;
-
-          const categories =
-            parsed.categories && typeof parsed.categories === 'object'
-              ? migrateCategoryConfig(parsed.categories as Record<string, unknown[]>)
-              : defaults.categories;
-
-          const migrated: OnboardingState = {
-            sheetFolderId: typeof parsed.sheetFolderId === 'string' ? parsed.sheetFolderId : defaults.sheetFolderId,
-            accounts,
-            accountsConfirmed:
-              typeof parsed.accountsConfirmed === 'boolean'
-                ? parsed.accountsConfirmed
-                : defaults.accountsConfirmed,
-            categories,
-            categoriesConfirmed:
-              typeof parsed.categoriesConfirmed === 'boolean'
-                ? parsed.categoriesConfirmed
-                : defaults.categoriesConfirmed,
-          };
-
-          await setOnboardingState(migrated, sheetId);
-          return migrated;
+          const result = migrateStoredOnboardingState(
+            JSON.parse(legacy.value) as unknown,
+            { legacySource: true },
+          );
+          await setOnboardingState(result.state, sheetId);
+          return result.state;
         } catch {
           // Fall through to default
         }
@@ -170,33 +250,13 @@ export async function getOnboardingState(sheetId?: string | null): Promise<Onboa
     return getDefaultOnboardingState();
   }
   try {
-    const parsed = JSON.parse(record.value) as Record<string, unknown>;
-    const defaults = getDefaultOnboardingState();
-
-    // Migrate legacy data
-    const accounts = Array.isArray(parsed.accounts)
-      ? migrateAccounts(parsed.accounts)
-      : defaults.accounts;
-
-    const categories =
-      parsed.categories && typeof parsed.categories === 'object'
-        ? migrateCategoryConfig(parsed.categories as Record<string, unknown[]>)
-        : defaults.categories;
-
-    return {
-      sheetFolderId:
-        typeof parsed.sheetFolderId === 'string' ? parsed.sheetFolderId : defaults.sheetFolderId,
-      accounts,
-      accountsConfirmed:
-        typeof parsed.accountsConfirmed === 'boolean'
-          ? parsed.accountsConfirmed
-          : defaults.accountsConfirmed,
-      categories,
-      categoriesConfirmed:
-        typeof parsed.categoriesConfirmed === 'boolean'
-          ? parsed.categoriesConfirmed
-          : defaults.categoriesConfirmed,
-    };
+    const result = migrateStoredOnboardingState(
+      JSON.parse(record.value) as unknown,
+    );
+    if (result.migrated) {
+      await setOnboardingState(result.state, sheetId);
+    }
+    return result.state;
   } catch {
     return getDefaultOnboardingState();
   }

@@ -4,19 +4,28 @@ import type {
   LocalSettingsSnapshot,
   SettingsLocalRepository,
 } from './settingsReconciliation';
-import { sanitizeQuickNotes } from './quickNoteSheet';
-import { getDefaultOnboardingState, getOnboardingStateKey } from './settings';
+import { sanitizeQuickNotesAgainstReadySettings } from './quickNoteSheet';
 import {
+  getDefaultOnboardingState,
+  getOnboardingStateKey,
+  LEGACY_ONBOARDING_STATE_KEY,
+  migrateStoredOnboardingState,
+  OnboardingStateValidationError,
+} from './settings';
+import {
+  clearSettingsSectionDirty,
   createDefaultSettingsSyncState,
   deleteLegacyQuickNotesConfigIfUnchanged,
   fingerprintQuickNotesConfig,
   fingerprintSettingsSection,
+  getQuickNotesStorageKey,
   markSettingsSectionDirty,
   readLegacyQuickNotesConfig,
   readQuickNotesConfig,
   readSettingsSyncState,
   SettingsStorageCorruptionError,
   updateSettingsSyncState,
+  validateQuickNotesConfig,
   writeQuickNotesConfig,
   writeSettingsSyncState,
   type SettingsSection,
@@ -24,111 +33,92 @@ import {
   type SheetSettingsConfig,
 } from './settingsSync';
 import { db } from './db';
-import type {
-  AccountItem,
-  CategoryConfigWithMeta,
-  CategoryItem,
-  OnboardingState,
-} from './types';
+import type { OnboardingState, QuickNotesConfig } from './types';
 
 export type SettingsLocalMutationResult = Omit<
   LocalSettingsAtomicCommitResult,
   'applied'
 >;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+export class SettingsRepositoryScopeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SettingsRepositoryScopeError';
+  }
+}
+
+function requireIdentifier(value: string, label: string): void {
+  if (value.trim().length === 0) {
+    throw new SettingsRepositoryScopeError(`${label} is required.`);
+  }
+}
+
+function requireSettingsScope(sheetId: string, verifiedUserId: string): void {
+  requireIdentifier(sheetId, 'Sheet ID');
+  requireIdentifier(verifiedUserId, 'Verified user ID');
 }
 
 function corrupt(storageKey: string, detail: string): never {
   throw new SettingsStorageCorruptionError(storageKey, detail);
 }
 
-function validateNamedItem<Item extends AccountItem | CategoryItem>(
+function validateOnboardingState(
   value: unknown,
   storageKey: string,
-  label: string,
-): Item {
-  if (!isRecord(value)) {
-    return corrupt(storageKey, `${label} must be an object.`);
-  }
-  if (typeof value.name !== 'string' || value.name.trim().length === 0) {
-    return corrupt(storageKey, `${label} name must be a non-empty string.`);
-  }
-  for (const field of ['icon', 'color'] as const) {
-    if (value[field] !== undefined && typeof value[field] !== 'string') {
-      return corrupt(storageKey, `${label} ${field} must be a string when present.`);
+): OnboardingState {
+  try {
+    return migrateStoredOnboardingState(value).state;
+  } catch (error) {
+    if (error instanceof OnboardingStateValidationError) {
+      return corrupt(storageKey, error.message);
     }
+    throw error;
   }
-  return value as Item;
-}
-
-function validateAccounts(value: unknown, storageKey: string): AccountItem[] {
-  if (!Array.isArray(value)) {
-    return corrupt(storageKey, 'Accounts must be an array.');
-  }
-  return value.map((item, index) =>
-    validateNamedItem<AccountItem>(item, storageKey, `Account ${index + 1}`),
-  );
-}
-
-function validateCategories(
-  value: unknown,
-  storageKey: string,
-): CategoryConfigWithMeta {
-  if (!isRecord(value)) {
-    return corrupt(storageKey, 'Categories must be a section object.');
-  }
-  const categories = {} as CategoryConfigWithMeta;
-  for (const type of ['expense', 'income', 'transfer'] as const) {
-    const items = value[type];
-    if (!Array.isArray(items)) {
-      return corrupt(storageKey, `Categories ${type} must be an array.`);
-    }
-    categories[type] = items.map((item, index) =>
-      validateNamedItem<CategoryItem>(
-        item,
-        storageKey,
-        `${type} category ${index + 1}`,
-      ),
-    );
-  }
-  return categories;
-}
-
-function validateOnboardingState(value: unknown, storageKey: string): OnboardingState {
-  if (!isRecord(value)) {
-    return corrupt(storageKey, 'Onboarding state must be an object.');
-  }
-  if (value.sheetFolderId !== null && typeof value.sheetFolderId !== 'string') {
-    return corrupt(storageKey, 'sheetFolderId must be a string or null.');
-  }
-  if (typeof value.accountsConfirmed !== 'boolean') {
-    return corrupt(storageKey, 'accountsConfirmed must be a boolean.');
-  }
-  if (typeof value.categoriesConfirmed !== 'boolean') {
-    return corrupt(storageKey, 'categoriesConfirmed must be a boolean.');
-  }
-  return {
-    sheetFolderId: value.sheetFolderId,
-    accounts: validateAccounts(value.accounts, storageKey),
-    accountsConfirmed: value.accountsConfirmed,
-    categories: validateCategories(value.categories, storageKey),
-    categoriesConfirmed: value.categoriesConfirmed,
-  };
 }
 
 async function readOnboardingState(sheetId: string): Promise<OnboardingState> {
   const storageKey = getOnboardingStateKey(sheetId);
   const record = await db.settings.get(storageKey);
-  if (!record) return getDefaultOnboardingState();
+  if (!record) {
+    const legacyRecord = await db.settings.get(LEGACY_ONBOARDING_STATE_KEY);
+    if (!legacyRecord) return getDefaultOnboardingState();
+    let legacyValue: unknown;
+    try {
+      legacyValue = JSON.parse(legacyRecord.value) as unknown;
+    } catch {
+      return corrupt(LEGACY_ONBOARDING_STATE_KEY, 'value is not valid JSON.');
+    }
+    try {
+      const migrated = migrateStoredOnboardingState(legacyValue, {
+        legacySource: true,
+      }).state;
+      await writeOnboardingState(sheetId, migrated);
+      return migrated;
+    } catch (error) {
+      if (error instanceof OnboardingStateValidationError) {
+        return corrupt(LEGACY_ONBOARDING_STATE_KEY, error.message);
+      }
+      throw error;
+    }
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(record.value) as unknown;
   } catch {
     return corrupt(storageKey, 'value is not valid JSON.');
   }
-  return validateOnboardingState(parsed, storageKey);
+  try {
+    const result = migrateStoredOnboardingState(parsed);
+    if (result.migrated) {
+      await writeOnboardingState(sheetId, result.state);
+    }
+    return result.state;
+  } catch (error) {
+    if (error instanceof OnboardingStateValidationError) {
+      return corrupt(storageKey, error.message);
+    }
+    throw error;
+  }
 }
 
 async function writeOnboardingState(
@@ -160,7 +150,8 @@ async function readSettingsRecords(sheetId: string): Promise<LocalSettingsSnapsh
 }
 
 async function readSettings(sheetId: string): Promise<LocalSettingsSnapshot> {
-  return db.transaction('r', db.settings, async () => readSettingsRecords(sheetId));
+  requireIdentifier(sheetId, 'Sheet ID');
+  return db.transaction('rw', db.settings, async () => readSettingsRecords(sheetId));
 }
 
 function sectionReady(
@@ -244,6 +235,7 @@ async function commitSection<Section extends SettingsSection>(
     applied: boolean,
   ) => SettingsSyncState,
 ): Promise<LocalSettingsAtomicCommitResult> {
+  requireSettingsScope(sheetId, verifiedUserId);
   return db.transaction('rw', db.settings, async () => {
     const [currentSettings, currentState] = await Promise.all([
       readSettingsRecords(sheetId),
@@ -266,9 +258,18 @@ async function commitSection<Section extends SettingsSection>(
   });
 }
 
+async function updateSyncState(
+  sheetId: string,
+  verifiedUserId: string,
+  update: (state: SettingsSyncState | null) => SettingsSyncState,
+): Promise<SettingsSyncState> {
+  requireSettingsScope(sheetId, verifiedUserId);
+  return updateSettingsSyncState(sheetId, verifiedUserId, update);
+}
+
 export const dexieSettingsLocalRepository: SettingsLocalRepository = {
   readSettings,
-  updateSyncState: updateSettingsSyncState,
+  updateSyncState,
   commitSection,
   readLegacyQuickNotes: readLegacyQuickNotesConfig,
   deleteLegacyQuickNotesIfUnchanged: deleteLegacyQuickNotesConfigIfUnchanged,
@@ -309,20 +310,32 @@ async function mutateLocalOnboardingInTransaction(
       fingerprintSettingsSection(nextSettings, 'categories');
 
   let state = currentState ?? createDefaultSettingsSyncState(verifiedUserId);
-  if (accountsChanged || forceDirty.includes('accounts')) {
-    state = markSettingsSectionDirty(state, 'accounts');
+  if (nextOnboarding.accountsConfirmed) {
+    if (accountsChanged || forceDirty.includes('accounts')) {
+      state = markSettingsSectionDirty(state, 'accounts');
+    }
+  } else {
+    state = clearSettingsSectionDirty(state, 'accounts');
   }
-  if (categoriesChanged || forceDirty.includes('categories')) {
-    state = markSettingsSectionDirty(state, 'categories');
+  if (nextOnboarding.categoriesConfirmed) {
+    if (categoriesChanged || forceDirty.includes('categories')) {
+      state = markSettingsSectionDirty(state, 'categories');
+    }
+  } else {
+    state = clearSettingsSectionDirty(state, 'categories');
   }
 
   await writeOnboardingState(sheetId, nextOnboarding);
-  if (currentQuickNotes !== null && (accountsChanged || categoriesChanged)) {
-    const sanitized = sanitizeQuickNotes(
-      currentQuickNotes,
-      nextOnboarding.accounts,
-      nextOnboarding.categories,
-    );
+  const confirmedSettingsChanged =
+    (accountsChanged && nextOnboarding.accountsConfirmed) ||
+    (categoriesChanged && nextOnboarding.categoriesConfirmed);
+  if (currentQuickNotes !== null && confirmedSettingsChanged) {
+    const sanitized = sanitizeQuickNotesAgainstReadySettings(currentQuickNotes, {
+      accounts: nextOnboarding.accounts,
+      accountsConfirmed: nextOnboarding.accountsConfirmed,
+      categories: nextOnboarding.categories,
+      categoriesConfirmed: nextOnboarding.categoriesConfirmed,
+    });
     if (
       fingerprintQuickNotesConfig(sanitized) !==
       fingerprintQuickNotesConfig(currentQuickNotes)
@@ -340,8 +353,52 @@ export async function mutateLocalOnboarding(
   verifiedUserId: string,
   update: (current: OnboardingState) => OnboardingState,
 ): Promise<SettingsLocalMutationResult> {
+  requireSettingsScope(sheetId, verifiedUserId);
   return db.transaction('rw', db.settings, async () =>
     mutateLocalOnboardingInTransaction(sheetId, verifiedUserId, update, []),
+  );
+}
+
+async function mutateLocalQuickNotesInTransaction(
+  sheetId: string,
+  verifiedUserId: string,
+  update: (current: QuickNotesConfig) => QuickNotesConfig,
+): Promise<SettingsLocalMutationResult> {
+  const [currentSettings, currentState] = await Promise.all([
+    readSettingsRecords(sheetId),
+    readSettingsSyncState(sheetId, verifiedUserId),
+  ]);
+  const validated = validateQuickNotesConfig(
+    update(cloneJson(currentSettings.quickNotes)),
+    getQuickNotesStorageKey(sheetId),
+  );
+  const sanitized = sanitizeQuickNotesAgainstReadySettings(
+    validated,
+    currentSettings,
+  );
+  await writeQuickNotesConfig(sheetId, sanitized);
+  const state = await persistState(
+    sheetId,
+    verifiedUserId,
+    markSettingsSectionDirty(
+      currentState ?? createDefaultSettingsSyncState(verifiedUserId),
+      'quickNotes',
+    ),
+  );
+  return {
+    settings: await readSettingsRecords(sheetId),
+    state,
+  };
+}
+
+export async function mutateLocalQuickNotes(
+  sheetId: string,
+  verifiedUserId: string,
+  update: (current: QuickNotesConfig) => QuickNotesConfig,
+): Promise<SettingsLocalMutationResult> {
+  requireSettingsScope(sheetId, verifiedUserId);
+  return db.transaction('rw', db.settings, async () =>
+    mutateLocalQuickNotesInTransaction(sheetId, verifiedUserId, update),
   );
 }
 
@@ -383,6 +440,7 @@ export async function mutateLocalSettingsSection<Section extends SettingsSection
   section: Section,
   value: SheetSettingsConfig[Section],
 ): Promise<SettingsLocalMutationResult> {
+  requireSettingsScope(sheetId, verifiedUserId);
   if (section === 'accounts') {
     return mutateLocalOnboardingSection(
       sheetId,
@@ -399,26 +457,9 @@ export async function mutateLocalSettingsSection<Section extends SettingsSection
       value as SheetSettingsConfig['categories'],
     );
   }
-  return db.transaction('rw', db.settings, async () => {
-    const [, currentState] = await Promise.all([
-      readSettingsRecords(sheetId),
-      readSettingsSyncState(sheetId, verifiedUserId),
-    ]);
-    await writeQuickNotesConfig(
-      sheetId,
-      value as SheetSettingsConfig['quickNotes'],
-    );
-    const state = await persistState(
-      sheetId,
-      verifiedUserId,
-      markSettingsSectionDirty(
-        currentState ?? createDefaultSettingsSyncState(verifiedUserId),
-        'quickNotes',
-      ),
-    );
-    return {
-      settings: await readSettingsRecords(sheetId),
-      state,
-    };
-  });
+  return mutateLocalQuickNotes(
+    sheetId,
+    verifiedUserId,
+    () => value as SheetSettingsConfig['quickNotes'],
+  );
 }

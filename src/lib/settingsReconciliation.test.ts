@@ -534,6 +534,52 @@ describe('settings reconciliation', () => {
     expect(result.state.dirty).toEqual([]);
   });
 
+  it('does not sanitize Quick Notes against unconfirmed Account and Category drafts', async () => {
+    const quickNotes: QuickNotesConfig = {
+      'expense:Removed draft': [
+        {
+          id: 'draft-note',
+          icon: 'NotebookPen',
+          label: 'Draft note',
+          account: 'Removed draft account',
+        },
+      ],
+    };
+    const initial = localSnapshot({
+      accounts: [],
+      accountsConfirmed: false,
+      categories: clone(EMPTY_CATEGORIES),
+      categoriesConfirmed: false,
+      quickNotes,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: '',
+        categories: '',
+        quickNotes: fingerprintQuickNotesConfig(quickNotes),
+      },
+    };
+    const local = memoryLocal(initial, state);
+    const remote = remoteAdapter(
+      remoteSettings({
+        quickNotes: { status: 'ok', present: true, value: quickNotes },
+      }),
+    );
+
+    await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual(quickNotes);
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+  });
+
   it('auto-imports legacy Quick Notes only into the one verified workspace with no remote tab', async () => {
     const legacy: QuickNotesConfig = {
       'default:expense': [{ id: 'coffee', icon: 'Coffee', label: 'Coffee' }],
@@ -950,6 +996,112 @@ describe('settings reconciliation', () => {
     expect(local.current().accountsConfirmed).toBe(true);
     expect(result.changed).toEqual(['accounts']);
     expect(result.status).toBe('synced');
+  });
+
+  it('preserves an unconfirmed Account draft when the remote tab is missing', async () => {
+    const draft = [{ name: 'Draft wallet' }];
+    const initial = localSnapshot({
+      accounts: draft,
+      accountsConfirmed: false,
+    });
+    const staleState = markSettingsSectionDirty(
+      createDefaultSettingsSyncState('user-a'),
+      'accounts',
+    );
+    const local = memoryLocal(initial, staleState);
+    const remote = remoteAdapter(remoteSettings());
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+    expect(local.current().accounts).toEqual(draft);
+    expect(local.current().accountsConfirmed).toBe(false);
+    expect(result.state.dirty).not.toContain('accounts');
+    expect(result.state.baselines.accounts).toBe('');
+  });
+
+  it('preserves an unconfirmed Category draft against an empty tab, then pushes it after confirmation', async () => {
+    const draftCategories: SheetSettingsConfig['categories'] = {
+      expense: [{ name: 'Draft expense' }],
+      income: [{ name: 'Draft income' }],
+      transfer: [{ name: 'Draft transfer' }],
+    };
+    const initial = localSnapshot({
+      categories: draftCategories,
+      categoriesConfirmed: false,
+    });
+    const local = memoryLocal(initial, createDefaultSettingsSyncState('user-a'));
+    const remote = remoteAdapter(
+      remoteSettings({
+        categories: {
+          status: 'ok',
+          present: true,
+          value: clone(EMPTY_CATEGORIES),
+        },
+      }),
+    );
+
+    const draftResult = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().categories).toEqual(draftCategories);
+    expect(local.current().categoriesConfirmed).toBe(false);
+    expect(draftResult.state.dirty).not.toContain('categories');
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+
+    local.edit('categories', draftCategories);
+    const confirmedResult = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(remote.replaceSection).toHaveBeenCalledWith(
+      'sheet-a',
+      'categories',
+      draftCategories,
+    );
+    expect(confirmedResult.pushed).toContain('categories');
+    expect(confirmedResult.state.dirty).not.toContain('categories');
+  });
+
+  it('hydrates an unconfirmed Account draft from a nonempty remote tab', async () => {
+    const initial = localSnapshot({
+      accounts: [{ name: 'Local draft' }],
+      accountsConfirmed: false,
+    });
+    const sheetAccounts = [{ name: 'Sheet wallet' }];
+    const local = memoryLocal(initial, createDefaultSettingsSyncState('user-a'));
+    const remote = remoteAdapter(
+      remoteSettings({
+        accounts: { status: 'ok', present: true, value: sheetAccounts },
+      }),
+    );
+
+    await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().accounts).toEqual(sheetAccounts);
+    expect(local.current().accountsConfirmed).toBe(true);
+    expect(remote.replaceSection).not.toHaveBeenCalled();
   });
 
   it('persists initial dirty migration candidates before a remote read fails', async () => {
@@ -2034,6 +2186,8 @@ describe('settings reconciliation', () => {
       ],
     };
     const localSettings = localSnapshot({
+      accountsConfirmed: true,
+      categoriesConfirmed: true,
       quickNotes: legacy,
       quickNotesPresent: true,
     });
@@ -2048,7 +2202,16 @@ describe('settings reconciliation', () => {
       },
     };
     const local = memoryLocal(localSettings, state, legacy);
-    const remote = remoteAdapter(remoteSettings());
+    const remote = remoteAdapter(
+      remoteSettings({
+        accounts: { status: 'ok', present: true, value: [] },
+        categories: {
+          status: 'ok',
+          present: true,
+          value: clone(EMPTY_CATEGORIES),
+        },
+      }),
+    );
     vi.mocked(remote.replaceSection).mockResolvedValueOnce({
       status: 'ok',
       present: true,
@@ -2093,8 +2256,24 @@ describe('settings reconciliation', () => {
         },
       ],
     };
-    const local = memoryLocal(localSnapshot(), null, legacy);
-    const remote = remoteAdapter(remoteSettings());
+    const local = memoryLocal(
+      localSnapshot({
+        accountsConfirmed: true,
+        categoriesConfirmed: true,
+      }),
+      null,
+      legacy,
+    );
+    const remote = remoteAdapter(
+      remoteSettings({
+        accounts: { status: 'ok', present: true, value: [] },
+        categories: {
+          status: 'ok',
+          present: true,
+          value: clone(EMPTY_CATEGORIES),
+        },
+      }),
+    );
 
     const result = await reconcileSettings({
       sheetId: 'sheet-a',
