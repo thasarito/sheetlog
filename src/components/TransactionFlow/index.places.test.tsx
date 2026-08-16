@@ -620,6 +620,8 @@ describe("TransactionFlow Places integration", () => {
     const user = userEvent.setup();
     renderFlow();
     await user.click(screen.getByRole("button", { name: "Start expense" }));
+    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
 
     const noteInput = screen.getByRole("combobox", {
       name: "Transaction note",
@@ -649,6 +651,19 @@ describe("TransactionFlow Places integration", () => {
       coffeeHouse,
       expect.objectContaining({ token: expect.any(Object) }),
     );
+
+    await user.type(noteInput, " updated");
+    await screen.findByRole("option", { name: /Coffee House/ });
+    expect(mocks.createSession).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => {
+      expect(mocks.addMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          note: "Coffee House Resolved updated",
+          place: { provider: "google", placeId: "coffee-house" },
+        }),
+      );
+    });
   });
 
   it("keeps free text and the inline popup usable when place resolution fails", async () => {
