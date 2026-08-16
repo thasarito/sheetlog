@@ -37,7 +37,7 @@ const ONBOARDING_STATE_KEY_PREFIX = 'onboardingState:';
 const PRE_SHEET_ONBOARDING_STATE_KEY = `${ONBOARDING_STATE_KEY_PREFIX}preSheet`;
 const SELECTED_APP_ID_KEY = 'selectedAppId';
 
-function getOnboardingStateKey(sheetId: string | null | undefined): string {
+export function getOnboardingStateKey(sheetId: string | null | undefined): string {
   return sheetId ? `${ONBOARDING_STATE_KEY_PREFIX}${sheetId}` : PRE_SHEET_ONBOARDING_STATE_KEY;
 }
 
