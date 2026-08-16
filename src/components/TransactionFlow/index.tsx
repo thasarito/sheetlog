@@ -1493,7 +1493,7 @@ export function TransactionFlow() {
         {/* Main content - full height */}
         <div className="flex-1 min-h-0 pb-6">
           {step === 0 ? (
-            <div className="grid h-full grid-rows-[2fr_3fr] gap-3">
+            <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
               <div className="min-h-0">
                 <TopDashboard
                   onEditTransaction={handleEditTransaction}

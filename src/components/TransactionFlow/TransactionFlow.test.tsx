@@ -328,7 +328,7 @@ vi.mock("./TopDashboard", () => ({
   }) => {
     mocks.dashboardEdit = onEditTransaction;
     return (
-      <div>
+      <div data-testid="top-dashboard">
       <button type="button" onClick={onViewAll}>
         View transaction history
       </button>
@@ -555,6 +555,18 @@ beforeEach(() => {
 });
 
 describe("TransactionFlow reimbursement entry", () => {
+  it("keeps the original one-quarter dashboard and three-quarter action layout", () => {
+    renderFlow();
+
+    const dashboardCell = screen.getByTestId("top-dashboard").parentElement;
+    const dashboardActionGrid = dashboardCell?.parentElement;
+
+    expect(dashboardActionGrid).toHaveClass(
+      "grid-rows-[1fr_3fr]",
+      "gap-4",
+    );
+  });
+
   it("opens complete history and routes a selected row into the existing editor", async () => {
     const user = userEvent.setup();
     renderFlow();
