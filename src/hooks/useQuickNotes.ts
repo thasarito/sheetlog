@@ -9,6 +9,10 @@ import {
   readLegacyQuickNotesConfig,
   readQuickNotesConfig,
 } from '../lib/settingsSync';
+import {
+  createQuickNotesQuerySnapshot,
+  type QuickNotesQuerySnapshot,
+} from '../lib/quickNotesView';
 import type { QuickNote, QuickNotesConfig, TransactionType } from '../lib/types';
 import {
   publishSettingsLocalMutation,
@@ -46,14 +50,19 @@ export function useQuickNotesQuery() {
   const userId =
     accessToken && status === 'authenticated' ? userProfile?.id ?? null : null;
 
-  return useQuery({
+  const query = useQuery<QuickNotesQuerySnapshot>({
     queryKey: quickNotesKeys.state(sheetId, userId),
     queryFn: async () => {
       if (sheetId && userId) {
         const scoped = await readQuickNotesConfig(sheetId);
-        if (scoped !== null) return scoped;
+        if (scoped !== null) {
+          return createQuickNotesQuerySnapshot(scoped, null);
+        }
       }
-      return (await readLegacyQuickNotesConfig()) ?? {};
+      return createQuickNotesQuerySnapshot(
+        null,
+        await readLegacyQuickNotesConfig(),
+      );
     },
     networkMode: 'always',
     staleTime: Infinity,
@@ -61,6 +70,12 @@ export function useQuickNotesQuery() {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
   });
+  return {
+    ...query,
+    data: query.data?.config,
+    provenance: query.data?.provenance ?? null,
+    isLegacyFallback: query.data?.provenance === 'legacy',
+  };
 }
 
 /**
@@ -107,7 +122,10 @@ export function useUpdateQuickNotes() {
             settingsKeys.state(sheetId, userId),
             result.state,
           );
-          queryClient.setQueryData(queryKey, next);
+          queryClient.setQueryData(
+            queryKey,
+            createQuickNotesQuerySnapshot(next, null),
+          );
           publishSettingsLocalMutation(
             queryClient,
             sheetId,
@@ -122,7 +140,10 @@ export function useUpdateQuickNotes() {
         [key]: notes,
       }));
       if (getSessionTokenGeneration() === sessionGeneration) {
-        queryClient.setQueryData(queryKey, next);
+        queryClient.setQueryData(
+          queryKey,
+          createQuickNotesQuerySnapshot(null, next),
+        );
       }
       return next;
     },
@@ -165,7 +186,10 @@ export function useUpdateDefaultQuickNotes() {
             settingsKeys.state(sheetId, userId),
             result.state,
           );
-          queryClient.setQueryData(queryKey, next);
+          queryClient.setQueryData(
+            queryKey,
+            createQuickNotesQuerySnapshot(next, null),
+          );
           publishSettingsLocalMutation(
             queryClient,
             sheetId,
@@ -180,7 +204,10 @@ export function useUpdateDefaultQuickNotes() {
         [key]: notes,
       }));
       if (getSessionTokenGeneration() === sessionGeneration) {
-        queryClient.setQueryData(queryKey, next);
+        queryClient.setQueryData(
+          queryKey,
+          createQuickNotesQuerySnapshot(null, next),
+        );
       }
       return next;
     },

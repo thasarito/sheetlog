@@ -99,6 +99,9 @@ export function useOAuthCallback(): OAuthCallbackState {
         await queryClient.cancelQueries({ queryKey: GOOGLE_TOKEN_QUERY_KEY });
         await queryClient.cancelQueries({ queryKey: USER_PROFILE_QUERY_KEY });
         queryClient.removeQueries({ queryKey: USER_PROFILE_QUERY_KEY });
+        queryClient.removeQueries({ queryKey: ["onboarding"] });
+        queryClient.removeQueries({ queryKey: ["settings"] });
+        queryClient.removeQueries({ queryKey: ["quickNotes"] });
         localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
         localStorage.removeItem(STORAGE_KEYS.SHEET_ID);
         localStorage.removeItem(STORAGE_KEYS.SHEET_TAB_ID);

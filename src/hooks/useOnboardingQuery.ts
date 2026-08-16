@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useSession, useWorkspace, useConnectivity } from '../app/providers';
 import { getSessionTokenGeneration } from '../app/providers/session/session.generation';
 import {
@@ -15,6 +15,7 @@ import {
 } from '../lib/settingsLocalRepository';
 import { runSettingsReconciliation } from '../lib/settingsReconciliationRunner';
 import type { SettingsReconciliationResult } from '../lib/settingsReconciliation';
+import { createQuickNotesQuerySnapshot } from '../lib/quickNotesView';
 import {
   countRememberedSettingsWorkspaces,
   readLegacyQuickNotesConfig,
@@ -31,6 +32,10 @@ export const settingsKeys = {
     ['settings', 'state', sheetId, userId] as const,
   mutationRevision: (sheetId: string | null, userId: string | null) =>
     ['settings', 'mutationRevision', sheetId, userId] as const,
+  completedRevision: (sheetId: string | null, userId: string | null) =>
+    ['settings', 'completedRevision', sheetId, userId] as const,
+  claimedRevision: (sheetId: string | null, userId: string | null) =>
+    ['settings', 'claimedRevision', sheetId, userId] as const,
 };
 
 export const onboardingKeys = {
@@ -104,15 +109,10 @@ export function publishSettingsLocalMutation(
     settingsKeys.mutationRevision(sheetId, userId),
     (current = 0) => current + 1,
   );
-  const syncKey = settingsKeys.sync(sheetId, userId);
-  const fetchStatus = queryClient.getQueryState(syncKey)?.fetchStatus;
   void queryClient.invalidateQueries({
-    queryKey: syncKey,
+    queryKey: settingsKeys.sync(sheetId, userId),
     exact: true,
-    refetchType:
-      fetchStatus === 'fetching' || fetchStatus === 'paused'
-        ? 'none'
-        : 'active',
+    refetchType: 'none',
   });
 }
 
@@ -128,8 +128,10 @@ async function refreshSettingsCaches(
     readSettingsSyncState(sheetId, userId),
     readQuickNotesConfig(sheetId),
   ]);
-  const quickNotes =
-    scopedQuickNotes ?? (await readLegacyQuickNotesConfig()) ?? {};
+  const quickNotes = createQuickNotesQuerySnapshot(
+    scopedQuickNotes,
+    scopedQuickNotes === null ? await readLegacyQuickNotesConfig() : null,
+  );
   if (!sessionGenerationIsCurrent(sessionGeneration)) return;
   queryClient.setQueryData(
     onboardingKeys.state(sheetId, userId),
@@ -166,10 +168,26 @@ export function useOnboardingSync() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
-  const wasFetchingRef = useRef(false);
-  const fetchStartRevisionRef = useRef(0);
-  const queuedRevisionRef = useRef<number | null>(null);
-  const followUpRunningRef = useRef(false);
+  const completedRevisionQuery = useQuery({
+    queryKey: settingsKeys.completedRevision(sheetId, userId),
+    queryFn: () => 0,
+    initialData: 0,
+    networkMode: 'always',
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+  const claimedRevisionQuery = useQuery({
+    queryKey: settingsKeys.claimedRevision(sheetId, userId),
+    queryFn: () => 0,
+    initialData: 0,
+    networkMode: 'always',
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
 
   const enabled = Boolean(
     accessToken && status === 'authenticated' && userId && sheetId,
@@ -181,6 +199,10 @@ export function useOnboardingSync() {
       if (!accessToken || !userId || !sheetId) {
         return null;
       }
+      const revisionAtStart =
+        queryClient.getQueryData<number>(
+          settingsKeys.mutationRevision(sheetId, userId),
+        ) ?? 0;
       try {
         const result = await runSettingsReconciliation({
           accessToken,
@@ -195,6 +217,12 @@ export function useOnboardingSync() {
           userId,
           sessionGeneration,
         );
+        if (sessionGenerationIsCurrent(sessionGeneration)) {
+          queryClient.setQueryData<number>(
+            settingsKeys.completedRevision(sheetId, userId),
+            (current = 0) => Math.max(current, revisionAtStart),
+          );
+        }
         return result;
       } catch (error) {
         await refreshSettingsCaches(
@@ -214,62 +242,42 @@ export function useOnboardingSync() {
     refetchOnReconnect: 'always',
   });
 
-  const scopeKey = `${sheetId ?? ''}\u0000${userId ?? ''}`;
-  const scopeResetRef = useRef(scopeKey);
-  useEffect(() => {
-    if (scopeResetRef.current === scopeKey) {
-      return;
-    }
-    scopeResetRef.current = scopeKey;
-    wasFetchingRef.current = false;
-    fetchStartRevisionRef.current = 0;
-    queuedRevisionRef.current = null;
-    followUpRunningRef.current = false;
-  }, [scopeKey]);
-
   useEffect(() => {
     const state = settingsStateQuery.data;
-    const hasPrompt = state?.quickNotesMigration?.intent === 'prompt';
-    const hasErrors = Boolean(
-      syncQuery.error || (state && Object.keys(state.errors).length > 0),
+    const mutationRevision = mutationRevisionQuery.data;
+    if (
+      !enabled ||
+      syncQuery.isFetching ||
+      !state ||
+      state.dirty.length === 0 ||
+      mutationRevision <= completedRevisionQuery.data ||
+      mutationRevision <= claimedRevisionQuery.data
+    ) {
+      return;
+    }
+    let claimed = false;
+    queryClient.setQueryData<number>(
+      settingsKeys.claimedRevision(sheetId, userId),
+      (current = 0) => {
+        if (current >= mutationRevision) return current;
+        claimed = true;
+        return mutationRevision;
+      },
     );
-    const hasSafeDirty = Boolean(
-      enabled && state && state.dirty.length > 0 && !hasErrors && !hasPrompt,
-    );
-    if (syncQuery.isFetching) {
-      if (!wasFetchingRef.current) {
-        wasFetchingRef.current = true;
-        fetchStartRevisionRef.current = mutationRevisionQuery.data;
-      }
-      if (
-        hasSafeDirty &&
-        mutationRevisionQuery.data > fetchStartRevisionRef.current
-      ) {
-        queuedRevisionRef.current = mutationRevisionQuery.data;
-      }
-      return;
+    if (claimed) {
+      void syncQuery.refetch({ cancelRefetch: false });
     }
-    if (wasFetchingRef.current) {
-      wasFetchingRef.current = false;
-      followUpRunningRef.current = false;
-    }
-    if (!hasSafeDirty) {
-      queuedRevisionRef.current = null;
-      return;
-    }
-    if (queuedRevisionRef.current === null || followUpRunningRef.current) {
-      return;
-    }
-    queuedRevisionRef.current = null;
-    followUpRunningRef.current = true;
-    void syncQuery.refetch();
   }, [
+    claimedRevisionQuery.data,
+    completedRevisionQuery.data,
     enabled,
     mutationRevisionQuery.data,
+    queryClient,
+    sheetId,
     settingsStateQuery.data,
-    syncQuery.error,
     syncQuery.isFetching,
     syncQuery.refetch,
+    userId,
   ]);
 
   return syncQuery;

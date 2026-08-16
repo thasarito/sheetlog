@@ -46,10 +46,15 @@ export function useOnboarding() {
   const settingsSyncResult = settingsSyncQuery.data ?? undefined;
   const settingsSyncState =
     settingsStateQuery.data ?? settingsSyncResult?.state ?? null;
+  const currentImportError =
+    importMutation.error &&
+    settingsSyncQuery.dataUpdatedAt <= importMutation.submittedAt
+      ? importMutation.error
+      : null;
   const operationError =
     onboardingQuery.error ??
     settingsStateQuery.error ??
-    importMutation.error ??
+    currentImportError ??
     settingsSyncQuery.error;
   const settingsSyncStatus = deriveSettingsSyncStatus(
     settingsSyncState,

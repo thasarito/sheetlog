@@ -189,7 +189,7 @@ describe("useOAuthCallback", () => {
     },
   );
 
-  it("clears the old profile and workspace before publishing a replacement token", async () => {
+  it("clears old account query families and workspace before publishing a replacement token", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -214,6 +214,26 @@ describe("useOAuthCallback", () => {
       name: "Older account",
       picture: null,
     });
+    queryClient.setQueryData(
+      ["onboarding", "state", "sheet-a", "account-a"],
+      { accounts: [{ name: "Private account A wallet" }] },
+    );
+    queryClient.setQueryData(
+      ["settings", "mutationRevision", "sheet-a", "account-a"],
+      3,
+    );
+    queryClient.setQueryData(
+      ["settings", "completedRevision", "sheet-a", "account-a"],
+      2,
+    );
+    queryClient.setQueryData(
+      ["settings", "claimedRevision", "sheet-a", "account-a"],
+      3,
+    );
+    queryClient.setQueryData(
+      ["quickNotes", "state", "sheet-a", "account-a"],
+      { "expense:Food": [{ id: "private-note" }] },
+    );
     window.localStorage.setItem(
       STORAGE_KEYS.USER_PROFILE,
       JSON.stringify({ id: "account-a", name: "Account A", picture: null }),
@@ -252,6 +272,15 @@ describe("useOAuthCallback", () => {
     expect(window.localStorage.getItem(STORAGE_KEYS.USER_PROFILE)).toBeNull();
     expect(window.localStorage.getItem(STORAGE_KEYS.SHEET_ID)).toBeNull();
     expect(window.localStorage.getItem(STORAGE_KEYS.SHEET_TAB_ID)).toBeNull();
+    expect(
+      queryClient.getQueryCache().findAll({ queryKey: ["onboarding"] }),
+    ).toHaveLength(0);
+    expect(
+      queryClient.getQueryCache().findAll({ queryKey: ["settings"] }),
+    ).toHaveLength(0);
+    expect(
+      queryClient.getQueryCache().findAll({ queryKey: ["quickNotes"] }),
+    ).toHaveLength(0);
     expect(routerState.navigate).toHaveBeenCalledWith({
       to: "/app",
       replace: true,

@@ -10,6 +10,7 @@ import { advanceSessionTokenGeneration } from '../app/providers/session/session.
 import { db } from '../lib/db';
 import * as settingsLocalRepository from '../lib/settingsLocalRepository';
 import {
+  getQuickNotesStorageKey,
   readLegacyQuickNotesConfig,
   readQuickNotesConfig,
   readSettingsSyncState,
@@ -105,6 +106,8 @@ describe('scoped Quick Notes hooks', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(LEGACY_NOTES);
+    expect(result.current.provenance).toBe('legacy');
+    expect(result.current.isLegacyFallback).toBe(true);
     expect(await readQuickNotesConfig('sheet-a')).toBeNull();
   });
 
@@ -116,6 +119,27 @@ describe('scoped Quick Notes hooks', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual({});
+    expect(result.current.provenance).toBe('scoped');
+    expect(result.current.isLegacyFallback).toBe(false);
+  });
+
+  it('surfaces corrupt scoped storage without falling back to healthy-looking legacy data', async () => {
+    await db.settings.put({
+      key: getQuickNotesStorageKey('sheet-a'),
+      value: '{malformed scoped quick notes',
+      updatedAt: '2026-08-16T00:00:00.000Z',
+    });
+    const { result } = renderHook(() => useQuickNotesQuery(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.provenance).toBeNull();
+    expect(result.current.isLegacyFallback).toBe(false);
+    expect(result.current.error).toMatchObject({
+      name: 'SettingsStorageCorruptionError',
+    });
   });
 
   it('atomically preserves concurrent category and default target updates', async () => {
@@ -245,6 +269,7 @@ describe('scoped Quick Notes hooks', () => {
         }),
       ).rejects.toMatchObject({ name: 'SettingsStorageCorruptionError' });
     });
+    await waitFor(() => expect(result.current.isError).toBe(true));
     expect((await db.settings.get('quickNotes'))?.value).toBe('{invalid json');
   });
 
@@ -277,6 +302,7 @@ describe('scoped Quick Notes hooks', () => {
         name: 'LegacyQuickNotesMigrationRequiredError',
       });
     });
+    await waitFor(() => expect(result.current.isError).toBe(true));
     await expect(readLegacyQuickNotesConfig()).resolves.toEqual(legacy);
     await expect(readQuickNotesConfig('sheet-a')).resolves.toBeNull();
 
