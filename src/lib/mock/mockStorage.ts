@@ -2,17 +2,24 @@
  * Mock storage using localStorage for offline development
  */
 
-import type { AccountItem, CategoryConfigWithMeta, TransactionRecord } from '../types';
+import type {
+  AccountItem,
+  CategoryConfigWithMeta,
+  QuickNotesConfig,
+  TransactionRecord,
+} from '../types';
 
 const STORAGE_PREFIX = 'sheetlog.mock';
 const TRANSACTIONS_KEY = `${STORAGE_PREFIX}.transactions`;
 const ACCOUNTS_KEY = `${STORAGE_PREFIX}.accounts`;
 const CATEGORIES_KEY = `${STORAGE_PREFIX}.categories`;
+const QUICK_NOTES_KEY = `${STORAGE_PREFIX}.quickNotes`;
 
 export interface MockSheetData {
   transactions: TransactionRecord[];
   accounts: AccountItem[];
   categories: CategoryConfigWithMeta;
+  quickNotes: QuickNotesConfig | null;
 }
 
 const DEFAULT_ACCOUNTS: AccountItem[] = [
@@ -93,11 +100,27 @@ export function setMockCategories(categories: CategoryConfigWithMeta): void {
   setToStorage(CATEGORIES_KEY, categories);
 }
 
+export function getMockQuickNotes(): QuickNotesConfig | null {
+  if (localStorage.getItem(QUICK_NOTES_KEY) === null) {
+    return null;
+  }
+  return getFromStorage<QuickNotesConfig>(QUICK_NOTES_KEY, {});
+}
+
+export function setMockQuickNotes(quickNotes: QuickNotesConfig): void {
+  setToStorage(QUICK_NOTES_KEY, quickNotes);
+}
+
+export function clearMockQuickNotes(): void {
+  localStorage.removeItem(QUICK_NOTES_KEY);
+}
+
 export function getMockSheetData(): MockSheetData {
   return {
     transactions: getMockTransactions(),
     accounts: getMockAccounts(),
     categories: getMockCategories(),
+    quickNotes: getMockQuickNotes(),
   };
 }
 
@@ -111,12 +134,20 @@ export function setMockSheetData(data: Partial<MockSheetData>): void {
   if (data.categories !== undefined) {
     setMockCategories(data.categories);
   }
+  if (data.quickNotes !== undefined) {
+    if (data.quickNotes === null) {
+      clearMockQuickNotes();
+    } else {
+      setMockQuickNotes(data.quickNotes);
+    }
+  }
 }
 
 export function clearMockData(): void {
   localStorage.removeItem(TRANSACTIONS_KEY);
   localStorage.removeItem(ACCOUNTS_KEY);
   localStorage.removeItem(CATEGORIES_KEY);
+  localStorage.removeItem(QUICK_NOTES_KEY);
 }
 
 export { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES };

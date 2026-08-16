@@ -4,6 +4,11 @@
  */
 
 import type { ReimbursementLedgerRow } from '../reimbursements';
+import type {
+  SheetSettingsReadResult,
+  SheetSettingsSectionReadResult,
+} from '../googleSettings';
+import type { SettingsSection, SheetSettingsConfig } from '../settingsSync';
 import { createCachedTransactionRecord } from '../transactionHistory';
 import type {
   AccountItem,
@@ -14,9 +19,11 @@ import type {
 import {
   getMockAccounts,
   getMockCategories,
+  getMockQuickNotes,
   getMockTransactions,
   setMockAccounts,
   setMockCategories,
+  setMockQuickNotes,
   setMockTransactions,
 } from './mockStorage';
 
@@ -248,6 +255,40 @@ export async function writeOnboardingConfig(
   if (updates.categories) {
     setMockCategories(updates.categories);
   }
+}
+
+export async function readSheetSettingsConfig(
+  _accessToken: string,
+  _spreadsheetId: string,
+): Promise<SheetSettingsReadResult> {
+  await delay();
+  const quickNotes = getMockQuickNotes();
+  return {
+    accounts: { status: 'ok', present: true, value: getMockAccounts() },
+    categories: { status: 'ok', present: true, value: getMockCategories() },
+    quickNotes:
+      quickNotes === null
+        ? { status: 'ok', present: false, value: {} }
+        : { status: 'ok', present: true, value: quickNotes },
+  };
+}
+
+export async function replaceSheetSettingsSection<Section extends SettingsSection>(
+  accessToken: string,
+  spreadsheetId: string,
+  section: Section,
+  value: SheetSettingsConfig[Section],
+): Promise<SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>> {
+  await delay();
+  if (section === 'accounts') {
+    setMockAccounts(value as SheetSettingsConfig['accounts']);
+  } else if (section === 'categories') {
+    setMockCategories(value as SheetSettingsConfig['categories']);
+  } else {
+    setMockQuickNotes(value as SheetSettingsConfig['quickNotes']);
+  }
+  const readBack = await readSheetSettingsConfig(accessToken, spreadsheetId);
+  return readBack[section] as SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>;
 }
 
 /**
