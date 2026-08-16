@@ -31,6 +31,8 @@ export const GEOLOCATION_OPTIONS: PositionOptions = {
 };
 
 const GOOGLE_MAPS_SCRIPT_ID = "google-maps-js-api";
+const GOOGLE_MAPS_READY_POLL_INTERVAL_MS = 10;
+const GOOGLE_MAPS_READY_TIMEOUT_MS = 5000;
 const MAX_NEARBY_RESULT_COUNT = 5;
 
 let mapsScriptPromise: Promise<void> | null = null;
@@ -102,15 +104,37 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
       | HTMLScriptElement
       | null;
     const mapsScript = script ?? document.createElement("script");
+    let readyPoll: number | null = null;
+    let readyDeadline = 0;
 
     function cleanup() {
       mapsScript.removeEventListener("load", succeed);
       mapsScript.removeEventListener("error", fail);
+      if (readyPoll !== null) {
+        window.clearTimeout(readyPoll);
+        readyPoll = null;
+      }
+    }
+
+    function resolveWhenReady() {
+      if (hasPlacesImporter()) {
+        cleanup();
+        resolve();
+        return;
+      }
+      if (Date.now() >= readyDeadline) {
+        fail();
+        return;
+      }
+      readyPoll = window.setTimeout(
+        resolveWhenReady,
+        GOOGLE_MAPS_READY_POLL_INTERVAL_MS
+      );
     }
 
     function succeed() {
-      cleanup();
-      resolve();
+      readyDeadline = Date.now() + GOOGLE_MAPS_READY_TIMEOUT_MS;
+      resolveWhenReady();
     }
 
     function fail() {
