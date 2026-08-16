@@ -9,6 +9,7 @@ import type { TransactionRecord } from "./types";
 const googleMocks = vi.hoisted(() => ({
   appendTransaction: vi.fn(),
   deleteRow: vi.fn(),
+  ensurePlaceHeaders: vi.fn(),
   ensureReimbursementHeader: vi.fn(),
   getSheetTabId: vi.fn(),
   readLinkedReimbursements: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock("./mock", () => ({
   IS_DEV_MODE: false,
   appendTransaction: vi.fn(),
   deleteRow: vi.fn(),
+  ensurePlaceHeaders: vi.fn(),
   ensureReimbursementHeader: vi.fn(),
   getSheetTabId: vi.fn(),
   readLinkedReimbursements: vi.fn(),
@@ -138,6 +140,7 @@ describe("syncPendingTransactions concurrency", () => {
   beforeEach(async () => {
     googleMocks.appendTransaction.mockReset().mockResolvedValue(2);
     googleMocks.deleteRow.mockReset().mockResolvedValue(undefined);
+    googleMocks.ensurePlaceHeaders.mockReset().mockResolvedValue(undefined);
     googleMocks.ensureReimbursementHeader.mockReset().mockResolvedValue(undefined);
     googleMocks.getSheetTabId.mockReset().mockResolvedValue(0);
     googleMocks.readLinkedReimbursements.mockReset().mockResolvedValue([]);
@@ -811,10 +814,432 @@ describe("syncPendingTransactions concurrency", () => {
   });
 });
 
+describe("syncPendingTransactions place metadata", () => {
+  beforeEach(async () => {
+    googleMocks.appendTransaction.mockReset().mockResolvedValue(20);
+    googleMocks.deleteRow.mockReset().mockResolvedValue(undefined);
+    googleMocks.ensurePlaceHeaders.mockReset().mockResolvedValue(undefined);
+    googleMocks.ensureReimbursementHeader
+      .mockReset()
+      .mockResolvedValue(undefined);
+    googleMocks.getSheetTabId.mockReset().mockResolvedValue(0);
+    googleMocks.readLinkedReimbursements.mockReset().mockResolvedValue([]);
+    googleMocks.readTransactionById.mockReset().mockResolvedValue(null);
+    googleMocks.readTransactionIdMap.mockReset().mockResolvedValue(new Map());
+    googleMocks.updateRow.mockReset().mockResolvedValue(undefined);
+    await db.transactions.clear();
+    await db.settings.clear();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await db.transactions.clear();
+    await db.settings.clear();
+  });
+
+  it("assures M/N once before appending place-bearing rows", async () => {
+    const events: string[] = [];
+    googleMocks.ensurePlaceHeaders.mockImplementation(async () => {
+      events.push("header");
+    });
+    googleMocks.appendTransaction.mockImplementation(async () => {
+      events.push("append");
+      return events.length + 2;
+    });
+    await db.transactions.bulkAdd([
+      transaction("place-a", {
+        note: "Cafe A",
+        place: { provider: "google", placeId: "a" },
+        placeUpdateIntent: "set",
+      }),
+      transaction("place-b", {
+        note: "Cafe B",
+        place: { provider: "google", placeId: "b" },
+        createdAt: "2026-08-15T09:00:00.000Z",
+        updatedAt: "2026-08-15T09:00:00.000Z",
+      }),
+    ]);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(2);
+
+    expect(events).toEqual(["header", "append", "append"]);
+    expect(googleMocks.ensurePlaceHeaders).toHaveBeenCalledTimes(1);
+    for (const [, , remoteWrite] of googleMocks.appendTransaction.mock.calls) {
+      expect(remoteWrite).not.toHaveProperty("placeUpdateIntent");
+    }
+    expect(await db.transactions.get("place-a")).not.toHaveProperty(
+      "placeUpdateIntent",
+    );
+  });
+
+  it("skips M/N assurance for a plain append", async () => {
+    const pending = transaction("plain-append");
+    await db.transactions.add(pending);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(1);
+
+    expect(googleMocks.ensurePlaceHeaders).not.toHaveBeenCalled();
+    expect(googleMocks.appendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes appended place metadata in the remote and synced local rows", async () => {
+    const pending = transaction("normalized-place-append", {
+      note: "Cafe",
+      place: { provider: "google", placeId: "  place-id  " },
+    });
+    await db.transactions.add(pending);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(1);
+
+    expect(googleMocks.appendTransaction).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      expect.objectContaining({
+        place: { provider: "google", placeId: "place-id" },
+      }),
+    );
+    expect(await db.transactions.get(pending.id)).toMatchObject({
+      status: "synced",
+      place: { provider: "google", placeId: "place-id" },
+    });
+  });
+
+  it.each([
+    {
+      intent: "preserve",
+      pendingPlace: undefined,
+      expected: { provider: "google", placeId: "remote" },
+    },
+    {
+      intent: "set",
+      pendingPlace: { provider: "google", placeId: "queued" },
+      expected: { provider: "google", placeId: "queued" },
+    },
+    { intent: "clear", pendingPlace: undefined, expected: undefined },
+  ] as const)(
+    "reconciles existing $intent intent",
+    async ({ intent, pendingPlace, expected }) => {
+      const pending = transaction(`intent-${intent}`, {
+        note: "Cafe",
+        place: pendingPlace,
+        placeUpdateIntent: intent,
+      });
+      const remote = transaction(pending.id, {
+        note: "Cafe",
+        place: { provider: "google", placeId: "remote" },
+        status: "synced",
+        targetSheetId: undefined,
+        targetUserId: undefined,
+        sheetId: "sheet-a",
+        sheetRow: 8,
+      });
+      await db.transactions.put(pending);
+      googleMocks.readTransactionIdMap.mockResolvedValue(
+        new Map([[pending.id, 8]]),
+      );
+      googleMocks.readTransactionById.mockResolvedValue(remote);
+
+      await expect(
+        syncPendingTransactions("access-token", "sheet-a", "user-a"),
+      ).resolves.toBe(1);
+
+      const stored = await db.transactions.get(pending.id);
+      expect(stored?.place).toEqual(expected);
+      expect(stored).not.toHaveProperty("placeUpdateIntent");
+      if (expected === undefined) {
+        expect(stored).not.toHaveProperty("place");
+      }
+      for (const [, , , remoteWrite] of googleMocks.updateRow.mock.calls) {
+        expect(remoteWrite).not.toHaveProperty("placeUpdateIntent");
+      }
+    },
+  );
+
+  it.each([
+    {
+      intent: "set",
+      place: { provider: "google", placeId: "same" },
+    },
+    { intent: "clear", place: undefined },
+  ] as const)(
+    "assures M/N before forcing an equal-content $intent update",
+    async ({ intent, place }) => {
+      const events: string[] = [];
+      const pending = transaction(`equal-${intent}`, {
+        note: "Cafe",
+        place,
+        placeUpdateIntent: intent,
+      });
+      const remote = transaction(pending.id, {
+        note: "Cafe",
+        place,
+        status: "synced",
+        targetSheetId: undefined,
+        targetUserId: undefined,
+        sheetId: "sheet-a",
+        sheetRow: 9,
+      });
+      await db.transactions.add(pending);
+      googleMocks.readTransactionIdMap.mockResolvedValue(
+        new Map([[pending.id, 9]]),
+      );
+      googleMocks.readTransactionById.mockResolvedValue(remote);
+      googleMocks.ensurePlaceHeaders.mockImplementation(async () => {
+        events.push("header");
+      });
+      googleMocks.updateRow.mockImplementation(async () => {
+        events.push("update");
+      });
+
+      await expect(
+        syncPendingTransactions("access-token", "sheet-a", "user-a"),
+      ).resolves.toBe(1);
+
+      expect(events).toEqual(["header", "update"]);
+      expect(googleMocks.updateRow).toHaveBeenCalledTimes(1);
+      expect(googleMocks.updateRow.mock.calls[0]?.[3]).not.toHaveProperty(
+        "placeUpdateIntent",
+      );
+      expect(await db.transactions.get(pending.id)).not.toHaveProperty(
+        "placeUpdateIntent",
+      );
+    },
+  );
+
+  it("assures M/N before skipping an equal place-bearing existing row", async () => {
+    const events: string[] = [];
+    const place = { provider: "google", placeId: "same" } as const;
+    const pending = transaction("equal-place-retry", {
+      note: "Cafe",
+      place,
+    });
+    const remote = transaction(pending.id, {
+      note: "Cafe",
+      place,
+      status: "synced",
+      targetSheetId: undefined,
+      targetUserId: undefined,
+      sheetId: "sheet-a",
+      sheetRow: 10,
+    });
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[pending.id, 10]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    googleMocks.ensurePlaceHeaders.mockImplementation(async () => {
+      events.push("header");
+    });
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(1);
+
+    expect(events).toEqual(["header"]);
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(await db.transactions.get(pending.id)).toMatchObject({
+      status: "synced",
+      place,
+    });
+  });
+
+  it("keeps an equal existing explicit write pending when M/N assurance fails", async () => {
+    const place = { provider: "google", placeId: "same" } as const;
+    const pending = transaction("equal-place-header-failure", {
+      note: "Cafe",
+      place,
+      placeUpdateIntent: "set",
+    });
+    const remote = transaction(pending.id, {
+      note: "Cafe",
+      place,
+      status: "synced",
+      targetSheetId: undefined,
+      targetUserId: undefined,
+      sheetId: "sheet-a",
+      sheetRow: 11,
+    });
+    const headerError = new TypeError("offline");
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[pending.id, 11]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    googleMocks.ensurePlaceHeaders.mockRejectedValue(headerError);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).rejects.toBe(headerError);
+
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(await db.transactions.get(pending.id)).toMatchObject({
+      status: "pending",
+      place,
+      placeUpdateIntent: "set",
+    });
+  });
+
+  it("does not mark synced after only the pending place intent changes", async () => {
+    const place = { provider: "google", placeId: "same" } as const;
+    const pending = reimbursement("intent-only-race", "source", {
+      note: "Cafe",
+      place,
+      placeUpdateIntent: "preserve",
+    });
+    const remote = reimbursement(pending.id, "source", {
+      note: "Cafe",
+      place,
+      status: "synced",
+      targetSheetId: undefined,
+      targetUserId: undefined,
+      sheetId: "sheet-a",
+      sheetRow: 12,
+    });
+    const linkedHeaderStarted = deferred<void>();
+    const releaseLinkedHeader = deferred<void>();
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[pending.id, 12]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    googleMocks.ensureReimbursementHeader.mockImplementation(async () => {
+      linkedHeaderStarted.resolve();
+      await releaseLinkedHeader.promise;
+    });
+
+    const activeSync = syncPendingTransactions(
+      "access-token",
+      "sheet-a",
+      "user-a",
+    );
+    await linkedHeaderStarted.promise;
+    await db.transactions.update(pending.id, {
+      placeUpdateIntent: "set",
+    });
+    releaseLinkedHeader.resolve();
+
+    await expect(activeSync).resolves.toBe(0);
+    expect(await db.transactions.get(pending.id)).toMatchObject({
+      status: "pending",
+      place,
+      placeUpdateIntent: "set",
+    });
+  });
+
+  it("restores the authoritative remote place when a local edit disappears mid-update", async () => {
+    const pending = transaction("place-rollback", {
+      note: "Cafe",
+      place: { provider: "google", placeId: "local" },
+      placeUpdateIntent: "set",
+    });
+    const remote = transaction(pending.id, {
+      note: "Cafe",
+      place: { provider: "google", placeId: "remote" },
+      status: "synced",
+      targetSheetId: undefined,
+      targetUserId: undefined,
+      sheetId: "sheet-a",
+      sheetRow: 13,
+    });
+    const updateStarted = deferred<void>();
+    const releaseUpdate = deferred<void>();
+    let updateCount = 0;
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap
+      .mockResolvedValueOnce(new Map([[pending.id, 13]]))
+      .mockResolvedValueOnce(new Map([[pending.id, 15]]));
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    googleMocks.updateRow.mockImplementation(async () => {
+      updateCount += 1;
+      if (updateCount === 1) {
+        updateStarted.resolve();
+        await releaseUpdate.promise;
+      }
+    });
+
+    const activeSync = syncPendingTransactions(
+      "access-token",
+      "sheet-a",
+      "user-a",
+    );
+    await updateStarted.promise;
+    await db.transactions.delete(pending.id);
+    releaseUpdate.resolve();
+
+    await expect(activeSync).resolves.toBe(0);
+    expect(googleMocks.updateRow).toHaveBeenNthCalledWith(
+      2,
+      "access-token",
+      "sheet-a",
+      15,
+      expect.objectContaining({
+        id: pending.id,
+        place: { provider: "google", placeId: "remote" },
+      }),
+    );
+    expect(googleMocks.updateRow.mock.calls[1]?.[3]).not.toHaveProperty(
+      "placeUpdateIntent",
+    );
+  });
+
+  it("uses full-record last-write-wins for a legacy row without an intent", async () => {
+    const events: string[] = [];
+    const pending = transaction("legacy-place-write", {
+      note: "Cafe",
+      place: { provider: "google", placeId: "local" },
+    });
+    const remote = transaction(pending.id, {
+      note: "Cafe",
+      place: { provider: "google", placeId: "remote" },
+      status: "synced",
+      targetSheetId: undefined,
+      targetUserId: undefined,
+      sheetId: "sheet-a",
+      sheetRow: 16,
+    });
+    await db.transactions.add(pending);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[pending.id, 16]]),
+    );
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    googleMocks.ensurePlaceHeaders.mockImplementation(async () => {
+      events.push("header");
+    });
+    googleMocks.updateRow.mockImplementation(async () => {
+      events.push("update");
+    });
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(1);
+
+    expect(events).toEqual(["header", "update"]);
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      16,
+      expect.objectContaining({
+        place: { provider: "google", placeId: "local" },
+      }),
+    );
+    expect(await db.transactions.get(pending.id)).toMatchObject({
+      status: "synced",
+      place: { provider: "google", placeId: "local" },
+    });
+  });
+});
+
 describe("syncPendingTransactions reimbursement validation", () => {
   beforeEach(async () => {
     googleMocks.appendTransaction.mockReset().mockResolvedValue(20);
     googleMocks.deleteRow.mockReset().mockResolvedValue(undefined);
+    googleMocks.ensurePlaceHeaders.mockReset().mockResolvedValue(undefined);
     googleMocks.ensureReimbursementHeader.mockReset().mockResolvedValue(undefined);
     googleMocks.getSheetTabId.mockReset().mockResolvedValue(0);
     googleMocks.readLinkedReimbursements.mockReset().mockResolvedValue([]);
