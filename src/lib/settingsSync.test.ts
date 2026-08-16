@@ -5,6 +5,7 @@ import {
   clearSettingsSectionDirty,
   clearSettingsSectionError,
   createDefaultSettingsSyncState,
+  deleteLegacyQuickNotesConfig,
   fingerprintSettingsSection,
   getQuickNotesStorageKey,
   getSettingsSyncStorageKey,
@@ -253,6 +254,25 @@ describe('portable settings sync state', () => {
     await expect(readLegacyQuickNotesConfig()).resolves.toEqual(legacy);
     expect(getQuickNotesStorageKey('sheet/a')).toBe('quickNotes:sheet%2Fa');
     expect(await db.settings.get('quickNotes')).toEqual(legacyRecord);
+  });
+
+  it('deletes only legacy Quick Notes after a successful migration', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Coffee' }],
+    };
+    const scoped: QuickNotesConfig = {
+      'default:income': [{ id: 'scoped', icon: 'Wallet', label: 'Salary' }],
+    };
+    await db.settings.put({
+      key: 'quickNotes',
+      value: JSON.stringify(legacy),
+      updatedAt: '2026-08-16T01:02:03.000Z',
+    });
+    await writeQuickNotesConfig('sheet-a', scoped);
+    await deleteLegacyQuickNotesConfig();
+
+    expect(await db.settings.get('quickNotes')).toBeUndefined();
+    await expect(readQuickNotesConfig('sheet-a')).resolves.toEqual(scoped);
   });
 
   it('rejects six Quick Notes before put and preserves the previous readable record', async () => {

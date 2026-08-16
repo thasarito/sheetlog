@@ -264,6 +264,10 @@ export async function readLegacyQuickNotesConfig(): Promise<QuickNotesConfig | n
   return stored.status === 'missing' ? null : validateQuickNotesConfig(stored.value, 'quickNotes');
 }
 
+export async function deleteLegacyQuickNotesConfig(): Promise<void> {
+  await db.settings.delete('quickNotes');
+}
+
 export function markSettingsSectionDirty(
   state: SettingsSyncState,
   section: SettingsSection,
