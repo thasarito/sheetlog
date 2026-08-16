@@ -94,6 +94,26 @@ function pending(id: string): TransactionRecord {
   };
 }
 
+function legacySynced(
+  id: string,
+  overrides: Partial<TransactionRecord> = {},
+): TransactionRecord {
+  return {
+    id,
+    type: "expense",
+    amount: 10,
+    currency: "THB",
+    account: "Wallet",
+    for: "Me",
+    category: `Local ${id}`,
+    date: "2026-08-15T08:00:00.000Z",
+    status: "synced",
+    createdAt: "2026-08-15T08:00:00.000Z",
+    updatedAt: "2026-08-15T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function createHarness() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -164,6 +184,71 @@ describe("useTransactionHistoryQuery", () => {
     expect(result.current.records[0].status).toBe("pending");
     expect(result.current.hasCompleteCache).toBe(true);
     expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("uses authoritative cached rows and hides absent legacy synced overlays without deleting them", async () => {
+    mocks.isOnline = false;
+    onlineManager.setOnline(false);
+    await replaceTransactionHistorySnapshot(
+      snapshot(cached("matching", { category: "Authoritative category" })),
+    );
+    const matchingLegacy = legacySynced("matching", {
+      category: "Stale local category",
+      targetSheetId: "sheet-a",
+      error: "Stale local error",
+    });
+    const absentLegacy = legacySynced("absent", {
+      note: "Keep this exact local payload",
+    });
+    await db.transactions.bulkPut([matchingLegacy, absentLegacy]);
+    const { wrapper } = createHarness();
+
+    const { result } = renderHook(() => useTransactionHistoryQuery(true), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.records.map(({ id }) => id)).toEqual(["matching"]);
+    });
+    expect(result.current.records[0]).toMatchObject({
+      category: "Authoritative category",
+      status: "synced",
+    });
+    expect(result.current.records[0].error).toBeUndefined();
+    expect(await db.transactions.get("matching")).toEqual(matchingLegacy);
+    expect(await db.transactions.get("absent")).toEqual(absentLegacy);
+  });
+
+  it("keeps legacy synced rows in Dexie but hidden before the first offline snapshot", async () => {
+    mocks.isOnline = false;
+    onlineManager.setOnline(false);
+    const knownSheet = legacySynced("known-sheet", {
+      targetSheetId: "sheet-a",
+    });
+    const fullyUnscoped = legacySynced("fully-unscoped");
+    await db.transactions.bulkPut([knownSheet, fullyUnscoped]);
+    const { queryClient, wrapper } = createHarness();
+
+    const { result } = renderHook(() => useTransactionHistoryQuery(true), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData([
+          "transactionHistory",
+          "local",
+          "sheet-a",
+          "user-a",
+        ]),
+      ).toEqual([]);
+    });
+    expect(result.current.records).toEqual([]);
+    expect(result.current.hasCompleteCache).toBe(false);
+    expect(await db.transactions.get("known-sheet")).toEqual(knownSheet);
+    expect(await db.transactions.get("fully-unscoped")).toEqual(
+      fullyUnscoped,
+    );
   });
 
   it("persists a successful online refresh before exposing it", async () => {

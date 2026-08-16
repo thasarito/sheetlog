@@ -240,6 +240,9 @@ describe("TransactionHistoryDrawer", () => {
       status: "error",
       error: "Network unavailable",
     });
+    const failedWithoutReason = transaction("failed-without-reason", {
+      status: "error",
+    });
     const legacy = transaction("row-8", {
       category: "Legacy row",
       sheetRowValid: false,
@@ -249,7 +252,13 @@ describe("TransactionHistoryDrawer", () => {
       status: "pending",
       sheetRowValid: false,
     });
-    mocks.history.records = [pending, failed, legacy, pendingLegacy];
+    mocks.history.records = [
+      pending,
+      failed,
+      failedWithoutReason,
+      legacy,
+      pendingLegacy,
+    ];
     const onOpenChange = vi.fn();
     const onEditTransaction = vi.fn();
     const user = userEvent.setup();
@@ -263,8 +272,10 @@ describe("TransactionHistoryDrawer", () => {
     );
 
     expect(await screen.findByText("Pending")).toBeInTheDocument();
+    expect(screen.getByText("Network unavailable")).toBeInTheDocument();
     expect(screen.getByText("Sync failed")).toBeInTheDocument();
     expect(screen.getAllByText("Read only")).toHaveLength(2);
+    expect(screen.getByText("Network unavailable").closest("button")).toBeEnabled();
     expect(screen.getByText("Legacy row").closest("button")).toBeDisabled();
     expect(
       screen.getByText("Pending legacy row").closest("button"),
