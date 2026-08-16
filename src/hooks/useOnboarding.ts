@@ -1,3 +1,4 @@
+import { onlineManager } from '@tanstack/react-query';
 import { getDefaultOnboardingState } from '../lib/settings';
 import type {
   SettingsReconciliationResult,
@@ -45,23 +46,31 @@ export function useOnboarding() {
   const settingsSyncResult = settingsSyncQuery.data ?? undefined;
   const settingsSyncState =
     settingsStateQuery.data ?? settingsSyncResult?.state ?? null;
+  const operationError =
+    onboardingQuery.error ??
+    settingsStateQuery.error ??
+    importMutation.error ??
+    settingsSyncQuery.error;
   const settingsSyncStatus = deriveSettingsSyncStatus(
     settingsSyncState,
     settingsSyncResult,
-    settingsSyncQuery.error,
+    operationError,
   );
   const durableError = settingsSyncState
     ? Object.values(settingsSyncState.errors)[0]
     : undefined;
   const settingsSyncError =
-    settingsSyncQuery.error instanceof Error
-      ? settingsSyncQuery.error
+    operationError instanceof Error
+      ? operationError
       : durableError
         ? new Error(durableError)
         : null;
   const legacyQuickNotesMigration = settingsSyncState?.quickNotesMigration;
 
   const refreshSettings = async () => {
+    if (!onlineManager.isOnline()) {
+      throw new Error('Go online to refresh settings from Google Sheets.');
+    }
     const refreshed = await settingsSyncQuery.refetch({ throwOnError: true });
     return refreshed.data ?? undefined;
   };

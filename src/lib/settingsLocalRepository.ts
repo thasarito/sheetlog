@@ -47,6 +47,13 @@ export class SettingsRepositoryScopeError extends Error {
   }
 }
 
+export class LegacyQuickNotesMigrationRequiredError extends Error {
+  constructor() {
+    super('Import legacy Quick Notes before editing this Sheet.');
+    this.name = 'LegacyQuickNotesMigrationRequiredError';
+  }
+}
+
 function requireIdentifier(value: string, label: string): void {
   if (value.trim().length === 0) {
     throw new SettingsRepositoryScopeError(`${label} is required.`);
@@ -121,6 +128,19 @@ export async function readLocalOnboardingState(
     }
     throw error;
   }
+}
+
+export async function readPreSheetOnboardingState(): Promise<OnboardingState> {
+  const storageKey = getOnboardingStateKey(null);
+  const record = await db.settings.get(storageKey);
+  if (!record) return getDefaultOnboardingState();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.value) as unknown;
+  } catch {
+    return corrupt(storageKey, 'value is not valid JSON.');
+  }
+  return validateOnboardingState(parsed, storageKey);
 }
 
 async function writeOnboardingState(
@@ -361,6 +381,25 @@ export async function mutateLocalOnboarding(
   );
 }
 
+export async function mutatePreSheetOnboarding(
+  update: (current: OnboardingState) => OnboardingState,
+): Promise<OnboardingState> {
+  return db.transaction('rw', db.settings, async () => {
+    const storageKey = getOnboardingStateKey(null);
+    const current = await readPreSheetOnboardingState();
+    const next = validateOnboardingState(
+      update(cloneJson(current)),
+      storageKey,
+    );
+    await db.settings.put({
+      key: storageKey,
+      value: JSON.stringify(next),
+      updatedAt: new Date().toISOString(),
+    });
+    return next;
+  });
+}
+
 async function mutateLocalQuickNotesInTransaction(
   sheetId: string,
   verifiedUserId: string,
@@ -397,11 +436,21 @@ export async function mutateLocalQuickNotes(
   sheetId: string,
   verifiedUserId: string,
   update: (current: QuickNotesConfig) => QuickNotesConfig,
+  options?: { legacyFallbackReadOnly?: boolean },
 ): Promise<SettingsLocalMutationResult> {
   requireSettingsScope(sheetId, verifiedUserId);
-  return db.transaction('rw', db.settings, async () =>
-    mutateLocalQuickNotesInTransaction(sheetId, verifiedUserId, update),
-  );
+  return db.transaction('rw', db.settings, async () => {
+    if (
+      options?.legacyFallbackReadOnly &&
+      (await readQuickNotesConfig(sheetId)) === null
+    ) {
+      const legacy = await readLegacyQuickNotesConfig();
+      if (legacy && Object.keys(legacy).length > 0) {
+        throw new LegacyQuickNotesMigrationRequiredError();
+      }
+    }
+    return mutateLocalQuickNotesInTransaction(sheetId, verifiedUserId, update);
+  });
 }
 
 export async function mutateLegacyQuickNotes(

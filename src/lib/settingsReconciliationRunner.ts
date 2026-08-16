@@ -34,6 +34,7 @@ export interface SettingsRemoteIo {
     sheetId: string,
     section: Section,
     value: SheetSettingsConfig[Section],
+    beforeMutation?: () => void | Promise<void>,
   ): Promise<SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>>;
 }
 
@@ -82,12 +83,12 @@ export function createSettingsRemoteAdapter(
       >;
     },
     replaceSection: async (sheetId, section, value) => {
-      await guard.assertOwnership();
       return remoteIo.replaceSection(
         accessToken,
         sheetId,
         section,
         value,
+        () => guard.assertOwnership(),
       );
     },
   };
@@ -101,10 +102,24 @@ function needsSafeFollowUp(result: SettingsReconciliationResult): boolean {
   ) {
     return false;
   }
-  return (
-    result.migrationApplied ||
-    result.state.dirty.some((section) => result.changed.includes(section))
-  );
+  return result.migrationApplied || result.state.dirty.length > 0;
+}
+
+function mergePassSectionFacts(
+  first: SettingsReconciliationResult,
+  second: SettingsReconciliationResult,
+): SettingsReconciliationResult {
+  return {
+    ...second,
+    changed: [...new Set([...first.changed, ...second.changed])],
+    pushed: [...new Set([...first.pushed, ...second.pushed])],
+    conflicts: [...new Set([...first.conflicts, ...second.conflicts])],
+    migrationDecision:
+      second.migrationDecision === 'none'
+        ? first.migrationDecision
+        : second.migrationDecision,
+    migrationApplied: first.migrationApplied || second.migrationApplied,
+  };
 }
 
 const defaultDependencies: SettingsReconciliationRunnerDependencies = {
@@ -138,7 +153,8 @@ export async function runSettingsReconciliation(
             remote,
           });
         const first = await runPass();
-        return needsSafeFollowUp(first) ? runPass() : first;
+        if (!needsSafeFollowUp(first)) return first;
+        return mergePassSectionFacts(first, await runPass());
       },
     );
   } catch (error) {

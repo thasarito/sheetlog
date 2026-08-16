@@ -5,7 +5,7 @@ import ReactDOM from 'react-dom/client';
 import { IS_DEV_MODE, MOCK_ONBOARDING_STATE } from './lib/mock';
 import { setOnboardingState } from './lib/settings';
 import { router } from './router';
-import './styles/globals.css';
+import './styles';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,24 +21,29 @@ const queryClient = new QueryClient({
   },
 });
 
-if (IS_DEV_MODE) {
-  console.log('[DEV MODE] Mock mode enabled - using mock data');
-  const devSheetId = 'mock-sheet-id-dev';
-  void setOnboardingState(MOCK_ONBOARDING_STATE, devSheetId).catch((error) => {
-    console.warn('[DEV MODE] Failed to seed scoped mock onboarding:', error);
-  });
-}
-
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
   throw new Error('Missing root element');
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </React.StrictMode>,
-);
+async function startApplication(container: HTMLElement): Promise<void> {
+  if (IS_DEV_MODE) {
+    console.log('[DEV MODE] Mock mode enabled - using mock data');
+    try {
+      await setOnboardingState(MOCK_ONBOARDING_STATE, 'mock-sheet-id-dev');
+    } catch (error) {
+      console.warn('[DEV MODE] Failed to seed scoped mock onboarding:', error);
+    }
+  }
+
+  ReactDOM.createRoot(container).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+}
+
+void startApplication(rootElement);

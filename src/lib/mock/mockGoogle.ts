@@ -280,8 +280,10 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
   spreadsheetId: string,
   section: Section,
   value: SheetSettingsConfig[Section],
+  beforeMutation?: () => void | Promise<void>,
 ): Promise<SheetSettingsSectionReadResult<SheetSettingsConfig[Section]>> {
   await delay();
+  await beforeMutation?.();
   if (section === 'accounts') {
     setMockAccounts(normalizeAccounts(value));
   } else if (section === 'categories') {

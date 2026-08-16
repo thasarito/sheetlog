@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession, useWorkspace } from '../app/providers';
+import { getSessionTokenGeneration } from '../app/providers/session/session.generation';
 import {
   mutateLegacyQuickNotes,
   mutateLocalQuickNotes,
@@ -9,7 +10,10 @@ import {
   readQuickNotesConfig,
 } from '../lib/settingsSync';
 import type { QuickNote, QuickNotesConfig, TransactionType } from '../lib/types';
-import { settingsKeys } from './useOnboardingQuery';
+import {
+  publishSettingsLocalMutation,
+  settingsKeys,
+} from './useOnboardingQuery';
 
 const DEFAULT_KEY_PREFIX = 'default';
 
@@ -88,37 +92,42 @@ export function useUpdateQuickNotes() {
       categoryName: string;
       notes: QuickNote[];
     }): Promise<QuickNotesConfig> => {
+      const sessionGeneration = getSessionTokenGeneration();
       const key = buildQuickNotesKey(type, categoryName);
       if (sheetId && userId) {
         const result = await mutateLocalQuickNotes(
           sheetId,
           userId,
           (current) => ({ ...current, [key]: notes }),
+          { legacyFallbackReadOnly: true },
         );
-        queryClient.setQueryData(
-          settingsKeys.state(sheetId, userId),
-          result.state,
-        );
-        return result.settings.quickNotes;
+        const next = result.settings.quickNotes;
+        if (getSessionTokenGeneration() === sessionGeneration) {
+          queryClient.setQueryData(
+            settingsKeys.state(sheetId, userId),
+            result.state,
+          );
+          queryClient.setQueryData(queryKey, next);
+          publishSettingsLocalMutation(
+            queryClient,
+            sheetId,
+            userId,
+            sessionGeneration,
+          );
+        }
+        return next;
       }
-      return mutateLegacyQuickNotes((current) => ({
+      const next = await mutateLegacyQuickNotes((current) => ({
         ...current,
         [key]: notes,
       }));
+      if (getSessionTokenGeneration() === sessionGeneration) {
+        queryClient.setQueryData(queryKey, next);
+      }
+      return next;
     },
     networkMode: 'always',
     retry: false,
-    onSuccess: (next) => {
-      queryClient.setQueryData(queryKey, next);
-      if (sheetId && userId) {
-        void queryClient.invalidateQueries({
-          queryKey: settingsKeys.sync(sheetId, userId),
-        });
-      }
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
-    },
   });
 }
 
@@ -141,37 +150,42 @@ export function useUpdateDefaultQuickNotes() {
       type: TransactionType;
       notes: QuickNote[];
     }): Promise<QuickNotesConfig> => {
+      const sessionGeneration = getSessionTokenGeneration();
       const key = buildDefaultQuickNotesKey(type);
       if (sheetId && userId) {
         const result = await mutateLocalQuickNotes(
           sheetId,
           userId,
           (current) => ({ ...current, [key]: notes }),
+          { legacyFallbackReadOnly: true },
         );
-        queryClient.setQueryData(
-          settingsKeys.state(sheetId, userId),
-          result.state,
-        );
-        return result.settings.quickNotes;
+        const next = result.settings.quickNotes;
+        if (getSessionTokenGeneration() === sessionGeneration) {
+          queryClient.setQueryData(
+            settingsKeys.state(sheetId, userId),
+            result.state,
+          );
+          queryClient.setQueryData(queryKey, next);
+          publishSettingsLocalMutation(
+            queryClient,
+            sheetId,
+            userId,
+            sessionGeneration,
+          );
+        }
+        return next;
       }
-      return mutateLegacyQuickNotes((current) => ({
+      const next = await mutateLegacyQuickNotes((current) => ({
         ...current,
         [key]: notes,
       }));
+      if (getSessionTokenGeneration() === sessionGeneration) {
+        queryClient.setQueryData(queryKey, next);
+      }
+      return next;
     },
     networkMode: 'always',
     retry: false,
-    onSuccess: (next) => {
-      queryClient.setQueryData(queryKey, next);
-      if (sheetId && userId) {
-        void queryClient.invalidateQueries({
-          queryKey: settingsKeys.sync(sheetId, userId),
-        });
-      }
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey });
-    },
   });
 }
 

@@ -439,6 +439,31 @@ describe('Google settings Sheet replacement', () => {
     vi.restoreAllMocks();
   });
 
+  it('asserts mutation ownership after metadata discovery and immediately before batchUpdate', async () => {
+    const events: string[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith(':batchUpdate')) {
+        events.push('post');
+        return jsonResponse({ replies: [{}] });
+      }
+      if (init?.method !== 'POST' && url.includes('?fields=')) {
+        events.push('metadata');
+        return jsonResponse(
+          settingsMetadata({ sheetId: 11, title: 'Account', rowCount: 5, columnCount: 3 }),
+        );
+      }
+      return jsonResponse({ values: [['Account', 'Icon', 'Color']] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await replaceSheetSettingsSection(ACCESS_TOKEN, SHEET_ID, 'accounts', [], async () => {
+      events.push('guard');
+    });
+
+    expect(events).toEqual(['metadata', 'guard', 'post']);
+  });
+
   it('rejects a present non-GRID settings tab before attempting a write', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       jsonResponse(
