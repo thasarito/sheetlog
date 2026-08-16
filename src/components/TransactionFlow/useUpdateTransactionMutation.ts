@@ -1,5 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { TransactionInput, TransactionRecord } from "../../lib/types";
+import type {
+  TransactionRecord,
+  TransactionUpdateInput,
+} from "../../lib/types";
 import { useTransactions } from "../../app/providers";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 
@@ -24,7 +27,7 @@ export function useUpdateTransactionMutation() {
       input,
     }: {
       id: string;
-      input: Partial<TransactionInput>;
+      input: TransactionUpdateInput;
     }) => {
       const record = await updateTransaction(id, input);
       if (!record) {

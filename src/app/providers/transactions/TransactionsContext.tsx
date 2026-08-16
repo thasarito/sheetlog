@@ -4,6 +4,7 @@ import type {
   TransactionInput,
   TransactionRecord,
   TransactionType,
+  TransactionUpdateInput,
 } from "../../../lib/types";
 
 export interface UndoResult {
@@ -21,7 +22,7 @@ export interface TransactionsContextValue {
   addTransaction: (input: TransactionInput) => Promise<TransactionRecord>;
   updateTransaction: (
     id: string,
-    input: Partial<TransactionInput>,
+    input: TransactionUpdateInput,
   ) => Promise<TransactionRecord | undefined>;
   deleteTransaction: (id: string) => Promise<UndoResult>;
   undoLast: () => Promise<UndoResult>;
