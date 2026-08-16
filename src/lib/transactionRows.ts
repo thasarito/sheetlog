@@ -1,4 +1,5 @@
 import { parseDate } from "./date-utils";
+import { parseSheetTransactionPlace } from "./transactionPlace";
 import type { TransactionRecord, TransactionType } from "./types";
 
 export const TRANSACTION_HEADERS = [
@@ -14,6 +15,8 @@ export const TRANSACTION_HEADERS = [
   "For",
   "Id",
   "Reimburses Id",
+  "Place Provider",
+  "Place ID",
 ] as const;
 
 const TRANSACTION_TYPES: readonly TransactionType[] = [
@@ -75,10 +78,14 @@ export function serializeTransactionRow(
     transaction.for ?? "",
     transaction.id,
     transaction.reimbursesTransactionId?.trim() ?? "",
+    transaction.place?.provider ?? "",
+    transaction.place?.placeId ?? "",
   ];
 }
 
-const USER_ENTERED_TEXT_COLUMNS = new Set([1, 3, 4, 6, 7, 8, 9, 10, 11]);
+const USER_ENTERED_TEXT_COLUMNS = new Set([
+  1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13,
+]);
 const FORMULA_LIKE_TEXT = /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u;
 
 /**
@@ -117,6 +124,8 @@ export function parseTransactionRow(
     forValue,
     idRaw,
     reimbursesTransactionIdRaw,
+    placeProviderRaw,
+    placeIdRaw,
   ] = row;
 
   const typeIsValid = TRANSACTION_TYPES.includes(typeRaw as TransactionType);
@@ -125,6 +134,11 @@ export function parseTransactionRow(
   const relation = String(reimbursesTransactionIdRaw ?? "").trim();
   const now = new Date().toISOString();
   const timestamp = parseSheetDate(createdAt, now);
+  const place = parseSheetTransactionPlace(
+    note,
+    placeProviderRaw,
+    placeIdRaw,
+  );
 
   return {
     id: stableId || `row-${rowIndex}`,
@@ -142,5 +156,6 @@ export function parseTransactionRow(
     sheetRow: rowIndex,
     sheetRowValid: typeIsValid && amount !== null && stableId.length > 0,
     reimbursesTransactionId: relation || undefined,
+    ...(place ? { place } : {}),
   };
 }

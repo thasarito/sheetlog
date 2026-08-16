@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { TransactionRecord } from "./types";
+import type { TransactionPlace, TransactionRecord } from "./types";
 import {
   parseTransactionRow,
   serializeTransactionRow,
+  serializeTransactionRowForUserEntered,
   TRANSACTION_HEADERS,
 } from "./transactionRows";
 
@@ -42,10 +43,14 @@ function legacyRowWith(index: number, value: unknown): unknown[] {
 }
 
 describe("transaction Sheet rows", () => {
-  it("keeps the stable transaction ID in column K and the relation in column L", () => {
-    expect(TRANSACTION_HEADERS).toHaveLength(12);
-    expect(TRANSACTION_HEADERS[10]).toBe("Id");
-    expect(TRANSACTION_HEADERS[11]).toBe("Reimburses Id");
+  it("keeps K/L stable and adds place metadata in M/N", () => {
+    expect(TRANSACTION_HEADERS).toHaveLength(14);
+    expect(TRANSACTION_HEADERS.slice(10)).toEqual([
+      "Id",
+      "Reimburses Id",
+      "Place Provider",
+      "Place ID",
+    ]);
 
     const transaction: TransactionRecord = {
       id: "income-1",
@@ -61,12 +66,74 @@ describe("transaction Sheet rows", () => {
       for: "Me",
       status: "pending",
       reimbursesTransactionId: "expense-1",
+      place: { provider: "google", placeId: "central-cafe" },
     };
 
     const serialized = serializeTransactionRow(transaction);
 
-    expect(serialized[10]).toBe("income-1");
-    expect(serialized[11]).toBe("expense-1");
+    expect(serialized.slice(10)).toEqual([
+      "income-1",
+      "expense-1",
+      "google",
+      "central-cafe",
+    ]);
+  });
+
+  it.each([
+    [legacyElevenColumns, "A:K"],
+    [[...legacyElevenColumns, "source-id"], "A:L"],
+  ])("parses legacy %s rows without place metadata", (row) => {
+    expect(parseTransactionRow(row as unknown[], 2).place).toBeUndefined();
+  });
+
+  it("parses only a complete M/N pair with a nonblank note", () => {
+    const row = [
+      ...legacyElevenColumns,
+      "",
+      " google ",
+      " central-cafe ",
+    ];
+    expect(parseTransactionRow(row, 2).place).toEqual({
+      provider: "google",
+      placeId: "central-cafe",
+    });
+    expect(
+      parseTransactionRow([...row.slice(0, 4), "", ...row.slice(5)], 2)
+        .place,
+    ).toBeUndefined();
+    expect(
+      parseTransactionRow([...row.slice(0, 13), ""], 2).place,
+    ).toBeUndefined();
+    expect(
+      parseTransactionRow([...row.slice(0, 12), "other", "id"], 2).place,
+    ).toBeUndefined();
+  });
+
+  it("literalizes formula-like provider and place IDs for USER_ENTERED writes", () => {
+    const transaction: TransactionRecord = {
+      id: "income-1",
+      type: "income",
+      amount: 40,
+      category: "Reimbursement",
+      note: "Central Cafe",
+      date: "2026-08-15T11:00:00.000Z",
+      createdAt: "2026-08-15T11:00:00.000Z",
+      updatedAt: "2026-08-15T11:00:00.000Z",
+      currency: "THB",
+      account: "Bank",
+      for: "Me",
+      status: "pending",
+      reimbursesTransactionId: "expense-1",
+      place: {
+        provider: "=IMPORTXML(1)",
+        placeId: "\n+SUM(1)",
+      } as unknown as TransactionPlace,
+    };
+
+    const row = serializeTransactionRowForUserEntered(transaction);
+
+    expect(row[12]).toBe("'=IMPORTXML(1)");
+    expect(row[13]).toBe("'\n+SUM(1)");
   });
 
   it("parses a valid legacy eleven-column row without a reimbursement relation", () => {

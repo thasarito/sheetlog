@@ -216,7 +216,7 @@ export async function ensureHeaders(
   accessToken: string,
   spreadsheetId: string
 ): Promise<void> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:L1?valueInputOption=RAW`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A1:N1?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
     body: JSON.stringify({ values: [TRANSACTION_HEADERS] }),
@@ -231,6 +231,19 @@ export async function ensureReimbursementHeader(
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
     body: JSON.stringify({ values: [[TRANSACTION_HEADERS[11]]] }),
+  });
+}
+
+export async function ensurePlaceHeaders(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<void> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!M1:N1?valueInputOption=RAW`;
+  await fetchWithAuth(url, accessToken, {
+    method: "PUT",
+    body: JSON.stringify({
+      values: [[...TRANSACTION_HEADERS.slice(12, 14)]],
+    }),
   });
 }
 
@@ -330,7 +343,7 @@ export async function appendTransaction(
   spreadsheetId: string,
   transaction: TransactionRecord
 ): Promise<number | null> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${TAB_NAME}!A:N:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
   const values = [serializeTransactionRowForUserEntered(transaction)];
 
   const data = await fetchWithAuth<{ updates?: { updatedRange?: string } }>(
@@ -421,7 +434,7 @@ export async function updateRow(
 
   const values = [serializeTransactionRowForUserEntered(transaction)];
 
-  const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
+  const range = `${TAB_NAME}!A${rowIndex}:N${rowIndex}`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
 
   await fetchWithAuth(url, accessToken, {
@@ -683,7 +696,7 @@ export async function getRecentTransactions(
   // Data starts at row 2. Last row index is totalRows + 1.
   const lastRowIndex = totalRows + 1;
   const startRowIndex = Math.max(2, lastRowIndex - limit + 1);
-  const range = `${TAB_NAME}!A${startRowIndex}:L${lastRowIndex}`;
+  const range = `${TAB_NAME}!A${startRowIndex}:N${lastRowIndex}`;
 
   // 3. Fetch the data
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
@@ -777,7 +790,7 @@ async function downloadTransactionHistorySnapshot(
 
   for (let startRow = 2; startRow <= sourceLastRow; startRow += chunkSize) {
     const endRow = Math.min(sourceLastRow, startRow + chunkSize - 1);
-    const range = `${TAB_NAME}!A${startRow}:L${endRow}`;
+    const range = `${TAB_NAME}!A${startRow}:N${endRow}`;
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
     const data = await fetchWithAuth<{ values?: unknown[][] }>(
       url,
@@ -864,7 +877,7 @@ export async function readTransactionById(
       return null;
     }
 
-    const range = `${TAB_NAME}!A${rowIndex}:L${rowIndex}`;
+    const range = `${TAB_NAME}!A${rowIndex}:N${rowIndex}`;
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
     const data = await fetchWithAuth<{ values?: unknown[][] }>(url, accessToken);
     const row = data.values?.[0];

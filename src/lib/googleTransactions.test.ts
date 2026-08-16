@@ -3,6 +3,7 @@ import {
   appendTransaction,
   DuplicateTransactionIdError,
   ensureHeaders,
+  ensurePlaceHeaders,
   ensureReimbursementHeader,
   getTransactionHistorySnapshot,
   getRecentTransactions,
@@ -13,8 +14,10 @@ import {
 } from "./google";
 import {
   appendTransaction as appendMockTransaction,
+  ensurePlaceHeaders as ensureMockPlaceHeaders,
   ensureReimbursementHeader as ensureMockReimbursementHeader,
   getRecentTransactions as getRecentMockTransactions,
+  getTransactionHistorySnapshot as getMockTransactionHistorySnapshot,
   readLinkedReimbursements as readLinkedMockReimbursements,
   readTransactionById as readMockTransactionById,
   updateRow as updateMockRow,
@@ -53,6 +56,8 @@ const numericSheetRow = [
   "Me",
   "income-1",
   "expense-1",
+  "google",
+  "central-cafe",
 ];
 
 function transaction(
@@ -92,7 +97,7 @@ describe("Google transaction Sheet APIs", () => {
     vi.unstubAllGlobals();
   });
 
-  it("creates the full A:L header while the reimbursement upgrader writes only L1", async () => {
+  it("creates A:N headers while narrow upgraders write only L and M/N", async () => {
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -102,10 +107,11 @@ describe("Google transaction Sheet APIs", () => {
 
     await ensureHeaders(ACCESS_TOKEN, SHEET_ID);
     await ensureReimbursementHeader(ACCESS_TOKEN, SHEET_ID);
+    await ensurePlaceHeaders(ACCESS_TOKEN, SHEET_ID);
 
     const [headersUrl, headersInit] = requestAt(fetchMock, 0);
     expect(headersUrl).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A1:L1?valueInputOption=RAW",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A1:N1?valueInputOption=RAW",
     );
     expect(headersInit).toMatchObject({
       method: "PUT",
@@ -120,12 +126,21 @@ describe("Google transaction Sheet APIs", () => {
       method: "PUT",
       body: JSON.stringify({ values: [["Reimburses Id"]] }),
     });
+
+    const [placeUrl, placeInit] = requestAt(fetchMock, 2);
+    expect(placeUrl).toBe(
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!M1:N1?valueInputOption=RAW",
+    );
+    expect(placeInit).toMatchObject({
+      method: "PUT",
+      body: JSON.stringify({ values: [["Place Provider", "Place ID"]] }),
+    });
   });
 
   it("appends with USER_ENTERED so dates stay native while formula-like notes are literal", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
-        updates: { updatedRange: "Transactions!A8:L8" },
+        updates: { updatedRange: "Transactions!A8:N8" },
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -133,13 +148,16 @@ describe("Google transaction Sheet APIs", () => {
     const row = await appendTransaction(
       ACCESS_TOKEN,
       SHEET_ID,
-      transaction({ note: "=IMPORTXML(\"https://example.com\", \"//title\")" }),
+      transaction({
+        note: "=IMPORTXML(\"https://example.com\", \"//title\")",
+        place: { provider: "google", placeId: "central-cafe" },
+      }),
     );
 
     expect(row).toBe(8);
     const [url, init] = requestAt(fetchMock, 0);
     expect(url).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A:N:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS",
     );
     expect(JSON.parse(String(init.body))).toEqual({
       values: [
@@ -156,12 +174,14 @@ describe("Google transaction Sheet APIs", () => {
           "Me",
           "income-1",
           "expense-1",
+          "google",
+          "central-cafe",
         ],
       ],
     });
   });
 
-  it("updates A:L with typed dates/numbers and literalizes dangerous text columns", async () => {
+  it("updates A:N with typed dates/numbers and literalizes dangerous text columns", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -178,16 +198,20 @@ describe("Google transaction Sheet APIs", () => {
         account: "\r@Bank",
         for: "\n=Me",
         reimbursesTransactionId: "-expense-1",
+        place: {
+          provider: "google",
+          placeId: "\u0000@central-cafe",
+        },
       }),
     );
 
     const [url, init] = requestAt(fetchMock, 0);
     expect(url).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A8%3AL8?valueInputOption=USER_ENTERED",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A8%3AN8?valueInputOption=USER_ENTERED",
     );
     const body = JSON.parse(String(init.body)) as { values: unknown[][] };
     expect(body.values).toHaveLength(1);
-    expect(body.values[0]).toHaveLength(12);
+    expect(body.values[0]).toHaveLength(14);
     expect(body.values[0][0]).toBe("2026-08-15T10:00:00.000Z");
     expect(body.values[0][1]).toBe("income");
     expect(body.values[0][2]).toBe(55);
@@ -201,9 +225,11 @@ describe("Google transaction Sheet APIs", () => {
     expect(body.values[0][9]).toBe("'\n=Me");
     expect(body.values[0][10]).toBe("'+income-1");
     expect(body.values[0][11]).toBe("'-expense-1");
+    expect(body.values[0][12]).toBe("google");
+    expect(body.values[0][13]).toBe("'\u0000@central-cafe");
   });
 
-  it("keeps K as the count range, reads recent rows from A:L, and assigns Sheet provenance", async () => {
+  it("keeps K as the count range, reads recent rows from A:N, and assigns Sheet provenance", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -225,7 +251,7 @@ describe("Google transaction Sheet APIs", () => {
       "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!K2:K",
     );
     expect(requestAt(fetchMock, 1)[0]).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A2:L3?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A2:N3?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER",
     );
     expect(records.map(({ id }) => id)).toEqual(["income-1", "expense-1"]);
     expect(records[0]).toMatchObject({
@@ -236,6 +262,7 @@ describe("Google transaction Sheet APIs", () => {
       createdAt: new Date(2026, 7, 15, 10, 45, 30).toISOString(),
       updatedAt: new Date(2026, 7, 15, 10, 45, 30).toISOString(),
       reimbursesTransactionId: "expense-1",
+      place: { provider: "google", placeId: "central-cafe" },
     });
     expect(records[1]).toMatchObject({
       sheetId: SHEET_ID,
@@ -312,8 +339,8 @@ describe("Google transaction Sheet APIs", () => {
 
     expect(requestAt(fetchMock, 0)[0]).toContain("Transactions!K2:K");
     expect(requestAt(fetchMock, 1)[0]).toContain("Transactions!A2:A");
-    expect(requestAt(fetchMock, 2)[0]).toContain("Transactions!A2:L4");
-    expect(requestAt(fetchMock, 3)[0]).toContain("Transactions!A5:L6");
+    expect(requestAt(fetchMock, 2)[0]).toContain("Transactions!A2:N4");
+    expect(requestAt(fetchMock, 3)[0]).toContain("Transactions!A5:N6");
     expect(requestAt(fetchMock, 4)[0]).toContain("Transactions!K2:K");
     expect(requestAt(fetchMock, 5)[0]).toContain("Transactions!A2:A");
     expect(snapshot.meta).toMatchObject({
@@ -331,6 +358,7 @@ describe("Google transaction Sheet APIs", () => {
       date: new Date(2026, 7, 15, 9, 30, 0).toISOString(),
       sheetRow: 4,
       canEdit: true,
+      place: { provider: "google", placeId: "central-cafe" },
     });
     expect(snapshot.records[3]).toMatchObject({
       id: "row-6",
@@ -484,7 +512,7 @@ describe("Google transaction Sheet APIs", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("resolves a transaction's current row from column K before reading its A:L values", async () => {
+  it("resolves a transaction's current row from column K before reading its A:N values", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -505,7 +533,7 @@ describe("Google transaction Sheet APIs", () => {
       "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!K2:K",
     );
     expect(requestAt(fetchMock, 1)[0]).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A4:L4?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Transactions!A4:N4?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER",
     );
     expect(record).toMatchObject({
       id: "expense-1",
@@ -563,9 +591,9 @@ describe("Google transaction Sheet APIs", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(requestAt(fetchMock, 1)[0]).toContain("Transactions!A4:L4");
+    expect(requestAt(fetchMock, 1)[0]).toContain("Transactions!A4:N4");
     expect(requestAt(fetchMock, 2)[0]).toContain("Transactions!K2:K");
-    expect(requestAt(fetchMock, 3)[0]).toContain("Transactions!A5:L5");
+    expect(requestAt(fetchMock, 3)[0]).toContain("Transactions!A5:N5");
     expect(record).toMatchObject({
       id: "expense-1",
       sheetId: SHEET_ID,
@@ -708,8 +736,12 @@ describe("mock transaction Sheet APIs", () => {
   });
 
   it("preserves relations and Sheet provenance across append, update, recent, and focused reads", async () => {
-    const initial = transaction();
+    const initial = transaction({
+      place: { provider: "google", placeId: "central-cafe" },
+      placeUpdateIntent: "set",
+    });
     await ensureMockReimbursementHeader(ACCESS_TOKEN, SHEET_ID);
+    await ensureMockPlaceHeaders(ACCESS_TOKEN, SHEET_ID);
     await expect(
       appendMockTransaction(ACCESS_TOKEN, SHEET_ID, initial),
     ).resolves.toBe(2);
@@ -726,7 +758,9 @@ describe("mock transaction Sheet APIs", () => {
       sheetRow: 2,
       sheetRowValid: true,
       status: "synced",
+      place: { provider: "google", placeId: "central-cafe" },
     });
+    expect(recent[0]).not.toHaveProperty("placeUpdateIntent");
 
     const byId = await readMockTransactionById(
       ACCESS_TOKEN,
@@ -739,7 +773,18 @@ describe("mock transaction Sheet APIs", () => {
       sheetId: SHEET_ID,
       sheetRow: 2,
       sheetRowValid: true,
+      place: { provider: "google", placeId: "central-cafe" },
     });
+    expect(byId).not.toHaveProperty("placeUpdateIntent");
+
+    const history = await getMockTransactionHistorySnapshot(
+      ACCESS_TOKEN,
+      SHEET_ID,
+    );
+    expect(history.records[0]).toMatchObject({
+      place: { provider: "google", placeId: "central-cafe" },
+    });
+    expect(history.records[0]).not.toHaveProperty("placeUpdateIntent");
 
     expect(
       await readLinkedMockReimbursements(
@@ -763,18 +808,23 @@ describe("mock transaction Sheet APIs", () => {
       ACCESS_TOKEN,
       SHEET_ID,
       2,
-      transaction({ amount: 60 }),
+      transaction({
+        amount: 60,
+        place: { provider: "google", placeId: "updated-cafe" },
+        placeUpdateIntent: "set",
+      }),
     );
-    expect(
-      await readMockTransactionById(
-        ACCESS_TOKEN,
-        SHEET_ID,
-        "income-1",
-      ),
-    ).toMatchObject({
+    const updatedById = await readMockTransactionById(
+      ACCESS_TOKEN,
+      SHEET_ID,
+      "income-1",
+    );
+    expect(updatedById).toMatchObject({
       amount: 60,
       reimbursesTransactionId: "expense-1",
       sheetId: SHEET_ID,
+      place: { provider: "google", placeId: "updated-cafe" },
     });
+    expect(updatedById).not.toHaveProperty("placeUpdateIntent");
   });
 });
