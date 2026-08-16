@@ -59,6 +59,7 @@ function renderField({
   placesEnabled?: boolean;
   reactStrictMode?: boolean;
 } = {}) {
+  let currentPlacesEnabled = placesEnabled;
   hookState.suggestions = activeResults;
   hookState.isLoading = isLoading;
   hookState.hasSearched = !isLoading;
@@ -86,7 +87,7 @@ function renderField({
         onSubmit={onSubmit}
         canSubmit
         places={{
-          enabled: placesEnabled,
+          enabled: currentPlacesEnabled,
           nearbySuggestions,
           isNearbyLoading: false,
         }}
@@ -100,7 +101,19 @@ function renderField({
     refresh() {
       rendered.rerender(<Harness />);
     },
+    setPlacesEnabled(enabled: boolean) {
+      currentPlacesEnabled = enabled;
+      rendered.rerender(<Harness />);
+    },
   };
+}
+
+function deferredSelection() {
+  let resolve!: (selection: ResolvedPlaceSelection) => void;
+  const promise = new Promise<ResolvedPlaceSelection>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 beforeEach(() => {
@@ -244,6 +257,18 @@ describe("TransactionNoteField", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
+  it("closes the popup when focus moves outside the note field", async () => {
+    const user = userEvent.setup();
+    renderField({ activeResults: [centralCafe] });
+    const input = screen.getByRole("combobox", { name: "Transaction note" });
+    await user.type(input, "central");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    fireEvent.blur(input, { relatedTarget: document.body });
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
   it("handles Escape and IME composition without submitting or selecting", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
@@ -261,57 +286,150 @@ describe("TransactionNoteField", () => {
 
   it("drops a deferred selection after the user edits again", async () => {
     const user = userEvent.setup();
-    let resolveSelection!: (selection: {
-      displayName: string;
-      placeId: string;
-    }) => void;
-    const selected = new Promise<{ displayName: string; placeId: string }>(
-      (resolve) => {
-        resolveSelection = resolve;
-      },
-    );
+    const selected = deferredSelection();
     const onPlaceSelect = vi.fn();
     renderField({ activeResults: [centralCafe], onPlaceSelect });
-    hookState.selectSuggestion.mockReturnValue(selected);
+    hookState.selectSuggestion.mockReturnValue(selected.promise);
     const input = screen.getByRole("combobox", { name: "Transaction note" });
     await user.type(input, "central");
     await user.click(screen.getByRole("option", { name: /Central Cafe/ }));
     await user.type(input, " x");
-    resolveSelection({
+    selected.resolve({
       displayName: centralCafe.name,
       placeId: centralCafe.placeId,
     });
-    await selected;
+    await selected.promise;
 
     expect(onPlaceSelect).not.toHaveBeenCalled();
   });
 
-  it("rotates a failed session on the next edit without a Retry control", async () => {
+  it("drops a deferred selection after Clear", async () => {
     const user = userEvent.setup();
-    hookState.sessionError = new Error("session unavailable");
-    renderField();
+    const selected = deferredSelection();
+    const onPlaceSelect = vi.fn();
+    renderField({ activeResults: [centralCafe], onPlaceSelect });
+    hookState.selectSuggestion.mockReturnValue(selected.promise);
     const input = screen.getByRole("combobox", { name: "Transaction note" });
-    const initialSession = hookState.observedSessionIds.at(-1);
     await user.type(input, "central");
+    await user.click(screen.getByRole("option", { name: /Central Cafe/ }));
 
-    expect(hookState.observedSessionIds.at(-1)).not.toBe(initialSession);
-    expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear note" }));
+    selected.resolve({
+      displayName: centralCafe.name,
+      placeId: centralCafe.placeId,
+    });
+    await selected.promise;
+
+    expect(onPlaceSelect).not.toHaveBeenCalled();
+    expect(input).toHaveValue("");
+    await waitFor(() => expect(input).toHaveFocus());
   });
 
-  it("resets an out-of-bounds active option when results shrink", async () => {
+  it("drops a deferred selection after Places eligibility is lost", async () => {
+    const user = userEvent.setup();
+    const selected = deferredSelection();
+    const onPlaceSelect = vi.fn();
+    const rendered = renderField({
+      activeResults: [centralCafe],
+      onPlaceSelect,
+    });
+    hookState.selectSuggestion.mockReturnValue(selected.promise);
+    const input = screen.getByRole("combobox", { name: "Transaction note" });
+    await user.type(input, "central");
+    await user.click(screen.getByRole("option", { name: /Central Cafe/ }));
+
+    rendered.setPlacesEnabled(false);
+    selected.resolve({
+      displayName: centralCafe.name,
+      placeId: centralCafe.placeId,
+    });
+    await selected.promise;
+
+    expect(onPlaceSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("keeps free text usable and retries after a selection error", async () => {
+    const user = userEvent.setup();
+    const onPlaceSelect = vi.fn();
+    const rendered = renderField({
+      activeResults: [centralCafe],
+      onPlaceSelect,
+    });
+    hookState.selectSuggestion.mockRejectedValueOnce(
+      new Error("private selection failure"),
+    );
+    const input = screen.getByRole("combobox", { name: "Transaction note" });
+    await user.type(input, "central");
+    const option = screen.getByRole("option", { name: /Central Cafe/ });
+
+    await user.click(option);
+    await waitFor(() => expect(hookState.selectSuggestion).toHaveBeenCalledTimes(1));
+    hookState.selectionError = new Error("private selection failure");
+    rendered.refresh();
+    expect(input).toHaveValue("central");
+    expect(screen.getByText("Couldn’t select that place")).toBeInTheDocument();
+    expect(screen.queryByText("private selection failure")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("option", { name: /Central Cafe/ }));
+    expect(hookState.selectSuggestion).toHaveBeenCalledTimes(2);
+    expect(onPlaceSelect).toHaveBeenCalledWith({
+      displayName: centralCafe.name,
+      placeId: centralCafe.placeId,
+    });
+    await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("rotates a failed session and renders recovered results without Retry", async () => {
+    const user = userEvent.setup();
+    hookState.sessionError = new Error("session unavailable");
+    hookState.isError = true;
+    const onPlaceSelect = vi.fn();
+    const rendered = renderField({ onPlaceSelect });
+    const input = screen.getByRole("combobox", { name: "Transaction note" });
+    const initialSession = hookState.observedSessionIds.at(-1);
+    await user.type(input, "c");
+    const freshSession = hookState.observedSessionIds.at(-1);
+
+    expect(freshSession).not.toBe(initialSession);
+    hookState.sessionError = null;
+    hookState.isError = false;
+    hookState.hasSearched = true;
+    hookState.suggestions = [centralCafe];
+    rendered.refresh();
+    await user.type(input, "entral");
+
+    expect(hookState.observedSessionIds.at(-1)).toBe(freshSession);
+    expect(screen.getByRole("option", { name: /Central Cafe/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /Central Cafe/ }));
+    expect(onPlaceSelect).toHaveBeenCalledWith({
+      displayName: centralCafe.name,
+      placeId: centralCafe.placeId,
+    });
+  });
+
+  it("resets an active option when a shorter result set replaces its value and session", async () => {
     const user = userEvent.setup();
     const rendered = renderField({ activeResults: [centralCafe, centralWorld] });
     const input = screen.getByRole("combobox", { name: "Transaction note" });
     await user.type(input, "central{ArrowDown}{ArrowDown}");
     expect(input).toHaveAttribute("aria-activedescendant");
+    const previousSession = hookState.observedSessionIds.at(-1);
 
     hookState.suggestions = [centralCafe];
-    rendered.refresh();
-    await waitFor(() =>
-      expect(input).not.toHaveAttribute("aria-activedescendant"),
-    );
+    hookState.sessionError = new Error("rotate the owner session");
+    fireEvent.change(input, { target: { value: "central x" } });
+
+    expect(hookState.observedSessionIds.at(-1)).not.toBe(previousSession);
+    expect(input).not.toHaveAttribute("aria-activedescendant");
     await user.keyboard("{Enter}");
     expect(hookState.selectSuggestion).not.toHaveBeenCalled();
+
+    hookState.sessionError = null;
+    rendered.refresh();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(hookState.selectSuggestion).toHaveBeenCalledWith(centralCafe);
   });
 
   it("survives the Strict Mode effect probe and selects exactly once", async () => {
@@ -323,9 +441,14 @@ describe("TransactionNoteField", () => {
       reactStrictMode: true,
     });
     const input = screen.getByRole("combobox", { name: "Transaction note" });
-    await user.type(input, "central{ArrowDown}{Enter}");
+    await user.type(input, "central");
+    const focusSpy = vi.spyOn(input, "focus");
+    focusSpy.mockClear();
+    await user.keyboard("{ArrowDown}{Enter}");
 
     expect(onPlaceSelect).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(input).toHaveFocus());
+    await waitFor(() => expect(focusSpy).toHaveBeenCalledTimes(1));
+    expect(input).toHaveFocus();
+    focusSpy.mockRestore();
   });
 });
