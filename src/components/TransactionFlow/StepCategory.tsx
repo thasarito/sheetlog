@@ -10,6 +10,10 @@ import { RadialMenu } from '../RadialMenu';
 import { useRadialMenu } from '../RadialMenu/useRadialMenu';
 import { AnimatedTabs } from '../ui/AnimatedTabs';
 import { TYPE_OPTIONS } from './constants';
+import {
+  clearTransactionPlace,
+  replaceTransactionNote,
+} from './transactionNoteForm';
 import type { TransactionFormApi } from './useTransactionForm';
 
 type StepCategoryProps = {
@@ -71,7 +75,7 @@ export function StepCategory({
     onSelect: (selectedNote, category) => {
       if (!selectedNote) return;
       form.setFieldValue('category', category);
-      form.setFieldValue('note', selectedNote.note ?? '');
+      replaceTransactionNote(form, selectedNote.note ?? '');
       form.setFieldValue('dateObject', new Date());
       if (selectedNote.amount) {
         form.setFieldValue('amount', selectedNote.amount);
@@ -126,6 +130,7 @@ export function StepCategory({
     updateDirection(index);
     const nextType = TYPE_OPTIONS[index];
     form.setFieldValue('type', nextType);
+    if (nextType !== 'expense') clearTransactionPlace(form);
     if (nextType !== type) {
       form.setFieldValue('category', '');
     }

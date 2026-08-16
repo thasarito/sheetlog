@@ -84,7 +84,9 @@ function createHarness() {
 
 function validVariables() {
   return {
-    source: source(),
+    source: source({
+      place: { provider: "google", placeId: "central-cafe" },
+    }),
     amount: "40",
     remaining: 60,
     account: "Bank",
@@ -136,6 +138,7 @@ describe("useCreateReimbursementMutation", () => {
       reimbursesTransactionId: "expense-1",
     });
     expect(record).toMatchObject({ id: "child-1", status: "synced" });
+    expect(record.place).toBeUndefined();
   });
 
   it.each(["", "   ", "0", "-1", "12abc", "Infinity", "NaN"])(

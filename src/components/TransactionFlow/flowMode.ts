@@ -33,5 +33,6 @@ export function getReimbursementFormDefaults(
     forValue: source.for,
     dateObject: now,
     note: source.note?.trim() ? source.note : source.category,
+    place: undefined,
   };
 }
