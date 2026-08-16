@@ -1685,6 +1685,76 @@ describe('settings reconciliation', () => {
     expect(result.status).toBe('pending');
   });
 
+  it('explicitly reapplies legacy Quick Notes after an applied migration conflicts', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Legacy' }],
+    };
+    const sheetWinner: QuickNotesConfig = {
+      'default:income': [{ id: 'winner', icon: 'Wallet', label: 'Sheet winner' }],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: sheetWinner,
+      quickNotesPresent: true,
+    });
+    const sheetFingerprint = fingerprintSettingsSection(
+      localSettings,
+      'quickNotes',
+    );
+    const legacyFingerprint = fingerprintQuickNotesConfig(legacy);
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: '',
+        categories: '',
+        quickNotes: sheetFingerprint,
+      },
+      quickNotesMigration: {
+        intent: 'prompt',
+        sourceFingerprint: legacyFingerprint,
+        phase: 'applied',
+        appliedScopedFingerprint: legacyFingerprint,
+      },
+    };
+    const local = memoryLocal(localSettings, state, legacy);
+    const remote = remoteAdapter(
+      remoteSettings({
+        quickNotes: { status: 'ok', present: true, value: sheetWinner },
+      }),
+    );
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      importLegacyQuickNotes: true,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual(legacy);
+    expect(remote.replaceSection).toHaveBeenCalledWith(
+      'sheet-a',
+      'quickNotes',
+      legacy,
+    );
+    expect(local.stateWrites).toContainEqual(
+      expect.objectContaining({
+        baselines: expect.objectContaining({ quickNotes: sheetFingerprint }),
+        dirty: expect.arrayContaining(['quickNotes']),
+        quickNotesMigration: {
+          intent: 'explicit-import',
+          sourceFingerprint: legacyFingerprint,
+          phase: 'applied',
+          appliedScopedFingerprint: legacyFingerprint,
+        },
+      }),
+    );
+    expect(local.legacy()).toBeNull();
+    expect(result.state.quickNotesMigration).toBeUndefined();
+    expect(result.migrationApplied).toBe(true);
+    expect(result.status).toBe('synced');
+  });
+
   it('keeps a scoped edit dirty while a persisted legacy migration prompt is unresolved', async () => {
     const legacy: QuickNotesConfig = {
       'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Legacy' }],

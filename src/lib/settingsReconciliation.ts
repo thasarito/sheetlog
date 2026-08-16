@@ -203,9 +203,17 @@ export async function reconcileSettings(
     migrationState?.intent === 'prompt' &&
     legacySourceFingerprint
   ) {
-    migrationState = { ...migrationState, intent: 'explicit-import' };
+    migrationState = {
+      intent: 'explicit-import',
+      sourceFingerprint: legacySourceFingerprint,
+      phase: 'pending',
+    };
   }
-  if (migrationState?.phase === 'pending' && initialSettings.quickNotesPresent) {
+  if (
+    migrationState?.phase === 'pending' &&
+    migrationState.intent !== 'explicit-import' &&
+    initialSettings.quickNotesPresent
+  ) {
     migrationState = { ...migrationState, intent: 'prompt' };
   }
   await updateState((latest) => {
