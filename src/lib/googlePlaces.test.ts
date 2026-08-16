@@ -85,6 +85,7 @@ describe("getCurrentCoordinates", () => {
 
 describe("Google Places browser client", () => {
   afterEach(() => {
+    vi.useRealTimers();
     resetGooglePlacesLoaderForTests();
     vi.restoreAllMocks();
     document.head.innerHTML = "";
@@ -247,6 +248,38 @@ describe("Google Places browser client", () => {
       "error",
       expect.any(Function)
     );
+  });
+
+  it("waits for the Maps importer after the script load event", async () => {
+    vi.useFakeTimers();
+    const searchNearby = vi.fn(async () => ({
+      places: [{ id: "ready-cafe", displayName: "Ready Cafe" }],
+    }));
+    window.google = { maps: {} };
+    const maps = window.google.maps;
+    if (!maps) {
+      throw new Error("Maps test fixture is unavailable");
+    }
+
+    const request = getNearbyPlaces(
+      { lat: 13.7563, lng: 100.5018 },
+      { apiKey: "browser-key" }
+    );
+    const script = document.getElementById(
+      "google-maps-js-api"
+    ) as HTMLScriptElement;
+
+    script.dispatchEvent(new Event("load"));
+    await Promise.resolve();
+    maps.importLibrary = vi.fn(async () => ({
+      Place: { searchNearby },
+      SearchNearbyRankPreference: { POPULARITY: "POPULARITY" },
+    }));
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(request).resolves.toEqual([
+      { placeId: "ready-cafe", name: "Ready Cafe" },
+    ]);
   });
 
   it("uses one autocomplete session and maps prediction names with address text", async () => {
