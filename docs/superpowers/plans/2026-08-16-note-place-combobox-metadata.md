@@ -573,6 +573,7 @@ ensureHeaders:              A1:N1
 appendTransaction:          A:N:append
 updateRow:                  A{row}:N{row}
 getRecentTransactions:      A{start}:N{end}
+getTransactionHistorySnapshot chunks: A{start}:N{end}
 readTransactionById:        A{row}:N{row}
 ```
 
@@ -583,6 +584,9 @@ storage, strip `placeUpdateIntent` from the remote-shaped object while preservin
 ```ts
 const { placeUpdateIntent: _localIntent, ...remoteTransaction } = transaction;
 ```
+
+Update the newly rebased history snapshot tests to assert A:N chunk ranges and a cached record's
+parsed place. The mock history snapshot must preserve `place` while omitting `placeUpdateIntent`.
 
 - [ ] **Step 6: Run focused tests and typecheck**
 
@@ -735,7 +739,9 @@ Add two deterministic concurrency regressions using the file's existing `deferre
 
 In
 `useUpdateTransactionMutation.test.tsx`, require `place: null` to forward unchanged while retaining
-`networkMode: "always"` and all four invalidations.
+`networkMode: "always"` and all five invalidations, including
+`transactionQueryKeys.history` so an open virtualized history refreshes after place edits. The new
+add-mutation test requires the same history invalidation.
 
 - [ ] **Step 2: Run provider and mutation tests and verify RED**
 
@@ -810,13 +816,15 @@ const queuedRecord: TransactionRecord = {
   ...(nextPlaceIntent ? { placeUpdateIntent: nextPlaceIntent } : {}),
 };
 if (!nextPlaceIntent) delete queuedRecord.placeUpdateIntent;
-await db.transactions.put(queuedRecord);
+await db.transactions.put(toLocalTransactionRecord(queuedRecord));
 ```
 
 Delete `placeUpdateIntent` before the `put` when `nextPlaceIntent` is undefined. Every offline and
 direct-failure fallback must call this helper; there is no read-then-put fallback. An omitted patch
 retains an existing queued `set`/`clear`; an explicit object or null replaces it. A local new row with
-no remote provenance keeps the property absent.
+no remote provenance keeps the property absent. Retain the rebased history-cache boundary:
+`toLocalTransactionRecord` must strip `cachedAt`, `canEdit`, and `searchText` before every queued or
+successful provider write.
 
 - [ ] **Step 5: Apply patches after the authoritative direct read**
 
@@ -887,8 +895,9 @@ function isSameProviderRevision(
 Then call `updateRow`. After the second ownership check, use a Dexie `rw` transaction to re-read the
 local row and compare status, timestamps, scope/provenance, delete intent, place intent, ordinary
 transaction content, and place content with the captured `latestTransaction`. Put `updatedRecord` only
-when that revision is still exact. Deleting the property before this conditional full-record `put` is
-required; do not persist an own `placeUpdateIntent: undefined`.
+when that revision is still exact, through `toLocalTransactionRecord(updatedRecord)`. Deleting the
+property before this conditional full-record `put` is required; do not persist an own
+`placeUpdateIntent: undefined` or any history cache-only fields.
 
 If the CAS misses and the current same-scope row is pending/error/delete-intent, preserve it and return
 it; after the Sheet lock releases, schedule `performSync` when online. If the row disappeared or moved
@@ -2293,6 +2302,9 @@ Add integration cases for:
   `place` key (authoritative preserve), while Clear submits `{ place: null }`;
 - a linked reimbursement fixture with its own place hydrates that child reference (never the source),
   preserves it on a nonblank metadata edit, and emits `{ place: null }` after Clear.
+- extend the rebased full-history selection regression with a cached place-backed row; selecting it
+  must preserve `place` while `toLocalTransactionRecord` strips `cachedAt`, `canEdit`, and
+  `searchText` before the mutable provider/form path receives it.
 
 Put both ordinary and linked hydration/clear assertions in this RED step before wiring Step 5; mock
 `mocks.updateMutation.mutateAsync` with the current `TransactionUpdateInput` shape and assert its exact
