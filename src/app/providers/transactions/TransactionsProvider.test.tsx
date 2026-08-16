@@ -1153,6 +1153,76 @@ describe("TransactionsProvider", () => {
     harness.queryClient.clear();
   });
 
+  it("preserves a newer queued place edit when an older remote lookup reports missing", async () => {
+    const stale = transaction("missing-race-place", {
+      note: "Before",
+      sheetRow: 44,
+    });
+    await db.transactions.add(stale);
+    const lookupStarted = deferred<void>();
+    const releaseLookup = deferred<Map<string, number>>();
+    googleMocks.readTransactionIdMap.mockImplementationOnce(async () => {
+      lookupStarted.resolve();
+      return releaseLookup.promise;
+    });
+    const directHarness = createProviderHarness();
+    providerState.accessToken = null;
+    const queuedHarness = createProviderHarness();
+    providerState.accessToken = "access-token";
+    let directPromise!: Promise<TransactionRecord | undefined>;
+
+    await act(async () => {
+      directPromise = directHarness
+        .getContext()
+        .updateTransaction(stale.id, { amount: 50 });
+      await lookupStarted.promise;
+      await queuedHarness.getContext().updateTransaction(stale.id, {
+        note: "New place",
+        place: { provider: "google", placeId: "new-place" },
+      });
+      releaseLookup.resolve(new Map());
+      await directPromise;
+    });
+
+    expect(await db.transactions.get(stale.id)).toMatchObject({
+      note: "New place",
+      place: { provider: "google", placeId: "new-place" },
+      placeUpdateIntent: "set",
+      status: "pending",
+    });
+    expect(syncPendingTransactions).not.toHaveBeenCalled();
+
+    directHarness.rendered.unmount();
+    directHarness.queryClient.clear();
+    queuedHarness.rendered.unmount();
+    queuedHarness.queryClient.clear();
+  });
+
+  it("rejects malformed place patches before reconciling a missing remote row", async () => {
+    const stale = transaction("missing-invalid-place", {
+      note: "Before",
+      sheetRow: 45,
+    });
+    await db.transactions.add(stale);
+    googleMocks.readTransactionIdMap.mockResolvedValue(new Map());
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await expect(
+        harness.getContext().updateTransaction(stale.id, {
+          place: undefined,
+        }),
+      ).rejects.toThrow("Invalid place metadata");
+    });
+
+    expect(await db.transactions.get(stale.id)).toEqual(stale);
+    expect(googleMocks.readTransactionIdMap).not.toHaveBeenCalled();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
   it("deleting a source leaves linked children as dangling audit rows", async () => {
     await db.transactions.bulkAdd([
       transaction("expense-source", { sheetRow: 4 }),
@@ -1524,6 +1594,165 @@ describe("TransactionsProvider", () => {
     directHarness.queryClient.clear();
     queuedHarness.rendered.unmount();
     queuedHarness.queryClient.clear();
+  });
+
+  it("preserves a newer delete tombstone when an older direct place write fails", async () => {
+    const child = transaction("direct-place-delete-race", {
+      type: "income",
+      category: "Reimbursement",
+      reimbursesTransactionId: "expense-source",
+      note: "Old place",
+      place: { provider: "google", placeId: "old-place" },
+    });
+    await db.transactions.put(child);
+    googleMocks.readTransactionById.mockResolvedValue(child);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[child.id, 17]]),
+    );
+    const writeStarted = deferred<void>();
+    const rejectWrite = deferred<void>();
+    googleMocks.updateRow.mockImplementationOnce(async () => {
+      writeStarted.resolve();
+      await rejectWrite.promise;
+    });
+    const directHarness = createProviderHarness();
+    providerState.accessToken = null;
+    const deleteHarness = createProviderHarness();
+    providerState.accessToken = "access-token";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let directPromise!: Promise<TransactionRecord | undefined>;
+
+    await act(async () => {
+      directPromise = directHarness.getContext().updateTransaction(child.id, {
+        note: "Manual note",
+        place: null,
+      });
+      await writeStarted.promise;
+      await deleteHarness.getContext().deleteTransaction(child.id);
+      rejectWrite.reject(new TypeError("offline"));
+      await directPromise;
+    });
+
+    expect(warn).toHaveBeenCalled();
+    expect(await db.transactions.get(child.id)).toMatchObject({
+      id: child.id,
+      deleteIntent: true,
+      status: "pending",
+    });
+
+    directHarness.rendered.unmount();
+    directHarness.queryClient.clear();
+    deleteHarness.rendered.unmount();
+    deleteHarness.queryClient.clear();
+  });
+
+  it("rolls back a completed direct Sheet write when the local row was deleted", async () => {
+    const record = transaction("direct-place-rollback", {
+      note: "Original place",
+      place: { provider: "google", placeId: "original-place" },
+      sheetRow: 18,
+    });
+    await db.transactions.put(record);
+    googleMocks.readTransactionById.mockResolvedValue(record);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[record.id, 18]]),
+    );
+    const writeStarted = deferred<void>();
+    const releaseWrite = deferred<void>();
+    googleMocks.updateRow
+      .mockImplementationOnce(async () => {
+        writeStarted.resolve();
+        await releaseWrite.promise;
+      })
+      .mockResolvedValueOnce(undefined);
+    const directHarness = createProviderHarness();
+    providerState.accessToken = null;
+    const deleteHarness = createProviderHarness();
+    providerState.accessToken = "access-token";
+    let directResult!: TransactionRecord | undefined;
+
+    await act(async () => {
+      const directPromise = directHarness
+        .getContext()
+        .updateTransaction(record.id, {
+          note: "Attempted place",
+          place: { provider: "google", placeId: "attempted-place" },
+        });
+      await writeStarted.promise;
+      await deleteHarness.getContext().deleteTransaction(record.id);
+      releaseWrite.resolve();
+      directResult = await directPromise;
+    });
+
+    expect(directResult).toBeUndefined();
+    expect(googleMocks.updateRow).toHaveBeenCalledTimes(2);
+    expect(googleMocks.updateRow.mock.calls[1]).toEqual([
+      "access-token",
+      "sheet-a",
+      18,
+      record,
+    ]);
+    expect(await db.transactions.get(record.id)).toBeUndefined();
+
+    directHarness.rendered.unmount();
+    directHarness.queryClient.clear();
+    deleteHarness.rendered.unmount();
+    deleteHarness.queryClient.clear();
+  });
+
+  it("surfaces a failed rollback instead of silently accepting a divergent Sheet row", async () => {
+    const record = transaction("direct-place-rollback-failure", {
+      note: "Original place",
+      place: { provider: "google", placeId: "original-place" },
+      sheetRow: 19,
+    });
+    await db.transactions.put(record);
+    googleMocks.readTransactionById.mockResolvedValue(record);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[record.id, 19]]),
+    );
+    const writeStarted = deferred<void>();
+    const releaseWrite = deferred<void>();
+    googleMocks.updateRow
+      .mockImplementationOnce(async () => {
+        writeStarted.resolve();
+        await releaseWrite.promise;
+      })
+      .mockRejectedValueOnce(new TypeError("rollback offline"));
+    const directHarness = createProviderHarness();
+    providerState.accessToken = null;
+    const deleteHarness = createProviderHarness();
+    providerState.accessToken = "access-token";
+    let failure: unknown;
+
+    await act(async () => {
+      const directPromise = directHarness
+        .getContext()
+        .updateTransaction(record.id, {
+          note: "Attempted place",
+          place: { provider: "google", placeId: "attempted-place" },
+        });
+      await writeStarted.promise;
+      await deleteHarness.getContext().deleteTransaction(record.id);
+      releaseWrite.resolve();
+      try {
+        await directPromise;
+      } catch (caught) {
+        failure = caught;
+      }
+    });
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "Could not restore the Sheet row after a concurrent local change",
+    );
+    expect(googleMocks.updateRow).toHaveBeenCalledTimes(2);
+    expect(await db.transactions.get(record.id)).toBeUndefined();
+
+    directHarness.rendered.unmount();
+    directHarness.queryClient.clear();
+    deleteHarness.rendered.unmount();
+    deleteHarness.queryClient.clear();
   });
 
   it("assures place headers before a direct explicit place write", async () => {
