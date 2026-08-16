@@ -50,8 +50,10 @@ export function PrivacyPolicyPage() {
           <li>
             If you allow your browser&apos;s location request while creating an
             expense, precise location may be sent directly from your browser to
-            Google Maps to suggest nearby places. When you use place search,
-            place-search text is sent directly from your browser to Google Maps.
+            Google Maps to suggest nearby places. When typing at least two
+            characters in an eligible transaction note, the note query is sent
+            directly from your browser to Google Maps for autocomplete place
+            suggestions.
           </li>
         </ul>
       </section>
@@ -75,17 +77,19 @@ export function PrivacyPolicyPage() {
           SheetLog does not add a separate in-app location consent flow.
         </p>
         <p>
-          SheetLog temporarily processes raw coordinates, place-search text,
-          and returned suggestions in browser memory. It clears them when the
-          Places session closes or shortly afterward. SheetLog does not persist
-          raw coordinates, location history, autocomplete history, or unselected
-          place suggestions.
+          SheetLog temporarily processes raw coordinates, transaction-note query
+          text, and returned suggestions in browser memory. It clears them when
+          the Places session closes or shortly afterward. SheetLog does not
+          persist raw coordinates, formatted addresses, search history, or
+          unselected place suggestions.
         </p>
         <p>
-          When you select a place, SheetLog copies the selected place display
-          name into your transaction note and Google Sheet. These statements
-          describe SheetLog&apos;s processing and persistence; Google&apos;s handling is
-          governed by its own policy.
+          When you select a place, SheetLog stores the selected place display
+          name, provider, and Place ID locally for offline sync and in your
+          Google Sheet. The Place ID is the stable place reference, and the
+          display name remains your transaction note. These statements describe
+          SheetLog&apos;s processing and persistence; Google&apos;s handling is governed
+          by its own policy.
         </p>
       </section>
 
