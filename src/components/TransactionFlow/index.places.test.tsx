@@ -437,7 +437,17 @@ describe("TransactionFlow Places integration", () => {
     await waitFor(() => {
       expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
         id: "expense-1",
-        input: expect.objectContaining({ place: null }),
+        input: {
+          type: "expense",
+          category: "Coffee",
+          amount: 125,
+          currency: "THB",
+          account: "Wallet",
+          for: "Me",
+          date: "2026-08-15T08:00:00",
+          note: undefined,
+          place: null,
+        },
       });
     });
   });
@@ -454,9 +464,19 @@ describe("TransactionFlow Places integration", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      const call = mocks.updateMutation.mutateAsync.mock.calls.at(-1)?.[0];
-      expect(call).toMatchObject({ id: "expense-1" });
-      expect(call.input).not.toHaveProperty("place");
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "expense-1",
+        input: {
+          type: "expense",
+          category: "Coffee",
+          amount: 125,
+          currency: "THB",
+          account: "Wallet",
+          for: "Me",
+          date: "2026-08-15T08:00:00",
+          note: "Original note updated",
+        },
+      });
     });
   });
 
@@ -473,9 +493,20 @@ describe("TransactionFlow Places integration", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      const call = mocks.updateMutation.mutateAsync.mock.calls.at(-1)?.[0];
-      expect(call).toMatchObject({ id: "reimbursement-1" });
-      expect(call.input).not.toHaveProperty("place");
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "reimbursement-1",
+        input: {
+          type: "income",
+          category: "Reimbursement",
+          amount: 40,
+          currency: "THB",
+          account: "Wallet",
+          for: "Household",
+          date: "2026-08-15T09:00:00",
+          note: "Coffee repayment updated",
+          reimbursesTransactionId: "expense-1",
+        },
+      });
     });
   });
 
@@ -493,10 +524,18 @@ describe("TransactionFlow Places integration", () => {
     await waitFor(() => {
       expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
         id: "reimbursement-1",
-        input: expect.objectContaining({
+        input: {
+          type: "income",
+          category: "Reimbursement",
+          amount: 40,
+          currency: "THB",
+          account: "Wallet",
+          for: "Household",
+          date: "2026-08-15T09:00:00",
+          note: undefined,
           place: null,
           reimbursesTransactionId: "expense-1",
-        }),
+        },
       });
     });
   });
@@ -656,6 +695,68 @@ describe("TransactionFlow Places integration", () => {
     await act(async () => selection.resolve("Stale Coffee House"));
 
     expect(noteInput).toHaveValue("coffee");
+  });
+
+  it("ignores a deferred selection after Clear", async () => {
+    const selection = deferred<string>();
+    const user = userEvent.setup();
+    renderFlow();
+    const noteInput = await beginDeferredPlaceSelection(user, selection);
+
+    await user.click(screen.getByRole("button", { name: "Clear note" }));
+    await act(async () => selection.resolve("Stale Coffee House"));
+
+    expect(noteInput).toHaveValue("");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await waitFor(() => expect(noteInput).toHaveFocus());
+  });
+
+  it("ignores a deferred selection after a newer manual query", async () => {
+    const selection = deferred<string>();
+    const user = userEvent.setup();
+    renderFlow();
+    const noteInput = await beginDeferredPlaceSelection(user, selection);
+
+    await user.clear(noteInput);
+    await user.type(noteInput, "tea");
+    await act(async () => selection.resolve("Stale Coffee House"));
+
+    expect(noteInput).toHaveValue("tea");
+    await waitFor(() => expect(mocks.createSession).toHaveBeenCalledTimes(2));
+  });
+
+  it("ignores a deferred selection after Back and a create-type change", async () => {
+    const selection = deferred<string>();
+    const user = userEvent.setup();
+    renderFlow();
+    await beginDeferredPlaceSelection(user, selection);
+
+    await user.click(screen.getByRole("button", { name: "Go back" }));
+    await user.click(screen.getByRole("button", { name: "Start income" }));
+    const noteInput = screen.getByRole("textbox", {
+      name: "Transaction note",
+    });
+    await act(async () => selection.resolve("Stale Coffee House"));
+
+    expect(noteInput).toHaveValue("coffee");
+  });
+
+  it("ignores a deferred selection after the receipt replaces the amount step", async () => {
+    const selection = deferred<string>();
+    const user = userEvent.setup();
+    renderFlow();
+    await beginDeferredPlaceSelection(user, selection);
+    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await screen.findByText("Transaction Summary");
+
+    await act(async () => selection.resolve("Stale Coffee House"));
+
+    expect(screen.getByText("coffee", { exact: true })).toBeVisible();
+    expect(mocks.addMutation.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ note: "coffee", place: undefined }),
+    );
   });
 
   it("clear retires results, clears metadata, restores focus, and shows nearby chips", async () => {
