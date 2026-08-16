@@ -13,7 +13,7 @@ import { SCOPES } from "../app/providers/session";
 
 // OAuth endpoints
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const OAUTH_TOKEN_PROXY_URL = "/api/oauth/token";
 
 // Storage keys for OAuth flow
 export const OAUTH_STORAGE_KEYS = {
@@ -36,6 +36,40 @@ export interface TokenData {
   expires_in: number;
   expires_at: number;
   refresh_token?: string;
+}
+
+interface OAuthErrorResponse {
+  error?: unknown;
+}
+
+const SAFE_PROXY_ERROR_MESSAGES: Record<string, string> = {
+  invalid_upstream_response: "OAuth provider returned an invalid response.",
+  server_configuration_error: "OAuth token service is not configured.",
+  upstream_unavailable: "OAuth provider is unavailable.",
+};
+
+async function createOAuthTokenError(response: Response): Promise<Error> {
+  try {
+    const payload = (await response.clone().json()) as OAuthErrorResponse;
+    if (
+      typeof payload.error === "string" &&
+      /^[a-z][a-z0-9_]{0,63}$/.test(payload.error)
+    ) {
+      const safeMessage = Object.hasOwn(
+        SAFE_PROXY_ERROR_MESSAGES,
+        payload.error,
+      )
+        ? SAFE_PROXY_ERROR_MESSAGES[payload.error]
+        : undefined;
+      return new Error(
+        safeMessage ?? `OAuth token request failed (${payload.error}).`,
+      );
+    }
+  } catch {
+    // Fall through to the safe status-only message.
+  }
+
+  return new Error(`OAuth token request failed: ${response.status}`);
 }
 
 function requireWebCrypto(): Crypto {
@@ -192,7 +226,7 @@ export async function exchangeCodeForTokens(
     code_verifier: codeVerifier,
   };
 
-  const response = await fetch(GOOGLE_TOKEN_URL, {
+  const response = await fetch(OAUTH_TOKEN_PROXY_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -201,7 +235,7 @@ export async function exchangeCodeForTokens(
   });
 
   if (!response.ok) {
-    throw new Error(`Token exchange failed: ${response.status}`);
+    throw await createOAuthTokenError(response);
   }
 
   const data = (await response.json()) as TokenResponse;
@@ -241,7 +275,7 @@ export async function refreshAccessToken(signal?: AbortSignal): Promise<TokenDat
     refresh_token: refreshToken,
   };
 
-  const response = await fetch(GOOGLE_TOKEN_URL, {
+  const response = await fetch(OAUTH_TOKEN_PROXY_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -264,7 +298,7 @@ export async function refreshAccessToken(signal?: AbortSignal): Promise<TokenDat
       );
     }
 
-    throw new Error(`Token refresh failed: ${response.status}`);
+    throw await createOAuthTokenError(response);
   }
 
   const data = (await response.json()) as TokenResponse;

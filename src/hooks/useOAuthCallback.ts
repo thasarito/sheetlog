@@ -104,14 +104,13 @@ export function useOAuthCallback(): OAuthCallbackState {
         navigate({ to: "/app", replace: true, search: {} });
 
         setState({ isProcessing: false, error: null });
-      } catch (err) {
-        console.error("OAuth callback error:", err);
+      } catch (caughtError) {
         hasProcessedRef.current = false; // Allow retry on error
         setState({
           isProcessing: false,
           error:
-            err instanceof Error
-              ? err.message
+            caughtError instanceof Error
+              ? caughtError.message
               : "Failed to complete authentication",
         });
       }

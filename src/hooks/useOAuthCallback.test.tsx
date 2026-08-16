@@ -105,6 +105,7 @@ describe("useOAuthCallback account handoff", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -189,7 +190,7 @@ describe("useOAuthCallback account handoff", () => {
     );
     const tokenRequests: URLSearchParams[] = [];
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === "https://oauth2.googleapis.com/token") {
+      if (url === "/api/oauth/token") {
         const requestBody = new URLSearchParams(init?.body as URLSearchParams);
         tokenRequests.push(requestBody);
         if (requestBody.get("grant_type") === "authorization_code") {
@@ -289,7 +290,7 @@ describe("useOAuthCallback account handoff", () => {
     routerState.search = {};
     const oldRefresh = deferred<Response>();
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === "https://oauth2.googleapis.com/token") {
+      if (url === "/api/oauth/token") {
         return oldRefresh.promise;
       }
       const authorization = new Headers(init?.headers).get("Authorization");
@@ -339,7 +340,7 @@ describe("useOAuthCallback account handoff", () => {
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(
-          ([url]) => url === "https://oauth2.googleapis.com/token",
+          ([url]) => url === "/api/oauth/token",
         ),
       ).toHaveLength(1);
     });
@@ -399,7 +400,7 @@ describe("useOAuthCallback account handoff", () => {
     routerState.search = {};
     const oldRefresh = deferred<Response>();
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === "https://oauth2.googleapis.com/token") {
+      if (url === "/api/oauth/token") {
         return oldRefresh.promise;
       }
       const authorization = new Headers(init?.headers).get("Authorization");
@@ -448,7 +449,7 @@ describe("useOAuthCallback account handoff", () => {
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.filter(
-          ([url]) => url === "https://oauth2.googleapis.com/token",
+          ([url]) => url === "/api/oauth/token",
         ),
       ).toHaveLength(1);
     });
@@ -484,5 +485,57 @@ describe("useOAuthCallback account handoff", () => {
     expect(
       window.localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN),
     ).toBe("refresh-b");
+  });
+
+  it("renders and logs no sensitive provider details from a failed exchange", async () => {
+    const actualOAuth = await vi.importActual<typeof import("../lib/oauth")>(
+      "../lib/oauth",
+    );
+    vi.mocked(exchangeCodeForTokens).mockImplementation(
+      actualOAuth.exchangeCodeForTokens,
+    );
+    window.localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "oauth-state");
+    window.localStorage.setItem(
+      OAUTH_STORAGE_KEYS.CODE_VERIFIER,
+      "pkce-verifier-private-marker",
+    );
+    const providerDescription =
+      "Rejected authorization-code and pkce-verifier-private-marker";
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json(
+        {
+          error: "invalid_grant",
+          error_description: providerDescription,
+        },
+        { status: 400 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(() => useOAuthCallback(), {
+      wrapper: createHarness(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(
+        "OAuth token request failed (invalid_grant).",
+      );
+    });
+    expect(result.current.error).not.toContain(providerDescription);
+    expect(result.current.error).not.toContain("authorization-code");
+    expect(result.current.error).not.toContain("pkce-verifier-private-marker");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/oauth/token",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

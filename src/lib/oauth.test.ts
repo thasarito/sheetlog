@@ -7,10 +7,17 @@ import {
   OAUTH_STORAGE_KEYS,
   refreshAccessToken,
 } from "./oauth";
-import oauthSource from "./oauth.ts?raw";
 
 const CLIENT_ID = "browser-client-id.apps.googleusercontent.com";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const TOKEN_URL = "/api/oauth/token";
+const browserProductionSources = import.meta.glob(
+  ["../**/*", "!../**/*.test.*", "!../test/**"],
+  {
+    eager: true,
+    import: "default",
+    query: "?raw",
+  },
+) as Record<string, string>;
 
 function successfulTokenResponse(overrides: Record<string, unknown> = {}) {
   return new Response(
@@ -25,6 +32,22 @@ function successfulTokenResponse(overrides: Record<string, unknown> = {}) {
       status: 200,
       headers: { "Content-Type": "application/json" },
     }
+  );
+}
+
+function oauthErrorResponse(
+  status: number,
+  error: string,
+  errorDescription?: string,
+) {
+  return Response.json(
+    {
+      error,
+      ...(errorDescription
+        ? { error_description: errorDescription }
+        : undefined),
+    },
+    { status },
   );
 }
 
@@ -96,7 +119,9 @@ describe("browser OAuth public-client flow", () => {
       "expected-state"
     );
 
-    expect(parseRequestBody(fetchMock)).toEqual({
+    const requestBody = parseRequestBody(fetchMock);
+    expect(requestBody).not.toHaveProperty(["client", "secret"].join("_"));
+    expect(requestBody).toEqual({
       code: "authorization-code",
       client_id: CLIENT_ID,
       redirect_uri: "http://localhost:3000/",
@@ -158,13 +183,14 @@ describe("browser OAuth public-client flow", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("does not log provider details from a failed code exchange", async () => {
+  it("surfaces a safe provider code without reflecting sensitive details", async () => {
+    const authorizationCode = "authorization-code-private-marker";
+    const codeVerifier = "pkce-verifier-private-marker";
+    const providerDescription = `Expired ${authorizationCode} for ${codeVerifier}`;
     localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
-    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, codeVerifier);
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response("sensitive-provider-response", {
-        status: 400,
-      })
+      oauthErrorResponse(400, "invalid_grant", providerDescription),
     );
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = vi
@@ -172,12 +198,104 @@ describe("browser OAuth public-client flow", () => {
       .mockImplementation(() => undefined);
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      exchangeCodeForTokens("authorization-code", "expected-state")
-    ).rejects.toThrow("Token exchange failed: 400");
+    const error = await exchangeCodeForTokens(
+      authorizationCode,
+      "expected-state",
+    ).catch((reason: unknown) => reason);
 
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      "OAuth token request failed (invalid_grant).",
+    );
+    expect((error as Error).message).not.toContain(providerDescription);
+    expect((error as Error).message).not.toContain(authorizationCode);
+    expect((error as Error).message).not.toContain(codeVerifier);
     expect(logSpy).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("treats valid prototype property names as ordinary OAuth error codes", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          oauthErrorResponse(400, "constructor", "untrusted detail"),
+        ),
+    );
+
+    await expect(
+      exchangeCodeForTokens("authorization-code", "expected-state"),
+    ).rejects.toThrow("OAuth token request failed (constructor).");
+  });
+
+  it.each([
+    {
+      error: "server_configuration_error",
+      expected: "OAuth token service is not configured.",
+      label: "missing server configuration",
+      status: 503,
+    },
+    {
+      error: "upstream_unavailable",
+      expected: "OAuth provider is unavailable.",
+      label: "upstream network failure",
+      status: 502,
+    },
+    {
+      error: "invalid_upstream_response",
+      expected: "OAuth provider returned an invalid response.",
+      label: "malformed upstream response",
+      status: 502,
+    },
+  ])("surfaces an actionable message for $label", async ({
+    error,
+    expected,
+    status,
+  }) => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(oauthErrorResponse(status, error, "untrusted detail")),
+    );
+
+    await expect(
+      exchangeCodeForTokens("authorization-code", "expected-state"),
+    ).rejects.toThrow(expected);
+  });
+
+  it.each([
+    {
+      label: "non-JSON body",
+      response: () =>
+        new Response("<html>sensitive upstream body</html>", { status: 502 }),
+      status: 502,
+    },
+    {
+      label: "invalid error code",
+      response: () =>
+        oauthErrorResponse(418, "INVALID-GRANT", "sensitive description"),
+      status: 418,
+    },
+    {
+      label: "overlong error code",
+      response: () =>
+        oauthErrorResponse(500, `a${"b".repeat(64)}`, "sensitive description"),
+      status: 500,
+    },
+  ])("uses only HTTP status for a $label", async ({ response, status }) => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response()));
+
+    await expect(
+      exchangeCodeForTokens("authorization-code", "expected-state"),
+    ).rejects.toThrow(`OAuth token request failed: ${status}`);
   });
 
   it("sends the exact public-client refresh body and preserves the stored token", async () => {
@@ -190,7 +308,9 @@ describe("browser OAuth public-client flow", () => {
 
     await refreshAccessToken();
 
-    expect(parseRequestBody(fetchMock)).toEqual({
+    const requestBody = parseRequestBody(fetchMock);
+    expect(requestBody).not.toHaveProperty(["client", "secret"].join("_"));
+    expect(requestBody).toEqual({
       client_id: CLIENT_ID,
       grant_type: "refresh_token",
       refresh_token: "existing-refresh-token",
@@ -202,10 +322,10 @@ describe("browser OAuth public-client flow", () => {
 
   it("clears a revoked refresh token without logging response details", async () => {
     localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "revoked-token");
+    const providerDescription =
+      "invalid authorization-code-private-marker pkce-verifier-private-marker";
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response("sensitive-provider-response", {
-        status: 400,
-      })
+      oauthErrorResponse(400, "invalid_grant", providerDescription),
     );
     const errorSpy = vi
       .spyOn(console, "error")
@@ -217,7 +337,46 @@ describe("browser OAuth public-client flow", () => {
     );
 
     expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBeNull();
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining(providerDescription),
+    );
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("uses safe proxy errors for non-reauthentication refresh failures", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        oauthErrorResponse(
+          502,
+          "upstream_unavailable",
+          "sensitive provider description",
+        ),
+      ),
+    );
+
+    await expect(refreshAccessToken()).rejects.toThrow(
+      "OAuth provider is unavailable.",
+    );
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+  });
+
+  it("uses only HTTP status for a malformed non-reauthentication refresh error", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("sensitive body", { status: 500 })),
+    );
+
+    await expect(refreshAccessToken()).rejects.toThrow(
+      "OAuth token request failed: 500",
+    );
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
   });
 
   it("does not delete a replacement refresh token when an older request is revoked", async () => {
@@ -279,15 +438,18 @@ describe("browser OAuth public-client flow", () => {
     );
   });
 
-  it("keeps secret-only OAuth fields out of browser source declarations", () => {
+  it("keeps direct token exchange and secret-only fields out of browser production sources", () => {
+    const directTokenEndpoint = ["https://oauth2.googleapis.com", "token"].join(
+      "/",
+    );
     const forbiddenEnvName = ["VITE_GOOGLE_CLIENT", "SECRET"].join("_");
     const forbiddenFormField = ["client", "secret"].join("_");
-    const sources = [
-      ["src/lib/oauth.ts", oauthSource],
-      ["vite-env.d.ts", envTypesSource],
-    ] as const;
-    const violations = sources.flatMap(([file, source]) => {
-      return [forbiddenEnvName, forbiddenFormField]
+    const sources = {
+      ...browserProductionSources,
+      "../../vite-env.d.ts": envTypesSource,
+    };
+    const violations = Object.entries(sources).flatMap(([file, source]) => {
+      return [directTokenEndpoint, forbiddenEnvName, forbiddenFormField]
         .filter((term) => source.includes(term))
         .map((term) => `${file}:${term}`);
     });
