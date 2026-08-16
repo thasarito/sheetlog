@@ -87,7 +87,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-describe("useOAuthCallback account handoff", () => {
+describe("useOAuthCallback", () => {
   beforeEach(() => {
     window.localStorage.clear();
     routerState.navigate.mockReset();
@@ -109,6 +109,85 @@ describe("useOAuthCallback account handoff", () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
+
+  it("does nothing when no OAuth parameters are present", () => {
+    routerState.search = {};
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const { result } = renderHook(() => useOAuthCallback(), {
+      wrapper: createHarness(queryClient),
+    });
+
+    expect(result.current).toEqual({ isProcessing: false, error: null });
+    expect(exchangeCodeForTokens).not.toHaveBeenCalled();
+    expect(routerState.navigate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      errorCode: "access_denied",
+      expected: "Google sign-in was canceled.",
+      label: "canceled sign-in",
+    },
+    {
+      errorCode: "temporarily_unavailable",
+      expected: "OAuth authorization failed (temporarily_unavailable).",
+      label: "other valid error code",
+    },
+    {
+      errorCode: "Access_Denied",
+      expected: "OAuth authorization failed",
+      label: "mixed-case error code",
+    },
+    {
+      errorCode: "invalid-grant",
+      expected: "OAuth authorization failed",
+      label: "invalid error code",
+    },
+    {
+      errorCode: `a${"b".repeat(64)}`,
+      expected: "OAuth authorization failed",
+      label: "overlong error code",
+    },
+  ])(
+    "uses a bounded local message for $label without exposing provider details",
+    async ({ errorCode, expected }) => {
+      const providerDescription =
+        "Sensitive authorization-code-private-marker pkce-verifier-private-marker";
+      routerState.search = {
+        error: errorCode,
+        error_description: providerDescription,
+      };
+      const logSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+
+      const { result } = renderHook(() => useOAuthCallback(), {
+        wrapper: createHarness(queryClient),
+      });
+
+      await waitFor(() => {
+        expect(result.current.error).toBe(expected);
+      });
+      expect(result.current.error).not.toContain(providerDescription);
+      expect(result.current.error).not.toContain(
+        "authorization-code-private-marker",
+      );
+      expect(result.current.error).not.toContain("pkce-verifier-private-marker");
+      expect(exchangeCodeForTokens).not.toHaveBeenCalled();
+      expect(routerState.navigate).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it("clears the old profile and workspace before publishing a replacement token", async () => {
     const queryClient = new QueryClient({

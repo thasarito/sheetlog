@@ -14,12 +14,26 @@ type OAuthSearchParams = {
   code?: string;
   state?: string;
   error?: string;
-  error_description?: string;
 };
 
 interface OAuthCallbackState {
   isProcessing: boolean;
   error: string | null;
+}
+
+function getAuthorizationErrorMessage(error: unknown): string {
+  if (
+    typeof error !== "string" ||
+    !/^[a-z][a-z0-9_]{0,63}$/.test(error)
+  ) {
+    return "OAuth authorization failed";
+  }
+
+  if (error === "access_denied") {
+    return "Google sign-in was canceled.";
+  }
+
+  return `OAuth authorization failed (${error}).`;
 }
 
 /**
@@ -40,10 +54,10 @@ export function useOAuthCallback(): OAuthCallbackState {
   const hasProcessedRef = useRef(false);
 
   useEffect(() => {
-    const { code, state: oauthState, error, error_description } = search;
+    const { code, state: oauthState, error } = search;
 
     // No OAuth params present - nothing to do
-    if (!code && !error) {
+    if (!code && error === undefined) {
       return;
     }
 
@@ -54,10 +68,10 @@ export function useOAuthCallback(): OAuthCallbackState {
 
     async function handleCallback() {
       // Handle OAuth error from Google
-      if (error) {
+      if (error !== undefined) {
         setState({
           isProcessing: false,
-          error: error_description || error || "OAuth authorization failed",
+          error: getAuthorizationErrorMessage(error),
         });
         return;
       }
