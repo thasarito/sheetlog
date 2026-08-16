@@ -1,2 +1,8 @@
 name = "sheetlog"
 pages_build_output_dir = "dist"
+compatibility_date = "2026-08-16"
+compatibility_flags = ["enable_request_signal", "request_signal_passthrough"]
+
+[vars]
+GOOGLE_CLIENT_ID = "258969467044-ptakke7dl5fe9m2lqf80o62nik2572jd.apps.googleusercontent.com"
+OAUTH_REDIRECT_PATH = "/"
