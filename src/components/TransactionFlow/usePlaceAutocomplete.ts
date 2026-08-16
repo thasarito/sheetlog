@@ -1,10 +1,10 @@
 import {
-  keepPreviousData,
+  type QueryClient,
   useMutation,
   useQuery,
   useQueryClient,
-} from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+} from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createPlaceAutocompleteSession,
   endPlaceAutocompleteSession,
@@ -13,287 +13,389 @@ import {
   type Coordinates,
   type PlaceAutocompleteSession,
   type PlaceSuggestion,
-} from "../../lib/googlePlaces";
+} from '../../lib/googlePlaces';
 
 const INPUT_DEBOUNCE_MS = 250;
+const INACTIVE_SESSION_ERROR = 'Place autocomplete session is no longer active';
+const INACTIVE_SELECTION_ERROR =
+  'Place autocomplete selection is no longer active';
+
+type SessionCleanupTimer = ReturnType<typeof globalThis.setTimeout>;
 
 type SessionScope = {
-  mounted: boolean;
+  active: boolean;
   sessionId: string;
   session?: PlaceAutocompleteSession;
-  cleanupTimer?: number;
-  cleanupGeneration: number;
+  cleanupTimer?: SessionCleanupTimer;
+};
+
+type SelectionAttempt = {
+  suggestion: PlaceSuggestion;
+  placeSession: PlaceAutocompleteSession;
+  normalizedValue: string;
+  sessionId: string;
+  scope: SessionScope;
+};
+
+type PendingSelection = Pick<
+  SelectionAttempt,
+  'placeSession' | 'normalizedValue' | 'sessionId' | 'scope'
+> & {
+  promise: Promise<ResolvedPlaceSuggestion>;
+};
+
+export type ResolvedPlaceSuggestion = {
+  displayName: string;
+  placeId: string;
+};
+
+export type UsePlaceAutocompleteOptions = {
+  value: string;
+  active: boolean;
+  enabled: boolean;
+  sessionId: string;
+  locationBias?: Coordinates;
+};
+
+export type UsePlaceAutocompleteResult = {
+  suggestions: PlaceSuggestion[];
+  isDebouncing: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+  sessionError: Error | null;
+  hasSearched: boolean;
+  isSelecting: boolean;
+  selectionError: Error | null;
+  selectSuggestion(
+    suggestion: PlaceSuggestion,
+  ): Promise<ResolvedPlaceSuggestion>;
 };
 
 export const placeAutocompleteKeys = {
   session: (sessionId: string) =>
-    ["placeAutocompleteSession", sessionId] as const,
+    ['placeAutocompleteSession', sessionId] as const,
   suggestions: (sessionId: string, input: string) =>
-    ["placeAutocomplete", sessionId, "suggestions", input] as const,
+    ['placeAutocomplete', sessionId, 'suggestions', input] as const,
   suggestionsForSession: (sessionId: string) =>
-    ["placeAutocomplete", sessionId, "suggestions"] as const,
+    ['placeAutocomplete', sessionId, 'suggestions'] as const,
 };
 
 function normalizeInput(input: string) {
-  return input.trim().replace(/\s+/g, " ");
+  return input.trim().replace(/\s+/g, ' ');
+}
+
+function cancelScheduledCleanup(scope: SessionScope) {
+  if (scope.cleanupTimer === undefined) return;
+  globalThis.clearTimeout(scope.cleanupTimer);
+  scope.cleanupTimer = undefined;
+}
+
+function endScopedSession(scope: SessionScope) {
+  const placeSession = scope.session;
+  if (!placeSession) return;
+  scope.session = undefined;
+  endPlaceAutocompleteSession(placeSession);
+}
+
+function clearSessionQueries(
+  queryClient: QueryClient,
+  sessionId: string,
+) {
+  const suggestionKey = placeAutocompleteKeys.suggestionsForSession(sessionId);
+  const sessionKey = placeAutocompleteKeys.session(sessionId);
+  void queryClient.cancelQueries({ queryKey: suggestionKey, exact: false });
+  queryClient.removeQueries({ queryKey: suggestionKey, exact: false });
+  void queryClient.cancelQueries({ queryKey: sessionKey, exact: true });
+  queryClient.removeQueries({ queryKey: sessionKey, exact: true });
+}
+
+function retireScope(queryClient: QueryClient, scope: SessionScope) {
+  cancelScheduledCleanup(scope);
+  scope.active = false;
+  endScopedSession(scope);
+  clearSessionQueries(queryClient, scope.sessionId);
+}
+
+function scheduleScopeCleanup(
+  queryClient: QueryClient,
+  scope: SessionScope,
+) {
+  cancelScheduledCleanup(scope);
+  const cleanupTimer = globalThis.setTimeout(() => {
+    if (scope.cleanupTimer !== cleanupTimer) return;
+    scope.cleanupTimer = undefined;
+    retireScope(queryClient, scope);
+  }, 0);
+  scope.cleanupTimer = cleanupTimer;
 }
 
 export function usePlaceAutocomplete({
-  open,
+  value,
+  active,
   enabled,
   sessionId,
   locationBias,
-}: {
-  open: boolean;
-  enabled: boolean;
-  sessionId: string;
-  locationBias?: Coordinates;
-}) {
+}: UsePlaceAutocompleteOptions): UsePlaceAutocompleteResult {
   const queryClient = useQueryClient();
-  const [input, setInputValue] = useState("");
-  const [debouncedInput, setDebouncedInput] = useState("");
-  const activeSessionRef = useRef<{
-    sessionId: string;
-    session: PlaceAutocompleteSession;
-  }>();
-  const selectionPromiseRef = useRef<Promise<string>>();
-  const openRef = useRef(open);
+  const normalizedValue = normalizeInput(value);
+  const [debouncedValue, setDebouncedValue] = useState('');
+  const mountedRef = useRef(true);
+  const activeRef = useRef(active);
   const enabledRef = useRef(enabled);
+  const normalizedValueRef = useRef(normalizedValue);
   const sessionIdRef = useRef(sessionId);
-  const scopeRef = useRef<SessionScope>({
-    mounted: true,
-    sessionId,
-    cleanupGeneration: 0,
-  });
-  if (scopeRef.current.sessionId !== sessionId) {
-    scopeRef.current = { mounted: true, sessionId, cleanupGeneration: 0 };
+  const scopeRef = useRef<SessionScope>();
+  const pendingSelectionRef = useRef<PendingSelection>();
+
+  const canLoad = enabled && active && normalizedValue.length >= 2;
+  const isCurrentDebouncedValue = debouncedValue === normalizedValue;
+  const canSearch =
+    canLoad && isCurrentDebouncedValue && debouncedValue.length >= 2;
+
+  if (!scopeRef.current || scopeRef.current.sessionId !== sessionId) {
+    scopeRef.current = { active: canLoad, sessionId };
+  } else if (canLoad) {
+    scopeRef.current.active = true;
   }
   const scope = scopeRef.current;
-  openRef.current = open;
+
+  activeRef.current = active;
   enabledRef.current = enabled;
+  normalizedValueRef.current = normalizedValue;
   sessionIdRef.current = sessionId;
 
-  const normalizedInput = normalizeInput(input);
-  const canLoad = open && enabled;
-  const canSearch = canLoad && normalizedInput.length >= 2 && debouncedInput.length >= 2;
+  const isCurrentSessionScope = useCallback(
+    (expectedScope: SessionScope, expectedSessionId: string) =>
+      mountedRef.current &&
+      activeRef.current &&
+      enabledRef.current &&
+      normalizedValueRef.current.length >= 2 &&
+      sessionIdRef.current === expectedSessionId &&
+      scopeRef.current === expectedScope &&
+      expectedScope.active,
+    [],
+  );
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(
-      () => setDebouncedInput(normalizedInput),
-      INPUT_DEBOUNCE_MS
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = globalThis.setTimeout(
+      () => setDebouncedValue(normalizedValue),
+      INPUT_DEBOUNCE_MS,
     );
-    return () => window.clearTimeout(timeoutId);
-  }, [normalizedInput]);
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [normalizedValue]);
 
   const sessionQuery = useQuery({
     queryKey: placeAutocompleteKeys.session(sessionId),
     enabled: canLoad,
     retry: false,
-    staleTime: Infinity,
+    staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     queryFn: async () => {
       const placeSession = await createPlaceAutocompleteSession();
-      if (
-        !openRef.current ||
-        !enabledRef.current ||
-        sessionIdRef.current !== sessionId ||
-        !scope.mounted ||
-        scopeRef.current !== scope
-      ) {
+      if (!isCurrentSessionScope(scope, sessionId)) {
         endPlaceAutocompleteSession(placeSession);
-        throw new Error("Place autocomplete session is no longer active");
+        throw new Error(INACTIVE_SESSION_ERROR);
       }
       scope.session = placeSession;
-      activeSessionRef.current = { sessionId, session: placeSession };
       return placeSession;
     },
   });
 
   const suggestionQuery = useQuery({
-    queryKey: placeAutocompleteKeys.suggestions(sessionId, debouncedInput),
+    queryKey: placeAutocompleteKeys.suggestions(sessionId, debouncedValue),
     enabled: canSearch && Boolean(sessionQuery.data),
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    placeholderData: canSearch ? keepPreviousData : undefined,
-    queryFn: () => {
-      if (!sessionQuery.data) {
-        throw new Error("Place autocomplete session is not available");
+    queryFn: async () => {
+      const placeSession = sessionQuery.data;
+      if (!placeSession) {
+        throw new Error('Place autocomplete session is not available');
       }
-      return searchPlaceSuggestions(debouncedInput, sessionQuery.data, locationBias);
+      const suggestions = await searchPlaceSuggestions(
+        debouncedValue,
+        placeSession,
+        locationBias,
+      );
+      if (
+        !isCurrentSessionScope(scope, sessionId) ||
+        normalizedValueRef.current !== debouncedValue ||
+        scope.session !== placeSession
+      ) {
+        throw new Error(INACTIVE_SESSION_ERROR);
+      }
+      return suggestions;
     },
   });
 
-  const selection = useMutation({
+  const selectionMutation = useMutation({
     mutationFn: async ({
       suggestion,
       placeSession,
-    }: {
-      suggestion: PlaceSuggestion;
-      placeSession: PlaceAutocompleteSession;
-    }) => {
-      const displayName = await resolvePlaceSuggestionName(suggestion, placeSession);
-      endPlaceAutocompleteSession(placeSession);
-      if (scope.session === placeSession) {
-        scope.session = undefined;
+      normalizedValue: selectionValue,
+      sessionId: selectionSessionId,
+      scope: selectionScope,
+    }: SelectionAttempt) => {
+      const displayName = await resolvePlaceSuggestionName(
+        suggestion,
+        placeSession,
+      );
+      const selectionIsCurrent =
+        isCurrentSessionScope(selectionScope, selectionSessionId) &&
+        normalizedValueRef.current === selectionValue &&
+        selectionScope.session === placeSession;
+
+      if (selectionScope.session === placeSession) {
+        selectionScope.session = undefined;
+        endPlaceAutocompleteSession(placeSession);
       }
-      if (activeSessionRef.current?.session === placeSession) {
-        activeSessionRef.current = undefined;
+
+      if (!selectionIsCurrent) {
+        throw new Error(INACTIVE_SELECTION_ERROR);
       }
-      return displayName;
+
+      return { displayName, placeId: suggestion.placeId };
     },
   });
 
-  const setInput = useCallback(
-    (nextInput: string) => {
-      if (selectionPromiseRef.current) {
-        return;
-      }
-      selection.reset();
-      setInputValue(nextInput);
-    },
-    [selection]
-  );
-
-  const reset = useCallback(() => {
-    setInputValue("");
-    setDebouncedInput("");
-    selection.reset();
-    selectionPromiseRef.current = undefined;
-
-    const activeSession = activeSessionRef.current?.session;
-    if (activeSession) {
-      endPlaceAutocompleteSession(activeSession);
-      if (scope.session === activeSession) {
-        scope.session = undefined;
-      }
-      activeSessionRef.current = undefined;
-    }
-
-    queryClient.removeQueries({
-      queryKey: placeAutocompleteKeys.suggestionsForSession(sessionId),
-      exact: false,
-    });
-    queryClient.removeQueries({
-      queryKey: placeAutocompleteKeys.session(sessionId),
-      exact: true,
-    });
-  }, [queryClient, scope, selection, sessionId]);
-
-  const wasOpenRef = useRef(open);
+  const resetSelection = selectionMutation.reset;
   useEffect(() => {
-    if (wasOpenRef.current && !open) {
-      reset();
+    resetSelection();
+    const pendingSelection = pendingSelectionRef.current;
+    if (
+      pendingSelection &&
+      (pendingSelection.normalizedValue !== normalizedValue ||
+        pendingSelection.sessionId !== sessionId ||
+        pendingSelection.scope !== scope ||
+        !active ||
+        !enabled)
+    ) {
+      pendingSelectionRef.current = undefined;
     }
-    wasOpenRef.current = open;
-  }, [open, reset]);
+  }, [active, enabled, normalizedValue, resetSelection, scope, sessionId]);
 
   useEffect(() => {
-    const cleanupGeneration = scope.cleanupGeneration + 1;
-    scope.cleanupGeneration = cleanupGeneration;
-    if (scope.cleanupTimer !== undefined) {
-      window.clearTimeout(scope.cleanupTimer);
-      scope.cleanupTimer = undefined;
+    cancelScheduledCleanup(scope);
+    if (canLoad) {
+      scope.active = true;
+    } else {
+      retireScope(queryClient, scope);
     }
 
     return () => {
-      const cleanupTimer = window.setTimeout(() => {
-        if (
-          scope.cleanupTimer !== cleanupTimer ||
-          scope.cleanupGeneration !== cleanupGeneration
-        ) {
-          return;
-        }
-        scope.cleanupTimer = undefined;
-        scope.mounted = false;
-        const scopedSession = scope.session;
-        if (scopedSession) {
-          endPlaceAutocompleteSession(scopedSession);
-          scope.session = undefined;
-          if (activeSessionRef.current?.session === scopedSession) {
-            activeSessionRef.current = undefined;
-          }
-        }
-        const activeSession = activeSessionRef.current;
-        if (activeSession?.sessionId === scope.sessionId) {
-          endPlaceAutocompleteSession(activeSession.session);
-          activeSessionRef.current = undefined;
-        }
-        queryClient.removeQueries({
-          queryKey: placeAutocompleteKeys.suggestionsForSession(scope.sessionId),
-          exact: false,
-        });
-        queryClient.removeQueries({
-          queryKey: placeAutocompleteKeys.session(scope.sessionId),
-          exact: true,
-        });
-      }, 0);
-      scope.cleanupTimer = cleanupTimer;
+      if (canLoad) scheduleScopeCleanup(queryClient, scope);
     };
-  }, [queryClient, scope]);
+  }, [canLoad, queryClient, scope]);
 
+  const mutateSelection = selectionMutation.mutateAsync;
   const selectSuggestion = useCallback(
     (suggestion: PlaceSuggestion) => {
-      if (selectionPromiseRef.current) {
-        return selectionPromiseRef.current;
-      }
-      if (!sessionQuery.data) {
-        return Promise.reject(new Error("Place autocomplete session is not available"));
+      const placeSession = sessionQuery.data;
+      if (
+        !placeSession ||
+        !isCurrentSessionScope(scope, sessionId) ||
+        scope.session !== placeSession
+      ) {
+        return Promise.reject(
+          new Error('Place autocomplete session is not available'),
+        );
       }
 
-      const promise = selection.mutateAsync({
+      const pendingSelection = pendingSelectionRef.current;
+      if (
+        pendingSelection?.placeSession === placeSession &&
+        pendingSelection.normalizedValue === normalizedValue &&
+        pendingSelection.sessionId === sessionId &&
+        pendingSelection.scope === scope
+      ) {
+        return pendingSelection.promise;
+      }
+
+      const promise = mutateSelection({
         suggestion,
-        placeSession: sessionQuery.data,
+        placeSession,
+        normalizedValue,
+        sessionId,
+        scope,
       });
-      selectionPromiseRef.current = promise;
+      pendingSelectionRef.current = {
+        placeSession,
+        normalizedValue,
+        sessionId,
+        scope,
+        promise,
+      };
       void promise.then(
         () => {
-          if (selectionPromiseRef.current === promise) {
-            selectionPromiseRef.current = undefined;
+          if (pendingSelectionRef.current?.promise === promise) {
+            pendingSelectionRef.current = undefined;
           }
         },
         () => {
-          if (selectionPromiseRef.current === promise) {
-            selectionPromiseRef.current = undefined;
+          if (pendingSelectionRef.current?.promise === promise) {
+            pendingSelectionRef.current = undefined;
           }
-        }
+        },
       );
       return promise;
     },
-    [selection, sessionQuery.data]
+    [
+      isCurrentSessionScope,
+      mutateSelection,
+      normalizedValue,
+      scope,
+      sessionId,
+      sessionQuery.data,
+    ],
   );
 
-  const retry = useCallback(async () => {
-    if (sessionQuery.isError) {
-      await sessionQuery.refetch();
-      return;
-    }
-    if (suggestionQuery.isError) {
-      await suggestionQuery.refetch();
-    }
-  }, [sessionQuery, suggestionQuery]);
-
-  const isError =
-    (canLoad && sessionQuery.isError) || (canSearch && suggestionQuery.isError);
-  const error =
-    (canSearch ? suggestionQuery.error : null) ??
-    (canLoad ? sessionQuery.error : null) ??
-    null;
+  const sessionError =
+    canLoad && sessionQuery.error instanceof Error ? sessionQuery.error : null;
+  const suggestionError =
+    canSearch && suggestionQuery.error instanceof Error
+      ? suggestionQuery.error
+      : null;
+  const error = sessionError ?? suggestionError;
+  const isDebouncing = canLoad && !isCurrentDebouncedValue;
+  const isLoading =
+    canLoad &&
+    (isDebouncing ||
+      sessionQuery.isPending ||
+      (canSearch && suggestionQuery.isFetching));
+  const hasSearched = canSearch && suggestionQuery.isSuccess;
+  const selectionAttempt = selectionMutation.variables;
+  const selectionErrorIsCurrent =
+    active &&
+    enabled &&
+    selectionAttempt?.normalizedValue === normalizedValue &&
+    selectionAttempt.sessionId === sessionId &&
+    selectionAttempt.scope === scope;
 
   return {
-    input,
-    setInput,
-    suggestions: canSearch ? (suggestionQuery.data ?? []) : [],
-    isLoading:
-      (canLoad && (sessionQuery.isLoading || sessionQuery.isFetching)) ||
-      (canSearch && (suggestionQuery.isLoading || suggestionQuery.isFetching)),
-    isSelecting: selection.isPending,
-    isError,
+    suggestions:
+      canSearch && suggestionQuery.isSuccess
+        ? (suggestionQuery.data ?? [])
+        : [],
+    isDebouncing,
+    isLoading,
+    isError: error !== null,
     error,
-    selectionError: selection.error ?? null,
-    retry,
+    sessionError,
+    hasSearched,
+    isSelecting: selectionMutation.isPending,
+    selectionError:
+      selectionErrorIsCurrent && selectionMutation.error instanceof Error
+        ? selectionMutation.error
+        : null,
     selectSuggestion,
-    reset,
   };
 }
