@@ -137,9 +137,8 @@ export function TransactionFlow() {
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { userProfile } = useSession();
   const { sheetId } = useWorkspace();
-  const { onboarding, refreshOnboarding } = useOnboarding();
+  const { onboarding } = useOnboarding();
   const { isOnline } = useConnectivity();
-  const [isResyncing, setIsResyncing] = useState(false);
   const [step, setStep] = useState(0);
   const [placeSuggestionSessionId, setPlaceSuggestionSessionId] = useState(
     createPlaceSessionId
@@ -501,33 +500,6 @@ export function TransactionFlow() {
     if (receiptTimeoutRef.current) {
       window.clearTimeout(receiptTimeoutRef.current);
       receiptTimeoutRef.current = null;
-    }
-  }
-
-  async function handleResync() {
-    if (isResyncing) {
-      return;
-    }
-    if (!isOnline) {
-      handleToast("Go online to sync accounts and categories");
-      return;
-    }
-    setIsResyncing(true);
-    try {
-      const changed = await refreshOnboarding();
-      handleToast(
-        changed
-          ? "Accounts and categories refreshed"
-          : "Accounts and categories are up to date"
-      );
-    } catch (error) {
-      handleToast(
-        error instanceof Error
-          ? error.message
-          : "Failed to sync accounts and categories"
-      );
-    } finally {
-      setIsResyncing(false);
     }
   }
 
@@ -1372,8 +1344,6 @@ export function TransactionFlow() {
         {/* Header with settings drawer */}
         <Header
           showSettings
-          onResync={() => void handleResync()}
-          isResyncing={isResyncing}
           onToast={handleToast}
         />
 

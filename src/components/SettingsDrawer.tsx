@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useConnectivity } from '../app/providers';
 import { useAccountMutations } from '../hooks/useAccountMutations';
 import { useCategoryMutations } from '../hooks/useCategoryMutations';
 import { useOnboarding } from '../hooks/useOnboarding';
@@ -28,6 +29,7 @@ import {
   DEFAULT_CATEGORY_COLORS,
   DEFAULT_CATEGORY_ICONS,
 } from '../lib/icons';
+import { SETTINGS_SECTIONS, type SettingsSection } from '../lib/settingsSync';
 import type { CategoryItem, QuickNote, TransactionType } from '../lib/types';
 import { AppearancePicker } from './AppearancePicker';
 import { DynamicIcon } from './DynamicIcon';
@@ -38,8 +40,6 @@ import { SwipeableListItem } from './SwipeableListItem';
 type SettingsDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onResync: () => void;
-  isResyncing: boolean;
   onToast: (message: string) => void;
 };
 
@@ -59,6 +59,12 @@ type EditingItem =
   | { type: 'category'; name: string; categoryType: TransactionType };
 
 const MAX_QUICK_NOTES = 5;
+
+const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
+  accounts: 'Accounts',
+  categories: 'Categories',
+  quickNotes: 'Quick Notes',
+};
 
 function generateQuickNoteId(): string {
   return `qn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -189,6 +195,7 @@ type SettingsRowProps = {
   showChevron?: boolean;
   rightAccessory?: React.ReactNode;
   tone?: 'default' | 'primary' | 'danger';
+  ariaBusy?: boolean;
 };
 
 function SettingsRow({
@@ -202,6 +209,7 @@ function SettingsRow({
   showChevron = true,
   rightAccessory,
   tone = 'default',
+  ariaBusy,
 }: SettingsRowProps) {
   const textTone =
     tone === 'danger' ? 'text-danger' : tone === 'primary' ? 'text-primary' : 'text-foreground';
@@ -211,6 +219,7 @@ function SettingsRow({
       type="button"
       onClick={onPress}
       disabled={disabled || !onPress}
+      aria-busy={ariaBusy}
       className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-2 disabled:opacity-50"
     >
       <div
@@ -356,11 +365,21 @@ function ReorderableRow<T>({
 export function SettingsDrawer({
   open,
   onOpenChange,
-  onResync,
-  isResyncing,
   onToast,
 }: SettingsDrawerProps) {
-  const { onboarding } = useOnboarding();
+  const { isOnline } = useConnectivity();
+  const {
+    onboarding,
+    isSyncing,
+    refreshSettings,
+    settingsSyncResult,
+    settingsSyncState,
+    settingsSyncStatus,
+    settingsSyncError,
+    hasLegacyQuickNotesMigrationPrompt,
+    importLegacyQuickNotes,
+    isImportingLegacyQuickNotes,
+  } = useOnboarding();
   const {
     addAccount,
     removeAccount,
@@ -376,6 +395,39 @@ export function SettingsDrawer({
     isSaving: isCategorySaving,
   } = useCategoryMutations(onToast);
   const isSaving = isAccountSaving || isCategorySaving;
+  const isSettingsSyncBusy = isSyncing || isImportingLegacyQuickNotes;
+  const settingsSectionErrors = {
+    ...(settingsSyncState?.errors ?? {}),
+    ...(settingsSyncResult?.errors ?? {}),
+  };
+  const settingsConflicts = SETTINGS_SECTIONS.filter((section) =>
+    settingsSyncResult?.conflicts.includes(section),
+  );
+  const hasSettingsSectionErrors = SETTINGS_SECTIONS.some(
+    (section) => settingsSectionErrors[section],
+  );
+  const settingsSyncErrorMessage = settingsSyncError?.message ?? null;
+  const globalSettingsError =
+    settingsSyncErrorMessage &&
+    !SETTINGS_SECTIONS.some(
+      (section) => settingsSectionErrors[section] === settingsSyncErrorMessage,
+    )
+      ? settingsSyncErrorMessage
+      : null;
+  const settingsStatusLabel =
+    settingsSyncStatus === 'error' || settingsSyncError || hasSettingsSectionErrors
+      ? 'Needs attention'
+      : isSettingsSyncBusy || settingsSyncStatus === 'pending'
+        ? 'Pending'
+        : 'Synced';
+  const settingsStatusTone =
+    settingsStatusLabel === 'Needs attention'
+      ? 'text-danger'
+      : settingsStatusLabel === 'Pending'
+        ? 'text-warning'
+        : 'text-success';
+  const hasSettingsDiagnostics =
+    Boolean(globalSettingsError) || hasSettingsSectionErrors || settingsConflicts.length > 0;
 
   // Quick notes hooks
   const { data: quickNotesConfig } = useQuickNotesQuery();
@@ -554,6 +606,24 @@ export function SettingsDrawer({
   // ─────────────────────────────────────────────────────────────
   // Handlers
   // ─────────────────────────────────────────────────────────────
+
+  async function handleSettingsRefresh() {
+    if (!isOnline || isSettingsSyncBusy) return;
+    try {
+      await refreshSettings();
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : 'Failed to sync settings.');
+    }
+  }
+
+  async function handleLegacyQuickNotesImport() {
+    if (!isOnline || isSettingsSyncBusy) return;
+    try {
+      await importLegacyQuickNotes();
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : 'Failed to import Quick Notes.');
+    }
+  }
 
   function handleAddAccount() {
     const trimmed = newAccountName.trim();
@@ -901,16 +971,91 @@ export function SettingsDrawer({
                               <SettingsRow
                                 icon={
                                   <RefreshCw
-                                    className={`h-4 w-4 ${isResyncing ? 'animate-spin' : ''}`}
+                                    className={`h-4 w-4 ${isSettingsSyncBusy ? 'animate-spin' : ''}`}
                                   />
                                 }
                                 iconBg="#007AFF"
-                                title="Sync Accounts & Categories"
-                                onPress={onResync}
-                                disabled={isResyncing}
+                                title="Sync Settings"
+                                onPress={() => void handleSettingsRefresh()}
+                                disabled={!isOnline || isSettingsSyncBusy}
                                 showChevron={false}
+                                ariaBusy={isSettingsSyncBusy}
+                                rightAccessory={
+                                  <span
+                                    aria-live="polite"
+                                    className={`shrink-0 whitespace-nowrap text-[13px] font-medium ${settingsStatusTone}`}
+                                  >
+                                    {settingsStatusLabel}
+                                  </span>
+                                }
                               />
+                              {hasSettingsDiagnostics ? (
+                                <>
+                                  <div className="ml-[56px] h-px bg-border/70" />
+                                  <div className="min-w-0 space-y-2 px-4 py-3 text-[13px] leading-5">
+                                    {globalSettingsError ? (
+                                      <p role="alert" className="min-w-0 break-words text-danger">
+                                        {globalSettingsError}
+                                      </p>
+                                    ) : null}
+                                    {SETTINGS_SECTIONS.map((section) => {
+                                      const error = settingsSectionErrors[section];
+                                      return error ? (
+                                        <p
+                                          key={`settings-error:${section}`}
+                                          role="alert"
+                                          className="min-w-0 break-words text-danger"
+                                        >
+                                          <span className="font-semibold">
+                                            {SETTINGS_SECTION_LABELS[section]}:
+                                          </span>{' '}
+                                          {error}
+                                        </p>
+                                      ) : null;
+                                    })}
+                                    {settingsConflicts.map((section) => (
+                                      <output
+                                        key={`settings-conflict:${section}`}
+                                        className="block min-w-0 break-words text-warning"
+                                      >
+                                        {SETTINGS_SECTION_LABELS[section]} changed in both places;
+                                        the Sheet version was kept.
+                                      </output>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : null}
                             </SettingsGroup>
+
+                            {!isOnline ? (
+                              <div className="min-w-0 break-words px-4 pt-3 text-[13px] leading-5 text-muted-foreground">
+                                You’re offline. Changes stay on this device and will sync when you
+                                reconnect.
+                              </div>
+                            ) : null}
+
+                            {hasLegacyQuickNotesMigrationPrompt ? (
+                              <>
+                                <SettingsSectionLabel>QUICK NOTES IMPORT</SettingsSectionLabel>
+                                <SettingsGroup>
+                                  <div className="min-w-0 px-4 py-3">
+                                    <p className="min-w-0 break-words text-[13px] leading-5 text-muted-foreground">
+                                      Quick Notes from another Sheet were found on this device.
+                                      Importing will replace this Sheet’s Quick Notes.
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleLegacyQuickNotesImport()}
+                                      disabled={!isOnline || isSettingsSyncBusy}
+                                      aria-busy={isImportingLegacyQuickNotes}
+                                      className="mt-3 min-h-11 w-full rounded-[12px] bg-primary px-4 py-2.5 text-[15px] font-semibold text-primary-foreground active:bg-primary/90 disabled:opacity-50"
+                                    >
+                                      {isImportingLegacyQuickNotes ? 'Importing…' : 'Import'}
+                                    </button>
+                                  </div>
+                                </SettingsGroup>
+                              </>
+                            ) : null}
 
                             <SettingsSectionLabel>MANAGE</SettingsSectionLabel>
                             <SettingsGroup>
