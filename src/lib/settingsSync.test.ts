@@ -211,6 +211,24 @@ describe('portable settings sync state', () => {
     },
   );
 
+  it('persists an applied Quick Note migration phase and scoped fingerprint', async () => {
+    const state = {
+      ...createDefaultSettingsSyncState('user-a'),
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: '{"default:expense":[]}',
+        phase: 'applied',
+        appliedScopedFingerprint: '{"default:expense":[]}',
+      },
+    } satisfies SettingsSyncState;
+
+    await writeSettingsSyncState('sheet-a', 'user-a', state);
+
+    await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toEqual(
+      state,
+    );
+  });
+
   it('rejects malformed persisted Quick Note migration state', async () => {
     const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
     const malformed = {
@@ -220,6 +238,62 @@ describe('portable settings sync state', () => {
         sourceFingerprint: 42,
       },
     } as unknown as SettingsSyncState;
+
+    await expectStorageCorruption(
+      () => writeSettingsSyncState('sheet-a', 'user-a', malformed),
+      storageKey,
+    );
+    expect(await db.settings.get(storageKey)).toBeUndefined();
+  });
+
+  it('rejects an applied Quick Note migration without its scoped fingerprint', async () => {
+    const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
+    const malformed = {
+      ...createDefaultSettingsSyncState('user-a'),
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: '{"default:expense":[]}',
+        phase: 'applied',
+      },
+    } as SettingsSyncState;
+
+    await expectStorageCorruption(
+      () => writeSettingsSyncState('sheet-a', 'user-a', malformed),
+      storageKey,
+    );
+    expect(await db.settings.get(storageKey)).toBeUndefined();
+  });
+
+  it('rejects an unknown persisted Quick Note migration phase', async () => {
+    const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
+    const malformed = {
+      ...createDefaultSettingsSyncState('user-a'),
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: '{"default:expense":[]}',
+        phase: 'finished',
+        appliedScopedFingerprint: '{"default:expense":[]}',
+      },
+    } as unknown as SettingsSyncState;
+
+    await expectStorageCorruption(
+      () => writeSettingsSyncState('sheet-a', 'user-a', malformed),
+      storageKey,
+    );
+    expect(await db.settings.get(storageKey)).toBeUndefined();
+  });
+
+  it('rejects a pending migration that claims an applied scoped fingerprint', async () => {
+    const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
+    const malformed = {
+      ...createDefaultSettingsSyncState('user-a'),
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: '{"default:expense":[]}',
+        phase: 'pending',
+        appliedScopedFingerprint: '{"default:expense":[]}',
+      },
+    } satisfies SettingsSyncState;
 
     await expectStorageCorruption(
       () => writeSettingsSyncState('sheet-a', 'user-a', malformed),

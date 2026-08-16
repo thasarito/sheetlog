@@ -5,7 +5,7 @@ import type {
 } from './googleSettings';
 import {
   reconcileSettings,
-  type LocalSettingsCompareAndSetResult,
+  type LocalSettingsAtomicCommitResult,
   type LocalSettingsSectionSnapshot,
   type LocalSettingsSnapshot,
   type SettingsLocalRepository,
@@ -108,31 +108,35 @@ function memoryLocal(
     return clone(next);
   }
 
-  async function compareAndSetSection<Section extends SettingsSection>(
+  async function commitSection<Section extends SettingsSection>(
     _sheetId: string,
+    _userId: string,
     section: Section,
     expected: LocalSettingsSectionSnapshot<Section>,
     value: SheetSettingsConfig[Section],
-  ): Promise<LocalSettingsCompareAndSetResult> {
+    update: (
+      current: SettingsSyncState | null,
+      applied: boolean,
+    ) => SettingsSyncState,
+  ): Promise<LocalSettingsAtomicCommitResult> {
     const currentFingerprint = fingerprintSettingsSection(settings, section);
     const expectedFingerprint = fingerprintSettingsSection(
       { ...settings, [section]: expected.value },
       section,
     );
-    if (
-      ready(section) !== expected.ready ||
-      currentFingerprint !== expectedFingerprint
-    ) {
-      return { applied: false, settings: clone(settings) };
-    }
-    edit(section, value);
-    return { applied: true, settings: clone(settings) };
+    const applied =
+      ready(section) === expected.ready && currentFingerprint === expectedFingerprint;
+    if (applied) edit(section, value);
+    const next = update(state ? clone(state) : null, applied);
+    state = clone(next);
+    stateWrites.push(clone(next));
+    return { applied, settings: clone(settings), state: clone(next) };
   }
 
   return {
     readSettings: vi.fn(async () => clone(settings)),
     updateSyncState: vi.fn(updateSyncState),
-    compareAndSetSection: vi.fn(compareAndSetSection),
+    commitSection: vi.fn(commitSection),
     readLegacyQuickNotes: vi.fn(async () => (legacy ? clone(legacy) : null)),
     deleteLegacyQuickNotesIfUnchanged: vi.fn(async (expected) => {
       if (
@@ -604,6 +608,7 @@ describe('settings reconciliation', () => {
     expect(result.state.quickNotesMigration).toEqual({
       intent: 'prompt',
       sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'pending',
     });
     expect(result.state.lastSyncedAt).toBeUndefined();
     expect(result.state.baselines.quickNotes).toBe(
@@ -875,6 +880,48 @@ describe('settings reconciliation', () => {
     );
   });
 
+  it('converges matching local and remote content without a stale-baseline conflict', async () => {
+    const oldBaseline = localSnapshot({
+      accounts: [{ name: 'Old account' }],
+      accountsConfirmed: true,
+    });
+    const matching = localSnapshot({
+      accounts: [{ name: 'Matching account' }],
+      accountsConfirmed: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: fingerprintSettingsSection(oldBaseline, 'accounts'),
+        categories: '',
+        quickNotes: '',
+      },
+      dirty: ['accounts'],
+    };
+    const local = memoryLocal(matching, state);
+    const remote = remoteAdapter(
+      remoteSettings({
+        accounts: { status: 'ok', present: true, value: matching.accounts },
+      }),
+    );
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+    expect(result.conflicts).toEqual([]);
+    expect(result.state.baselines.accounts).toBe(
+      fingerprintSettingsSection(matching, 'accounts'),
+    );
+    expect(result.state.dirty).toEqual([]);
+    expect(result.status).toBe('synced');
+  });
+
   it('confirms local metadata when equal content arrives from a present remote tab', async () => {
     const accounts = [{ name: 'Wallet' }];
     const initial = localSnapshot({
@@ -1020,11 +1067,11 @@ describe('settings reconciliation', () => {
         categories: { status: 'ok', present: true, value: remoteCategories },
       }),
     );
-    const performCas = vi.mocked(local.compareAndSetSection).getMockImplementation();
-    if (!performCas) throw new Error('CAS test repository is not configured.');
-    vi.mocked(local.compareAndSetSection).mockImplementationOnce(async (...args) => {
+    const performCommit = vi.mocked(local.commitSection).getMockImplementation();
+    if (!performCommit) throw new Error('Atomic commit test repository is not configured.');
+    vi.mocked(local.commitSection).mockImplementationOnce(async (...args) => {
       local.edit('categories', concurrentCategories);
-      return performCas(...args);
+      return performCommit(...args);
     });
     const result = await reconcileSettings({
       sheetId: 'sheet-a',
@@ -1123,6 +1170,62 @@ describe('settings reconciliation', () => {
     expect(result.state.dirty).toEqual([]);
   });
 
+  it('preserves an edit and dirty mark committed immediately after conflict-winner adoption', async () => {
+    const baseline = localSnapshot({
+      accounts: [{ name: 'Wallet' }],
+      accountsConfirmed: true,
+    });
+    const edited = localSnapshot({
+      accounts: [{ name: 'Offline edit' }],
+      accountsConfirmed: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: fingerprintSettingsSection(baseline, 'accounts'),
+        categories: '',
+        quickNotes: '',
+      },
+      dirty: ['accounts'],
+    };
+    const sheetWinner = [{ name: 'Sheet conflict winner' }];
+    const concurrentEdit = [{ name: 'Edit after conflict commit' }];
+    const local = memoryLocal(edited, state);
+    const remote = remoteAdapter(
+      remoteSettings({
+        accounts: { status: 'ok', present: true, value: sheetWinner },
+      }),
+    );
+    const performCommit = vi.mocked(local.commitSection).getMockImplementation();
+    if (!performCommit) throw new Error('Atomic commit test repository is not configured.');
+    vi.mocked(local.commitSection).mockImplementationOnce(async (...args) => {
+      const result = await performCommit(...args);
+      if (result.applied) {
+        local.edit('accounts', concurrentEdit);
+        await local.updateSyncState('sheet-a', 'user-a', (latest) =>
+          markSettingsSectionDirty(
+            latest ?? createDefaultSettingsSyncState('user-a'),
+            'accounts',
+          ),
+        );
+      }
+      return result;
+    });
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().accounts).toEqual(concurrentEdit);
+    expect(result.conflicts).toEqual(['accounts']);
+    expect(result.state.dirty).toContain('accounts');
+    expect(result.status).toBe('pending');
+  });
+
   it('records a conflict when post-write readback diverges and adopts the Sheet winner', async () => {
     const baseline = localSnapshot({
       accounts: [{ name: 'Wallet' }],
@@ -1169,6 +1272,67 @@ describe('settings reconciliation', () => {
     expect(result.state.baselines.accounts).toBe(
       fingerprintSettingsSection(local.current(), 'accounts'),
     );
+  });
+
+  it('preserves an edit and dirty mark committed immediately after divergent readback adoption', async () => {
+    const baseline = localSnapshot({
+      accounts: [{ name: 'Wallet' }],
+      accountsConfirmed: true,
+    });
+    const edited = localSnapshot({
+      accounts: [{ name: 'Offline edit' }],
+      accountsConfirmed: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: fingerprintSettingsSection(baseline, 'accounts'),
+        categories: '',
+        quickNotes: '',
+      },
+      dirty: ['accounts'],
+    };
+    const local = memoryLocal(edited, state);
+    const remote = remoteAdapter(
+      remoteSettings({
+        accounts: { status: 'ok', present: true, value: baseline.accounts },
+      }),
+    );
+    const sheetWinner = [{ name: 'Sheet write winner' }];
+    const concurrentEdit = [{ name: 'Edit after winner commit' }];
+    vi.mocked(remote.replaceSection).mockResolvedValueOnce({
+      status: 'ok',
+      present: true,
+      value: sheetWinner,
+    });
+    const performCommit = vi.mocked(local.commitSection).getMockImplementation();
+    if (!performCommit) throw new Error('Atomic commit test repository is not configured.');
+    vi.mocked(local.commitSection).mockImplementationOnce(async (...args) => {
+      const result = await performCommit(...args);
+      if (result.applied) {
+        local.edit('accounts', concurrentEdit);
+        await local.updateSyncState('sheet-a', 'user-a', (latest) =>
+          markSettingsSectionDirty(
+            latest ?? createDefaultSettingsSyncState('user-a'),
+            'accounts',
+          ),
+        );
+      }
+      return result;
+    });
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().accounts).toEqual(concurrentEdit);
+    expect(result.conflicts).toEqual(['accounts']);
+    expect(result.state.dirty).toContain('accounts');
+    expect(result.status).toBe('pending');
   });
 
   it('sanitizes an orphaned remote Quick Note winner and keeps the cleanup dirty', async () => {
@@ -1258,6 +1422,12 @@ describe('settings reconciliation', () => {
         sourceFingerprint: fingerprintQuickNotesConfig(legacy),
       },
     });
+    expect(local.currentState()?.quickNotesMigration).toEqual({
+      intent: 'auto-import',
+      sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'applied',
+      appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
+    });
     expect(local.legacy()).toEqual(legacy);
 
     const retryRemote = remoteAdapter(remoteSettings());
@@ -1273,6 +1443,329 @@ describe('settings reconciliation', () => {
     expect(local.deleteLegacyQuickNotesIfUnchanged).toHaveBeenCalledWith(legacy);
     expect(local.legacy()).toBeNull();
     expect(result.state.quickNotesMigration).toBeUndefined();
+    expect(result.status).toBe('synced');
+  });
+
+  it('never recopies legacy Quick Notes over a scoped edit after migration was applied', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'coffee', icon: 'Coffee', label: 'Coffee' }],
+    };
+    const scopedEdit: QuickNotesConfig = {
+      'default:expense': [{ id: 'tea', icon: 'CupSoda', label: 'Tea' }],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: scopedEdit,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      dirty: ['quickNotes'],
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+        phase: 'applied',
+        appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
+      },
+    };
+    const local = memoryLocal(localSettings, state, legacy);
+    const remote = remoteAdapter(remoteSettings());
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual(scopedEdit);
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+    expect(local.legacy()).toEqual(legacy);
+    expect(result.state.quickNotesMigration).toEqual({
+      intent: 'prompt',
+      sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'applied',
+      appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
+    });
+    expect(result.state.dirty).toContain('quickNotes');
+    expect(result.migrationApplied).toBe(false);
+    expect(result.status).toBe('pending');
+  });
+
+  it('preserves a scoped edit made after pending migration intent was persisted', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Legacy' }],
+    };
+    const scopedEdit: QuickNotesConfig = {
+      'default:expense': [{ id: 'scoped', icon: 'CupSoda', label: 'Scoped edit' }],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: scopedEdit,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      dirty: ['quickNotes'],
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+        phase: 'pending',
+      },
+    };
+    const local = memoryLocal(localSettings, state, legacy);
+    const remote = remoteAdapter(remoteSettings());
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual(scopedEdit);
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+    expect(local.legacy()).toEqual(legacy);
+    expect(result.state.quickNotesMigration).toEqual({
+      ...state.quickNotesMigration,
+      intent: 'prompt',
+    });
+    expect(result.state.dirty).toContain('quickNotes');
+    expect(result.status).toBe('pending');
+  });
+
+  it('keeps legacy and prompts when scoped Quick Notes change during migration upload', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Legacy' }],
+    };
+    const scopedEdit: QuickNotesConfig = {
+      'default:expense': [{ id: 'scoped', icon: 'CupSoda', label: 'Scoped edit' }],
+    };
+    const local = memoryLocal(localSnapshot(), null, legacy);
+    const remote = remoteAdapter(remoteSettings());
+    const pushStarted = deferred<void>();
+    const readback = deferred<{
+      status: 'ok';
+      present: true;
+      value: QuickNotesConfig;
+    }>();
+    vi.mocked(remote.replaceSection).mockImplementationOnce(async () => {
+      pushStarted.resolve();
+      return readback.promise;
+    });
+
+    const reconciliation = reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+    await pushStarted.promise;
+    local.edit('quickNotes', scopedEdit);
+    await local.updateSyncState('sheet-a', 'user-a', (latest) =>
+      markSettingsSectionDirty(
+        latest ?? createDefaultSettingsSyncState('user-a'),
+        'quickNotes',
+      ),
+    );
+    readback.resolve({ status: 'ok', present: true, value: legacy });
+    const result = await reconciliation;
+
+    expect(local.current().quickNotes).toEqual(scopedEdit);
+    expect(local.legacy()).toEqual(legacy);
+    expect(local.deleteLegacyQuickNotesIfUnchanged).not.toHaveBeenCalled();
+    expect(result.state.quickNotesMigration).toEqual({
+      intent: 'prompt',
+      sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'applied',
+      appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
+    });
+    expect(result.state.dirty).toContain('quickNotes');
+    expect(result.status).toBe('pending');
+  });
+
+  it('does not recopy an applied migration before retrying its upload', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'coffee', icon: 'Coffee', label: 'Coffee' }],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: legacy,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      dirty: ['quickNotes'],
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+        phase: 'applied',
+        appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
+      },
+    };
+    const local = memoryLocal(localSettings, state, legacy);
+    const remote = remoteAdapter(remoteSettings());
+    vi.mocked(remote.replaceSection).mockRejectedValueOnce(
+      new Error('Retry upload interrupted'),
+    );
+
+    await expect(
+      reconcileSettings({
+        sheetId: 'sheet-a',
+        verifiedUserId: 'user-a',
+        verifiedWorkspaceCount: 1,
+        local,
+        remote,
+      }),
+    ).rejects.toThrow('Retry upload interrupted');
+
+    expect(local.commitSection).not.toHaveBeenCalled();
+    expect(local.current().quickNotes).toEqual(legacy);
+    expect(local.currentState()?.quickNotesMigration).toEqual(
+      state.quickNotesMigration,
+    );
+  });
+
+  it('moves an automatic migration to prompt when a newer Sheet value wins', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Legacy' }],
+    };
+    const oldSheetValue: QuickNotesConfig = {
+      'default:expense': [{ id: 'old', icon: 'Circle', label: 'Old Sheet' }],
+    };
+    const sheetWinner: QuickNotesConfig = {
+      'default:income': [{ id: 'winner', icon: 'Wallet', label: 'Sheet winner' }],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: legacy,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: '',
+        categories: '',
+        quickNotes: fingerprintSettingsSection(
+          { ...localSettings, quickNotes: oldSheetValue },
+          'quickNotes',
+        ),
+      },
+      dirty: ['quickNotes'],
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+        phase: 'applied',
+        appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
+      },
+    };
+    const local = memoryLocal(localSettings, state, legacy);
+    const remote = remoteAdapter(
+      remoteSettings({
+        quickNotes: { status: 'ok', present: true, value: sheetWinner },
+      }),
+    );
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual(sheetWinner);
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+    expect(local.legacy()).toEqual(legacy);
+    expect(result.conflicts).toContain('quickNotes');
+    expect(result.state.quickNotesMigration).toEqual({
+      ...state.quickNotesMigration,
+      intent: 'prompt',
+    });
+    expect(result.migrationDecision).toBe('prompt');
+    expect(result.status).toBe('pending');
+  });
+
+  it('keeps a scoped edit dirty while a persisted legacy migration prompt is unresolved', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Legacy' }],
+    };
+    const scopedEdit: QuickNotesConfig = {
+      'default:expense': [{ id: 'scoped', icon: 'CupSoda', label: 'Scoped edit' }],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: scopedEdit,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      dirty: ['quickNotes'],
+      quickNotesMigration: {
+        intent: 'prompt',
+        sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+        phase: 'pending',
+      },
+    };
+    const local = memoryLocal(localSettings, state, legacy);
+    const remote = remoteAdapter(remoteSettings());
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 2,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual(scopedEdit);
+    expect(remote.replaceSection).not.toHaveBeenCalled();
+    expect(result.state.quickNotesMigration).toEqual(state.quickNotesMigration);
+    expect(result.state.dirty).toContain('quickNotes');
+    expect(result.status).toBe('pending');
+  });
+
+  it('clears persisted migration intent when legacy Quick Notes were emptied', async () => {
+    const scoped: QuickNotesConfig = {
+      'default:expense': [{ id: 'scoped', icon: 'Coffee', label: 'Scoped' }],
+    };
+    const oldLegacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Circle', label: 'Legacy' }],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: scoped,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: '',
+        categories: '',
+        quickNotes: fingerprintSettingsSection(localSettings, 'quickNotes'),
+      },
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: fingerprintQuickNotesConfig(oldLegacy),
+        phase: 'applied',
+        appliedScopedFingerprint: fingerprintQuickNotesConfig(scoped),
+      },
+    };
+    const local = memoryLocal(localSettings, state, {});
+    const remote = remoteAdapter(
+      remoteSettings({
+        quickNotes: { status: 'ok', present: true, value: scoped },
+      }),
+    );
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual(scoped);
+    expect(result.state.quickNotesMigration).toBeUndefined();
+    expect(result.migrationDecision).toBe('none');
     expect(result.status).toBe('synced');
   });
 
@@ -1385,8 +1878,35 @@ describe('settings reconciliation', () => {
     expect(result.state.quickNotesMigration).toEqual({
       intent: 'prompt',
       sourceFingerprint: fingerprintQuickNotesConfig(newerLegacy),
+      phase: 'pending',
     });
     expect(result.status).toBe('pending');
+  });
+
+  it('clears migration intent when legacy Quick Notes are emptied during upload', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'coffee', icon: 'Coffee', label: 'Coffee' }],
+    };
+    const local = memoryLocal(localSnapshot(), null, legacy);
+    const remote = remoteAdapter(remoteSettings());
+    vi.mocked(remote.replaceSection).mockImplementationOnce(
+      async (_sheetId, _section, value) => {
+        local.editLegacy({});
+        return { status: 'ok', present: true, value };
+      },
+    );
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.legacy()).toEqual({});
+    expect(result.state.quickNotesMigration).toBeUndefined();
+    expect(result.status).toBe('synced');
   });
 
   it('keeps legacy data and prompts when migration write readback diverges', async () => {
@@ -1419,8 +1939,76 @@ describe('settings reconciliation', () => {
     expect(result.state.quickNotesMigration).toEqual({
       intent: 'prompt',
       sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'applied',
+      appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
     });
     expect(result.migrationDecision).toBe('prompt');
+    expect(result.status).toBe('pending');
+  });
+
+  it('sanitizes divergent Quick Note readback and keeps the cleanup pushable', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Legacy' }],
+    };
+    const orphanedSheetWinner: QuickNotesConfig = {
+      'default:expense': [
+        {
+          id: 'winner',
+          icon: 'Coffee',
+          label: 'Winner',
+          account: 'Missing account',
+        },
+      ],
+      'expense:Missing category': [
+        { id: 'orphan', icon: 'Circle', label: 'Orphan category' },
+      ],
+    };
+    const localSettings = localSnapshot({
+      quickNotes: legacy,
+      quickNotesPresent: true,
+    });
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      dirty: ['quickNotes'],
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+        phase: 'applied',
+        appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
+      },
+    };
+    const local = memoryLocal(localSettings, state, legacy);
+    const remote = remoteAdapter(remoteSettings());
+    vi.mocked(remote.replaceSection).mockResolvedValueOnce({
+      status: 'ok',
+      present: true,
+      value: orphanedSheetWinner,
+    });
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(local.current().quickNotes).toEqual({
+      'default:expense': [
+        { id: 'winner', icon: 'Coffee', label: 'Winner' },
+      ],
+    });
+    expect(result.conflicts).toContain('quickNotes');
+    expect(result.state.baselines.quickNotes).toBe(
+      fingerprintSettingsSection(
+        { ...localSettings, quickNotes: orphanedSheetWinner },
+        'quickNotes',
+      ),
+    );
+    expect(result.state.dirty).toContain('quickNotes');
+    expect(result.state.quickNotesMigration?.intent).toBe('prompt');
+    expect(local.deleteLegacyQuickNotesIfUnchanged).not.toHaveBeenCalled();
+    expect(local.legacy()).toEqual(legacy);
     expect(result.status).toBe('pending');
   });
 
@@ -1456,6 +2044,8 @@ describe('settings reconciliation', () => {
     expect(result.state.quickNotesMigration).toEqual({
       intent: 'prompt',
       sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'applied',
+      appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
     });
     expect(result.status).toBe('pending');
   });
@@ -1496,6 +2086,50 @@ describe('settings reconciliation', () => {
     expect(result.status).toBe('synced');
   });
 
+  it('upgrades a phase-less pending auto-import and resets its stale baseline', async () => {
+    const legacy: QuickNotesConfig = {
+      'default:expense': [{ id: 'coffee', icon: 'Coffee', label: 'Coffee' }],
+    };
+    const staleRemote: QuickNotesConfig = {
+      'default:income': [{ id: 'old', icon: 'Wallet', label: 'Old' }],
+    };
+    const initial = localSnapshot();
+    const legacyState: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      baselines: {
+        accounts: '',
+        categories: '',
+        quickNotes: fingerprintSettingsSection(
+          { ...initial, quickNotes: staleRemote },
+          'quickNotes',
+        ),
+      },
+      quickNotesMigration: {
+        intent: 'auto-import',
+        sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      },
+    };
+    const local = memoryLocal(initial, legacyState, legacy);
+    const remote = remoteAdapter(remoteSettings());
+
+    const result = await reconcileSettings({
+      sheetId: 'sheet-a',
+      verifiedUserId: 'user-a',
+      verifiedWorkspaceCount: 1,
+      local,
+      remote,
+    });
+
+    expect(remote.replaceSection).toHaveBeenCalledWith(
+      'sheet-a',
+      'quickNotes',
+      legacy,
+    );
+    expect(result.conflicts).not.toContain('quickNotes');
+    expect(local.legacy()).toBeNull();
+    expect(result.status).toBe('synced');
+  });
+
   it('persists prompt and explicit migration intent across invalid remote reads', async () => {
     const legacy: QuickNotesConfig = {
       'default:expense': [{ id: 'coffee', icon: 'Coffee', label: 'Coffee' }],
@@ -1521,6 +2155,7 @@ describe('settings reconciliation', () => {
     expect(prompted.state.quickNotesMigration).toEqual({
       intent: 'prompt',
       sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'pending',
     });
 
     const explicit = await reconcileSettings({
@@ -1534,6 +2169,8 @@ describe('settings reconciliation', () => {
     expect(explicit.state.quickNotesMigration).toEqual({
       intent: 'explicit-import',
       sourceFingerprint: fingerprintQuickNotesConfig(legacy),
+      phase: 'applied',
+      appliedScopedFingerprint: fingerprintQuickNotesConfig(legacy),
     });
     expect(explicit.status).toBe('error');
 

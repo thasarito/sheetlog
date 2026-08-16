@@ -25,10 +25,13 @@ export interface SettingsSyncState {
 }
 
 export type QuickNotesMigrationIntent = 'auto-import' | 'prompt' | 'explicit-import';
+export type QuickNotesMigrationPhase = 'pending' | 'applied';
 
 export interface QuickNotesMigrationState {
   intent: QuickNotesMigrationIntent;
   sourceFingerprint: string;
+  phase?: QuickNotesMigrationPhase;
+  appliedScopedFingerprint?: string;
 }
 
 export type LegacyQuickNotesMigrationDecision = 'auto-import' | 'prompt' | 'none';
@@ -204,6 +207,26 @@ function validateSettingsSyncState(
     }
     if (typeof sourceFingerprint !== 'string' || sourceFingerprint.length === 0) {
       return corrupt(storageKey, 'Quick Note migration source fingerprint is invalid.');
+    }
+    const { phase, appliedScopedFingerprint } = value.quickNotesMigration;
+    if (phase !== undefined && phase !== 'pending' && phase !== 'applied') {
+      return corrupt(storageKey, 'Quick Note migration phase is invalid.');
+    }
+    if (phase !== 'applied' && appliedScopedFingerprint !== undefined) {
+      return corrupt(
+        storageKey,
+        'Only an applied Quick Note migration may have a scoped fingerprint.',
+      );
+    }
+    if (
+      phase === 'applied' &&
+      (typeof appliedScopedFingerprint !== 'string' ||
+        appliedScopedFingerprint.length === 0)
+    ) {
+      return corrupt(
+        storageKey,
+        'Applied Quick Note migration requires a scoped fingerprint.',
+      );
     }
   }
   return value as unknown as SettingsSyncState;
