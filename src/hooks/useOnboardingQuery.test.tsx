@@ -839,6 +839,83 @@ describe('settings-backed onboarding hooks', () => {
     });
   });
 
+  it('keeps a fresh import error when an older ordinary refresh finishes first', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    const clean = createDefaultSettingsSyncState('user-a');
+    const syncedResult: SettingsReconciliationResult = {
+      state: clean,
+      changed: [],
+      pushed: [],
+      conflicts: [],
+      errors: {},
+      migrationDecision: 'none',
+      migrationApplied: false,
+      status: 'synced',
+    };
+    const ordinaryRefresh = deferred<SettingsReconciliationResult>();
+    const importRequest = deferred<SettingsReconciliationResult>();
+    let ordinaryCallCount = 0;
+    runnerMocks.runSettingsReconciliation.mockImplementation((options) => {
+      if (options.importLegacyQuickNotes) return importRequest.promise;
+      ordinaryCallCount += 1;
+      return ordinaryCallCount === 1
+        ? Promise.resolve(syncedResult)
+        : ordinaryRefresh.promise;
+    });
+    const { queryClient, wrapper } = createHarness();
+    const { result } = renderHook(() => useOnboarding(), { wrapper });
+    await waitFor(() => {
+      expect(result.current.settingsSyncStatus).toBe('synced');
+    });
+    const initialUpdatedAt =
+      queryClient.getQueryState(
+        settingsKeys.sync('sheet-a', 'user-a'),
+      )?.dataUpdatedAt ?? 0;
+
+    let refreshPromise!: Promise<SettingsReconciliationResult | undefined>;
+    await act(async () => {
+      refreshPromise = result.current.refreshSettings();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(2);
+    });
+    let importPromise!: Promise<SettingsReconciliationResult>;
+    await act(async () => {
+      importPromise = result.current.importLegacyQuickNotes();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(runnerMocks.runSettingsReconciliation).toHaveBeenCalledTimes(3);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 5));
+      ordinaryRefresh.resolve(syncedResult);
+      await refreshPromise;
+    });
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(
+          settingsKeys.sync('sheet-a', 'user-a'),
+        )?.dataUpdatedAt,
+      ).toBeGreaterThan(initialUpdatedAt);
+    });
+
+    await act(async () => {
+      importRequest.reject(new TypeError('Fresh import failure'));
+      await expect(importPromise).rejects.toThrow('Fresh import failure');
+    });
+
+    await waitFor(() => {
+      expect(result.current.settingsSyncStatus).toBe('error');
+      expect(result.current.settingsSyncError?.message).toBe(
+        'Fresh import failure',
+      );
+    });
+  });
+
   it('keeps a successful local mutation and dirty cache state when Google reconciliation fails', async () => {
     providerState.isOnline = true;
     onlineManager.setOnline(true);

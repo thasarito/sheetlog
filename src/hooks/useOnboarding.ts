@@ -1,4 +1,5 @@
 import { onlineManager } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { getDefaultOnboardingState } from '../lib/settings';
 import type {
   SettingsReconciliationResult,
@@ -42,19 +43,17 @@ export function useOnboarding() {
   const settingsSyncQuery = useOnboardingSync();
   const updateMutation = useUpdateOnboarding();
   const importMutation = useImportLegacyQuickNotes();
+  const importAttemptRef = useRef(0);
+  const importErrorRef = useRef<unknown>(importMutation.error);
+  importErrorRef.current = importMutation.error;
   const onboarding = onboardingQuery.data ?? getDefaultOnboardingState();
   const settingsSyncResult = settingsSyncQuery.data ?? undefined;
   const settingsSyncState =
     settingsStateQuery.data ?? settingsSyncResult?.state ?? null;
-  const currentImportError =
-    importMutation.error &&
-    settingsSyncQuery.dataUpdatedAt <= importMutation.submittedAt
-      ? importMutation.error
-      : null;
   const operationError =
     onboardingQuery.error ??
     settingsStateQuery.error ??
-    currentImportError ??
+    importMutation.error ??
     settingsSyncQuery.error;
   const settingsSyncStatus = deriveSettingsSyncStatus(
     settingsSyncState,
@@ -76,8 +75,23 @@ export function useOnboarding() {
     if (!onlineManager.isOnline()) {
       throw new Error('Go online to refresh settings from Google Sheets.');
     }
+    const failedImportAtStart = importErrorRef.current;
+    const importAttemptAtStart = importAttemptRef.current;
     const refreshed = await settingsSyncQuery.refetch({ throwOnError: true });
+    if (
+      failedImportAtStart &&
+      importAttemptRef.current === importAttemptAtStart &&
+      importErrorRef.current === failedImportAtStart
+    ) {
+      importErrorRef.current = null;
+      importMutation.reset();
+    }
     return refreshed.data ?? undefined;
+  };
+
+  const importLegacyQuickNotes = async () => {
+    importAttemptRef.current += 1;
+    return importMutation.mutateAsync();
   };
 
   return {
@@ -101,7 +115,7 @@ export function useOnboarding() {
     legacyQuickNotesMigration,
     hasLegacyQuickNotesMigrationPrompt:
       legacyQuickNotesMigration?.intent === 'prompt',
-    importLegacyQuickNotes: importMutation.mutateAsync,
+    importLegacyQuickNotes,
     isImportingLegacyQuickNotes: importMutation.isPending,
   };
 }
