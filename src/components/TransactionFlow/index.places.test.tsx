@@ -616,7 +616,7 @@ describe("TransactionFlow Places integration", () => {
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
 
-  it("starts after two characters, keeps selection focused, and does not search the selected name", async () => {
+  it("starts after two characters, blurs after pointer selection, and does not search the selected name", async () => {
     const user = userEvent.setup();
     renderFlow();
     await user.click(screen.getByRole("button", { name: "Start expense" }));
@@ -639,7 +639,7 @@ describe("TransactionFlow Places integration", () => {
     await user.click(result);
 
     expect(noteInput).toHaveValue("Coffee House Resolved");
-    await waitFor(() => expect(noteInput).toHaveFocus());
+    await waitFor(() => expect(noteInput).not.toHaveFocus());
     const searchCountAfterSelection = mocks.searchSuggestions.mock.calls.length;
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 300));

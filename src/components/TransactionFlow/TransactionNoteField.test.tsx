@@ -218,7 +218,7 @@ describe("TransactionNoteField", () => {
     expect(screen.queryByText("private provider text")).not.toBeInTheDocument();
   });
 
-  it("shows nearby choices only for an empty note, caps five, and restores focus", async () => {
+  it("shows nearby choices only for an empty note, caps five, and blurs after selection", async () => {
     const user = userEvent.setup();
     const onPlaceSelect = vi.fn();
     const nearbySuggestions = Array.from({ length: 6 }, (_, index) => ({
@@ -229,16 +229,18 @@ describe("TransactionNoteField", () => {
     const input = screen.getByRole("combobox", { name: "Transaction note" });
 
     expect(screen.getAllByRole("button", { name: /Use Nearby/ })).toHaveLength(5);
+    await user.click(input);
+    expect(input).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Use Nearby 0 as note" }));
     expect(onPlaceSelect).toHaveBeenCalledWith({
       displayName: "Nearby 0",
       placeId: "near-0",
     });
-    await waitFor(() => expect(input).toHaveFocus());
+    await waitFor(() => expect(input).not.toHaveFocus());
     expect(screen.queryByRole("button", { name: /Use Nearby/ })).not.toBeInTheDocument();
   });
 
-  it("protects pointer selection from blur and closes on outside pointer", async () => {
+  it("blurs after a successful pointer result selection and closes on outside pointer", async () => {
     const user = userEvent.setup();
     const onPlaceSelect = vi.fn();
     renderField({ activeResults: [centralCafe], onPlaceSelect });
@@ -249,8 +251,9 @@ describe("TransactionNoteField", () => {
     expect(fireEvent.pointerDown(option)).toBe(false);
     await user.click(option);
     expect(onPlaceSelect).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(input).toHaveFocus());
+    await waitFor(() => expect(input).not.toHaveFocus());
 
+    await user.click(input);
     await user.type(input, " more");
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     fireEvent.pointerDown(document.body);
@@ -381,6 +384,7 @@ describe("TransactionNoteField", () => {
 
     await user.click(option);
     await waitFor(() => expect(hookState.selectSuggestion).toHaveBeenCalledTimes(1));
+    expect(input).toHaveFocus();
     hookState.selectionError = new Error("private selection failure");
     rendered.refresh();
     expect(input).toHaveValue("central");
@@ -393,7 +397,7 @@ describe("TransactionNoteField", () => {
       displayName: centralCafe.name,
       placeId: centralCafe.placeId,
     });
-    await waitFor(() => expect(input).toHaveFocus());
+    await waitFor(() => expect(input).not.toHaveFocus());
   });
 
   it("rotates a failed session and renders recovered results without Retry", async () => {
