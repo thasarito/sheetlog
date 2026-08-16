@@ -66,14 +66,22 @@ project. It does not require another Cloudflare service.
 
 The Function:
 
-1. accepts only same-origin `POST` requests with form-encoded bodies;
+1. accepts only same-origin `POST` requests with form-encoded bodies no larger
+   than 8 KiB;
 2. accepts only `authorization_code` and `refresh_token` grants;
-3. validates the required fields for the selected grant;
-4. copies only the allowlisted OAuth fields into a new request body;
+3. validates required fields, rejects duplicate/oversized fields, requires the
+   browser's public client ID to match the server-configured public client ID,
+   and requires the authorization-code redirect to match the request origin plus
+   the server-configured callback path;
+4. copies only the allowlisted OAuth fields into a new request body, using the
+   server-configured public client ID and callback path instead of trusting
+   caller-selected values;
 5. injects `client_secret` from `context.env.GOOGLE_CLIENT_SECRET`;
 6. sends the request to `https://oauth2.googleapis.com/token`;
-7. returns Google's status and JSON body with `Cache-Control: no-store`;
-8. never logs request bodies, authorization codes, verifiers, refresh tokens, or
+7. returns Google's status and parsed JSON body with `Cache-Control: no-store`;
+8. turns network failures and malformed upstream bodies into deterministic,
+   non-reflective `502` JSON errors;
+9. never logs request bodies, authorization codes, verifiers, refresh tokens, or
    the client secret.
 
 If the runtime secret is absent, it returns an actionable `503` JSON error and
@@ -81,14 +89,29 @@ does not call Google. Unsupported methods, origins, media types, grants, and
 missing fields receive deterministic `4xx` JSON errors.
 
 No CORS support is added. The endpoint exists solely for the SheetLog document
-on the same origin.
+on the same origin. The `Origin` check prevents browser CSRF; it is not client
+authentication because non-browser callers can forge it. Binding the client ID
+and redirect prevents using SheetLog's secret for another OAuth client. A capped
+streaming reader cancels the incoming body as soon as it exceeds 8 KiB, and field
+limits provide a second bound after parsing. The endpoint remains publicly
+reachable for SheetLog's own OAuth client, so production request volume is
+monitored and a Cloudflare route rate-limit rule can be added if abuse appears.
+
+`wrangler.toml` pins the public Google client ID and enables Cloudflare's
+incoming request signal and subrequest passthrough compatibility flags. This
+lets a canceled browser request cancel the Google subrequest in the deployed
+Pages runtime; session-generation and refresh-token compare-and-swap checks
+remain the correctness boundary if cancellation arrives too late.
 
 ### Client error handling
 
 The browser parses the proxy's OAuth JSON error shape and shows a safe,
-actionable message. Provider `error` and `error_description` values may be used
-for diagnosis, but token bodies and secret values are never included in errors
-or logs. Network failures remain distinguishable from provider rejection.
+actionable message. It accepts only a bounded OAuth `error` identifier and uses
+locally defined descriptions for proxy errors; arbitrary provider
+`error_description` text is never rendered or logged. Provider response details
+remain available in the browser network inspector for diagnosis. Network
+failures remain distinguishable from provider rejection, and the callback never
+logs caught error objects.
 
 ## Configuration and rollout
 
@@ -99,9 +122,11 @@ After implementation:
 
 1. rotate the previously browser-exposed secret for the existing Google OAuth
    Web client;
-2. add the replacement as an encrypted Cloudflare Pages runtime secret named
-   `GOOGLE_CLIENT_SECRET` for production (and preview when preview login is
-   intentionally tested);
+2. confirm the public `GOOGLE_CLIENT_ID` and `OAUTH_REDIRECT_PATH` values in
+   `wrangler.toml` match the Vite build and OAuth callback configuration, then
+   add the replacement secret as an encrypted Cloudflare Pages runtime secret
+   named `GOOGLE_CLIENT_SECRET` for production (and preview when preview login
+   is intentionally tested);
 3. deploy the hotfix;
 4. verify a harmless invalid-code request reaches Google without returning
    `client_secret is missing`;
@@ -120,10 +145,19 @@ Test-driven coverage will include:
 - successful refresh forwarding with the server-only secret and abort signal;
 - rejection for a missing runtime secret without an upstream request;
 - rejection for cross-origin, non-POST, unsupported media type, unsupported
-  grant, and missing required fields;
+  grant, missing required fields, duplicates, oversized bodies/fields, client ID
+  mismatch, and a redirect URI that differs from the server-configured
+  same-origin callback;
+- cancellation of an incoming body stream immediately after the 8 KiB cap;
+- deterministic safe handling for an upstream network failure and malformed
+  upstream JSON;
 - preservation of Google's status and JSON error body with no-store headers;
 - client exchanges targeting `/api/oauth/token`, never Google's token endpoint;
 - client request bodies never containing `client_secret`;
+- Cloudflare compatibility configuration for incoming request cancellation and
+  subrequest signal passthrough;
+- callback integration tests updated to use the proxy while preserving late
+  resolve/reject and refresh-token-retirement behavior;
 - existing refresh-token rotation/removal and account-handoff race tests;
 - full unit, TypeScript, lint, production build, and local Pages Function smoke
   verification.
