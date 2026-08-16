@@ -68,6 +68,7 @@ const googleMocks = vi.hoisted(() => {
   return {
     deleteRow: vi.fn(),
     DuplicateTransactionIdError,
+    ensurePlaceHeaders: vi.fn(),
     GoogleApiError,
     getSheetTabId: vi.fn(),
     readLinkedReimbursements: vi.fn(),
@@ -88,6 +89,7 @@ vi.mock("../../../lib/google", () => {
 vi.mock("../../../lib/mock", () => ({
   IS_DEV_MODE: false,
   deleteRow: vi.fn(),
+  ensurePlaceHeaders: vi.fn(),
   getSheetTabId: vi.fn(),
   readLinkedReimbursements: vi.fn(),
   readTransactionById: vi.fn(),
@@ -278,6 +280,7 @@ describe("TransactionsProvider", () => {
     providerState.isOnline = false;
     providerState.signOut.mockReset();
     googleMocks.deleteRow.mockReset().mockResolvedValue(undefined);
+    googleMocks.ensurePlaceHeaders.mockReset().mockResolvedValue(undefined);
     googleMocks.getSheetTabId.mockReset().mockResolvedValue(0);
     googleMocks.readLinkedReimbursements.mockReset().mockResolvedValue([]);
     googleMocks.readTransactionById.mockReset().mockResolvedValue(null);
@@ -1248,6 +1251,444 @@ describe("TransactionsProvider", () => {
     harness.queryClient.clear();
   });
 
+  it("preserves the authoritative remote place when a patch omits place", async () => {
+    const local = transaction("place-preserve", { place: undefined });
+    const remote = transaction(local.id, {
+      note: "Remote Cafe",
+      place: { provider: "google", placeId: "remote-cafe" },
+      sheetRow: 7,
+      targetSheetId: undefined,
+      targetUserId: undefined,
+    });
+    await db.transactions.put(local);
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[local.id, 7]]),
+    );
+    const harness = createProviderHarness();
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness
+        .getContext()
+        .updateTransaction(local.id, { amount: 22 });
+    });
+
+    expect(googleMocks.updateRow).toHaveBeenCalledWith(
+      "access-token",
+      "sheet-a",
+      7,
+      expect.objectContaining({ place: remote.place, amount: 22 }),
+    );
+    expect(updated?.place).toEqual(remote.place);
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("drops a stale local place when the authoritative remote row has none", async () => {
+    const local = transaction("place-remote-clear", {
+      place: { provider: "google", placeId: "stale-local" },
+    });
+    const remote = transaction(local.id, {
+      note: "Remote note",
+      place: undefined,
+      sheetRow: 9,
+      targetSheetId: undefined,
+      targetUserId: undefined,
+    });
+    await db.transactions.put(local);
+    googleMocks.readTransactionById.mockResolvedValue(remote);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[local.id, 9]]),
+    );
+    const harness = createProviderHarness();
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness
+        .getContext()
+        .updateTransaction(local.id, { amount: 23 });
+    });
+
+    expect(googleMocks.updateRow.mock.calls.at(-1)?.[3]).not.toHaveProperty(
+      "place",
+    );
+    expect(updated).not.toHaveProperty("place");
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("keeps queued clear and set intents through unrelated offline edits", async () => {
+    const clearRecord = transaction("queued-clear", {
+      status: "pending",
+      place: { provider: "google", placeId: "old-place" },
+    });
+    const setRecord = transaction("queued-set", {
+      status: "pending",
+      place: undefined,
+    });
+    await db.transactions.bulkPut([clearRecord, setRecord]);
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await harness.getContext().updateTransaction(clearRecord.id, {
+        note: "",
+        place: null,
+      });
+      await harness
+        .getContext()
+        .updateTransaction(clearRecord.id, { amount: 44 });
+      await harness.getContext().updateTransaction(setRecord.id, {
+        note: "Central Cafe",
+        place: { provider: "google", placeId: "central-cafe" },
+      });
+      await harness
+        .getContext()
+        .updateTransaction(setRecord.id, { account: "Bank" });
+    });
+
+    expect(await db.transactions.get(clearRecord.id)).toMatchObject({
+      amount: 44,
+      placeUpdateIntent: "clear",
+      status: "pending",
+    });
+    expect(await db.transactions.get(clearRecord.id)).not.toHaveProperty(
+      "place",
+    );
+    expect(await db.transactions.get(setRecord.id)).toMatchObject({
+      account: "Bank",
+      place: { provider: "google", placeId: "central-cafe" },
+      placeUpdateIntent: "set",
+      status: "pending",
+    });
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("atomically composes concurrent offline place and amount patches", async () => {
+    const record = transaction("concurrent-offline-place", {
+      status: "pending",
+      place: { provider: "google", placeId: "old-place" },
+    });
+    await db.transactions.put(record);
+    const firstHarness = createProviderHarness();
+    const secondHarness = createProviderHarness();
+
+    await act(async () => {
+      await Promise.all([
+        firstHarness
+          .getContext()
+          .updateTransaction(record.id, { note: "", place: null }),
+        secondHarness
+          .getContext()
+          .updateTransaction(record.id, { amount: 44 }),
+      ]);
+    });
+
+    expect(await db.transactions.get(record.id)).toMatchObject({
+      amount: 44,
+      placeUpdateIntent: "clear",
+      status: "pending",
+    });
+    expect(await db.transactions.get(record.id)).not.toHaveProperty("place");
+
+    firstHarness.rendered.unmount();
+    firstHarness.queryClient.clear();
+    secondHarness.rendered.unmount();
+    secondHarness.queryClient.clear();
+  });
+
+  it("preserves a newer queued place set when a direct write finishes later", async () => {
+    providerState.isOnline = true;
+    const record = transaction("direct-place-cas", {
+      note: "Old place",
+      place: { provider: "google", placeId: "old-place" },
+    });
+    await db.transactions.put(record);
+    googleMocks.readTransactionById.mockResolvedValue(record);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[record.id, 15]]),
+    );
+    const writeStarted = deferred<void>();
+    const releaseWrite = deferred<void>();
+    googleMocks.updateRow.mockImplementationOnce(async () => {
+      writeStarted.resolve();
+      await releaseWrite.promise;
+    });
+    const directHarness = createProviderHarness();
+    await waitFor(() => {
+      expect(directHarness.getContext().lastSyncAt).not.toBeNull();
+    });
+    vi.mocked(syncPendingTransactions).mockClear();
+    providerState.accessToken = null;
+    providerState.isOnline = false;
+    const queuedHarness = createProviderHarness();
+    providerState.accessToken = "access-token";
+    providerState.isOnline = true;
+
+    let directPromise!: Promise<TransactionRecord | undefined>;
+    await act(async () => {
+      directPromise = directHarness.getContext().updateTransaction(record.id, {
+        note: "Manual note",
+        place: null,
+      });
+      await writeStarted.promise;
+
+      await queuedHarness.getContext().updateTransaction(record.id, {
+        note: "New place",
+        place: { provider: "google", placeId: "new-place" },
+      });
+
+      releaseWrite.resolve();
+      await directPromise;
+    });
+
+    expect(await db.transactions.get(record.id)).toMatchObject({
+      note: "New place",
+      place: { provider: "google", placeId: "new-place" },
+      placeUpdateIntent: "set",
+      status: "pending",
+    });
+    expect(syncPendingTransactions).toHaveBeenCalled();
+
+    directHarness.rendered.unmount();
+    directHarness.queryClient.clear();
+    queuedHarness.rendered.unmount();
+    queuedHarness.queryClient.clear();
+  });
+
+  it("does not let an older failed clear overwrite a newer queued place set", async () => {
+    providerState.isOnline = true;
+    const record = transaction("direct-place-failure-cas", {
+      note: "Old place",
+      place: { provider: "google", placeId: "old-place" },
+    });
+    await db.transactions.put(record);
+    googleMocks.readTransactionById.mockResolvedValue(record);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[record.id, 16]]),
+    );
+    const writeStarted = deferred<void>();
+    const rejectWrite = deferred<void>();
+    googleMocks.updateRow.mockImplementationOnce(async () => {
+      writeStarted.resolve();
+      await rejectWrite.promise;
+    });
+    const directHarness = createProviderHarness();
+    await waitFor(() => {
+      expect(directHarness.getContext().lastSyncAt).not.toBeNull();
+    });
+    vi.mocked(syncPendingTransactions).mockClear();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    providerState.accessToken = null;
+    providerState.isOnline = false;
+    const queuedHarness = createProviderHarness();
+    providerState.accessToken = "access-token";
+    providerState.isOnline = true;
+
+    let directPromise!: Promise<TransactionRecord | undefined>;
+    let newerRecord!: TransactionRecord | undefined;
+    await act(async () => {
+      directPromise = directHarness.getContext().updateTransaction(record.id, {
+        note: "Manual note",
+        place: null,
+      });
+      await writeStarted.promise;
+
+      newerRecord = await queuedHarness.getContext().updateTransaction(
+        record.id,
+        {
+          note: "Newest place",
+          place: { provider: "google", placeId: "newest-place" },
+        },
+      );
+      rejectWrite.reject(new TypeError("offline"));
+      await directPromise;
+    });
+
+    expect(warn).toHaveBeenCalled();
+    expect(await db.transactions.get(record.id)).toEqual(newerRecord);
+    expect(await db.transactions.get(record.id)).toMatchObject({
+      note: "Newest place",
+      place: { provider: "google", placeId: "newest-place" },
+      placeUpdateIntent: "set",
+      status: "pending",
+      updatedAt: newerRecord?.updatedAt,
+    });
+    expect(syncPendingTransactions).toHaveBeenCalled();
+
+    directHarness.rendered.unmount();
+    directHarness.queryClient.clear();
+    queuedHarness.rendered.unmount();
+    queuedHarness.queryClient.clear();
+  });
+
+  it("assures place headers before a direct explicit place write", async () => {
+    const events: string[] = [];
+    const record = transaction("direct-place", { place: undefined });
+    await db.transactions.put(record);
+    googleMocks.readTransactionById.mockResolvedValue(record);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[record.id, 12]]),
+    );
+    googleMocks.ensurePlaceHeaders.mockImplementation(async () => {
+      events.push("header");
+    });
+    googleMocks.updateRow.mockImplementation(async () => {
+      events.push("row");
+    });
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await harness.getContext().updateTransaction(record.id, {
+        note: "Central Cafe",
+        place: { provider: "google", placeId: "central-cafe" },
+      });
+    });
+
+    expect(events).toEqual(["header", "row"]);
+    const stored = await db.transactions.get(record.id);
+    expect(stored).toMatchObject({
+      status: "synced",
+      place: { provider: "google", placeId: "central-cafe" },
+    });
+    expect(stored).not.toHaveProperty("placeUpdateIntent");
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("assures place headers before directly clearing a place", async () => {
+    const events: string[] = [];
+    const record = transaction("direct-place-clear", {
+      note: "Central Cafe",
+      place: { provider: "google", placeId: "central-cafe" },
+    });
+    await db.transactions.put(record);
+    googleMocks.readTransactionById.mockResolvedValue(record);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[record.id, 13]]),
+    );
+    googleMocks.ensurePlaceHeaders.mockImplementation(async () => {
+      events.push("header");
+    });
+    googleMocks.updateRow.mockImplementation(async () => {
+      events.push("row");
+    });
+    const harness = createProviderHarness();
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness.getContext().updateTransaction(record.id, {
+        note: "Manual note",
+        place: null,
+      });
+    });
+
+    expect(events).toEqual(["header", "row"]);
+    expect(googleMocks.updateRow.mock.calls.at(-1)?.[3]).not.toHaveProperty(
+      "place",
+    );
+    expect(updated).toMatchObject({ note: "Manual note", status: "synced" });
+    expect(updated).not.toHaveProperty("place");
+    expect(updated).not.toHaveProperty("placeUpdateIntent");
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("queues the same place intent when direct header assurance fails", async () => {
+    const record = transaction("place-header-failure", { place: undefined });
+    await db.transactions.put(record);
+    googleMocks.readTransactionById.mockResolvedValue(record);
+    googleMocks.readTransactionIdMap.mockResolvedValue(
+      new Map([[record.id, 14]]),
+    );
+    googleMocks.ensurePlaceHeaders.mockRejectedValue(
+      new TypeError("offline"),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const harness = createProviderHarness();
+
+    let updated!: TransactionRecord | undefined;
+    await act(async () => {
+      updated = await harness.getContext().updateTransaction(record.id, {
+        note: "Central Cafe",
+        place: { provider: "google", placeId: "central-cafe" },
+      });
+    });
+
+    expect(warn).toHaveBeenCalled();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(updated).toMatchObject({
+      status: "pending",
+      place: { provider: "google", placeId: "central-cafe" },
+      placeUpdateIntent: "set",
+    });
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not add existing-row intent to a never-synced local record", async () => {
+    const record = transaction("new-local-place", {
+      status: "pending",
+      sheetId: undefined,
+      sheetRow: undefined,
+      sheetRowValid: undefined,
+      place: undefined,
+    });
+    await db.transactions.put(record);
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await harness.getContext().updateTransaction(record.id, {
+        note: "Central Cafe",
+        place: { provider: "google", placeId: "central-cafe" },
+      });
+    });
+
+    const stored = await db.transactions.get(record.id);
+    expect(stored).toMatchObject({
+      status: "pending",
+      place: { provider: "google", placeId: "central-cafe" },
+    });
+    expect(stored).not.toHaveProperty("placeUpdateIntent");
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("rejects malformed place input before local or Sheet mutation", async () => {
+    const record = transaction("invalid-place", { status: "pending" });
+    await db.transactions.put(record);
+    const harness = createProviderHarness();
+
+    await act(async () => {
+      await expect(
+        harness.getContext().updateTransaction(record.id, {
+          place: undefined,
+        }),
+      ).rejects.toThrow("Invalid place metadata");
+      await expect(
+        harness.getContext().addTransaction({
+          ...input,
+          note: "",
+          place: { provider: "google", placeId: "invalid" },
+        }),
+      ).rejects.toThrow("Place metadata requires a nonblank note");
+    });
+
+    expect(await db.transactions.get(record.id)).toEqual(record);
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
   it("returns the latest error copy when an immediate retry fails validation", async () => {
     providerState.isOnline = true;
     const harness = createProviderHarness();
@@ -1726,6 +2167,7 @@ describe("TransactionsProvider", () => {
       updatedAt: expect.any(String),
       sheetRow: undefined,
       error: undefined,
+      placeUpdateIntent: "preserve",
     });
 
     harness.rendered.unmount();
@@ -1883,6 +2325,8 @@ describe("TransactionsProvider", () => {
   it("queues a compensating delete when resolving the tab ID fails", async () => {
     providerState.sheetTabId = null;
     const synced = transaction("tab-lookup-failure", { sheetRow: 16 });
+    synced.place = { provider: "google", placeId: "kept-place" };
+    synced.placeUpdateIntent = "clear";
     await db.transactions.add(synced);
     googleMocks.getSheetTabId.mockRejectedValue(new TypeError("offline"));
     const harness = createProviderHarness();
@@ -1904,6 +2348,11 @@ describe("TransactionsProvider", () => {
     const remaining = await db.transactions.toArray();
     expect(remaining).toHaveLength(1);
     expect(remaining[0].amount).toBe(-42);
+    expect(remaining[0].place).toEqual({
+      provider: "google",
+      placeId: "kept-place",
+    });
+    expect(remaining[0]).not.toHaveProperty("placeUpdateIntent");
     expect(harness.getContext().lastSyncError).toBe(
       "Network error while syncing.",
     );
@@ -1930,6 +2379,7 @@ describe("TransactionsProvider", () => {
       expect.arrayContaining([
         transactionQueryKeys.local,
         ["recentTransactions"],
+        transactionQueryKeys.history,
         transactionQueryKeys.reimbursements,
         ["transactionById"],
       ]),
@@ -2603,6 +3053,7 @@ describe("transaction mutations", () => {
       expect.arrayContaining([
         transactionQueryKeys.local,
         ["recentTransactions"],
+        transactionQueryKeys.history,
         transactionQueryKeys.reimbursements,
         ["transactionById"],
       ]),
@@ -2673,15 +3124,20 @@ describe("transaction mutations", () => {
     await act(async () => {
       returned = await result.current.mutateAsync({
         id: updated.id,
-        input: { note: "Updated" },
+        input: { note: "Updated", place: null },
       });
     });
 
     expect(returned).toEqual(updated);
+    expect(updateTransaction).toHaveBeenCalledWith(updated.id, {
+      note: "Updated",
+      place: null,
+    });
     expect(invalidatedKeys(invalidateQueries)).toEqual(
       expect.arrayContaining([
         transactionQueryKeys.local,
         ["recentTransactions"],
+        transactionQueryKeys.history,
         transactionQueryKeys.reimbursements,
         ["transactionById"],
       ]),

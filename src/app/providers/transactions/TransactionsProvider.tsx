@@ -6,6 +6,7 @@ import { db } from "../../../lib/db";
 import {
   deleteRow as realDeleteRow,
   DuplicateTransactionIdError,
+  ensurePlaceHeaders as realEnsurePlaceHeaders,
   getSheetTabId as realGetSheetTabId,
   readLinkedReimbursements as realReadLinkedReimbursements,
   readTransactionById as realReadTransactionById,
@@ -16,6 +17,7 @@ import { mapGoogleSyncError } from "../../../lib/googleErrors";
 import {
   IS_DEV_MODE,
   deleteRow as mockDeleteRow,
+  ensurePlaceHeaders as mockEnsurePlaceHeaders,
   getSheetTabId as mockGetSheetTabId,
   readLinkedReimbursements as mockReadLinkedReimbursements,
   readTransactionById as mockReadTransactionById,
@@ -35,6 +37,13 @@ import {
 import { syncPendingTransactions } from "../../../lib/sync";
 import { toLocalTransactionRecord } from "../../../lib/transactionHistory";
 import {
+  InvalidTransactionPlaceError,
+  applyTransactionUpdate,
+  composePlaceUpdateIntent,
+  normalizeTransactionInput,
+  sameTransactionPlace,
+} from "../../../lib/transactionPlace";
+import {
   LEGACY_TRANSACTION_SCOPE_ERROR,
   getTransactionTargetSheetId,
   getTransactionTargetUserId,
@@ -45,6 +54,7 @@ import type {
   TransactionInput,
   TransactionRecord,
   TransactionType,
+  TransactionUpdateInput,
 } from "../../../lib/types";
 import { useConnectivity } from "../connectivity/ConnectivityContext";
 import { useSession } from "../session/session.hooks";
@@ -56,6 +66,9 @@ import {
 } from "./TransactionsContext";
 
 const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
+const ensurePlaceHeaders = IS_DEV_MODE
+  ? mockEnsurePlaceHeaders
+  : realEnsurePlaceHeaders;
 const getSheetTabId = IS_DEV_MODE ? mockGetSheetTabId : realGetSheetTabId;
 const readLinkedReimbursements = IS_DEV_MODE
   ? mockReadLinkedReimbursements
@@ -116,9 +129,9 @@ function canDeleteAsLegacyRecovery(
 }
 
 function lockLinkedInput(
-  input: Partial<TransactionInput>,
+  input: TransactionUpdateInput,
   original: TransactionRecord,
-): Partial<TransactionInput> {
+): TransactionUpdateInput {
   return {
     ...input,
     type: original.type,
@@ -127,6 +140,37 @@ function lockLinkedInput(
     for: original.for,
     reimbursesTransactionId: original.reimbursesTransactionId,
   };
+}
+
+function isSameProviderRevision(
+  current: TransactionRecord,
+  expected: TransactionRecord,
+): boolean {
+  return (
+    current.id === expected.id &&
+    current.status === expected.status &&
+    current.deleteIntent === expected.deleteIntent &&
+    current.createdAt === expected.createdAt &&
+    current.updatedAt === expected.updatedAt &&
+    current.targetSheetId === expected.targetSheetId &&
+    current.targetUserId === expected.targetUserId &&
+    current.sheetId === expected.sheetId &&
+    current.sheetRow === expected.sheetRow &&
+    current.sheetRowValid === expected.sheetRowValid &&
+    current.error === expected.error &&
+    current.placeUpdateIntent === expected.placeUpdateIntent &&
+    current.type === expected.type &&
+    current.amount === expected.amount &&
+    current.currency === expected.currency &&
+    current.account === expected.account &&
+    current.for === expected.for &&
+    current.category === expected.category &&
+    current.date === expected.date &&
+    (current.note ?? "") === (expected.note ?? "") &&
+    (current.reimbursesTransactionId ?? "") ===
+      (expected.reimbursesTransactionId ?? "") &&
+    sameTransactionPlace(current.place, expected.place)
+  );
 }
 
 const DEFAULT_RECENTS: RecentCategories = {
@@ -395,6 +439,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   const addTransactionLocally = useCallback(
     async (input: TransactionInput) => {
+      const normalizedInput = normalizeTransactionInput(input);
       if (!sheetId) {
         throw new TransactionScopeError("No active Sheet workspace");
       }
@@ -409,7 +454,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           ? crypto.randomUUID()
           : `${Date.now()}`;
       const record: TransactionRecord = {
-        ...input,
+        ...normalizedInput,
         id,
         status: "pending",
         createdAt: now,
@@ -420,15 +465,86 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       await db.transactions.add(record);
       await Promise.allSettled([
         refreshMutationState(),
-        markRecentCategory(input.type, input.category),
+        markRecentCategory(normalizedInput.type, normalizedInput.category),
       ]);
       return (await db.transactions.get(id)) ?? record;
     },
     [markRecentCategory, refreshMutationState, sheetId, userId]
   );
 
+  const queueTransactionUpdate = useCallback(
+    async (
+      id: string,
+      input: TransactionUpdateInput,
+      now: string,
+      expectedRevision?: TransactionRecord,
+      authoritativeBase?: TransactionRecord,
+    ) =>
+      db.transaction("rw", db.transactions, async () => {
+        const transaction = await db.transactions.get(id);
+        if (!transaction) {
+          return { kind: "missing" as const };
+        }
+        requireTransactionScope(transaction, sheetId, userId);
+        if (transaction.deleteIntent) {
+          throw new ReimbursementValidationError(
+            "Reimbursement removal is pending; retry undo instead",
+          );
+        }
+        if (
+          expectedRevision &&
+          !isSameProviderRevision(transaction, expectedRevision)
+        ) {
+          return { kind: "superseded" as const, record: transaction };
+        }
+
+        const baseTransaction: TransactionRecord = authoritativeBase
+          ? {
+              ...transaction,
+              ...authoritativeBase,
+              id: transaction.id,
+              status: transaction.status,
+              targetSheetId: transaction.targetSheetId,
+              targetUserId: transaction.targetUserId,
+            }
+          : transaction;
+        if (authoritativeBase && !authoritativeBase.place) {
+          delete baseTransaction.place;
+        }
+        const safeInput = baseTransaction.reimbursesTransactionId
+          ? lockLinkedInput(input, baseTransaction)
+          : input;
+        const targetsExistingRow =
+          transaction.status === "synced" ||
+          transaction.sheetId !== undefined ||
+          transaction.sheetRow !== undefined ||
+          transaction.placeUpdateIntent !== undefined;
+        const nextPlaceIntent = targetsExistingRow
+          ? composePlaceUpdateIntent(
+              transaction.placeUpdateIntent,
+              safeInput,
+            )
+          : undefined;
+        const queuedRecord: TransactionRecord = {
+          ...applyTransactionUpdate(baseTransaction, safeInput),
+          status: "pending",
+          sheetRow: undefined,
+          error: undefined,
+          updatedAt: now,
+          ...(nextPlaceIntent
+            ? { placeUpdateIntent: nextPlaceIntent }
+            : {}),
+        };
+        if (!nextPlaceIntent) delete queuedRecord.placeUpdateIntent;
+        const localRecord = toLocalTransactionRecord(queuedRecord);
+        await db.transactions.put(localRecord);
+        return { kind: "queued" as const, record: localRecord };
+      }),
+    [sheetId, userId],
+  );
+
   const updateTransactionUnlocked = useCallback(
-    async (id: string, input: Partial<TransactionInput>) => {
+    async (id: string, input: TransactionUpdateInput) => {
       const transaction = await db.transactions.get(id);
       if (!transaction) return;
       requireTransactionScope(transaction, sheetId, userId);
@@ -439,14 +555,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       }
 
       const now = new Date().toISOString();
-      let safeInput = transaction.reimbursesTransactionId
-        ? lockLinkedInput(input, transaction)
-        : input;
-      let prospectiveRecord: TransactionRecord = {
-        ...transaction,
-        ...safeInput,
-        updatedAt: now,
-      };
+      let attemptedRevision: TransactionRecord | undefined;
+      let attemptedBase: TransactionRecord | undefined;
 
       if (
         transaction.status === "synced" &&
@@ -460,20 +570,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             async (mutationGuard) => {
               const latestTransaction = await db.transactions.get(id);
               if (!latestTransaction) {
-                return null;
+                return { kind: "missing" as const };
               }
               requireTransactionScope(latestTransaction, sheetId, userId);
               if (latestTransaction.status !== "synced") {
-                safeInput = latestTransaction.reimbursesTransactionId
-                  ? lockLinkedInput(input, latestTransaction)
-                  : input;
-                prospectiveRecord = {
-                  ...latestTransaction,
-                  ...safeInput,
-                  updatedAt: now,
-                };
-                return undefined;
+                return { kind: "defer" as const };
               }
+              attemptedRevision = latestTransaction;
               const idMap = await readTransactionIdMap(accessToken, sheetId);
               const currentRow = idMap.get(latestTransaction.id);
 
@@ -498,22 +601,33 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 );
               }
 
-              safeInput = remoteChild.reimbursesTransactionId
+              const safeInput = remoteChild.reimbursesTransactionId
                 ? lockLinkedInput(input, remoteChild)
                 : { ...input, reimbursesTransactionId: undefined };
               const rowToUpdate = remoteChild.sheetRow ?? currentRow;
-              const updatedRecord: TransactionRecord = {
+              const directPlaceIntent = composePlaceUpdateIntent(
+                undefined,
+                safeInput,
+              );
+              const remoteAuthoritativeBase: TransactionRecord = {
                 ...latestTransaction,
                 ...remoteChild,
-                ...safeInput,
                 id: latestTransaction.id,
                 status: "synced",
                 sheetId,
                 sheetRow: rowToUpdate,
+              };
+              if (!remoteChild.place) delete remoteAuthoritativeBase.place;
+              attemptedBase = remoteAuthoritativeBase;
+              const updatedRecord: TransactionRecord = {
+                ...applyTransactionUpdate(
+                  remoteAuthoritativeBase,
+                  safeInput,
+                ),
                 updatedAt: now,
                 error: undefined,
               };
-              prospectiveRecord = updatedRecord;
+              delete updatedRecord.placeUpdateIntent;
 
               if (
                 remoteChild.reimbursesTransactionId &&
@@ -568,6 +682,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 }
               }
 
+              if (
+                directPlaceIntent === "set" ||
+                directPlaceIntent === "clear"
+              ) {
+                await mutationGuard.assertOwnership();
+                await ensurePlaceHeaders(accessToken, sheetId);
+              }
               await mutationGuard.assertOwnership();
               await updateRow(
                 accessToken,
@@ -576,36 +697,92 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
                 updatedRecord,
               );
               await mutationGuard.assertOwnership();
-              await db.transactions.put({
-                ...toLocalTransactionRecord(updatedRecord),
-                status: "synced",
-                updatedAt: now,
-                sheetId,
-                targetSheetId: sheetId,
-                targetUserId: userId,
-                sheetRow: rowToUpdate,
-                error: undefined,
-              });
-              return await db.transactions.get(id);
+              const localCommit = await db.transaction(
+                "rw",
+                db.transactions,
+                async () => {
+                  const current = await db.transactions.get(id);
+                  if (
+                    !current ||
+                    !isTransactionInSheetScope(current, sheetId, userId)
+                  ) {
+                    return { kind: "rollback" as const };
+                  }
+                  if (!isSameProviderRevision(current, latestTransaction)) {
+                    return {
+                      kind: "preserved" as const,
+                      record: current,
+                    };
+                  }
+                  const syncedRecord = toLocalTransactionRecord({
+                    ...updatedRecord,
+                    status: "synced",
+                    sheetId,
+                    targetSheetId: sheetId,
+                    targetUserId: userId,
+                    sheetRow: rowToUpdate,
+                    error: undefined,
+                  });
+                  delete syncedRecord.placeUpdateIntent;
+                  await db.transactions.put(syncedRecord);
+                  return {
+                    kind: "synced" as const,
+                    record: syncedRecord,
+                  };
+                },
+              );
+
+              if (localCommit.kind === "rollback") {
+                const freshIdMap = await readTransactionIdMap(
+                  accessToken,
+                  sheetId,
+                );
+                const rollbackRow = freshIdMap.get(latestTransaction.id);
+                if (rollbackRow !== undefined) {
+                  await mutationGuard.assertOwnership();
+                  await updateRow(
+                    accessToken,
+                    sheetId,
+                    rollbackRow,
+                    remoteChild,
+                  );
+                }
+                return { kind: "missing" as const };
+              }
+              return localCommit;
             },
           );
-          if (directResult === null) {
+          if (directResult.kind === "missing") {
             return undefined;
           }
-          if (directResult) {
+          if (
+            directResult.kind === "synced" ||
+            directResult.kind === "preserved"
+          ) {
             await refreshMutationState();
             if (input.type || input.category) {
               await Promise.allSettled([
                 markRecentCategory(
-                  directResult.type,
-                  directResult.category,
+                  directResult.record.type,
+                  directResult.record.category,
                 ),
               ]);
             }
-            return directResult;
+            if (
+              directResult.kind === "preserved" &&
+              (directResult.record.status === "pending" ||
+                directResult.record.status === "error" ||
+                directResult.record.deleteIntent) &&
+              isOnline
+            ) {
+              await performSync().catch(() => undefined);
+              return await db.transactions.get(id);
+            }
+            return directResult.record;
           }
         } catch (error) {
           if (
+            error instanceof InvalidTransactionPlaceError ||
             error instanceof ReimbursementValidationError ||
             error instanceof RemoteTransactionMissingError ||
             error instanceof DuplicateTransactionIdError ||
@@ -617,17 +794,38 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             "In-place update failed, falling back to pending:",
             error
           );
+          const queued = await queueTransactionUpdate(
+            id,
+            input,
+            now,
+            attemptedRevision,
+            attemptedBase,
+          );
+          await refreshMutationState();
+          if (
+            queued.kind !== "missing" &&
+            (input.type || input.category)
+          ) {
+            await Promise.allSettled([
+              markRecentCategory(
+                queued.record.type,
+                queued.record.category,
+              ),
+            ]);
+          }
+          if (
+            queued.kind !== "missing" &&
+            isOnline &&
+            accessToken &&
+            sheetId
+          ) {
+            await performSync().catch(() => undefined);
+          }
+          return await db.transactions.get(id);
         }
       }
 
-      await db.transactions.put({
-        ...toLocalTransactionRecord(prospectiveRecord),
-        id: transaction.id,
-        status: "pending",
-        updatedAt: now,
-        sheetRow: undefined,
-        error: undefined,
-      });
+      await queueTransactionUpdate(id, input, now);
       await refreshMutationState();
       if (input.type || input.category) {
         const pendingRecord = await db.transactions.get(id);
@@ -652,6 +850,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       userId,
       markRecentCategory,
       performSync,
+      queueTransactionUpdate,
       refreshMutationState,
     ]
   );
@@ -768,6 +967,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       targetUserId: userId ?? undefined,
       error: undefined,
     };
+    delete compensating.placeUpdateIntent;
     await db.transactions.add(compensating);
     await refreshMutationState();
     if (isOnline && accessToken && sheetId) {
@@ -973,6 +1173,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         targetUserId: userId ?? undefined,
         error: undefined,
       };
+      delete compensating.placeUpdateIntent;
       await db.transactions.add(compensating);
       await refreshMutationState();
       await db.transactions.delete(id);
@@ -1010,7 +1211,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   );
 
   const updateTransaction = useCallback(
-    (id: string, input: Partial<TransactionInput>) =>
+    (id: string, input: TransactionUpdateInput) =>
       runExclusive(() => updateTransactionUnlocked(id, input)),
     [runExclusive, updateTransactionUnlocked],
   );
