@@ -109,6 +109,43 @@ describe('portable settings sync state', () => {
     expect(await db.settings.get('settingsSync:sheet%2Fa:user%3Ab')).toBeDefined();
   });
 
+  it('normalizes and deduplicates dirty sections before a write-read round trip', async () => {
+    const state: SettingsSyncState = {
+      ...createDefaultSettingsSyncState('user-a'),
+      dirty: ['quickNotes', 'accounts', 'quickNotes'],
+    };
+
+    await writeSettingsSyncState('sheet-a', 'user-a', state);
+
+    await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toEqual({
+      ...state,
+      dirty: ['accounts', 'quickNotes'],
+    });
+    expect(state.dirty).toEqual(['quickNotes', 'accounts', 'quickNotes']);
+  });
+
+  it('rejects a malformed sync state before put and preserves the previous readable record', async () => {
+    const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
+    const previous = {
+      ...createDefaultSettingsSyncState('user-a'),
+      dirty: ['categories'] as const,
+    } satisfies SettingsSyncState;
+    await writeSettingsSyncState('sheet-a', 'user-a', previous);
+    const previousRecord = await db.settings.get(storageKey);
+    const malformed = {
+      ...previous,
+      lastSyncedAt: 123,
+    } as unknown as SettingsSyncState;
+
+    await expectStorageCorruption(
+      () => writeSettingsSyncState('sheet-a', 'user-a', malformed),
+      storageKey,
+    );
+
+    expect(await db.settings.get(storageKey)).toEqual(previousRecord);
+    await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toEqual(previous);
+  });
+
   it('refuses to persist sync state owned by a different user', async () => {
     const otherUsersState = createDefaultSettingsSyncState('user-b');
 
@@ -216,6 +253,49 @@ describe('portable settings sync state', () => {
     await expect(readLegacyQuickNotesConfig()).resolves.toEqual(legacy);
     expect(getQuickNotesStorageKey('sheet/a')).toBe('quickNotes:sheet%2Fa');
     expect(await db.settings.get('quickNotes')).toEqual(legacyRecord);
+  });
+
+  it('rejects six Quick Notes before put and preserves the previous readable record', async () => {
+    const storageKey = getQuickNotesStorageKey('sheet-a');
+    const previous: QuickNotesConfig = {
+      'default:income': [],
+    };
+    await writeQuickNotesConfig('sheet-a', previous);
+    const previousRecord = await db.settings.get(storageKey);
+    const sixNotes: QuickNotesConfig = {
+      'default:expense': Array.from({ length: 6 }, (_, index) => ({
+        id: `note-${index + 1}`,
+        icon: 'Coffee',
+        label: `Note ${index + 1}`,
+      })),
+    };
+
+    await expectStorageCorruption(() => writeQuickNotesConfig('sheet-a', sixNotes), storageKey);
+
+    expect(await db.settings.get(storageKey)).toEqual(previousRecord);
+    await expect(readQuickNotesConfig('sheet-a')).resolves.toEqual(previous);
+  });
+
+  it('rejects a malformed type-cast Quick Note before put without overwriting prior data', async () => {
+    const storageKey = getQuickNotesStorageKey('sheet-a');
+    const previous: QuickNotesConfig = {
+      'expense:Food': [{ id: 'lunch', icon: 'Utensils', label: 'Lunch' }],
+    };
+    await writeQuickNotesConfig('sheet-a', previous);
+    const previousRecord = await db.settings.get(storageKey);
+    const malformed = {
+      'default:expense': [
+        { id: 'coffee', icon: 'Coffee', label: 'Coffee', amount: 100 },
+      ],
+    } as unknown as QuickNotesConfig;
+
+    await expectStorageCorruption(
+      () => writeQuickNotesConfig('sheet-a', malformed),
+      storageKey,
+    );
+
+    expect(await db.settings.get(storageKey)).toEqual(previousRecord);
+    await expect(readQuickNotesConfig('sheet-a')).resolves.toEqual(previous);
   });
 
   it('marks and clears dirty sections uniquely in deterministic order without dropping state', () => {
