@@ -4,7 +4,7 @@
 
 **Goal:** Keep SheetLog's transaction canvas geometrically unchanged while a native keyboard is visible, and dismiss that keyboard after a successful pointer/touch place selection.
 
-**Architecture:** A focused `useStableTransactionHeight` hook owns the transaction canvas height and ignores same-width mobile viewport contractions while still accepting orientation changes. The viewport meta tag and supported VirtualKeyboard API request overlay behavior as progressive enhancement. `TransactionNoteField` distinguishes pointer/touch selection from keyboard selection so successful taps blur the input while Arrow/Enter retains accessible focus.
+**Architecture:** A focused `useStableTransactionHeight` hook owns the transaction canvas height and ignores same-width mobile viewport contractions while an editable control is focused, while still accepting ordinary unfocused resizes and orientation changes. The viewport meta tag and supported VirtualKeyboard API request overlay behavior as progressive enhancement. `TransactionNoteField` distinguishes pointer/touch selection from keyboard selection so successful taps blur the input while Arrow/Enter retains accessible focus.
 
 **Tech Stack:** React 18, TypeScript, Tailwind CSS, TanStack Query-backed Places hooks, Vitest/Testing Library, Playwright Mobile Chrome.
 
@@ -30,15 +30,17 @@ function expectSameBox(actual: RequiredBox, expected: RequiredBox) {
 }
 ```
 
-Import `type Locator` from `@playwright/test`. Capture baseline boxes after the note, keypad, and Submit are visible:
+Import `type Locator` from `@playwright/test`. Capture the initial keypad and Submit boxes before searching. After inline results appear, capture the equivalent results-open baseline for all three elements and verify the keypad and Submit still match their initial boxes:
 
 ```ts
 const baselineNote = await note.boundingBox();
 const baselineKeypad = await keypad.boundingBox();
 const baselineSubmit = await submit.boundingBox();
 if (!baselineNote || !baselineKeypad || !baselineSubmit) {
-  throw new Error("Expected transaction geometry before keyboard resize");
+  throw new Error("Expected results-open transaction geometry");
 }
+expectSameBox(baselineKeypad, initialKeypad);
+expectSameBox(baselineSubmit, initialSubmit);
 ```
 
 After inline results appear and while the note is focused, simulate the keyboard contraction and assert unchanged geometry:
@@ -130,6 +132,9 @@ afterEach(() => {
 
 describe("useStableTransactionHeight", () => {
   it("ignores a same-width mobile keyboard contraction", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
     const { result } = renderHook(() => useStableTransactionHeight());
     expect(result.current).toBe(844);
 
@@ -139,6 +144,34 @@ describe("useStableTransactionHeight", () => {
     });
 
     expect(result.current).toBe(844);
+    input.remove();
+  });
+
+  it("accepts a same-width mobile resize without editable focus", () => {
+    const button = document.createElement("button");
+    document.body.append(button);
+    button.focus();
+    const { result } = renderHook(() => useStableTransactionHeight());
+
+    act(() => {
+      setViewport(390, 544);
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    expect(result.current).toBe(544);
+    button.remove();
+  });
+
+  it("uses the root content height so safe-area padding stays inside the viewport", () => {
+    const root = document.createElement("div");
+    root.id = "root";
+    Object.defineProperty(root, "clientHeight", { value: 751 });
+    document.body.append(root);
+
+    const { result } = renderHook(() => useStableTransactionHeight());
+
+    expect(result.current).toBe(751);
+    root.remove();
   });
 
   it("accepts a genuine orientation-size change", () => {
@@ -219,8 +252,21 @@ function isCoarsePointer() {
   );
 }
 
+function isEditableElement(element: Element | null) {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLElement && element.isContentEditable)
+  );
+}
+
+function measureAvailableHeight() {
+  const rootHeight = document.getElementById("root")?.clientHeight ?? 0;
+  return rootHeight > 0 ? rootHeight : window.innerHeight;
+}
+
 export function useStableTransactionHeight() {
-  const [height, setHeight] = useState(() => window.innerHeight);
+  const [height, setHeight] = useState(measureAvailableHeight);
   const widthRef = useRef(window.innerWidth);
   const coarsePointerRef = useRef(isCoarsePointer());
 
@@ -231,9 +277,15 @@ export function useStableTransactionHeight() {
 
     const handleResize = () => {
       const widthChanged = window.innerWidth !== widthRef.current;
-      if (coarsePointerRef.current && !widthChanged) return;
+      if (
+        coarsePointerRef.current &&
+        !widthChanged &&
+        isEditableElement(document.activeElement)
+      ) {
+        return;
+      }
       widthRef.current = window.innerWidth;
-      setHeight(window.innerHeight);
+      setHeight(measureAvailableHeight());
     };
 
     window.addEventListener("resize", handleResize);
@@ -247,7 +299,7 @@ export function useStableTransactionHeight() {
 }
 ```
 
-The hook intentionally freezes height-only resizes on coarse-pointer devices, where they represent native-keyboard and mobile-toolbar behavior, but keeps ordinary desktop resizing responsive. A width change establishes a new mobile orientation baseline.
+The hook measures the root content box so the body's safe-area padding remains outside the canvas. It freezes same-width height changes only while an editable control owns focus on a coarse-pointer device. Unfocused mobile resizes and ordinary desktop resizing remain responsive, while a width change establishes a new mobile orientation baseline.
 
 - [ ] **Step 4: Run focused tests and typecheck**
 
@@ -281,6 +333,7 @@ In the existing full-flow render test, add a stable test ID and assert that the 
 ```tsx
 const transactionCanvas = screen.getByTestId("transaction-canvas");
 expect(transactionCanvas).toHaveStyle({ height: `${window.innerHeight}px` });
+expect(transactionCanvas).toHaveClass("shrink-0");
 expect(transactionCanvas).not.toHaveClass("h-dvh");
 ```
 
@@ -316,7 +369,7 @@ const stableTransactionHeight = useStableTransactionHeight();
 <main
   data-testid="transaction-canvas"
   style={{ height: `${stableTransactionHeight}px` }}
-  className="h-full from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6"
+  className="h-full shrink-0 from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6"
 >
 ```
 

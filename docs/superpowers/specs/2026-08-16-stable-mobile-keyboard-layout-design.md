@@ -14,7 +14,7 @@ This change applies to the SheetLog transaction flow in browser and installed-PW
 
 The application will have one stable height owner for the transaction canvas. The current duplicate dynamic-viewport ownership (`body` and `TransactionFlow` both use `dvh`) will be removed from the transaction layout chain.
 
-The stable height will be captured before a focused text input can trigger the native keyboard. Height-only viewport contraction while an editable control is focused will not update the canvas. A genuine width/orientation change may establish a new stable height. Once the keyboard closes, the canvas remains at the same geometry rather than animating through intermediate viewport heights.
+The stable height will be captured from the root content box, after the body's safe-area padding, and before a focused text input can trigger the native keyboard. Height-only viewport contraction while an editable control is focused will not update the canvas. A genuine width/orientation change may establish a new stable height. Once the keyboard closes, the canvas remains at the same geometry rather than animating through intermediate viewport heights.
 
 Supporting Chromium browsers will also receive the standards-based overlay preferences:
 
@@ -54,6 +54,7 @@ Keyboard selection with Arrow keys and Enter will keep logical focus on the note
 ### Unit and component tests
 
 - Stable height ignores a height-only contraction while the note input is focused.
+- Stable height remains inside nonzero top and bottom safe-area insets.
 - Stable height accepts a genuine orientation/width change.
 - Successful pointer result selection blurs the note input.
 - Failed pointer selection leaves the note input focused for retry.

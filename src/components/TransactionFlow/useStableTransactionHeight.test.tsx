@@ -39,6 +39,9 @@ describe("useStableTransactionHeight", () => {
   });
 
   it("ignores a same-width mobile keyboard contraction", () => {
+    const input = document.createElement("input");
+    document.body.append(input);
+    input.focus();
     const { result } = renderHook(() => useStableTransactionHeight());
     expect(result.current).toBe(844);
 
@@ -48,6 +51,37 @@ describe("useStableTransactionHeight", () => {
     });
 
     expect(result.current).toBe(844);
+    input.remove();
+  });
+
+  it("accepts a same-width mobile resize without editable focus", () => {
+    const button = document.createElement("button");
+    document.body.append(button);
+    button.focus();
+    const { result } = renderHook(() => useStableTransactionHeight());
+
+    act(() => {
+      setViewport(390, 544);
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    expect(result.current).toBe(544);
+    button.remove();
+  });
+
+  it("uses the root content height so safe-area padding stays inside the viewport", () => {
+    const root = document.createElement("div");
+    root.id = "root";
+    Object.defineProperty(root, "clientHeight", {
+      configurable: true,
+      value: 751,
+    });
+    document.body.append(root);
+
+    const { result } = renderHook(() => useStableTransactionHeight());
+
+    expect(result.current).toBe(751);
+    root.remove();
   });
 
   it("accepts a genuine orientation-size change", () => {

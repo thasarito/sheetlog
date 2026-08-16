@@ -24,8 +24,21 @@ function isCoarsePointer() {
   );
 }
 
+function isEditableElement(element: Element | null) {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLElement && element.isContentEditable)
+  );
+}
+
+function measureAvailableHeight() {
+  const rootHeight = document.getElementById("root")?.clientHeight ?? 0;
+  return rootHeight > 0 ? rootHeight : window.innerHeight;
+}
+
 export function useStableTransactionHeight() {
-  const [height, setHeight] = useState(() => window.innerHeight);
+  const [height, setHeight] = useState(measureAvailableHeight);
   const widthRef = useRef(window.innerWidth);
   const coarsePointerRef = useRef(isCoarsePointer());
 
@@ -36,9 +49,15 @@ export function useStableTransactionHeight() {
 
     const handleResize = () => {
       const widthChanged = window.innerWidth !== widthRef.current;
-      if (coarsePointerRef.current && !widthChanged) return;
+      if (
+        coarsePointerRef.current &&
+        !widthChanged &&
+        isEditableElement(document.activeElement)
+      ) {
+        return;
+      }
       widthRef.current = window.innerWidth;
-      setHeight(window.innerHeight);
+      setHeight(measureAvailableHeight());
     };
 
     window.addEventListener("resize", handleResize);
