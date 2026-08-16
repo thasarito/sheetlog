@@ -38,6 +38,10 @@ export function visibleLocalTransactionsForSheet(
       return [transaction];
     }
 
+    if (transaction.status !== "pending" && transaction.status !== "error") {
+      return [];
+    }
+
     const targetSheetId = getTransactionTargetSheetId(transaction);
     const isLegacyForVisibleSheet =
       !getTransactionTargetUserId(transaction) &&

@@ -103,25 +103,73 @@ describe("transaction scope", () => {
       targetSheetId: "sheet-a",
       targetUserId: "user-a",
     });
+    const currentError = transaction("current-error", {
+      status: "error",
+      error: "Network unavailable",
+      targetSheetId: "sheet-a",
+      targetUserId: "user-a",
+    });
     const other = transaction("other", {
       targetSheetId: "sheet-b",
       targetUserId: "user-a",
     });
+    const otherUser = transaction("other-user", {
+      targetSheetId: "sheet-a",
+      targetUserId: "user-b",
+    });
     const legacy = transaction("legacy", { note: "Old offline item" });
+    const legacyError = transaction("legacy-error", {
+      status: "error",
+      error: "Original failure",
+    });
 
     expect(
       visibleLocalTransactionsForSheet(
-        [current, other, legacy],
+        [current, currentError, other, otherUser, legacy, legacyError],
         "sheet-a",
         "user-a",
       ),
     ).toEqual([
       current,
+      currentError,
       {
         ...legacy,
         status: "error",
         error: LEGACY_TRANSACTION_SCOPE_ERROR,
       },
+      {
+        ...legacyError,
+        error: LEGACY_TRANSACTION_SCOPE_ERROR,
+      },
     ]);
+  });
+
+  it("excludes synced legacy rows instead of forging local sync errors", () => {
+    const knownSheet = transaction("known-sheet", {
+      status: "synced",
+      targetSheetId: "sheet-a",
+      error: "Stale local error",
+    });
+    const fullyUnscoped = transaction("fully-unscoped", {
+      status: "synced",
+    });
+
+    expect(
+      visibleLocalTransactionsForSheet(
+        [knownSheet, fullyUnscoped],
+        "sheet-a",
+        "user-a",
+      ),
+    ).toEqual([]);
+    expect(knownSheet).toMatchObject({
+      status: "synced",
+      error: "Stale local error",
+    });
+    expect(knownSheet).not.toHaveProperty("targetUserId");
+    expect(fullyUnscoped).toMatchObject({
+      status: "synced",
+    });
+    expect(fullyUnscoped).not.toHaveProperty("targetSheetId");
+    expect(fullyUnscoped).not.toHaveProperty("targetUserId");
   });
 });

@@ -103,7 +103,7 @@ function TransactionHistoryRow({
       : transaction.status === "pending"
       ? "Pending"
       : transaction.status === "error"
-        ? "Sync failed"
+        ? transaction.error?.trim() || "Sync failed"
         : null;
 
   return (
