@@ -124,7 +124,7 @@ async function parseTokenResponse(
       !Object.hasOwn(tokenPayload, "expires_in") ||
       !isNonEmptyString(tokenPayload.access_token) ||
       typeof tokenPayload.expires_in !== "number" ||
-      !Number.isFinite(tokenPayload.expires_in) ||
+      !Number.isSafeInteger(tokenPayload.expires_in) ||
       tokenPayload.expires_in <= 0 ||
       (hasRefreshToken && !isNonEmptyString(tokenPayload.refresh_token))
     ) {
@@ -145,6 +145,10 @@ async function parseTokenResponse(
 
 function createTokenData(data: ValidatedTokenResponse): TokenData {
   const expiresAt = Date.now() + data.expires_in * 1000;
+  if (!Number.isFinite(expiresAt) || !Number.isSafeInteger(expiresAt)) {
+    throw invalidTokenResponseError();
+  }
+
   return {
     access_token: data.access_token,
     expires_in: data.expires_in,

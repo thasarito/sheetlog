@@ -240,6 +240,27 @@ describe("browser OAuth public-client flow", () => {
         }),
     },
     {
+      label: "Number.MAX_VALUE expiry",
+      response: () =>
+        successfulTokenResponse({ expires_in: Number.MAX_VALUE }),
+    },
+    {
+      label: "Number.MAX_SAFE_INTEGER expiry",
+      response: () =>
+        successfulTokenResponse({ expires_in: Number.MAX_SAFE_INTEGER }),
+    },
+    {
+      label: "fractional expiry",
+      response: () => successfulTokenResponse({ expires_in: 1.5 }),
+    },
+    {
+      label: "unsafe integer expiry",
+      response: () =>
+        successfulTokenResponse({
+          expires_in: Number.MAX_SAFE_INTEGER + 1,
+        }),
+    },
+    {
       label: "empty refresh token",
       response: () => successfulTokenResponse({ refresh_token: "" }),
     },
@@ -278,6 +299,29 @@ describe("browser OAuth public-client flow", () => {
       expect(errorSpy).not.toHaveBeenCalled();
     },
   );
+
+  it("rejects a Date.now-derived unsafe expiry before changing the prior refresh credential", async () => {
+    localStorage.setItem(OAUTH_STORAGE_KEYS.STATE, "expected-state");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.CODE_VERIFIER, "pkce-verifier");
+    localStorage.setItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN, "refresh-a");
+    vi.spyOn(Date, "now").mockReturnValue(Number.MAX_SAFE_INTEGER - 500);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        successfulTokenResponse({
+          expires_in: 1,
+          refresh_token: "replacement-refresh-token",
+        }),
+      ),
+    );
+
+    await expect(
+      exchangeCodeForTokens("authorization-code", "expected-state"),
+    ).rejects.toThrow(INVALID_TOKEN_RESPONSE_MESSAGE);
+    expect(localStorage.getItem(OAUTH_STORAGE_KEYS.REFRESH_TOKEN)).toBe(
+      "refresh-a",
+    );
+  });
 
   it("rejects a state mismatch without logging either state value", async () => {
     const storedState = "stored-private-state";
