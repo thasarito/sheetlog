@@ -20,6 +20,22 @@ import {
 } from './settingsSync';
 import type { QuickNotesConfig } from './types';
 
+async function expectStorageCorruption(
+  operation: () => Promise<unknown>,
+  storageKey: string,
+): Promise<void> {
+  let thrown: unknown;
+  try {
+    await operation();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toMatchObject({
+    name: 'SettingsStorageCorruptionError',
+    storageKey,
+  });
+}
+
 function settingsConfig(): SheetSettingsConfig {
   return {
     accounts: [
@@ -102,14 +118,76 @@ describe('portable settings sync state', () => {
     expect(await db.settings.get(getSettingsSyncStorageKey('sheet-a', 'user-a'))).toBeUndefined();
   });
 
-  it('does not return a stored sync state whose owner disagrees with its scoped key', async () => {
+  it('reports corruption when a stored sync state owner disagrees with its scoped key', async () => {
+    const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
     await db.settings.put({
-      key: getSettingsSyncStorageKey('sheet-a', 'user-a'),
+      key: storageKey,
       value: JSON.stringify(createDefaultSettingsSyncState('user-b')),
       updatedAt: '2026-08-16T01:02:03.000Z',
     });
 
-    await expect(readSettingsSyncState('sheet-a', 'user-a')).resolves.toBeNull();
+    await expectStorageCorruption(() => readSettingsSyncState('sheet-a', 'user-a'), storageKey);
+  });
+
+  it.each([
+    ['invalid JSON', '{'],
+    ['a primitive', '42'],
+    ['an array', '[]'],
+    [
+      'a malformed note',
+      JSON.stringify({
+        'default:expense': [{ id: 'note-1', icon: 'Coffee', label: 42 }],
+      }),
+    ],
+    [
+      'a non-array target',
+      JSON.stringify({
+        'default:expense': { id: 'note-1', icon: 'Coffee', label: 'Coffee' },
+      }),
+    ],
+  ])('reports corrupt scoped Quick Notes for %s instead of returning missing', async (_name, value) => {
+    const storageKey = getQuickNotesStorageKey('corrupt-sheet');
+    await db.settings.put({
+      key: storageKey,
+      value,
+      updatedAt: '2026-08-16T01:02:03.000Z',
+    });
+
+    await expectStorageCorruption(() => readQuickNotesConfig('corrupt-sheet'), storageKey);
+  });
+
+  it.each([
+    [
+      'baselines',
+      {
+        ...createDefaultSettingsSyncState('user-a'),
+        baselines: { accounts: 1, categories: '', quickNotes: '' },
+      },
+    ],
+    [
+      'dirty sections',
+      {
+        ...createDefaultSettingsSyncState('user-a'),
+        dirty: ['quickNotes', 'accounts'],
+      },
+    ],
+    [
+      'errors',
+      {
+        ...createDefaultSettingsSyncState('user-a'),
+        errors: { accounts: 500 },
+      },
+    ],
+    ['the top-level value', ['not', 'a', 'state']],
+  ])('reports malformed sync-state %s as corruption', async (_name, state) => {
+    const storageKey = getSettingsSyncStorageKey('sheet-a', 'user-a');
+    await db.settings.put({
+      key: storageKey,
+      value: JSON.stringify(state),
+      updatedAt: '2026-08-16T01:02:03.000Z',
+    });
+
+    await expectStorageCorruption(() => readSettingsSyncState('sheet-a', 'user-a'), storageKey);
   });
 
   it('isolates Quick Notes by encoded Sheet while leaving legacy data readable and untouched', async () => {

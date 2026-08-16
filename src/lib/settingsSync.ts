@@ -32,6 +32,16 @@ export interface LegacyQuickNotesMigrationInput {
   remoteQuickNoteTabExists: boolean | null;
 }
 
+export class SettingsStorageCorruptionError extends Error {
+  readonly storageKey: string;
+
+  constructor(storageKey: string, detail: string) {
+    super(`Stored settings at "${storageKey}" are corrupt: ${detail}`);
+    this.name = 'SettingsStorageCorruptionError';
+    this.storageKey = storageKey;
+  }
+}
+
 export function createDefaultSettingsSyncState(targetUserId: string): SettingsSyncState {
   return {
     targetUserId,
@@ -49,15 +59,141 @@ export function getQuickNotesStorageKey(sheetId: string): string {
   return `quickNotes:${encodeURIComponent(sheetId)}`;
 }
 
-async function readStoredJson<Value>(key: string): Promise<Value | null> {
+type StoredJsonResult =
+  | { status: 'missing' }
+  | { status: 'present'; value: unknown };
+
+function corrupt(storageKey: string, detail: string): never {
+  throw new SettingsStorageCorruptionError(storageKey, detail);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isSettingsSection(value: unknown): value is SettingsSection {
+  return typeof value === 'string' && SETTINGS_SECTIONS.includes(value as SettingsSection);
+}
+
+function isQuickNotesTargetKey(key: string): boolean {
+  if (key.startsWith('default:')) {
+    return isSettingsTransactionType(key.slice('default:'.length));
+  }
+  const separator = key.indexOf(':');
+  return (
+    separator > 0 &&
+    isSettingsTransactionType(key.slice(0, separator)) &&
+    key.slice(separator + 1).trim().length > 0
+  );
+}
+
+function isSettingsTransactionType(value: string): boolean {
+  return value === 'expense' || value === 'income' || value === 'transfer';
+}
+
+function requiredQuickNoteString(
+  note: Record<string, unknown>,
+  field: 'id' | 'icon' | 'label',
+  storageKey: string,
+): string {
+  const fieldValue = note[field];
+  if (typeof fieldValue !== 'string' || fieldValue.trim().length === 0) {
+    return corrupt(storageKey, `Quick Note ${field} must be a non-empty string.`);
+  }
+  return fieldValue;
+}
+
+function validateQuickNotesConfig(value: unknown, storageKey: string): QuickNotesConfig {
+  if (!isRecord(value)) {
+    return corrupt(storageKey, 'Quick Notes must be an object.');
+  }
+  const noteIds = new Set<string>();
+  for (const [target, notes] of Object.entries(value)) {
+    if (!isQuickNotesTargetKey(target)) {
+      return corrupt(storageKey, `Quick Notes target "${target}" is invalid.`);
+    }
+    if (!Array.isArray(notes)) {
+      return corrupt(storageKey, `Quick Notes target "${target}" must contain an array.`);
+    }
+    if (notes.length > 5) {
+      return corrupt(storageKey, `Quick Notes target "${target}" contains more than five notes.`);
+    }
+    for (const note of notes) {
+      if (!isRecord(note)) {
+        return corrupt(storageKey, `Quick Notes target "${target}" contains a malformed note.`);
+      }
+      const id = requiredQuickNoteString(note, 'id', storageKey);
+      requiredQuickNoteString(note, 'icon', storageKey);
+      requiredQuickNoteString(note, 'label', storageKey);
+      for (const field of ['note', 'amount', 'currency', 'account', 'forValue'] as const) {
+        if (note[field] !== undefined && typeof note[field] !== 'string') {
+          return corrupt(storageKey, `Quick Note ${field} must be a string when present.`);
+        }
+      }
+      if (noteIds.has(id)) {
+        return corrupt(storageKey, `Quick Note ID "${id}" is duplicated.`);
+      }
+      noteIds.add(id);
+    }
+  }
+  return value as QuickNotesConfig;
+}
+
+function validateSettingsSyncState(
+  value: unknown,
+  verifiedUserId: string,
+  storageKey: string,
+): SettingsSyncState {
+  if (!isRecord(value)) {
+    return corrupt(storageKey, 'Sync state must be an object.');
+  }
+  if (value.targetUserId !== verifiedUserId) {
+    return corrupt(storageKey, 'Sync state targetUserId does not match the verified user.');
+  }
+  if (!isRecord(value.baselines)) {
+    return corrupt(storageKey, 'Sync-state baselines must be a section object.');
+  }
+  const baselines = value.baselines;
+  if (
+    Object.keys(baselines).length !== SETTINGS_SECTIONS.length ||
+    SETTINGS_SECTIONS.some((section) => typeof baselines[section] !== 'string')
+  ) {
+    return corrupt(storageKey, 'Sync-state baselines must contain one string per section.');
+  }
+  if (!Array.isArray(value.dirty) || !value.dirty.every(isSettingsSection)) {
+    return corrupt(storageKey, 'Sync-state dirty sections are invalid.');
+  }
+  const dirty = value.dirty;
+  const canonicalDirty = SETTINGS_SECTIONS.filter((section) => dirty.includes(section));
+  if (
+    canonicalDirty.length !== dirty.length ||
+    canonicalDirty.some((section, index) => section !== dirty[index])
+  ) {
+    return corrupt(storageKey, 'Sync-state dirty sections must be unique and canonical.');
+  }
+  if (
+    !isRecord(value.errors) ||
+    Object.entries(value.errors).some(
+      ([section, error]) => !isSettingsSection(section) || typeof error !== 'string',
+    )
+  ) {
+    return corrupt(storageKey, 'Sync-state errors must contain strings keyed by section.');
+  }
+  if (value.lastSyncedAt !== undefined && typeof value.lastSyncedAt !== 'string') {
+    return corrupt(storageKey, 'Sync-state lastSyncedAt must be a string when present.');
+  }
+  return value as unknown as SettingsSyncState;
+}
+
+async function readStoredJson(key: string): Promise<StoredJsonResult> {
   const record = await db.settings.get(key);
-  if (!record?.value) {
-    return null;
+  if (!record) {
+    return { status: 'missing' };
   }
   try {
-    return JSON.parse(record.value) as Value;
+    return { status: 'present', value: JSON.parse(record.value) as unknown };
   } catch {
-    return null;
+    return corrupt(key, 'value is not valid JSON.');
   }
 }
 
@@ -73,10 +209,11 @@ export async function readSettingsSyncState(
   sheetId: string,
   verifiedUserId: string,
 ): Promise<SettingsSyncState | null> {
-  const state = await readStoredJson<SettingsSyncState>(
-    getSettingsSyncStorageKey(sheetId, verifiedUserId),
-  );
-  return state?.targetUserId === verifiedUserId ? state : null;
+  const storageKey = getSettingsSyncStorageKey(sheetId, verifiedUserId);
+  const stored = await readStoredJson(storageKey);
+  return stored.status === 'missing'
+    ? null
+    : validateSettingsSyncState(stored.value, verifiedUserId, storageKey);
 }
 
 export async function writeSettingsSyncState(
@@ -91,7 +228,9 @@ export async function writeSettingsSyncState(
 }
 
 export async function readQuickNotesConfig(sheetId: string): Promise<QuickNotesConfig | null> {
-  return readStoredJson<QuickNotesConfig>(getQuickNotesStorageKey(sheetId));
+  const storageKey = getQuickNotesStorageKey(sheetId);
+  const stored = await readStoredJson(storageKey);
+  return stored.status === 'missing' ? null : validateQuickNotesConfig(stored.value, storageKey);
 }
 
 export async function writeQuickNotesConfig(
@@ -102,7 +241,8 @@ export async function writeQuickNotesConfig(
 }
 
 export async function readLegacyQuickNotesConfig(): Promise<QuickNotesConfig | null> {
-  return readStoredJson<QuickNotesConfig>('quickNotes');
+  const stored = await readStoredJson('quickNotes');
+  return stored.status === 'missing' ? null : validateQuickNotesConfig(stored.value, 'quickNotes');
 }
 
 export function markSettingsSectionDirty(
