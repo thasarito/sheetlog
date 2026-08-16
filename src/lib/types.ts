@@ -30,6 +30,26 @@ export interface TransactionRecord extends TransactionInput {
   error?: string;
 }
 
+export interface CachedTransactionRecord extends TransactionRecord {
+  sheetId: string;
+  sheetRow: number;
+  cachedAt: string;
+  canEdit: boolean;
+  searchText: string;
+}
+
+export interface TransactionHistoryMeta {
+  sheetId: string;
+  capturedAt: string;
+  sourceLastRow: number;
+  rowCount: number;
+}
+
+export interface TransactionHistorySnapshot {
+  records: CachedTransactionRecord[];
+  meta: TransactionHistoryMeta;
+}
+
 export interface SettingRecord {
   key: string;
   value: string;

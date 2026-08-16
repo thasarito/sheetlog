@@ -321,12 +321,17 @@ vi.mock("./StepCategory", () => ({
 vi.mock("./TopDashboard", () => ({
   TopDashboard: ({
     onEditTransaction,
+    onViewAll,
   }: {
     onEditTransaction: (transaction: TransactionRecord) => void;
+    onViewAll: () => void;
   }) => {
     mocks.dashboardEdit = onEditTransaction;
     return (
       <div>
+      <button type="button" onClick={onViewAll}>
+        View transaction history
+      </button>
       <button type="button" onClick={() => onEditTransaction(mocks.expense)}>
         Edit expense
       </button>
@@ -363,6 +368,36 @@ vi.mock("./TopDashboard", () => ({
       </div>
     );
   },
+}));
+
+vi.mock("./TransactionHistoryDrawer", () => ({
+  TransactionHistoryDrawer: ({
+    open,
+    onOpenChange,
+    onEditTransaction,
+  }: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onEditTransaction: (transaction: TransactionRecord) => void;
+  }) =>
+    open ? (
+      <div role="dialog" aria-label="Complete transaction history">
+        <button
+          type="button"
+          onClick={() => {
+            onOpenChange(false);
+            onEditTransaction({
+              ...mocks.expense,
+              cachedAt: "2026-08-15T10:00:00.000Z",
+              canEdit: true,
+              searchText: "food lunch wallet",
+            } as TransactionRecord);
+          }}
+        >
+          Edit history expense
+        </button>
+      </div>
+    ) : null,
 }));
 
 vi.mock("../DateTimeDrawer", () => ({
@@ -520,6 +555,34 @@ beforeEach(() => {
 });
 
 describe("TransactionFlow reimbursement entry", () => {
+  it("opens complete history and routes a selected row into the existing editor", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(
+      screen.getByRole("button", { name: "View transaction history" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Complete transaction history" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Edit history expense" }),
+    );
+
+    expect(await screen.findByDisplayValue("Lunch")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Complete transaction history" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mocks.dbPut).toHaveBeenCalledWith({
+        ...mocks.expense,
+        targetSheetId: "sheet-a",
+        targetUserId: "user-a",
+      });
+    });
+  });
+
   it("ignores late editor hydration when a newer transaction was selected", async () => {
     const expenseARead = deferred<TransactionRecord | undefined>();
     const expenseBRead = deferred<TransactionRecord | undefined>();

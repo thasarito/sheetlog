@@ -54,19 +54,26 @@ function transaction(
     status: "synced",
     createdAt: "2026-08-15T08:00:00.000Z",
     updatedAt: "2026-08-15T08:00:00.000Z",
+    sheetId: "sheet-a",
+    sheetRow: 2,
+    sheetRowValid: true,
     ...overrides,
   };
 }
 
 function renderDashboard(
   onEditTransaction?: (transaction: TransactionRecord) => void,
+  onViewAll?: () => void,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <TopDashboard onEditTransaction={onEditTransaction} />
+      <TopDashboard
+        onEditTransaction={onEditTransaction}
+        onViewAll={onViewAll}
+      />
     </QueryClientProvider>,
   );
 }
@@ -123,11 +130,47 @@ describe("TopDashboard local reconciliation", () => {
 
     const labels = screen
       .getAllByRole("button")
+      .filter((button) => button.textContent !== "View all")
       .map((button) => button.textContent ?? "");
     expect(labels[0]).toContain("Pending local");
     expect(labels[1]).toContain("Local duplicate");
     expect(labels[2]).toContain("Remote row");
     expect(screen.queryByText("Remote duplicate")).not.toBeInTheDocument();
+  });
+
+  it("opens the complete transaction history from the Recent header", async () => {
+    const onViewAll = vi.fn();
+    const user = userEvent.setup();
+    renderDashboard(undefined, onViewAll);
+
+    await user.click(screen.getByRole("button", { name: "View all transactions" }));
+
+    expect(onViewAll).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Recent")).toBeInTheDocument();
+  });
+
+  it("orders backdated transactions by transaction date before creation time", () => {
+    mocks.recent = [
+      transaction("created-later", {
+        category: "Backdated",
+        date: "2026-08-01T08:00:00.000Z",
+        createdAt: "2026-08-15T12:00:00.000Z",
+      }),
+      transaction("created-earlier", {
+        category: "Current date",
+        date: "2026-08-14T08:00:00.000Z",
+        createdAt: "2026-08-14T09:00:00.000Z",
+      }),
+    ];
+
+    renderDashboard();
+
+    const labels = screen
+      .getAllByRole("button")
+      .filter((button) => button.textContent !== "View all")
+      .map((button) => button.textContent ?? "");
+    expect(labels[0]).toContain("Current date");
+    expect(labels[1]).toContain("Backdated");
   });
 
   it("announces an actionable sync failure and passes the exact local record", async () => {
@@ -156,6 +199,26 @@ describe("TopDashboard local reconciliation", () => {
       screen.getByRole("button", { name: /Reimbursement.*Sync failed/i }),
     );
     expect(onEditTransaction).toHaveBeenCalledWith(errorRow);
+  });
+
+  it("labels a legacy synced row read-only and never opens it for editing", async () => {
+    const legacyRow = transaction("row-8", {
+      category: "Legacy row",
+      sheetRow: 8,
+      sheetRowValid: false,
+    });
+    mocks.recent = [legacyRow];
+    const onEditTransaction = vi.fn();
+    const user = userEvent.setup();
+
+    renderDashboard(onEditTransaction);
+
+    const row = screen.getByRole("button", {
+      name: /Legacy row.*Read only/i,
+    });
+    expect(row).toBeDisabled();
+    await user.click(row);
+    expect(onEditTransaction).not.toHaveBeenCalled();
   });
 
   it("keeps gross expense totals deduplicated with the local row authoritative", () => {

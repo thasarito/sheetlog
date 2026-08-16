@@ -43,6 +43,9 @@ export function useUpdateTransactionMutation() {
         queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
         queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
         queryClient.invalidateQueries({
+          queryKey: transactionQueryKeys.history,
+        }),
+        queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.reimbursements,
         }),
         queryClient.invalidateQueries({ queryKey: ["transactionById"] }),

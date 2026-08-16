@@ -2,6 +2,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { format, isSameDay, subDays } from "date-fns";
 import { parseDate } from "../../lib/date-utils";
 import {
+  canEditTransaction,
+  compareTransactionsByDate,
+} from "../../lib/transactionHistory";
+import {
   motion,
   useMotionValue,
   useSpring,
@@ -19,12 +23,14 @@ import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
 
 type TopDashboardProps = {
   onEditTransaction?: (t: TransactionRecord) => void;
+  onViewAll?: () => void;
   transactionsOverride?: TransactionRecord[];
   isLoadingOverride?: boolean;
 };
 
 export function TopDashboard({
   onEditTransaction,
+  onViewAll,
   transactionsOverride,
   isLoadingOverride,
 }: TopDashboardProps) {
@@ -80,17 +86,7 @@ export function TopDashboard({
 
     // Local rows are inserted first so they win duplicate IDs. Sort the
     // reconciled records deterministically after deduplication.
-    return unique.sort((a, b) => {
-      const caA = new Date(a.createdAt).getTime();
-      const caB = new Date(b.createdAt).getTime();
-      const createdDifference =
-        (Number.isFinite(caB) ? caB : 0) -
-        (Number.isFinite(caA) ? caA : 0);
-      if (createdDifference !== 0) {
-        return createdDifference;
-      }
-      return a.id.localeCompare(b.id);
-    });
+    return unique.sort(compareTransactionsByDate);
   }, [localTransactions, sheetTransactions, transactionsOverride]);
 
   const today = useMemo(() => new Date(), []);
@@ -236,10 +232,23 @@ export function TopDashboard({
   return (
     <div className="relative h-full w-full p-1 animate-in fade-in slide-in-from-top-8 duration-500">
       <div className="flex h-full w-full flex-col">
+        <div className="flex items-center justify-between px-4 pb-1 pt-2">
+          <span className="text-sm font-semibold text-foreground">Recent</span>
+          {onViewAll ? (
+            <button
+              type="button"
+              aria-label="View all transactions"
+              onClick={onViewAll}
+              className="rounded-lg px-2 py-1 text-xs font-semibold text-primary transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            >
+              View all
+            </button>
+          ) : null}
+        </div>
         {/* Header Section */}
         <motion.div
           style={{ y: headerY, opacity: headerOpacity }}
-          className="flex items-center justify-between px-4 py-2 border-b border-border/10"
+          className="flex items-center justify-between border-b border-border/10 px-4 py-1.5"
         >
           <AnimatePresence mode="wait">
             <motion.span
@@ -323,6 +332,7 @@ export function TopDashboard({
             <div className="space-y-0.5">
               {displayList.map((t, idx) => {
                 const currentDate = format(parseDate(t.date), "yyyy-MM-dd");
+                const canEdit = canEditTransaction(t);
                 const prevDate =
                   idx > 0
                     ? format(parseDate(displayList[idx - 1].date), "yyyy-MM-dd")
@@ -339,8 +349,9 @@ export function TopDashboard({
                     <button
                       type="button"
                       data-item-id={`${currentDate}:${t.id}`}
+                      disabled={!canEdit}
                       onClick={() => onEditTransaction?.(t)}
-                      className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors active:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors active:bg-muted/50 disabled:cursor-default disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
                       <span className="text-xs text-muted-foreground font-medium tabular-nums w-9">
                         {format(parseDate(t.date), "HH:mm")}
@@ -366,6 +377,10 @@ export function TopDashboard({
                                 <span className="truncate">{t.error}</span>
                               </>
                             ) : null}
+                          </span>
+                        ) : !canEdit ? (
+                          <span className="text-[10px] text-muted-foreground">
+                            Read only
                           </span>
                         ) : null}
                       </div>

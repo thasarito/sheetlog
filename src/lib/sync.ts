@@ -35,6 +35,11 @@ import {
   withSheetMutationLock,
 } from './sheetMutationLock';
 
+const LEGACY_TRANSACTION_READ_ONLY_ERROR =
+  'Legacy transactions without stable IDs are read only.';
+const REMOTE_TRANSACTION_MISSING_ERROR =
+  'Transaction no longer exists in Google Sheets. Refresh history to continue.';
+
 const appendTransaction = IS_DEV_MODE ? mockAppendTransaction : realAppendTransaction;
 const deleteRow = IS_DEV_MODE ? mockDeleteRow : realDeleteRow;
 const ensureReimbursementHeader = IS_DEV_MODE
@@ -345,7 +350,7 @@ async function syncPendingTransactionsUnlocked(
   let syncedCount = 0;
   let syncFailure: unknown = null;
   let reimbursementHeaderReady = false;
-  let existingIds = await readTransactionIdMap(accessToken, sheetId);
+  let existingIds: Map<string, number> | null = null;
 
   const ensureLinkedHeader = async () => {
     if (reimbursementHeaderReady) {
@@ -363,6 +368,17 @@ async function syncPendingTransactionsUnlocked(
     }
 
     try {
+      if (item.sheetRowValid === false) {
+        await updatePendingRevision(item, {
+          status: 'error',
+          error: LEGACY_TRANSACTION_READ_ONLY_ERROR,
+          updatedAt: new Date().toISOString(),
+        }, mutationGuard);
+        continue;
+      }
+
+      existingIds ??= await readTransactionIdMap(accessToken, sheetId);
+
       if (item.deleteIntent) {
         const currentIds = await readTransactionIdMap(accessToken, sheetId);
         const currentRow = currentIds.get(item.id);
@@ -440,6 +456,7 @@ async function syncPendingTransactionsUnlocked(
           reimbursesTransactionId: itemForWrite.reimbursesTransactionId,
           status: 'synced',
           sheetRow: currentRow,
+          sheetRowValid: true,
           sheetId,
           error: undefined,
           updatedAt: new Date().toISOString(),
@@ -465,6 +482,15 @@ async function syncPendingTransactionsUnlocked(
 
       item = await getPendingRevision(item.id, sheetId, userId);
       if (!item) {
+        continue;
+      }
+
+      if (item.sheetRowValid === true) {
+        await updatePendingRevision(item, {
+          status: 'error',
+          error: REMOTE_TRANSACTION_MISSING_ERROR,
+          updatedAt: new Date().toISOString(),
+        }, mutationGuard);
         continue;
       }
 
@@ -496,6 +522,7 @@ async function syncPendingTransactionsUnlocked(
       const didMarkSynced = await updatePendingRevision(item, {
         status: 'synced',
         sheetRow: rowIndex ?? undefined,
+        sheetRowValid: rowIndex !== null,
         sheetId,
         error: undefined,
         updatedAt: new Date().toISOString(),

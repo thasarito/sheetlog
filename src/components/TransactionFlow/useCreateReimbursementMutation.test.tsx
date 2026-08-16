@@ -226,7 +226,7 @@ describe("useCreateReimbursementMutation", () => {
     expect(providerMocks.addTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it("invalidates local, recent, and the exact source summary after settlement", async () => {
+  it("invalidates local, recent, history, and the exact source summary after settlement", async () => {
     providerMocks.addTransaction.mockImplementation(
       async (input: TransactionInput) => created(input, "pending"),
     );
@@ -242,6 +242,9 @@ describe("useCreateReimbursementMutation", () => {
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["recentTransactions"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: transactionQueryKeys.history,
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: transactionQueryKeys.reimbursement(

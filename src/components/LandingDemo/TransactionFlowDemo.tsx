@@ -43,6 +43,8 @@ function createSeedTransactions(now: Date): TransactionRecord[] {
     {
       id: 'demo-tx-1',
       status: 'synced',
+      sheetRow: 2,
+      sheetRowValid: true,
       createdAt: formatLocalIso(t1),
       updatedAt: formatLocalIso(t1),
       type: 'expense',
@@ -57,6 +59,8 @@ function createSeedTransactions(now: Date): TransactionRecord[] {
     {
       id: 'demo-tx-2',
       status: 'synced',
+      sheetRow: 3,
+      sheetRowValid: true,
       createdAt: formatLocalIso(t2),
       updatedAt: formatLocalIso(t2),
       type: 'expense',
@@ -71,6 +75,8 @@ function createSeedTransactions(now: Date): TransactionRecord[] {
     {
       id: 'demo-tx-3',
       status: 'synced',
+      sheetRow: 4,
+      sheetRowValid: true,
       createdAt: formatLocalIso(t3),
       updatedAt: formatLocalIso(t3),
       type: 'expense',
@@ -85,6 +91,8 @@ function createSeedTransactions(now: Date): TransactionRecord[] {
     {
       id: 'demo-tx-4',
       status: 'synced',
+      sheetRow: 5,
+      sheetRowValid: true,
       createdAt: formatLocalIso(t4),
       updatedAt: formatLocalIso(t4),
       type: 'income',
@@ -99,6 +107,8 @@ function createSeedTransactions(now: Date): TransactionRecord[] {
     {
       id: 'demo-tx-5',
       status: 'synced',
+      sheetRow: 6,
+      sheetRowValid: true,
       createdAt: formatLocalIso(yesterdayEvening),
       updatedAt: formatLocalIso(yesterdayEvening),
       type: 'expense',
@@ -395,7 +405,7 @@ export function TransactionFlowDemo({ drawerContainer }: TransactionFlowDemoProp
       ) : null}
 
       {step === 0 ? (
-        <div className="absolute inset-0 grid h-full grid-rows-[1fr_3fr] gap-3">
+        <div className="absolute inset-0 grid h-full grid-rows-[2fr_3fr] gap-3">
           <div className="min-h-0">
             <TopDashboard transactionsOverride={dashboardTransactions} />
           </div>

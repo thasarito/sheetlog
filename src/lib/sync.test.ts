@@ -199,6 +199,54 @@ describe("syncPendingTransactions concurrency", () => {
       status: "synced",
       sheetId: "sheet-a",
       sheetRow: 2,
+      sheetRowValid: true,
+    });
+  });
+
+  it("marks an already-queued legacy edit as read-only without a remote write", async () => {
+    const legacyEdit = transaction("row-2", {
+      category: "Edited legacy category",
+      sheetRow: 2,
+      sheetRowValid: false,
+    });
+    await db.transactions.add(legacyEdit);
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(0);
+
+    expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(googleMocks.deleteRow).not.toHaveBeenCalled();
+    expect(await db.transactions.get(legacyEdit.id)).toMatchObject({
+      status: "error",
+      sheetRowValid: false,
+      error: "Legacy transactions without stable IDs are read only.",
+    });
+  });
+
+  it("never appends an offline edit whose valid remote row disappeared", async () => {
+    const missingEdit = transaction("existing-row-edit", {
+      note: "Edited offline",
+      sheetId: "sheet-a",
+      sheetRow: 8,
+      sheetRowValid: true,
+    });
+    await db.transactions.add(missingEdit);
+    googleMocks.readTransactionIdMap.mockResolvedValue(new Map());
+
+    await expect(
+      syncPendingTransactions("access-token", "sheet-a", "user-a"),
+    ).resolves.toBe(0);
+
+    expect(googleMocks.appendTransaction).not.toHaveBeenCalled();
+    expect(googleMocks.updateRow).not.toHaveBeenCalled();
+    expect(googleMocks.deleteRow).not.toHaveBeenCalled();
+    expect(await db.transactions.get(missingEdit.id)).toMatchObject({
+      status: "error",
+      sheetRowValid: true,
+      error:
+        "Transaction no longer exists in Google Sheets. Refresh history to continue.",
     });
   });
 
@@ -283,6 +331,7 @@ describe("syncPendingTransactions concurrency", () => {
     expect(await db.transactions.get(pendingEdit.id)).toMatchObject({
       status: "synced",
       sheetRow: 7,
+      sheetRowValid: true,
     });
   });
 

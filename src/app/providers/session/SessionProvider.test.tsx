@@ -3,6 +3,7 @@ import { onlineManager } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STORAGE_KEYS } from "../../../lib/constants";
+import { db } from "../../../lib/db";
 import { GOOGLE_TOKEN_QUERY_KEY } from "./session.constants";
 import { useSession } from "./session.hooks";
 import { SessionProvider } from "./SessionProvider";
@@ -75,10 +76,14 @@ describe("SessionProvider account identity", () => {
     );
   });
 
-  afterEach(() => {
-    onlineManager.setOnline(true);
+  afterEach(async () => {
+    act(() => onlineManager.setOnline(true));
     vi.unstubAllGlobals();
     window.localStorage.clear();
+    await Promise.all([
+      db.transactionHistory.clear(),
+      db.transactionHistoryMeta.clear(),
+    ]);
   });
 
   it("stores the stable Google subject from userinfo in the session profile", async () => {
@@ -101,6 +106,41 @@ describe("SessionProvider account identity", () => {
         window.localStorage.getItem(STORAGE_KEYS.USER_PROFILE) ?? "null",
       ),
     ).toMatchObject({ id: "google-subject-123", name: "Test User" });
+    expect(
+      window.localStorage.getItem(STORAGE_KEYS.USER_PROFILE_TOKEN),
+    ).toBe("access-token");
+  });
+
+  it("hydrates a token-bound persisted profile during a cold offline start", async () => {
+    onlineManager.setOnline(false);
+    window.localStorage.setItem(
+      STORAGE_KEYS.USER_PROFILE,
+      JSON.stringify({ id: "account-a", name: "Account A", picture: null }),
+    );
+    window.localStorage.setItem(
+      STORAGE_KEYS.USER_PROFILE_TOKEN,
+      "access-token",
+    );
+    vi.stubGlobal("fetch", vi.fn());
+
+    renderSession();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("session-status")).toHaveTextContent(
+        "authenticated",
+      );
+    });
+    expect(screen.getByTestId("profile-subject")).toHaveTextContent(
+      "account-a",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(userInfo("account-a", "Account A")),
+    );
+    act(() => onlineManager.setOnline(true));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   });
 
   it("stops after bounded userinfo retries and exposes an actionable verification error", async () => {
@@ -400,5 +440,54 @@ describe("SessionProvider account identity", () => {
       queryClient.getQueryCache().findAll({ queryKey: ["userProfile"] }),
     ).toHaveLength(0);
     expect(window.localStorage.getItem(STORAGE_KEYS.USER_PROFILE)).toBeNull();
+    expect(
+      window.localStorage.getItem(STORAGE_KEYS.USER_PROFILE_TOKEN),
+    ).toBeNull();
+  });
+
+  it("clears persisted and in-memory transaction history on signout", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(userInfo("account-a")));
+    const queryClient = renderSession();
+    expect(await screen.findByText("account-a")).toBeInTheDocument();
+    await db.transactionHistory.put({
+      id: "history-row",
+      type: "expense",
+      amount: 10,
+      currency: "THB",
+      account: "Wallet",
+      for: "Me",
+      category: "Food",
+      date: "2026-08-15T08:00:00.000Z",
+      status: "synced",
+      createdAt: "2026-08-15T08:00:00.000Z",
+      updatedAt: "2026-08-15T08:00:00.000Z",
+      sheetId: "sheet-a",
+      sheetRow: 2,
+      cachedAt: "2026-08-15T10:00:00.000Z",
+      canEdit: true,
+      searchText: "food wallet",
+    });
+    await db.transactionHistoryMeta.put({
+      sheetId: "sheet-a",
+      capturedAt: "2026-08-15T10:00:00.000Z",
+      sourceLastRow: 2,
+      rowCount: 1,
+    });
+    queryClient.setQueryData(
+      ["transactionHistory", "cache", "sheet-a", "account-a"],
+      { private: true },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(async () => {
+      expect(await db.transactionHistory.count()).toBe(0);
+      expect(await db.transactionHistoryMeta.count()).toBe(0);
+    });
+    expect(
+      queryClient.getQueryCache().findAll({
+        queryKey: ["transactionHistory"],
+      }),
+    ).toHaveLength(0);
   });
 });
