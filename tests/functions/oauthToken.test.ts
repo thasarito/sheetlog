@@ -11,8 +11,16 @@ const APP_URL = "https://sheetlog.com/api/oauth/token";
 const APP_ORIGIN = "https://sheetlog.com";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MAX_BODY_BYTES = 8 * 1024;
-const PRODUCTION_CLIENT_ID =
-  "258969467044-ptakke7dl5fe9m2lqf80o62nik2572jd.apps.googleusercontent.com";
+const EXPECTED_WRANGLER_CONFIG = [
+  'name = "sheetlog"',
+  'pages_build_output_dir = "dist"',
+  'compatibility_date = "2026-08-16"',
+  'compatibility_flags = ["enable_request_signal", "request_signal_passthrough"]',
+  "",
+  "[vars]",
+  'GOOGLE_CLIENT_ID = "258969467044-ptakke7dl5fe9m2lqf80o62nik2572jd.apps.googleusercontent.com"',
+  'OAUTH_REDIRECT_PATH = "/"',
+].join("\n");
 
 const ENV = {
   GOOGLE_CLIENT_ID: "browser-client-id",
@@ -105,10 +113,6 @@ function forwardedForm(mock: ReturnType<typeof upstreamFetch>) {
     body: init?.body as URLSearchParams,
     init: init as RequestInit,
   };
-}
-
-function activeTomlLines(source: string, assignment: RegExp) {
-  return source.split(/\r?\n/).filter((line) => assignment.test(line));
 }
 
 afterEach(() => {
@@ -723,70 +727,10 @@ describe("OAuth token Pages Function", () => {
 });
 
 describe("Cloudflare Pages Function configuration", () => {
-  it("pins the production binding and request-signal compatibility flags", () => {
-    const compatibilityDateLines = activeTomlLines(
-      wranglerSource,
-      /^\s*compatibility_date\s*=/,
-    );
-    expect(compatibilityDateLines).toHaveLength(1);
-    expect(compatibilityDateLines[0]).toMatch(
-      /^\s*compatibility_date\s*=\s*"2026-08-16"\s*$/,
-    );
+  it("matches the exact Pages Function deployment configuration", () => {
+    const normalizedConfig = wranglerSource.replace(/\r\n?/g, "\n").trimEnd();
 
-    const compatibilityFlagLines = activeTomlLines(
-      wranglerSource,
-      /^\s*compatibility_flags\s*=/,
-    );
-    expect(compatibilityFlagLines).toHaveLength(1);
-    expect(compatibilityFlagLines[0]).toMatch(
-      /^\s*compatibility_flags\s*=\s*\[\s*"enable_request_signal"\s*,\s*"request_signal_passthrough"\s*\]\s*$/,
-    );
-
-    expect(activeTomlLines(wranglerSource, /^\s*\[vars\]\s*$/)).toHaveLength(1);
-
-    const clientIdLines = activeTomlLines(
-      wranglerSource,
-      /^\s*GOOGLE_CLIENT_ID\s*=/,
-    );
-    expect(clientIdLines).toHaveLength(1);
-    expect(clientIdLines[0]).toBe(
-      `GOOGLE_CLIENT_ID = "${PRODUCTION_CLIENT_ID}"`,
-    );
-
-    const redirectPathLines = activeTomlLines(
-      wranglerSource,
-      /^\s*OAUTH_REDIRECT_PATH\s*=/,
-    );
-    expect(redirectPathLines).toHaveLength(1);
-    expect(redirectPathLines[0]).toMatch(
-      /^\s*OAUTH_REDIRECT_PATH\s*=\s*"\/"\s*$/,
-    );
-  });
-
-  it("does not count commented Wrangler settings as active configuration", () => {
-    const commentedSettings = [
-      '# compatibility_date = "2026-08-16"',
-      '# compatibility_flags = ["enable_request_signal", "request_signal_passthrough"]',
-      "# [vars]",
-      `# GOOGLE_CLIENT_ID = "${PRODUCTION_CLIENT_ID}"`,
-      '# OAUTH_REDIRECT_PATH = "/"',
-    ].join("\n");
-
-    expect(
-      activeTomlLines(commentedSettings, /^\s*compatibility_date\s*=/),
-    ).toHaveLength(0);
-    expect(
-      activeTomlLines(commentedSettings, /^\s*compatibility_flags\s*=/),
-    ).toHaveLength(0);
-    expect(
-      activeTomlLines(commentedSettings, /^\s*\[vars\]\s*$/),
-    ).toHaveLength(0);
-    expect(
-      activeTomlLines(commentedSettings, /^\s*GOOGLE_CLIENT_ID\s*=/),
-    ).toHaveLength(0);
-    expect(
-      activeTomlLines(commentedSettings, /^\s*OAUTH_REDIRECT_PATH\s*=/),
-    ).toHaveLength(0);
+    expect(normalizedConfig).toBe(EXPECTED_WRANGLER_CONFIG);
   });
 
   it("typechecks the deployed Function and external Function tests", () => {
