@@ -91,6 +91,16 @@ export async function ensureReimbursementHeader(
 }
 
 /**
+ * Ensure place headers - no-op in mock mode
+ */
+export async function ensurePlaceHeaders(
+  _accessToken: string,
+  _spreadsheetId: string,
+): Promise<void> {
+  await delay();
+}
+
+/**
  * Append transaction to mock storage
  */
 export async function appendTransaction(
@@ -102,9 +112,11 @@ export async function appendTransaction(
 
   const transactions = getMockTransactions();
   const rowIndex = transactions.length + 2; // Row 1 is header, data starts at row 2
+  const remoteTransaction = { ...transaction };
+  delete remoteTransaction.placeUpdateIntent;
 
   const recordWithRow: TransactionRecord = {
-    ...transaction,
+    ...remoteTransaction,
     sheetId: spreadsheetId,
     sheetRow: rowIndex,
     sheetRowValid: Boolean(transaction.id),
@@ -157,8 +169,10 @@ export async function updateRow(
   const dataIndex = rowIndex - 2; // Convert row index to array index
 
   if (dataIndex >= 0 && dataIndex < transactions.length) {
+    const remoteTransaction = { ...transaction };
+    delete remoteTransaction.placeUpdateIntent;
     transactions[dataIndex] = {
-      ...transaction,
+      ...remoteTransaction,
       sheetId: spreadsheetId,
       sheetRow: rowIndex,
       sheetRowValid: Boolean(transaction.id),
