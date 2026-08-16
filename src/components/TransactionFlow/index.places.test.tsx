@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import {
@@ -12,7 +12,11 @@ import {
   vi,
 } from "vitest";
 import type { PlaceSuggestion } from "../../lib/googlePlaces";
-import type { TransactionRecord, TransactionType } from "../../lib/types";
+import type {
+  TransactionRecord,
+  TransactionType,
+  TransactionUpdateInput,
+} from "../../lib/types";
 import { TransactionFlow } from "./index";
 
 const coffeeHouse = {
@@ -199,6 +203,7 @@ vi.mock("./StepCategory", () => ({
   }) => {
     const start = (type: TransactionType, category: string) => {
       form.setFieldValue("type", type);
+      if (type !== "expense") form.setFieldValue("place", undefined);
       form.setFieldValue("category", category);
       onConfirm();
     };
@@ -228,6 +233,7 @@ const editableExpense: TransactionRecord = {
   category: "Coffee",
   date: "2026-08-15T08:00:00",
   note: "Original note",
+  place: { provider: "google", placeId: "original-place" },
   status: "synced",
   createdAt: "2026-08-15T08:00:00",
   updatedAt: "2026-08-15T08:00:00",
@@ -243,6 +249,7 @@ const linkedReimbursement: TransactionRecord = {
   category: "Reimbursement",
   date: "2026-08-15T09:00:00",
   note: "Coffee repayment",
+  place: { provider: "google", placeId: "repayment-place" },
   reimbursesTransactionId: "expense-1",
   status: "synced",
   createdAt: "2026-08-15T09:00:00",
@@ -307,19 +314,16 @@ async function beginDeferredPlaceSelection(
 ) {
   mocks.resolveSuggestion.mockReturnValueOnce(selection.promise);
   await user.click(screen.getByRole("button", { name: "Start expense" }));
-  const noteInput = screen.getByPlaceholderText("Add a note...");
-  await user.type(noteInput, "Lunch");
-  await user.click(screen.getByRole("button", { name: "Search places" }));
-  const searchInput = await screen.findByRole("searchbox", {
-    name: "Search places",
+  const noteInput = screen.getByRole("combobox", {
+    name: "Transaction note",
   });
-  await user.type(searchInput, "coffee");
+  await user.type(noteInput, "coffee");
   await user.click(
-    await screen.findByRole("button", {
+    await screen.findByRole("option", {
       name: /Coffee House.*123 Main Street/i,
-    })
+    }),
   );
-  await screen.findByText("Selecting place…");
+  await waitFor(() => expect(mocks.resolveSuggestion).toHaveBeenCalled());
   return noteInput;
 }
 
@@ -332,6 +336,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -370,18 +375,132 @@ beforeEach(() => {
       input,
     }: {
       id: string;
-      input: Partial<TransactionRecord>;
-    }) => ({
-      ...linkedReimbursement,
-      ...input,
-      id,
-      status: "synced" as const,
-      error: undefined,
-    }),
+      input: TransactionUpdateInput;
+    }) => {
+      const base = id === editableExpense.id ? editableExpense : linkedReimbursement;
+      const { place: placePatch, ...recordPatch } = input;
+      return {
+        ...base,
+        ...recordPatch,
+        ...(placePatch === null
+          ? { place: undefined }
+          : placePatch
+            ? { place: placePatch }
+            : {}),
+        id,
+        status: "synced" as const,
+        error: undefined,
+      };
+    },
   );
 });
 
 describe("TransactionFlow Places integration", () => {
+  it("selects an inline result and submits structured place metadata", async () => {
+    const user = userEvent.setup();
+    mocks.resolveSuggestion.mockResolvedValueOnce("Coffee House");
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Start expense" }));
+    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+
+    const note = screen.getByRole("combobox", { name: "Transaction note" });
+    await user.type(note, "coffee");
+    await user.click(
+      await screen.findByRole("option", { name: /Coffee House/ }),
+    );
+    expect(note).toHaveValue("Coffee House");
+
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+    await waitFor(() => {
+      expect(mocks.addMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          note: "Coffee House",
+          place: { provider: "google", placeId: "coffee-house" },
+        }),
+      );
+    });
+  });
+
+  it("hydrates an ordinary place and emits an explicit clear patch", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Edit expense" }));
+    expect(await screen.findByLabelText("Transaction note")).toHaveValue(
+      "Original note",
+    );
+    await user.click(screen.getByRole("button", { name: "Clear note" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "expense-1",
+        input: expect.objectContaining({ place: null }),
+      });
+    });
+  });
+
+  it("preserves an ordinary place on a nonblank metadata edit", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Edit expense" }));
+    await user.type(
+      await screen.findByLabelText("Transaction note"),
+      " updated",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const call = mocks.updateMutation.mutateAsync.mock.calls.at(-1)?.[0];
+      expect(call).toMatchObject({ id: "expense-1" });
+      expect(call.input).not.toHaveProperty("place");
+    });
+  });
+
+  it("hydrates a linked child place and preserves it on a nonblank edit", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(
+      screen.getByRole("button", { name: "Edit linked reimbursement" }),
+    );
+    const note = await screen.findByLabelText("Transaction note");
+    expect(note).toHaveValue("Coffee repayment");
+    await user.type(note, " updated");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const call = mocks.updateMutation.mutateAsync.mock.calls.at(-1)?.[0];
+      expect(call).toMatchObject({ id: "reimbursement-1" });
+      expect(call.input).not.toHaveProperty("place");
+    });
+  });
+
+  it("emits a clear patch for the linked child's own place", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(
+      screen.getByRole("button", { name: "Edit linked reimbursement" }),
+    );
+    await screen.findByDisplayValue("Coffee repayment");
+    await user.click(screen.getByRole("button", { name: "Clear note" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith({
+        id: "reimbursement-1",
+        input: expect.objectContaining({
+          place: null,
+          reimbursesTransactionId: "expense-1",
+        }),
+      });
+    });
+  });
+
   it("gates Places to create-expense amount entry and starts a fresh nearby session", async () => {
     const user = userEvent.setup();
     renderFlow();
@@ -390,7 +509,13 @@ describe("TransactionFlow Places integration", () => {
 
     await user.click(screen.getByRole("button", { name: "Start expense" }));
 
-    expect(await screen.findByRole("button", { name: "Search places" })).toBeVisible();
+    expect(
+      await screen.findByRole("combobox", { name: "Transaction note" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Search places" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     const firstSession = latestNearbyCall()?.sessionId;
     expect(firstSession).toEqual(expect.any(String));
     expect(latestNearbyCall()).toMatchObject({ enabled: true, isOnline: true });
@@ -410,7 +535,11 @@ describe("TransactionFlow Places integration", () => {
 
     await user.click(screen.getByRole("button", { name: buttonName }));
 
-    expect(screen.queryByRole("button", { name: "Search places" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Transaction note" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(latestNearbyCall()).toMatchObject({ enabled: false, isOnline: true });
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
@@ -422,7 +551,10 @@ describe("TransactionFlow Places integration", () => {
     await user.click(screen.getByRole("button", { name: "Edit expense" }));
 
     expect(await screen.findByDisplayValue("Original note")).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Search places" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Transaction note" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(latestNearbyCall()).toMatchObject({ enabled: false, isOnline: true });
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
@@ -430,7 +562,7 @@ describe("TransactionFlow Places integration", () => {
   it.each([
     ["offline", false, true],
     ["without a key", true, false],
-  ])("keeps Search disabled %s", async (_label, isOnline, hasMapsKey) => {
+  ])("keeps Places disabled %s", async (_label, isOnline, hasMapsKey) => {
     mocks.isOnline = isOnline;
     mocks.hasMapsKey = hasMapsKey;
     const user = userEvent.setup();
@@ -438,67 +570,74 @@ describe("TransactionFlow Places integration", () => {
 
     await user.click(screen.getByRole("button", { name: "Start expense" }));
 
-    expect(screen.queryByRole("button", { name: "Search places" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Transaction note" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
 
-  it("opens an empty focused search, resolves a place name, and restores Search focus", async () => {
+  it("starts after two characters, keeps selection focused, and does not search the selected name", async () => {
     const user = userEvent.setup();
     renderFlow();
     await user.click(screen.getByRole("button", { name: "Start expense" }));
 
-    const noteInput = screen.getByPlaceholderText("Add a note...");
-    await user.type(noteInput, "Lunch");
-    const searchButton = screen.getByRole("button", { name: "Search places" });
-    await user.click(searchButton);
+    const noteInput = screen.getByRole("combobox", {
+      name: "Transaction note",
+    });
+    await user.type(noteInput, "c");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(mocks.createSession).not.toHaveBeenCalled();
 
-    const searchInput = await screen.findByRole("searchbox", { name: "Search places" });
-    await waitFor(() => expect(searchInput).toHaveFocus());
-    expect(searchInput).toHaveValue("");
-
-    await user.type(searchInput, "coffee");
-    const result = await screen.findByRole("button", {
+    await user.type(noteInput, "o");
+    const result = await screen.findByRole("option", {
       name: /Coffee House.*123 Main Street/i,
     });
     await user.click(result);
 
-    await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: "Search places" })).toHaveAttribute(
-        "data-state",
-        "closed"
-      );
-    });
     expect(noteInput).toHaveValue("Coffee House Resolved");
-    await waitFor(() => expect(searchButton).toHaveFocus());
+    await waitFor(() => expect(noteInput).toHaveFocus());
+    const searchCountAfterSelection = mocks.searchSuggestions.mock.calls.length;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(mocks.searchSuggestions).toHaveBeenCalledTimes(
+      searchCountAfterSelection,
+    );
     expect(mocks.resolveSuggestion).toHaveBeenCalledWith(
       coffeeHouse,
-      expect.objectContaining({ token: expect.any(Object) })
+      expect.objectContaining({ token: expect.any(Object) }),
     );
   });
 
-  it("keeps the drawer, query, and note intact when place resolution fails", async () => {
+  it("keeps free text and the inline popup usable when place resolution fails", async () => {
     mocks.resolveSuggestion.mockRejectedValueOnce(new Error("selection failed"));
     const user = userEvent.setup();
     renderFlow();
     await user.click(screen.getByRole("button", { name: "Start expense" }));
-    const noteInput = screen.getByPlaceholderText("Add a note...");
-    await user.type(noteInput, "Lunch");
-    await user.click(screen.getByRole("button", { name: "Search places" }));
-    const searchInput = await screen.findByRole("searchbox", { name: "Search places" });
-    await user.type(searchInput, "coffee");
+    const noteInput = screen.getByRole("combobox", {
+      name: "Transaction note",
+    });
+    await user.type(noteInput, "coffee");
 
     await user.click(
-      await screen.findByRole("button", {
+      await screen.findByRole("option", {
         name: /Coffee House.*123 Main Street/i,
-      })
+      }),
     );
 
     expect(
-      await screen.findByText("Couldn’t select that place. Tap it again.")
+      await screen.findByText(
+        "Couldn’t select that place. Choose it again or edit the note.",
+      ),
     ).toBeVisible();
-    expect(screen.getByRole("dialog", { name: "Search places" })).toBeVisible();
-    expect(searchInput).toHaveValue("coffee");
-    expect(noteInput).toHaveValue("Lunch");
+    expect(screen.getByRole("listbox")).toBeVisible();
+    expect(noteInput).toHaveValue("coffee");
+
+    await user.click(screen.getByRole("option", { name: /Coffee House/ }));
+    await waitFor(() => expect(noteInput).toHaveValue("Coffee House Resolved"));
   });
 
   it("ignores a deferred selection after Places eligibility is lost", async () => {
@@ -509,84 +648,100 @@ describe("TransactionFlow Places integration", () => {
 
     mocks.isOnline = false;
     rerenderFlow();
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Search places" })
-      ).toHaveAttribute("data-state", "closed");
-    });
-
-    await act(async () => selection.resolve("Stale Coffee House"));
-
-    expect(noteInput).toHaveValue("Lunch");
-    expect(screen.queryByRole("button", { name: "Search places" })).not.toBeInTheDocument();
-  });
-
-  it("does not let an old selection alter or close a newly reopened search", async () => {
-    const selection = deferred<string>();
-    const user = userEvent.setup();
-    const { rerenderFlow } = renderFlow();
-    const noteInput = await beginDeferredPlaceSelection(user, selection);
-
-    mocks.isOnline = false;
-    rerenderFlow();
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Search places" })
-      ).toHaveAttribute("data-state", "closed");
-    });
-
-    mocks.isOnline = true;
-    rerenderFlow();
-    fireEvent.click(screen.getByRole("button", { name: "Search places" }));
-    await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: "Search places" })
-      ).toHaveAttribute("data-state", "open");
-    });
-    const reopenedSearchInput = screen.getByRole("searchbox", {
-      name: "Search places",
-    });
-    await waitFor(() => expect(reopenedSearchInput).toHaveFocus());
-
-    await act(async () => selection.resolve("Stale Coffee House"));
-
-    expect(noteInput).toHaveValue("Lunch");
     expect(
-      screen.getByRole("dialog", { name: "Search places" })
-    ).toHaveAttribute("data-state", "open");
-    expect(reopenedSearchInput).toHaveFocus();
-    expect(mocks.createSession).toHaveBeenCalledTimes(2);
+      screen.getByRole("textbox", { name: "Transaction note" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await act(async () => selection.resolve("Stale Coffee House"));
+
+    expect(noteInput).toHaveValue("coffee");
   });
 
-  it("clears search state and creates a new autocomplete session after closing", async () => {
+  it("clear retires results, clears metadata, restores focus, and shows nearby chips", async () => {
+    mocks.nearbySuggestions = [coffeeHouse];
     const user = userEvent.setup();
     renderFlow();
     await user.click(screen.getByRole("button", { name: "Start expense" }));
-    const searchButton = screen.getByRole("button", { name: "Search places" });
-    await user.click(searchButton);
-    const searchInput = await screen.findByRole("searchbox", { name: "Search places" });
-    await user.type(searchInput, "coffee");
-    await screen.findByRole("button", { name: /Coffee House.*123 Main Street/i });
+    const noteInput = screen.getByRole("combobox", {
+      name: "Transaction note",
+    });
+    await user.type(noteInput, "coffee");
+    await screen.findByRole("option", { name: /Coffee House/ });
+    await user.click(screen.getByRole("button", { name: "Clear note" }));
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    expect(noteInput).toHaveValue("");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await waitFor(() => expect(noteInput).toHaveFocus());
+    expect(
+      screen.getByRole("button", { name: "Use Coffee House as note" }),
+    ).toBeVisible();
+  });
+
+  it("submits structured metadata from a nearby place chip", async () => {
+    mocks.nearbySuggestions = [coffeeHouse];
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Start expense" }));
+    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+    await user.click(
+      screen.getByRole("button", { name: "Use Coffee House as note" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+
     await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: "Search places" })).toHaveAttribute(
-        "data-state",
-        "closed"
+      expect(mocks.addMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          note: "Coffee House",
+          place: { provider: "google", placeId: "coffee-house" },
+        }),
       );
     });
-    await waitFor(() => expect(searchButton).toHaveFocus());
+  });
 
-    await user.click(searchButton);
+  it("keeps reimbursement entry as a plain note field without source place inheritance", async () => {
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Edit expense" }));
+    await user.click(await screen.findByRole("button", { name: "Reimburse" }));
+
+    expect(
+      screen.getByRole("textbox", { name: "Transaction note" }),
+    ).toHaveValue("Original note");
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it("preserves a place across Back and clears it when create type changes", async () => {
+    mocks.nearbySuggestions = [coffeeHouse];
+    const user = userEvent.setup();
+    renderFlow();
+
+    await user.click(screen.getByRole("button", { name: "Start expense" }));
+    await user.click(
+      screen.getByRole("button", { name: "Use Coffee House as note" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Go back" }));
+    await user.click(screen.getByRole("button", { name: "Start expense" }));
+    expect(
+      screen.getByRole("combobox", { name: "Transaction note" }),
+    ).toHaveValue("Coffee House");
+
+    await user.click(screen.getByRole("button", { name: "Go back" }));
+    await user.click(screen.getByRole("button", { name: "Start income" }));
+    expect(
+      screen.getByRole("textbox", { name: "Transaction note" }),
+    ).toHaveValue("Coffee House");
+    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "Wallet" }));
+    await user.click(screen.getByRole("button", { name: "Submit" }));
     await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: "Search places" })).toHaveAttribute(
-        "data-state",
-        "open"
-      );
+      const values = mocks.addMutation.mutateAsync.mock.calls.at(-1)?.[0];
+      expect(values?.place).toBeUndefined();
     });
-    const reopenedInput = screen.getByRole("searchbox", { name: "Search places" });
-    expect(reopenedInput).toHaveValue("");
-    await waitFor(() => expect(mocks.createSession).toHaveBeenCalledTimes(2));
   });
 });
 

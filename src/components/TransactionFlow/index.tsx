@@ -17,8 +17,8 @@ import { toLocalTransactionRecord } from "../../lib/transactionHistory";
 import type {
   TransactionType,
   CategoryItem,
-  TransactionInput,
   TransactionRecord,
+  TransactionUpdateInput,
 } from "../../lib/types";
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
@@ -42,9 +42,7 @@ import {
 } from "./useUpdateTransactionMutation";
 import { useDeleteTransactionMutation } from "./useDeleteTransactionMutation";
 import { useNearbyPlaceSuggestions } from "./useNearbyPlaceSuggestions";
-import { hasGoogleMapsApiKey, type PlaceSuggestion } from "../../lib/googlePlaces";
-import { PlaceSearchDrawer } from "./PlaceSearchDrawer";
-import { usePlaceAutocomplete } from "./usePlaceAutocomplete";
+import { hasGoogleMapsApiKey } from "../../lib/googlePlaces";
 import { isPlacesEligible, type PlacesFlowMode } from "./placesEligibility";
 import {
   getReimbursementFormDefaults,
@@ -64,6 +62,11 @@ import {
 } from "../../lib/reimbursements";
 import { createFlowGeneration } from "./flowGeneration";
 import { useTransactionByIdQuery } from "./useTransactionByIdQuery";
+import { createPlaceSessionId } from "./placeSessionId";
+import {
+  buildPlaceUpdatePatch,
+  replaceTransactionNote,
+} from "./transactionNoteForm";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -72,26 +75,6 @@ type StepDefinition = {
   className: string;
   content: React.ReactNode;
 };
-
-function createPlaceSessionId() {
-  if (typeof globalThis.crypto.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hexadecimal = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-  return `${hexadecimal.slice(0, 8)}-${hexadecimal.slice(
-    8,
-    12
-  )}-${hexadecimal.slice(12, 16)}-${hexadecimal.slice(
-    16,
-    20
-  )}-${hexadecimal.slice(20)}`;
-}
 
 function editFlowKey(transactionId: string) {
   return `edit:${transactionId}`;
@@ -120,7 +103,7 @@ function linkedLockedFieldsMatch(
 function buildLinkedEditInput(
   values: TransactionFormValues,
   original: TransactionRecord,
-): TransactionInput {
+): TransactionUpdateInput {
   return {
     type: original.type,
     category: original.category,
@@ -131,6 +114,7 @@ function buildLinkedEditInput(
     date: format(values.dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
     note: values.note.trim() || undefined,
     reimbursesTransactionId: original.reimbursesTransactionId,
+    ...buildPlaceUpdatePatch(original.place, values.place),
   };
 }
 
@@ -158,10 +142,6 @@ export function TransactionFlow() {
   const [placeSuggestionSessionId, setPlaceSuggestionSessionId] = useState(
     createPlaceSessionId
   );
-  const [placeSearchSessionId, setPlaceSearchSessionId] = useState(
-    createPlaceSessionId
-  );
-  const [placeSearchOpen, setPlaceSearchOpen] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [flowMode, setFlowMode] = useState<TransactionFlowMode>({
     kind: "create",
@@ -179,12 +159,7 @@ export function TransactionFlow() {
   const [flowGeneration] = useState(() =>
     createFlowGeneration("dashboard"),
   );
-  const placeSearchButtonRef = useRef<HTMLButtonElement>(null);
   const noteInputRef = useRef<HTMLInputElement>(null);
-  const placeSearchGenerationRef = useRef(0);
-  const activePlaceSearchSessionRef = useRef<string | null>(null);
-  const placeSearchOpenRef = useRef(false);
-  const canSearchPlacesRef = useRef(false);
   const mutation = useAddTransactionMutation();
   const updateMutation = useUpdateTransactionMutation();
   const deleteMutation = useDeleteTransactionMutation();
@@ -211,6 +186,7 @@ export function TransactionFlow() {
     forValue: formForValue,
     dateObject: formDateObject,
     note: formNote,
+    place: formPlace,
   } = form.useStore((state) => state.values);
   const reimbursementValues = reimbursementForm.useStore(
     (state) => state.values,
@@ -227,9 +203,19 @@ export function TransactionFlow() {
           forValue: formForValue,
           dateObject: formDateObject,
           note: formNote,
+          place: formPlace,
         };
-  const { type, category, amount, currency, account, forValue, dateObject, note } =
-    activeValues;
+  const {
+    type,
+    category,
+    amount,
+    currency,
+    account,
+    forValue,
+    dateObject,
+    note,
+    place,
+  } = activeValues;
   const activeForm =
     flowMode.kind === "reimburse" ? reimbursementForm : form;
   const fieldsLocked = reimbursementFieldsLocked(flowMode);
@@ -319,106 +305,13 @@ export function TransactionFlow() {
   });
   const canSearchPlaces =
     shouldFetchNearbyPlaces && isOnline && hasGoogleMapsApiKey();
-  placeSearchOpenRef.current = placeSearchOpen;
-  canSearchPlacesRef.current = canSearchPlaces;
   const nearbyPlaces = useNearbyPlaceSuggestions({
     enabled: shouldFetchNearbyPlaces,
     isOnline,
     sessionId: placeSuggestionSessionId,
   });
-  const placeAutocomplete = usePlaceAutocomplete({
-    open: placeSearchOpen,
-    enabled: canSearchPlaces,
-    sessionId: placeSearchSessionId,
-    locationBias: nearbyPlaces.coordinates,
-  });
   const receiptTimeoutRef = useRef<number | null>(null);
   const lastSyncErrorRef = useRef<string | null>(null);
-
-  const invalidatePlaceSearch = useCallback(() => {
-    const nextGeneration = placeSearchGenerationRef.current + 1;
-    placeSearchGenerationRef.current = nextGeneration;
-    activePlaceSearchSessionRef.current = null;
-    placeSearchOpenRef.current = false;
-    return nextGeneration;
-  }, []);
-
-  const restorePlacePickerFocus = useCallback((closedGeneration: number) => {
-    window.requestAnimationFrame(() => {
-      if (
-        placeSearchGenerationRef.current !== closedGeneration ||
-        placeSearchOpenRef.current
-      ) {
-        return;
-      }
-      const searchButton = placeSearchButtonRef.current;
-      if (searchButton?.isConnected) {
-        searchButton.focus();
-        return;
-      }
-      noteInputRef.current?.focus();
-    });
-  }, []);
-
-  const closePlaceSearch = useCallback(() => {
-    const closedGeneration = invalidatePlaceSearch();
-    setPlaceSearchOpen(false);
-    restorePlacePickerFocus(closedGeneration);
-  }, [invalidatePlaceSearch, restorePlacePickerFocus]);
-
-  const openPlaceSearch = useCallback(() => {
-    if (!canSearchPlaces) {
-      return;
-    }
-    const sessionId = createPlaceSessionId();
-    placeSearchGenerationRef.current += 1;
-    activePlaceSearchSessionRef.current = sessionId;
-    placeSearchOpenRef.current = true;
-    setPlaceSearchSessionId(sessionId);
-    setPlaceSearchOpen(true);
-  }, [canSearchPlaces]);
-
-  const handlePlaceSearchOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (nextOpen) {
-        openPlaceSearch();
-        return;
-      }
-      closePlaceSearch();
-    },
-    [closePlaceSearch, openPlaceSearch]
-  );
-
-  const handlePlaceSuggestionSelect = useCallback(
-    async (suggestion: PlaceSuggestion) => {
-      const selectionGeneration = placeSearchGenerationRef.current;
-      const selectionSessionId = activePlaceSearchSessionRef.current;
-      if (
-        !selectionSessionId ||
-        !placeSearchOpenRef.current ||
-        !canSearchPlacesRef.current
-      ) {
-        return;
-      }
-
-      try {
-        const displayName = await placeAutocomplete.selectSuggestion(suggestion);
-        if (
-          placeSearchGenerationRef.current !== selectionGeneration ||
-          activePlaceSearchSessionRef.current !== selectionSessionId ||
-          !placeSearchOpenRef.current ||
-          !canSearchPlacesRef.current
-        ) {
-          return;
-        }
-        form.setFieldValue("note", displayName);
-        closePlaceSearch();
-      } catch {
-        // The autocomplete hook keeps selection errors inline in the drawer.
-      }
-    },
-    [closePlaceSearch, form, placeAutocomplete.selectSuggestion]
-  );
 
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
 
@@ -437,17 +330,6 @@ export function TransactionFlow() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (canSearchPlaces) {
-      return;
-    }
-    if (placeSearchOpenRef.current) {
-      closePlaceSearch();
-      return;
-    }
-    invalidatePlaceSearch();
-  }, [canSearchPlaces, closePlaceSearch, invalidatePlaceSearch]);
 
   useEffect(() => {
     if (
@@ -573,6 +455,7 @@ export function TransactionFlow() {
         forValue,
         dateObject,
         note,
+        place,
       });
       return;
     }
@@ -585,6 +468,7 @@ export function TransactionFlow() {
       forValue,
       dateObject,
       note,
+      place,
     });
     if (!result.success) {
       handleToast(result.error.issues[0]?.message ?? "Complete all fields");
@@ -647,11 +531,8 @@ export function TransactionFlow() {
 
   const resetFlow = useCallback(() => {
     flowGeneration.transition("dashboard");
-    invalidatePlaceSearch();
     setStep(0);
-    setPlaceSearchOpen(false);
     setPlaceSuggestionSessionId(createPlaceSessionId());
-    setPlaceSearchSessionId(createPlaceSessionId());
     setReceiptData(null);
     setCreatedReimbursement(null);
     setReimbursementUndoState(null);
@@ -669,13 +550,13 @@ export function TransactionFlow() {
     form.setFieldValue("category", "");
     form.setFieldValue("amount", "");
     form.setFieldValue("forValue", "Me");
-    form.setFieldValue("note", "");
+    replaceTransactionNote(form, "");
     form.setFieldValue("dateObject", new Date());
     reimbursementForm.setFieldValue("type", "income");
     reimbursementForm.setFieldValue("category", "");
     reimbursementForm.setFieldValue("amount", "");
     reimbursementForm.setFieldValue("forValue", "Me");
-    reimbursementForm.setFieldValue("note", "");
+    replaceTransactionNote(reimbursementForm, "");
     reimbursementForm.setFieldValue("dateObject", new Date());
   }, [
     mutation,
@@ -683,7 +564,6 @@ export function TransactionFlow() {
     reimbursementMutation,
     form,
     reimbursementForm,
-    invalidatePlaceSearch,
     flowGeneration,
   ]);
 
@@ -739,6 +619,7 @@ export function TransactionFlow() {
       form.setFieldValue("forValue", transaction.for);
       form.setFieldValue("dateObject", parseDate(transaction.date));
       form.setFieldValue("note", transaction.note ?? "");
+      form.setFieldValue("place", transaction.place);
       setFlowMode({ kind: "edit", transaction });
       setCreatedReimbursement(null);
       setReimbursementUndoState(null);
@@ -927,7 +808,7 @@ export function TransactionFlow() {
     reimbursementForm.setFieldValue("account", defaults.account);
     reimbursementForm.setFieldValue("forValue", defaults.forValue);
     reimbursementForm.setFieldValue("dateObject", defaults.dateObject);
-    reimbursementForm.setFieldValue("note", defaults.note);
+    replaceTransactionNote(reimbursementForm, defaults.note);
     reimbursementMutation.reset();
     updateMutation.reset();
     reimbursementSubmissionRef.current = null;
@@ -1214,6 +1095,10 @@ export function TransactionFlow() {
             for: resolvedFor,
             date: format(values.dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
             note: trimmedNote || undefined,
+            ...buildPlaceUpdatePatch(
+              flowMode.transaction.place,
+              values.place,
+            ),
           },
         });
         if (!flowGeneration.isCurrent(submissionToken, receiptKey)) {
@@ -1351,20 +1236,16 @@ export function TransactionFlow() {
                 }
           }
           submitLabel={flowMode.kind === "edit" ? "Save" : undefined}
-          nearbyPlaceSuggestions={
-            shouldFetchNearbyPlaces ? nearbyPlaces.suggestions : []
-          }
-          isNearbyPlacesLoading={
-            shouldFetchNearbyPlaces ? nearbyPlaces.isLoading : false
-          }
-          onNearbyPlaceSelect={
+          places={
             shouldFetchNearbyPlaces
-              ? (suggestion) => form.setFieldValue("note", suggestion.name)
+              ? {
+                  enabled: canSearchPlaces,
+                  nearbySuggestions: nearbyPlaces.suggestions,
+                  isNearbyLoading: nearbyPlaces.isLoading,
+                  locationBias: nearbyPlaces.coordinates,
+                }
               : undefined
           }
-          canSearchPlaces={canSearchPlaces}
-          onSearchPlaces={canSearchPlaces ? openPlaceSearch : undefined}
-          searchButtonRef={placeSearchButtonRef}
           noteInputRef={noteInputRef}
           currencyLocked={fieldsLocked}
           forLocked={fieldsLocked}
@@ -1558,20 +1439,6 @@ export function TransactionFlow() {
         />
       ) : null}
 
-      <PlaceSearchDrawer
-        open={placeSearchOpen}
-        onOpenChange={handlePlaceSearchOpenChange}
-        input={placeAutocomplete.input}
-        onInputChange={placeAutocomplete.setInput}
-        suggestions={placeAutocomplete.suggestions}
-        isLoading={placeAutocomplete.isLoading}
-        isError={placeAutocomplete.isError}
-        error={placeAutocomplete.error}
-        selectionError={placeAutocomplete.selectionError}
-        isSelecting={placeAutocomplete.isSelecting}
-        onRetry={() => void placeAutocomplete.retry()}
-        onSelect={(suggestion) => void handlePlaceSuggestionSelect(suggestion)}
-      />
     </main>
   );
 }
