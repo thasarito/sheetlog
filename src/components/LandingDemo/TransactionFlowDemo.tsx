@@ -405,7 +405,7 @@ export function TransactionFlowDemo({ drawerContainer }: TransactionFlowDemoProp
       ) : null}
 
       {step === 0 ? (
-        <div className="absolute inset-0 grid h-full grid-rows-[2fr_3fr] gap-3">
+        <div className="absolute inset-0 grid h-full grid-rows-[1fr_3fr] gap-3">
           <div className="min-h-0">
             <TopDashboard transactionsOverride={dashboardTransactions} />
           </div>
