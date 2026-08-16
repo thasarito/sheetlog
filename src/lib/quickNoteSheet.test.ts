@@ -197,6 +197,37 @@ describe('Quick Note Sheet codec', () => {
     ]);
     expect(parseQuickNoteRows([row])).toEqual(config);
   });
+
+  it('serializes targets in canonical key order without reordering notes within a target', () => {
+    const transferNotes = [
+      { id: 'transfer-second-by-name', icon: 'ArrowRightLeft', label: 'Move' },
+      { id: 'transfer-first-by-name', icon: 'Landmark', label: 'Bank' },
+    ];
+    const first: QuickNotesConfig = {
+      'transfer:Savings': transferNotes,
+      'expense:Food': [{ id: 'food', icon: 'Utensils', label: 'Food' }],
+      'default:expense': [],
+    };
+    const second: QuickNotesConfig = {
+      'default:expense': [],
+      'expense:Food': [{ id: 'food', icon: 'Utensils', label: 'Food' }],
+      'transfer:Savings': transferNotes,
+    };
+
+    const rows = serializeQuickNoteRows(first);
+
+    expect(rows).toEqual(serializeQuickNoteRows(second));
+    expect(rows.map((row) => `${row[0]}:${row[1]}:${row[2]}`)).toEqual([
+      'default:expense:',
+      'category:expense:Food',
+      'category:transfer:Savings',
+      'category:transfer:Savings',
+    ]);
+    expect(rows.slice(2).map((row) => [row[4], row[5]])).toEqual([
+      ['1', 'transfer-second-by-name'],
+      ['2', 'transfer-first-by-name'],
+    ]);
+  });
 });
 
 describe('Quick Note Sheet validation', () => {
@@ -247,6 +278,18 @@ describe('Quick Note Sheet validation', () => {
 
   it('rejects duplicate empty markers for one target', () => {
     expectValidationError([emptyRow(), emptyRow()], 3, /duplicate empty marker/i);
+  });
+
+  it('rejects an empty marker when any column E through M is populated at the exact row', () => {
+    for (let column = 4; column < NOTE_COLUMNS; column += 1) {
+      const populatedEmptyRow = emptyRow();
+      populatedEmptyRow[column] = 'unexpected';
+      expectValidationError(
+        [noteRow({ type: 'income', id: 'income-note' }), populatedEmptyRow],
+        3,
+        /empty entry.*columns E through M.*blank/i,
+      );
+    }
   });
 
   it.each([
@@ -342,5 +385,84 @@ describe('sanitizeQuickNotes', () => {
     expect(sanitized['expense:Food:Late']).toEqual(config['expense:Food:Late']);
     expect(sanitized['income:Salary']).toEqual(config['income:Salary']);
     expect(sanitized['default:expense']).not.toBe(config['default:expense']);
+  });
+
+  it('clears stale transfer destinations for default and category targets only', () => {
+    const accounts: AccountItem[] = [{ name: 'Wallet' }, { name: 'Bank' }];
+    const categories: CategoryConfigWithMeta = {
+      expense: [{ name: 'Food' }],
+      income: [{ name: 'Salary' }],
+      transfer: [{ name: 'Savings' }],
+    };
+    const config: QuickNotesConfig = {
+      'default:transfer': [
+        {
+          id: 'default-stale',
+          icon: 'ArrowRightLeft',
+          label: 'Move',
+          account: 'Closed source',
+          forValue: 'Closed destination',
+          note: 'Preserve me',
+        },
+        {
+          id: 'default-valid',
+          icon: 'Landmark',
+          label: 'Bank',
+          account: 'Wallet',
+          forValue: 'Bank',
+        },
+      ],
+      'transfer:Savings': [
+        {
+          id: 'category-stale',
+          icon: 'PiggyBank',
+          label: 'Save',
+          account: 'Wallet',
+          forValue: 'Closed destination',
+        },
+      ],
+      'default:expense': [
+        {
+          id: 'expense-for',
+          icon: 'Utensils',
+          label: 'Dinner',
+          account: 'Closed source',
+          forValue: 'Partner',
+        },
+      ],
+      'income:Salary': [
+        {
+          id: 'income-for',
+          icon: 'BadgeDollarSign',
+          label: 'Salary',
+          forValue: 'Household',
+        },
+      ],
+    };
+    const original = JSON.parse(JSON.stringify(config)) as QuickNotesConfig;
+
+    const sanitized = sanitizeQuickNotes(config, accounts, categories);
+
+    expect(config).toEqual(original);
+    expect(sanitized['default:transfer'][0]).toEqual({
+      id: 'default-stale',
+      icon: 'ArrowRightLeft',
+      label: 'Move',
+      note: 'Preserve me',
+    });
+    expect(sanitized['default:transfer'][1]).toEqual(config['default:transfer'][1]);
+    expect(sanitized['transfer:Savings'][0]).toEqual({
+      id: 'category-stale',
+      icon: 'PiggyBank',
+      label: 'Save',
+      account: 'Wallet',
+    });
+    expect(sanitized['default:expense'][0]).toEqual({
+      id: 'expense-for',
+      icon: 'Utensils',
+      label: 'Dinner',
+      forValue: 'Partner',
+    });
+    expect(sanitized['income:Salary'][0].forValue).toBe('Household');
   });
 });

@@ -156,7 +156,10 @@ function addOptionalField<Key extends keyof Pick<
 
 export function serializeQuickNoteRows(config: QuickNotesConfig): string[][] {
   const rows: string[][] = [];
-  for (const [configKey, notes] of Object.entries(config)) {
+  const targets = Object.entries(config).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+  for (const [configKey, notes] of targets) {
     const target = targetFromConfigKey(configKey, rows.length + 2);
     if (notes.length === 0) {
       rows.push([
@@ -219,6 +222,9 @@ export function parseQuickNoteRows(rows: readonly (readonly unknown[])[]): Quick
     };
 
     if (entry === 'empty') {
+      if (row.slice(4, QUICK_NOTE_HEADERS.length).some((value) => cellString(value).length > 0)) {
+        rowError(rowNumber, 'An empty entry requires columns E through M to be blank.');
+      }
       if (parsedTarget.notes.length > 0) {
         rowError(rowNumber, 'A target cannot mix empty and note entries.');
       }
@@ -283,18 +289,30 @@ function categoryTarget(configKey: string): { type: TransactionType; category: s
   return isTransactionType(type) && category.length > 0 ? { type, category } : null;
 }
 
-function isDefaultTarget(configKey: string): boolean {
+function defaultTargetType(configKey: string): TransactionType | null {
   if (!configKey.startsWith('default:')) {
-    return false;
+    return null;
   }
-  return isTransactionType(configKey.slice('default:'.length));
+  const type = configKey.slice('default:'.length);
+  return isTransactionType(type) ? type : null;
 }
 
-function sanitizeNote(note: QuickNote, accountNames: ReadonlySet<string>): QuickNote {
-  if (note.account === undefined || accountNames.has(note.account)) {
-    return { ...note };
+function sanitizeNote(
+  note: QuickNote,
+  accountNames: ReadonlySet<string>,
+  targetType: TransactionType,
+): QuickNote {
+  const sanitized = { ...note };
+  if (sanitized.account !== undefined && !accountNames.has(sanitized.account)) {
+    delete sanitized.account;
   }
-  const { account: _removedAccount, ...sanitized } = note;
+  if (
+    targetType === 'transfer' &&
+    sanitized.forValue !== undefined &&
+    !accountNames.has(sanitized.forValue)
+  ) {
+    delete sanitized.forValue;
+  }
   return sanitized;
 }
 
@@ -308,14 +326,16 @@ export function sanitizeQuickNotes(
 
   for (const [configKey, notes] of Object.entries(config)) {
     const category = categoryTarget(configKey);
+    const defaultType = defaultTargetType(configKey);
+    const targetType = defaultType ?? category?.type;
     const targetExists =
-      isDefaultTarget(configKey) ||
+      defaultType !== null ||
       (category !== null &&
         categories[category.type].some(({ name }) => name === category.category));
-    if (!targetExists) {
+    if (!targetExists || targetType === undefined) {
       continue;
     }
-    sanitized[configKey] = notes.map((note) => sanitizeNote(note, accountNames));
+    sanitized[configKey] = notes.map((note) => sanitizeNote(note, accountNames, targetType));
   }
   return sanitized;
 }
