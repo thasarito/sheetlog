@@ -42,6 +42,7 @@ export function useTransactionForm(options?: {
       forValue: options?.initialValues?.forValue ?? "Me",
       dateObject: options?.initialValues?.dateObject ?? new Date(),
       note: options?.initialValues?.note ?? "",
+      place: options?.initialValues?.place,
     }),
     []
   );

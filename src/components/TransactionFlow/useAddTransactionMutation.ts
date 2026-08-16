@@ -19,6 +19,7 @@ export function useAddTransactionMutation() {
         category: values.category,
         date: format(values.dateObject, "yyyy-MM-dd'T'HH:mm:ss"),
         note: values.note.trim() || undefined,
+        ...(values.place ? { place: values.place } : {}),
       });
       if (record.status === "error") {
         throw new Error(

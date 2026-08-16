@@ -26,3 +26,29 @@ describe("transactionSchema amount parsing", () => {
     expect(transactionSchema.safeParse(validValues).success).toBe(true);
   });
 });
+
+describe("transactionSchema place metadata", () => {
+  it("accepts a Google place with a nonblank ID", () => {
+    const result = transactionSchema.safeParse({
+      ...validValues,
+      place: { provider: "google", placeId: " central-cafe " },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.place).toEqual({
+        provider: "google",
+        placeId: "central-cafe",
+      });
+    }
+  });
+
+  it.each([
+    { provider: "google", placeId: "   " },
+    { provider: "osm", placeId: "central-cafe" },
+  ])("rejects invalid place metadata %#", (place) => {
+    expect(
+      transactionSchema.safeParse({ ...validValues, place }).success,
+    ).toBe(false);
+  });
+});

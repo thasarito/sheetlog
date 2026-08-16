@@ -17,6 +17,12 @@ export const transactionSchema = z.object({
   forValue: z.string(),
   dateObject: z.date(),
   note: z.string(),
+  place: z
+    .object({
+      provider: z.literal("google"),
+      placeId: z.string().trim().min(1, "Place ID is required"),
+    })
+    .optional(),
 });
 
 export type TransactionFormValues = z.infer<typeof transactionSchema>;

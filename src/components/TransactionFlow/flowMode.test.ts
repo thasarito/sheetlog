@@ -51,10 +51,16 @@ describe("TransactionFlowMode", () => {
 
   it("builds reimbursement defaults from the source and the current balance", () => {
     const now = new Date("2026-08-15T12:34:56.000Z");
+    const defaults = getReimbursementFormDefaults(
+      transaction({
+        place: { provider: "google", placeId: "central-cafe" },
+      }),
+      60,
+      now,
+    );
 
-    expect(
-      getReimbursementFormDefaults(transaction(), 60, now),
-    ).toEqual({
+    expect(Object.hasOwn(defaults, "place")).toBe(true);
+    expect(defaults).toEqual({
       type: "income",
       category: REIMBURSEMENT_CATEGORY,
       amount: "60",
@@ -63,6 +69,7 @@ describe("TransactionFlowMode", () => {
       forValue: "Household",
       dateObject: now,
       note: "Lunch",
+      place: undefined,
     });
   });
 
