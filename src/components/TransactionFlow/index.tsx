@@ -67,6 +67,7 @@ import {
   buildPlaceUpdatePatch,
   replaceTransactionNote,
 } from "./transactionNoteForm";
+import { useStableTransactionHeight } from "./useStableTransactionHeight";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -132,6 +133,7 @@ function receiptDataFromRecord(record: TransactionRecord): ReceiptData {
 }
 
 export function TransactionFlow() {
+  const stableTransactionHeight = useStableTransactionHeight();
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { userProfile } = useSession();
   const { sheetId } = useWorkspace();
@@ -1361,7 +1363,11 @@ export function TransactionFlow() {
   const activeStep = steps[step] ?? steps[0];
 
   return (
-    <main className="h-dvh from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6">
+    <main
+      data-testid="transaction-canvas"
+      style={{ height: `${stableTransactionHeight}px` }}
+      className="h-full from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6"
+    >
       <div className="mx-auto flex h-full w-full max-w-md flex-col">
         {/* Header with settings drawer */}
         <Header
