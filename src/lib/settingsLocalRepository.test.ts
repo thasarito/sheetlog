@@ -539,6 +539,50 @@ describe('Dexie settings local repository', () => {
     });
   });
 
+  it('preserves a default transfer destination until Accounts are confirmed', async () => {
+    await setOnboardingState(
+      onboarding({
+        accounts: [{ name: 'Draft account' }],
+        accountsConfirmed: false,
+      }),
+      SHEET_ID,
+    );
+    const quickNotes: QuickNotesConfig = {
+      'default:transfer': [
+        {
+          id: 'draft-transfer',
+          icon: 'ArrowRightLeft',
+          label: 'Draft transfer',
+          account: 'Draft account',
+          forValue: 'Draft destination',
+        },
+      ],
+    };
+
+    const draft = await mutateLocalQuickNotes(
+      SHEET_ID,
+      USER_ID,
+      () => quickNotes,
+    );
+    expect(draft.settings.quickNotes).toEqual(quickNotes);
+
+    const confirmed = await mutateLocalOnboarding(
+      SHEET_ID,
+      USER_ID,
+      (current) => ({ ...current, accountsConfirmed: true }),
+    );
+    expect(confirmed.settings.quickNotes).toEqual({
+      'default:transfer': [
+        {
+          id: 'draft-transfer',
+          icon: 'ArrowRightLeft',
+          label: 'Draft transfer',
+          account: 'Draft account',
+        },
+      ],
+    });
+  });
+
   it('marks an explicitly written section dirty even when its canonical value is unchanged', async () => {
     await setOnboardingState(onboarding(), SHEET_ID);
 
