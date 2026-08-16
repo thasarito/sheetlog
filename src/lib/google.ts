@@ -12,6 +12,7 @@ import {
   serializeTransactionRowForUserEntered,
   TRANSACTION_HEADERS,
 } from "./transactionRows";
+import { QUICK_NOTE_HEADERS } from "./quickNoteSheet";
 import { createCachedTransactionRecord } from "./transactionHistory";
 import type {
   AccountItem,
@@ -24,6 +25,7 @@ const SHEET_NAME = "SheetLog_DB";
 const TAB_NAME = "Transactions";
 const ACCOUNT_TAB = "Account";
 const CATEGORY_TAB = "Category";
+const QUICK_NOTE_TAB = "Quick Note";
 const ACCOUNT_HEADER_ROW = ["Account", "Icon", "Color"];
 const CATEGORY_HEADER_ROW = ["Type", "Category", "Icon", "Color"];
 
@@ -110,7 +112,7 @@ function parseGoogleErrorBody(body: string): {
   }
 }
 
-async function fetchWithAuth<T>(
+export async function fetchWithAuth<T>(
   url: string,
   accessToken: string,
   options: RequestInit = {}
@@ -173,6 +175,7 @@ export async function createSheet(accessToken: string): Promise<string> {
           { properties: { title: TAB_NAME } },
           { properties: { title: ACCOUNT_TAB } },
           { properties: { title: CATEGORY_TAB } },
+          { properties: { title: QUICK_NOTE_TAB } },
         ],
       }),
     }
@@ -181,6 +184,7 @@ export async function createSheet(accessToken: string): Promise<string> {
   await ensureHeaders(accessToken, data.spreadsheetId);
   await ensureAccountsHeaders(accessToken, data.spreadsheetId);
   await ensureCategoriesHeaders(accessToken, data.spreadsheetId);
+  await ensureQuickNotesHeaders(accessToken, data.spreadsheetId);
   return data.spreadsheetId;
 }
 
@@ -266,6 +270,17 @@ async function ensureCategoriesHeaders(
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
     body: JSON.stringify({ values: [CATEGORY_HEADER_ROW] }),
+  });
+}
+
+async function ensureQuickNotesHeaders(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<void> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${QUICK_NOTE_TAB}!A1:M1?valueInputOption=RAW`;
+  await fetchWithAuth(url, accessToken, {
+    method: "PUT",
+    body: JSON.stringify({ values: [QUICK_NOTE_HEADERS] }),
   });
 }
 
