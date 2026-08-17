@@ -405,7 +405,9 @@ test.describe('Home Transactions and Analytics carousel', () => {
     analyticsDialog = page.getByRole('dialog', { name: 'Analytics' });
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeVisible();
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeFocused();
-    await expect(analyticsDialog.getByText('฿1,636', { exact: true })).toBeVisible();
+    await expect(
+      analyticsDialog.locator('p').filter({ hasText: /^฿1,636$/ }),
+    ).toBeVisible();
     await expect(
       analyticsDialog.getByRole('combobox', { name: 'Analytics currency' }),
     ).toHaveCount(0);
@@ -482,7 +484,16 @@ test.describe('Home Transactions and Analytics carousel', () => {
       analyticsDialog.getByRole('button', { name: /Clear selected period filter/ }),
     ).toHaveCount(0);
     await expect(analyticsDialog.getByRole('button', { name: /expense Food Delivery/ })).toBeVisible();
-    await expect(analyticsDialog.getByRole('button', { name: /expense Coffee & Snacks/ })).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('button', {
+        name: /expense Coffee & Snacks.*\$3\.00/,
+      }),
+    ).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('button', {
+        name: /expense Coffee & Snacks.*฿80\.00/,
+      }),
+    ).toBeVisible();
     await expect(
       analyticsDialog.getByRole('button', { name: 'Month, month to date' }),
     ).toHaveAttribute('aria-pressed', 'true');
