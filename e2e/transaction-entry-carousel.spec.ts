@@ -132,16 +132,36 @@ test.describe("Transaction type and category carousel", () => {
       const tile = element.querySelector("button");
       if (!tile) throw new Error("Category tile missing");
       const tileRect = tile.getBoundingClientRect();
+      const iconRegion = tile.querySelector("svg")?.parentElement;
+      const labelRegion = tile.querySelector("span:last-child");
+      if (!iconRegion || !labelRegion) {
+        throw new Error("Category tile regions missing");
+      }
+      const iconRect = iconRegion.getBoundingClientRect();
+      const labelRect = labelRegion.getBoundingClientRect();
       const gridStyle = getComputedStyle(element);
       return {
         width: tileRect.width,
         height: tileRect.height,
+        iconCenter:
+          (iconRect.top + iconRect.height / 2 - tileRect.top) /
+          tileRect.height,
+        iconHeight: iconRect.height / tileRect.height,
+        labelCenter:
+          (labelRect.top + labelRect.height / 2 - tileRect.top) /
+          tileRect.height,
+        labelHeight: labelRect.height / tileRect.height,
         columns: gridStyle.gridTemplateColumns.split(" ").length,
         gap: gridStyle.columnGap,
         boxShadow: getComputedStyle(tile).boxShadow,
       };
     });
     expect(Math.abs(geometry.width - geometry.height)).toBeLessThan(1);
+    expect(Math.abs(geometry.iconCenter - 0.25)).toBeLessThan(0.01);
+    expect(Math.abs(geometry.labelCenter - 0.75)).toBeLessThan(0.01);
+    expect(Math.abs(geometry.iconHeight - geometry.labelHeight)).toBeLessThan(
+      0.001,
+    );
     expect(geometry.columns).toBe(4);
     expect(geometry.gap).toBe("8px");
     expect(geometry.boxShadow).toBe("none");
