@@ -65,6 +65,21 @@ describe('getAnalyticsPeriods', () => {
     expect(result.comparison.end).toEqual(new Date(2026, 1, 14, 23, 59, 59, 999));
   });
 
+  it('uses calendar year to date and the same elapsed prior-year span', () => {
+    const result = getAnalyticsPeriods('year', new Date(2026, 7, 17, 12));
+
+    expect(result).toEqual({
+      current: {
+        start: new Date(2026, 0, 1),
+        end: new Date(2026, 7, 17, 23, 59, 59, 999),
+      },
+      comparison: {
+        start: new Date(2025, 0, 1),
+        end: new Date(2025, 7, 17, 23, 59, 59, 999),
+      },
+    });
+  });
+
   it('uses an immediately preceding comparison with the same inclusive custom length', () => {
     const result = (
       getAnalyticsPeriods as unknown as (
@@ -104,6 +119,28 @@ describe.each<[AnalyticsRange, number]>([
 
     expect(summary.buckets).toHaveLength(expectedBuckets);
   });
+});
+
+it('builds one labeled bucket per elapsed month for year to date', () => {
+  const summary = buildAnalyticsSummary({
+    transactions: [],
+    range: 'year',
+    currency: 'THB',
+    now: new Date(2026, 7, 17, 12),
+  });
+
+  expect(summary.buckets.map(({ key, label }) => ({ key, label }))).toEqual([
+    { key: '2026-01-month', label: 'Jan' },
+    { key: '2026-02-month', label: 'Feb' },
+    { key: '2026-03-month', label: 'Mar' },
+    { key: '2026-04-month', label: 'Apr' },
+    { key: '2026-05-month', label: 'May' },
+    { key: '2026-06-month', label: 'Jun' },
+    { key: '2026-07-month', label: 'Jul' },
+    { key: '2026-08-month', label: 'Aug' },
+  ]);
+  expect(summary.buckets[0].accessibleLabel).toBe('January 1 through January 31');
+  expect(summary.buckets.at(-1)?.accessibleLabel).toBe('August 1 through August 17');
 });
 
 describe('stacked category series', () => {
@@ -495,6 +532,9 @@ describe('getComparisonText', () => {
     );
     expect(getComparisonText({ direction: 'above', percentage: 8 }, 'quarter')).toBe(
       '8% above the same elapsed days last quarter',
+    );
+    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'year')).toBe(
+      '8% above the same elapsed days last year',
     );
   });
 });
