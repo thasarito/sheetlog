@@ -313,12 +313,33 @@ describe('AnalyticsDrawer', () => {
     );
   });
 
-  it('announces loading without presenting a partial local total as complete', () => {
-    renderDrawer({ isLoading: true, hasCompleteHistory: false });
+  it('keeps local periods available while complete analytics are loading or unavailable', () => {
+    const { rerender } = renderDrawer({ isLoading: true, hasCompleteHistory: false });
 
     const status = screen.getByRole('status', { name: 'Analytics summary update' });
     expect(status).toHaveTextContent('Loading Week, last 7 days analytics');
     expect(status).not.toHaveTextContent('Expenses ฿200');
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
+
+    rerender(
+      <AnalyticsDrawer
+        {...baseProps}
+        hasCompleteHistory={false}
+        isOffline
+      />,
+    );
+    expect(status).toHaveTextContent('Full range unavailable offline');
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
+
+    rerender(
+      <AnalyticsDrawer
+        {...baseProps}
+        hasCompleteHistory={false}
+        error={new Error('network')}
+      />,
+    );
+    expect(status).toHaveTextContent('Analytics unavailable');
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
   });
 
   it('groups categories after the top four into a selectable Other row', async () => {

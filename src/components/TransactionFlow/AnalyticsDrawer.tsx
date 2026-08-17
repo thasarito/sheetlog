@@ -237,99 +237,100 @@ export function AnalyticsDrawer({
         </output>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-safe" data-vaul-no-drag>
-          {!hasCompleteHistory && isOffline ? (
-            <div className="flex min-h-48 items-center text-sm text-muted-foreground">
-              Full range unavailable offline
-            </div>
-          ) : !hasCompleteHistory && isLoading ? (
-            <output aria-label="Loading detailed analytics" className="block space-y-4 pt-4">
-              <Skeleton className="h-40 w-full" />
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-40 w-full" />
-            </output>
-          ) : !hasCompleteHistory ? (
-            <div className="flex min-h-48 items-center justify-between">
-              <span className="text-sm text-muted-foreground">Analytics unavailable</span>
-              <button
-                type="button"
-                onClick={onRetry}
-                className="min-h-11 font-semibold text-primary"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-7 pb-8">
-              <div
-                data-testid="analytics-range-controls"
-                className="flex items-center justify-between gap-3 pt-3"
-              >
-                {currencies.length > 1 ? (
-                  <select
-                    aria-label="Analytics currency"
-                    value={currency}
-                    onChange={(event) => onCurrencyChange(event.target.value)}
-                    className="h-11 min-w-20 rounded-xl border border-border bg-background px-2 text-sm font-semibold"
-                  >
-                    {currencies.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="text-xs font-semibold text-muted-foreground">{currency}</span>
-                )}
-                <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
-              </div>
-
-              {range === 'custom' ? (
-                <div className="flex justify-end">
-                  <AnalyticsRangePicker
-                    value={customPeriod}
-                    minDate={earliestDate}
-                    maxDate={now}
-                    openRequest={customPickerRequest}
-                    onChange={onCustomPeriodChange}
-                    onOpenChange={setCustomPickerOpen}
-                  />
-                </div>
+          <div className="space-y-7 pb-8">
+            <div
+              data-testid="analytics-range-controls"
+              className="flex items-center justify-between gap-3 pt-3"
+            >
+              {currencies.length > 1 ? (
+                <select
+                  aria-label="Analytics currency"
+                  value={currency}
+                  onChange={(event) => onCurrencyChange(event.target.value)}
+                  className="h-11 min-w-20 rounded-xl border border-border bg-background px-2 text-sm font-semibold"
+                >
+                  {currencies.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               ) : (
-                <AnalyticsPeriodPicker
-                  options={periodOptions}
-                  value={periodOffset}
-                  onChange={handlePeriodChange}
-                />
+                <span className="text-xs font-semibold text-muted-foreground">{currency}</span>
               )}
+              <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
+            </div>
 
-              <section aria-label="Spending trend">
-                <AnalyticsBarChart
-                  buckets={summary.buckets}
-                  series={summary.series}
-                  currency={currency}
-                  selectedKey={selectedBucket}
-                  onSelect={(key) =>
-                    setSelectedBucket((current) =>
-                      key === null || current === key ? null : key,
-                    )
-                  }
-                  className="h-44"
+            {range === 'custom' ? (
+              <div className="flex justify-end">
+                <AnalyticsRangePicker
+                  value={customPeriod}
+                  minDate={earliestDate}
+                  maxDate={now}
+                  openRequest={customPickerRequest}
+                  onChange={onCustomPeriodChange}
+                  onOpenChange={setCustomPickerOpen}
                 />
-                {selectedBucketDetails ? (
-                  <div className="mt-2 flex justify-center">
-                    <button
-                      type="button"
-                      aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)}`}
-                      onClick={() => setSelectedBucket(null)}
-                      className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    >
-                      {selectedBucketDetails.accessibleLabel} ·{' '}
-                      {formatAnalyticsAmount(selectedBucketDetails.amount, currency)}
-                      <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </div>
-                ) : null}
-              </section>
+              </div>
+            ) : (
+              <AnalyticsPeriodPicker
+                options={periodOptions}
+                value={periodOffset}
+                onChange={handlePeriodChange}
+              />
+            )}
+
+            {!hasCompleteHistory && isOffline ? (
+              <div className="flex min-h-48 items-center text-sm text-muted-foreground">
+                Full range unavailable offline
+              </div>
+            ) : !hasCompleteHistory && isLoading ? (
+              <output aria-label="Loading detailed analytics" className="block space-y-4 pt-4">
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-40 w-full" />
+              </output>
+            ) : !hasCompleteHistory ? (
+              <div className="flex min-h-48 items-center justify-between">
+                <span className="text-sm text-muted-foreground">Analytics unavailable</span>
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="min-h-11 font-semibold text-primary"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <>
+                <section aria-label="Spending trend">
+                  <AnalyticsBarChart
+                    buckets={summary.buckets}
+                    series={summary.series}
+                    currency={currency}
+                    selectedKey={selectedBucket}
+                    onSelect={(key) =>
+                      setSelectedBucket((current) =>
+                        key === null || current === key ? null : key,
+                      )
+                    }
+                    className="h-44"
+                  />
+                  {selectedBucketDetails ? (
+                    <div className="mt-2 flex justify-center">
+                      <button
+                        type="button"
+                        aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)}`}
+                        onClick={() => setSelectedBucket(null)}
+                        className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      >
+                        {selectedBucketDetails.accessibleLabel} ·{' '}
+                        {formatAnalyticsAmount(selectedBucketDetails.amount, currency)}
+                        <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
 
               <section aria-labelledby="analytics-overview">
                 <h3
@@ -444,8 +445,9 @@ export function AnalyticsDrawer({
                   {getOfflineFreshness(updatedAt)}
                 </p>
               ) : null}
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </DrawerContent>
     </Drawer>

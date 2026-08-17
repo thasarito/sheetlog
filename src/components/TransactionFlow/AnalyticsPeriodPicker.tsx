@@ -132,7 +132,7 @@ export function AnalyticsPeriodPicker({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onScroll={handleScroll}
-        className="min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth [scrollbar-width:none] [touch-action:pan-x] [&::-webkit-scrollbar]:hidden"
+        className="min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [touch-action:pan-x] [&::-webkit-scrollbar]:hidden"
         style={{
           maskImage:
             'linear-gradient(to right, transparent, black 18%, black 82%, transparent)',
@@ -155,10 +155,10 @@ export function AnalyticsPeriodPicker({
                 aria-label={option.accessibleLabel}
                 onClick={() => selectIndex(index)}
                 className={cn(
-                  'h-11 w-32 shrink-0 snap-center rounded-lg px-2 text-center text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                  'h-11 w-32 shrink-0 snap-center rounded-lg px-2 text-center text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
                   selected
-                    ? 'text-primary'
-                    : 'text-muted-foreground/45 hover:text-muted-foreground',
+                    ? 'font-semibold text-primary'
+                    : 'font-medium text-muted-foreground/45 hover:text-muted-foreground',
                 )}
               >
                 {option.label}

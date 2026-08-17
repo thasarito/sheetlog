@@ -165,6 +165,7 @@ describe('AnalyticsSlide', () => {
       />,
     );
     expect(screen.getByLabelText('Loading analytics')).toBeInTheDocument();
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
 
     rerender(
       <AnalyticsSlide
@@ -196,6 +197,7 @@ describe('AnalyticsSlide', () => {
       />,
     );
     expect(screen.getByText('Full range unavailable offline')).toBeInTheDocument();
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
 
     rerender(
       <AnalyticsSlide
@@ -210,6 +212,7 @@ describe('AnalyticsSlide', () => {
       />,
     );
     expect(screen.getByText('Analytics unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
 
     rerender(
       <AnalyticsSlide
