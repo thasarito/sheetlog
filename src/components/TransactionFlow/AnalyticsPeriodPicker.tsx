@@ -29,6 +29,12 @@ type TouchDrag = {
   cancelled: boolean;
 };
 
+type IdentifiedTouch = {
+  identifier: number;
+  pageX: number;
+  pageY: number;
+};
+
 const AXIS_LOCK_THRESHOLD_PX = 6;
 const CENTER_DURATION_MS = 240;
 const MOMENTUM_DECAY = 0.95;
@@ -37,7 +43,10 @@ const MOMENTUM_MIN_VELOCITY = 0.02;
 const RELEASE_VELOCITY_IDLE_MS = 120;
 const WHEEL_SETTLE_DELAY_MS = 120;
 
-function findTouch(touches: ArrayLike<Touch>, identifier: number): Touch | null {
+function findTouch(
+  touches: ArrayLike<IdentifiedTouch>,
+  identifier: number,
+): IdentifiedTouch | null {
   for (let index = 0; index < touches.length; index += 1) {
     const touch = touches[index];
     if (touch.identifier === identifier) return touch;
