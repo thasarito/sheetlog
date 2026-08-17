@@ -1,5 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnalyticsPeriodOption } from './analytics';
 import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
@@ -16,12 +15,48 @@ const options: AnalyticsPeriodOption[] = [-3, -2, -1, 0].map((offset, index) => 
   },
 }));
 
+function useMotionClock() {
+  vi.useFakeTimers();
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>
+    window.setTimeout(() => callback(performance.now()), 16),
+  );
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((handle) => {
+    window.clearTimeout(handle);
+  });
+}
+
+function advanceMotion(milliseconds: number) {
+  act(() => {
+    vi.advanceTimersByTime(milliseconds);
+  });
+}
+
+function setPickerGeometry() {
+  const picker = screen.getByTestId('analytics-period-picker');
+  Object.defineProperty(picker, 'clientWidth', {
+    configurable: true,
+    value: 256,
+  });
+  screen.getAllByRole('option').forEach((option, index) => {
+    Object.defineProperties(option, {
+      offsetLeft: { configurable: true, value: index * 128 },
+      offsetWidth: { configurable: true, value: 128 },
+    });
+  });
+  fireEvent(window, new Event('resize'));
+  return {
+    picker,
+    track: screen.getByTestId('analytics-period-track'),
+  };
+}
+
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('AnalyticsPeriodPicker', () => {
-  it('renders every local period and exposes the selected option', () => {
+  it('renders every local period as a transform track without scroll snapping', () => {
     render(<AnalyticsPeriodPicker options={options} value={-1} onChange={vi.fn()} />);
 
     expect(screen.getAllByRole('option')).toHaveLength(4);
@@ -34,22 +69,165 @@ describe('AnalyticsPeriodPicker', () => {
       'true',
     );
     expect(screen.getByTestId('analytics-period-picker')).toHaveClass('[touch-action:pan-y]');
-    expect(screen.getByTestId('analytics-period-picker')).not.toHaveClass('scroll-smooth');
+    expect(screen.getByTestId('analytics-period-picker')).toHaveClass('overflow-hidden');
+    expect(screen.getByTestId('analytics-period-picker')).not.toHaveClass('snap-mandatory');
+    expect(screen.getByTestId('analytics-period-track')).toHaveClass('will-change-transform');
     expect(screen.getByRole('option', { name: 'July 2026' })).toHaveClass('font-semibold');
     expect(screen.getByRole('option', { name: 'June 2026' })).toHaveClass('font-medium');
   });
 
-  it('moves exactly one period with arrows and disables both boundaries', async () => {
-    const user = userEvent.setup();
+  it('tracks a touch drag visually and commits only after the nearest period centers', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+    const initialTransform = track.style.transform;
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 20,
+    });
+    advanceMotion(100);
+    fireEvent.pointerMove(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 140,
+      clientY: 21,
+    });
+    advanceMotion(50);
+    fireEvent.pointerMove(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 180,
+      clientY: 21,
+    });
+    advanceMotion(400);
+    fireEvent.pointerMove(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 180,
+      clientY: 21,
+    });
+    advanceMotion(17);
+
+    expect(track.style.transform).not.toBe(initialTransform);
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 180,
+      clientY: 21,
+    });
+    advanceMotion(200);
+    expect(onChange).not.toHaveBeenCalled();
+    advanceMotion(400);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(-1);
+  });
+
+  it('leaves vertical gestures and mouse dragging inert', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+    const initialTransform = track.style.transform;
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 3,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(picker, {
+      pointerId: 3,
+      pointerType: 'touch',
+      clientX: 102,
+      clientY: 100,
+    });
+    fireEvent.pointerUp(picker, {
+      pointerId: 3,
+      pointerType: 'touch',
+      clientX: 102,
+      clientY: 100,
+    });
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 4,
+      pointerType: 'mouse',
+      clientX: 180,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(picker, {
+      pointerId: 4,
+      pointerType: 'mouse',
+      clientX: 40,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(picker, {
+      pointerId: 4,
+      pointerType: 'mouse',
+      clientX: 40,
+      clientY: 20,
+    });
+    advanceMotion(600);
+
+    expect(track.style.transform).toBe(initialTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('returns to the controlled period without committing after pointer cancellation', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+    const initialTransform = track.style.transform;
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 5,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(picker, {
+      pointerId: 5,
+      pointerType: 'touch',
+      clientX: 190,
+      clientY: 22,
+    });
+    advanceMotion(17);
+    expect(track.style.transform).not.toBe(initialTransform);
+
+    fireEvent.pointerCancel(picker, {
+      pointerId: 5,
+      pointerType: 'touch',
+    });
+    advanceMotion(400);
+
+    expect(track.style.transform).toBe(initialTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('animates arrows before committing one period and disables both boundaries', () => {
+    useMotionClock();
     const onChange = vi.fn();
     const { rerender } = render(
       <AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />,
     );
+    const { track } = setPickerGeometry();
+    const initialTransform = track.style.transform;
 
-    await user.click(screen.getByRole('button', { name: 'Previous period, June 2026' }));
-    expect(onChange).toHaveBeenLastCalledWith(-2);
-    await user.click(screen.getByRole('button', { name: 'Next period, August 2026' }));
-    expect(onChange).toHaveBeenLastCalledWith(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous period, June 2026' }));
+    expect(onChange).not.toHaveBeenCalled();
+    advanceMotion(80);
+    expect(track.style.transform).not.toBe(initialTransform);
+    expect(onChange).not.toHaveBeenCalled();
+    advanceMotion(300);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(-2);
 
     rerender(<AnalyticsPeriodPicker options={options} value={-3} onChange={onChange} />);
     expect(screen.getByRole('button', { name: 'Previous period' })).toBeDisabled();
@@ -58,183 +236,74 @@ describe('AnalyticsPeriodPicker', () => {
     expect(screen.getByRole('button', { name: 'Next period' })).toBeDisabled();
   });
 
-  it('supports option taps and keyboard navigation', async () => {
-    const user = userEvent.setup();
+  it('retargets repeated navigation and commits only the final destination', () => {
+    useMotionClock();
     const onChange = vi.fn();
     render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    setPickerGeometry();
 
-    await user.click(screen.getByRole('option', { name: 'May 2026' }));
-    expect(onChange).toHaveBeenLastCalledWith(-3);
-
-    const picker = screen.getByRole('listbox', { name: 'Analytics period' });
-    fireEvent.keyDown(picker, { key: 'ArrowLeft' });
-    expect(onChange).toHaveBeenLastCalledWith(-2);
-    fireEvent.keyDown(picker, { key: 'ArrowRight' });
-    expect(onChange).toHaveBeenLastCalledWith(0);
-    fireEvent.keyDown(picker, { key: 'Home' });
-    expect(onChange).toHaveBeenLastCalledWith(-3);
-    fireEvent.keyDown(picker, { key: 'End' });
-    expect(onChange).toHaveBeenLastCalledWith(0);
-  });
-
-  it('selects the option nearest the viewport center after scrolling settles', () => {
-    vi.useFakeTimers();
-    const onChange = vi.fn();
-    render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
-
-    const picker = screen.getByTestId('analytics-period-picker');
-    Object.defineProperties(picker, {
-      clientWidth: { configurable: true, value: 200 },
-      scrollLeft: { configurable: true, writable: true, value: 220 },
-    });
-    screen.getAllByRole('option').forEach((option, index) => {
-      Object.defineProperties(option, {
-        offsetLeft: { configurable: true, value: index * 128 },
-        offsetWidth: { configurable: true, value: 128 },
-      });
-    });
-
-    fireEvent.scroll(picker);
-    vi.advanceTimersByTime(100);
-
-    expect(onChange).toHaveBeenCalledWith(-1);
-  });
-
-  it('does not select an intermediate option when controlled centering emits scroll later', () => {
-    vi.useFakeTimers();
-    const originalScrollTo = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      'scrollTo',
-    );
-    const scrollTo = vi.fn(function mockScrollTo(
-      this: HTMLElement,
-      options?: ScrollToOptions,
-    ) {
-      this.scrollLeft = Number(options?.left ?? 0);
-      window.setTimeout(() => {
-        this.dispatchEvent(new Event('scroll', { bubbles: true }));
-      }, 0);
-    });
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-      configurable: true,
-      value: scrollTo,
-    });
-    const onChange = vi.fn();
-
-    try {
-      render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
-      vi.advanceTimersByTime(100);
-
-      expect(scrollTo).toHaveBeenCalled();
-      expect(onChange).not.toHaveBeenCalled();
-    } finally {
-      if (originalScrollTo) {
-        Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo);
-      } else {
-        Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
-      }
-    }
-  });
-
-  it('accepts a user scroll when controlled centering required no movement', () => {
-    vi.useFakeTimers();
-    const originalScrollTo = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      'scrollTo',
-    );
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-      configurable: true,
-      value: vi.fn(),
-    });
-    const onChange = vi.fn();
-
-    try {
-      render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
-      const picker = screen.getByTestId('analytics-period-picker');
-      Object.defineProperties(picker, {
-        clientWidth: { configurable: true, value: 200 },
-        scrollLeft: { configurable: true, writable: true, value: 220 },
-      });
-      screen.getAllByRole('option').forEach((option, index) => {
-        Object.defineProperties(option, {
-          offsetLeft: { configurable: true, value: index * 128 },
-          offsetWidth: { configurable: true, value: 128 },
-        });
-      });
-
-      fireEvent.scroll(picker);
-      vi.advanceTimersByTime(100);
-
-      expect(onChange).toHaveBeenCalledWith(-1);
-    } finally {
-      if (originalScrollTo) {
-        Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo);
-      } else {
-        Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
-      }
-    }
-  });
-
-  it('lets touch drag the period strip while leaving mouse dragging inert', () => {
-    vi.useFakeTimers();
-    const onChange = vi.fn();
-    render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
-
-    const picker = screen.getByTestId('analytics-period-picker');
-    Object.defineProperties(picker, {
-      clientWidth: { configurable: true, value: 200 },
-      scrollWidth: { configurable: true, value: 512 },
-      scrollLeft: { configurable: true, writable: true, value: 256 },
-    });
-    screen.getAllByRole('option').forEach((option, index) => {
-      Object.defineProperties(option, {
-        offsetLeft: { configurable: true, value: index * 128 },
-        offsetWidth: { configurable: true, value: 128 },
-      });
-    });
-
-    fireEvent.pointerDown(picker, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 180,
-      clientY: 20,
-    });
-    fireEvent.pointerMove(picker, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 80,
-      clientY: 20,
-    });
-    fireEvent.pointerUp(picker, {
-      pointerId: 1,
-      pointerType: 'mouse',
-      clientX: 80,
-      clientY: 20,
-    });
-    expect(picker.scrollLeft).toBe(256);
+    const previous = screen.getByRole('button', { name: 'Previous period, June 2026' });
+    fireEvent.click(previous);
+    fireEvent.click(previous);
     expect(onChange).not.toHaveBeenCalled();
+    advanceMotion(500);
 
-    fireEvent.pointerDown(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 20,
-    });
-    fireEvent.pointerMove(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 240,
-      clientY: 22,
-    });
-    fireEvent.pointerUp(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 240,
-      clientY: 22,
-    });
-    vi.advanceTimersByTime(100);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(-3);
+  });
 
-    expect(picker.scrollLeft).toBe(116);
+  it('uses settled motion for option, keyboard, and horizontal wheel navigation', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />,
+    );
+    let geometry = setPickerGeometry();
+
+    fireEvent.click(screen.getByRole('option', { name: 'May 2026' }));
+    expect(onChange).not.toHaveBeenCalled();
+    advanceMotion(400);
+    expect(onChange).toHaveBeenLastCalledWith(-3);
+
+    onChange.mockClear();
+    rerender(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    geometry = setPickerGeometry();
+    fireEvent.keyDown(geometry.picker, { key: 'End' });
+    expect(onChange).not.toHaveBeenCalled();
+    advanceMotion(400);
+    expect(onChange).toHaveBeenLastCalledWith(0);
+
+    onChange.mockClear();
+    rerender(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    geometry = setPickerGeometry();
+    fireEvent.wheel(geometry.picker, { deltaX: 96, deltaY: 2 });
+    expect(onChange).not.toHaveBeenCalled();
+    advanceMotion(700);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('centers and commits immediately when reduced motion is requested', () => {
+    useMotionClock();
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: query === '(prefers-reduced-motion: reduce)',
+          media: query,
+          onchange: null,
+          addListener: () => undefined,
+          removeListener: () => undefined,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    setPickerGeometry();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous period, June 2026' }));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(-2);
   });
 });

@@ -69,6 +69,46 @@ async function touchSwipe(page: Page, target: Locator, deltaX: number, deltaY: n
   await client.detach();
 }
 
+async function touchSwipeWithMotionTrace(
+  page: Page,
+  target: Locator,
+  deltaX: number,
+  deltaY: number,
+) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error('Swipe target is not visible');
+  const tracePromise = target.evaluate(async (element) => {
+    const track = element.querySelector<HTMLElement>('[data-testid="analytics-period-track"]');
+    if (!track) throw new Error('Analytics period motion track is missing');
+    const transforms: string[] = [];
+    const selectedOffsets: Array<string | null> = [];
+
+    for (let frame = 0; frame < 75; frame += 1) {
+      transforms.push(track.style.transform);
+      selectedOffsets.push(
+        element
+          .querySelector('[role="option"][aria-selected="true"]')
+          ?.getAttribute('data-period-offset') ?? null,
+      );
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+
+    return { transforms, selectedOffsets };
+  });
+  const client = await page.context().newCDPSession(page);
+  const horizontal = Math.abs(deltaX) > Math.abs(deltaY);
+  await client.send('Input.synthesizeScrollGesture', {
+    x: box.x + box.width * (deltaX < 0 ? 0.85 : deltaX > 0 ? 0.15 : 0.5),
+    y: box.y + box.height * (horizontal ? 0.65 : deltaY < 0 ? 0.8 : 0.2),
+    xDistance: deltaX,
+    yDistance: deltaY,
+    gestureSourceType: 'touch',
+    speed: 600,
+  });
+  await client.detach();
+  return tracePromise;
+}
+
 test.describe('Home Transactions and Analytics carousel', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -132,24 +172,42 @@ test.describe('Home Transactions and Analytics carousel', () => {
       'data-period-offset',
       '0',
     );
-    await expect
-      .poll(() => compactPeriodPicker.evaluate((element) => element.scrollLeft))
-      .toBeGreaterThan(0);
-    const currentPeriodScrollLeft = await compactPeriodPicker.evaluate(
-      (element) => element.scrollLeft,
-    );
+    const compactPeriodTrack = compactPeriodPicker.getByTestId('analytics-period-track');
+    await expect(compactPeriodTrack).toBeVisible();
     const currentWeekLabel = await compactPeriodPicker
       .getByRole('option', { selected: true })
       .textContent();
-    await touchSwipe(page, compactPeriodPicker, 180, 2);
+    const motionTrace = await touchSwipeWithMotionTrace(page, compactPeriodPicker, 180, 2);
     await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
-    await expect
-      .poll(() => compactPeriodPicker.evaluate((element) => element.scrollLeft))
-      .toBeLessThan(currentPeriodScrollLeft);
+    const changedSelectionFrame = motionTrace.selectedOffsets.findIndex(
+      (offset) => offset !== '0',
+    );
+    expect(changedSelectionFrame).toBeGreaterThan(2);
+    expect(
+      new Set(motionTrace.transforms.slice(0, changedSelectionFrame).filter(Boolean)).size,
+    ).toBeGreaterThan(3);
     await expect(compactPeriodPicker.getByRole('option', { selected: true })).not.toHaveText(
       currentWeekLabel ?? '',
     );
-    const historicalWeekLabel =
+    const periodBeforeArrow = await compactPeriodPicker
+      .getByRole('option', { selected: true })
+      .getAttribute('data-period-offset');
+    const transformBeforeArrow = await compactPeriodTrack.evaluate(
+      (element) => element.style.transform,
+    );
+    await analyticsSlide.getByRole('button', { name: /^Next period,/ }).click();
+    await expect(compactPeriodPicker.getByRole('option', { selected: true })).toHaveAttribute(
+      'data-period-offset',
+      periodBeforeArrow ?? '',
+    );
+    await expect
+      .poll(() => compactPeriodTrack.evaluate((element) => element.style.transform))
+      .not.toBe(transformBeforeArrow);
+    await expect(compactPeriodPicker.getByRole('option', { selected: true })).not.toHaveAttribute(
+      'data-period-offset',
+      periodBeforeArrow ?? '',
+    );
+    const selectedWeekLabel =
       (await compactPeriodPicker.getByRole('option', { selected: true }).textContent())?.trim() ??
       '';
     await expect
@@ -188,7 +246,7 @@ test.describe('Home Transactions and Analytics carousel', () => {
       analyticsDialog
         .getByTestId('analytics-period-picker')
         .getByRole('option', { selected: true }),
-    ).toHaveText(historicalWeekLabel);
+    ).toHaveText(selectedWeekLabel);
     await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
     await expect(analyticsViewAll).toBeFocused();
 
