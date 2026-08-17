@@ -13,7 +13,7 @@ type AnimatedTabsProps<T extends string> = {
   value: T;
   onChange: (value: T) => void;
   layoutId: string;
-  variant?: "default" | "pill" | "simple";
+  variant?: "default" | "pill" | "simple" | "compact";
   className?: string;
   disabled?: boolean;
 };
@@ -56,6 +56,64 @@ export function AnimatedTabs<T extends string>({
                 className={cn(
                   "relative z-10",
                   isSelected ? "text-primary-foreground" : "text-muted-foreground"
+                )}
+              >
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (variant === "compact") {
+    return (
+      <div
+        data-testid="animated-tabs-compact"
+        data-animated-tabs-variant="compact"
+        className={cn(
+          "grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1",
+          className,
+        )}
+        style={{
+          gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
+        }}
+      >
+        {tabs.map((tab) => {
+          const isSelected = tab.value === value;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => onChange(tab.value)}
+              className={cn(
+                "relative flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-[11px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
+                disabled && "opacity-60",
+              )}
+              disabled={disabled}
+            >
+              {isSelected ? (
+                <motion.div
+                  layoutId={layoutId}
+                  className="absolute inset-0 rounded-xl bg-surface-3"
+                  transition={springTransition}
+                />
+              ) : null}
+              {Icon ? (
+                <Icon
+                  className={cn(
+                    "relative z-10 h-4 w-4",
+                    isSelected ? "text-primary" : "text-muted-foreground",
+                  )}
+                />
+              ) : null}
+              <span
+                className={cn(
+                  "relative z-10",
+                  isSelected ? "text-foreground" : "text-muted-foreground",
                 )}
               >
                 {tab.label}
