@@ -96,4 +96,73 @@ describe('AnalyticsPeriodPicker', () => {
 
     expect(onChange).toHaveBeenCalledWith(-1);
   });
+
+  it('does not select an intermediate option during controlled centering', () => {
+    vi.useFakeTimers();
+    const originalScrollTo = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollTo',
+    );
+    const scrollTo = vi.fn(function mockScrollTo(this: HTMLElement) {
+      this.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: scrollTo,
+    });
+    const onChange = vi.fn();
+
+    try {
+      render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
+      vi.advanceTimersByTime(100);
+
+      expect(scrollTo).toHaveBeenCalled();
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      if (originalScrollTo) {
+        Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
+      }
+    }
+  });
+
+  it('accepts a user scroll when controlled centering required no movement', () => {
+    vi.useFakeTimers();
+    const originalScrollTo = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollTo',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const onChange = vi.fn();
+
+    try {
+      render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
+      const picker = screen.getByTestId('analytics-period-picker');
+      Object.defineProperties(picker, {
+        clientWidth: { configurable: true, value: 200 },
+        scrollLeft: { configurable: true, writable: true, value: 220 },
+      });
+      screen.getAllByRole('option').forEach((option, index) => {
+        Object.defineProperties(option, {
+          offsetLeft: { configurable: true, value: index * 128 },
+          offsetWidth: { configurable: true, value: 128 },
+        });
+      });
+
+      fireEvent.scroll(picker);
+      vi.advanceTimersByTime(100);
+
+      expect(onChange).toHaveBeenCalledWith(-1);
+    } finally {
+      if (originalScrollTo) {
+        Object.defineProperty(HTMLElement.prototype, 'scrollTo', originalScrollTo);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
+      }
+    }
+  });
 });
