@@ -1,4 +1,4 @@
-import { act, render, renderHook } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryItem, QuickNote, TransactionType } from "../../lib/types";
@@ -86,6 +86,18 @@ function renderCategoryStep() {
       onConfirm={vi.fn()}
     />,
   );
+  const viewport = rendered.getByTestId("transaction-type-carousel");
+  Object.defineProperty(viewport, "clientWidth", {
+    configurable: true,
+    value: 300,
+  });
+  Object.defineProperty(viewport, "scrollTo", {
+    configurable: true,
+    value: ({ left }: ScrollToOptions) => {
+      viewport.scrollLeft = Number(left ?? 0);
+      fireEvent.scroll(viewport);
+    },
+  });
   return { ...hook, rendered };
 }
 
@@ -112,16 +124,18 @@ describe("StepCategory place boundaries", () => {
 
   it.each(["income", "transfer"] as const)(
     "clears only place when switching an expense to %s",
-    (type) => {
+    async (type) => {
       const { result } = renderCategoryStep();
 
       act(() => mocks.tabOnChange?.(type));
 
-      expect(result.current.state.values).toMatchObject({
-        type,
-        category: "",
-        note: "Central Cafe",
-      });
+      await waitFor(() =>
+        expect(result.current.state.values).toMatchObject({
+          type,
+          category: "",
+          note: "Central Cafe",
+        }),
+      );
       expect(result.current.state.values.place).toBeUndefined();
     },
   );
