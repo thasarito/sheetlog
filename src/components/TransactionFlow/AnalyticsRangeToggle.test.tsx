@@ -11,7 +11,10 @@ describe('AnalyticsRangeToggle', () => {
 
     expect(screen.getByRole('group', { name: 'Analytics range' })).toHaveClass('grid-cols-5');
     expect(screen.getAllByRole('button')).toHaveLength(5);
-    await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
+    expect(screen.getByRole('button', { name: 'Week' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Month' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quarter' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Year' }));
     expect(onChange).toHaveBeenCalledWith('year', expect.any(HTMLButtonElement));
     await user.click(screen.getByRole('button', { name: 'Custom date range' }));
     expect(onChange).toHaveBeenCalledWith('custom', expect.any(HTMLButtonElement));

@@ -194,6 +194,27 @@ describe('AnalyticsDrawer', () => {
     expect(within(transactionSection).getByText('Monday, Aug 17')).toBeInTheDocument();
   });
 
+  it('hides transfer helper copy while keeping transfers out of totals', () => {
+    renderDrawer({
+      transactions: [
+        ...transactions,
+        {
+          ...transactions[0],
+          id: 'transfer',
+          type: 'transfer',
+          amount: 900,
+          category: 'Savings',
+        },
+      ],
+    });
+
+    const overview = screen.getByRole('region', { name: 'Overview' });
+    expect(within(overview).getAllByText('฿200').length).toBeGreaterThan(0);
+    expect(within(overview).getByText('฿500')).toBeInTheDocument();
+    expect(within(overview).getByText('฿300')).toBeInTheDocument();
+    expect(screen.queryByText('Transfers are excluded from totals.')).not.toBeInTheDocument();
+  });
+
   it('intersects category and bucket filters while clearing each independently', async () => {
     const user = userEvent.setup();
     renderDrawer();
@@ -358,7 +379,7 @@ describe('AnalyticsDrawer', () => {
       onSelectTransaction,
     });
 
-    await user.click(screen.getByRole('button', { name: 'Quarter, quarter to date' }));
+    await user.click(screen.getByRole('button', { name: 'Quarter' }));
     expect(onRangeChange).toHaveBeenCalledWith('quarter');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Analytics currency' }), 'USD');
     expect(onCurrencyChange).toHaveBeenCalledWith('USD');
@@ -371,11 +392,40 @@ describe('AnalyticsDrawer', () => {
     const user = userEvent.setup();
     function RangeHarness() {
       const [selectedRange, setSelectedRange] = useState<AnalyticsRange>('week');
+      const selectedPeriodOptions =
+        selectedRange === 'month'
+          ? [
+              {
+                key: 'month-current',
+                offset: 0,
+                label: 'August 2026',
+                accessibleLabel: 'August 1, 2026 through August 31, 2026',
+                period: {
+                  start: new Date(2026, 7, 1),
+                  end: new Date(2026, 7, 31, 23, 59, 59, 999),
+                },
+              },
+            ]
+          : selectedRange === 'year'
+            ? [
+                {
+                  key: 'year-current',
+                  offset: 0,
+                  label: '2026',
+                  accessibleLabel: 'January 1, 2026 through December 31, 2026',
+                  period: {
+                    start: new Date(2026, 0, 1),
+                    end: new Date(2026, 11, 31, 23, 59, 59, 999),
+                  },
+                },
+              ]
+            : periodOptions;
       return (
         <AnalyticsDrawer
           {...baseProps}
           range={selectedRange}
           onRangeChange={setSelectedRange}
+          periodOptions={selectedPeriodOptions}
         />
       );
     }
@@ -384,15 +434,19 @@ describe('AnalyticsDrawer', () => {
     const status = screen.getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
     expect(status).toHaveAttribute('aria-atomic', 'true');
-    expect(status).toHaveTextContent('Week, last 7 days · Expenses ฿200');
+    expect(status).toHaveTextContent(
+      'August 17, 2026 through August 23, 2026 · Expenses ฿200',
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
-    expect(status).toHaveTextContent('Month, month to date · Expenses ฿200');
+    await user.click(screen.getByRole('button', { name: 'Month' }));
+    expect(status).toHaveTextContent('August 1, 2026 through August 31, 2026 · Expenses ฿200');
 
-    await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
-    expect(status).toHaveTextContent('Year, year to date · Expenses ฿200');
+    await user.click(screen.getByRole('button', { name: 'Year' }));
+    expect(status).toHaveTextContent(
+      'January 1, 2026 through December 31, 2026 · Expenses ฿200',
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
+    await user.click(screen.getByRole('button', { name: 'Month' }));
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
     expect(status).toHaveTextContent(
       'Monday, August 17, ฿120 · Dining Out ฿120 · Income ฿0 · Net -฿120',
@@ -403,7 +457,9 @@ describe('AnalyticsDrawer', () => {
     const { rerender } = renderDrawer({ isLoading: true, hasCompleteHistory: false });
 
     const status = screen.getByRole('status', { name: 'Analytics summary update' });
-    expect(status).toHaveTextContent('Loading Week, last 7 days analytics');
+    expect(status).toHaveTextContent(
+      'Loading August 17, 2026 through August 23, 2026 analytics',
+    );
     expect(status).not.toHaveTextContent('Expenses ฿200');
     expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
 

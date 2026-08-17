@@ -95,7 +95,9 @@ describe('AnalyticsSlide', () => {
     );
 
     expect(screen.getByText('฿3,240')).toBeInTheDocument();
+    expect(screen.getByText('spent · Aug 17–23')).toBeInTheDocument();
     expect(screen.getByText('12% below previous week')).toBeInTheDocument();
+    expect(screen.queryByText(/last 7 days|to date|same elapsed days/)).not.toBeInTheDocument();
     expect(screen.getByTestId('segment-day-0-category-0')).toHaveAttribute(
       'data-tone',
       'emerald',
@@ -112,8 +114,8 @@ describe('AnalyticsSlide', () => {
       'day-0',
       screen.getByRole('listbox', { name: 'Select analytics period' }),
     );
-    await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
-    await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
+    await user.click(screen.getByRole('button', { name: 'Month' }));
+    await user.click(screen.getByRole('button', { name: 'Year' }));
     expect(onRangeChange).toHaveBeenNthCalledWith(1, 'month');
     expect(onRangeChange).toHaveBeenNthCalledWith(2, 'year');
 
@@ -153,10 +155,22 @@ describe('AnalyticsSlide', () => {
     expect(axis).toHaveTextContent('Apr');
   });
 
-  it('uses year-to-date copy for a year summary', () => {
+  it('names the complete current year', () => {
     render(
       <AnalyticsSlide
         {...periodProps}
+        periodOptions={[
+          {
+            key: 'year-current',
+            offset: 0,
+            label: '2026',
+            accessibleLabel: 'January 1, 2026 through December 31, 2026',
+            period: {
+              start: new Date(2026, 0, 1),
+              end: new Date(2026, 11, 31, 23, 59, 59, 999),
+            },
+          },
+        ]}
         range="year"
         onRangeChange={vi.fn()}
         summary={{ ...summary, range: 'year' }}
@@ -168,7 +182,7 @@ describe('AnalyticsSlide', () => {
       />,
     );
 
-    expect(screen.getByText('spent · year to date')).toBeInTheDocument();
+    expect(screen.getByText('spent · 2026')).toBeInTheDocument();
     expect(screen.getByText('12% below previous year')).toBeInTheDocument();
   });
 
