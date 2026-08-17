@@ -26,6 +26,7 @@ function stackTotal(bucket: AnalyticsBucket, direction: 'positive' | 'negative')
 
 function showLabel(index: number, buckets: AnalyticsBucket[]): boolean {
   if (buckets.length <= 8) return true;
+  if (buckets.every((bucket) => bucket.key.endsWith('-month'))) return true;
   const weekly = buckets.every((bucket) => bucket.key.endsWith('-week'));
   const interval = weekly ? 4 : 7;
   return index === 0 || index === buckets.length - 1 || index % interval === 0;

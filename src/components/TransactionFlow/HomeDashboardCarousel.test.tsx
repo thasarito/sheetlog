@@ -64,6 +64,9 @@ vi.mock("./AnalyticsSlide", () => ({
         <button type="button" onClick={() => props.onRangeChange("quarter")}>
           Test quarter range
         </button>
+        <button type="button" onClick={() => props.onRangeChange("year")}>
+          Test year range
+        </button>
         <button
           type="button"
           onClick={(event) => {
@@ -245,7 +248,7 @@ describe("HomeDashboardCarousel", () => {
     );
   });
 
-  it("builds daily month, weekly quarter, and shared month-to-date custom state", async () => {
+  it("builds daily month, weekly quarter, monthly year, and shared custom state", async () => {
     const user = userEvent.setup();
     renderCarousel();
     await user.click(screen.getByRole("button", { name: "Analytics slide" }));
@@ -264,6 +267,12 @@ describe("HomeDashboardCarousel", () => {
     const quarterSummary = analyticsSlideCalls.at(-1)?.summary;
     expect(quarterSummary?.range).toBe("quarter");
     expect(quarterSummary?.buckets.every((bucket) => bucket.key.endsWith("-week"))).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Test year range" }));
+    const yearSummary = analyticsSlideCalls.at(-1)?.summary;
+    expect(yearSummary?.range).toBe("year");
+    expect(yearSummary?.periods.current.start.getMonth()).toBe(0);
+    expect(yearSummary?.buckets.every((bucket) => bucket.key.endsWith("-month"))).toBe(true);
 
     await user.click(screen.getByRole("button", { name: "Test custom range" }));
     const customSummary = analyticsSlideCalls.at(-1)?.summary;

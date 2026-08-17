@@ -184,6 +184,40 @@ describe('AnalyticsBarChart', () => {
     ).toEqual(['1', '8', '15', '17']);
   });
 
+  it('keeps every calendar-month label visible for year-to-date charts', () => {
+    const monthLabels = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const monthlyBuckets: AnalyticsBucket[] = monthLabels.map((label, index) => ({
+      key: `2026-${String(index + 1).padStart(2, '0')}-month`,
+      label,
+      accessibleLabel: `${label} 2026`,
+      amount: index + 1,
+      segments: [{ seriesKey: 'category-0', amount: index + 1 }],
+      transactionIds: [],
+    }));
+
+    render(<AnalyticsBarChart buckets={monthlyBuckets} series={series} currency="THB" />);
+
+    expect(
+      screen
+        .getAllByTestId(/^analytics-label-/)
+        .map((label) => label.textContent)
+        .filter(Boolean),
+    ).toEqual(monthLabels);
+  });
+
   it('keeps the compact chart read-only', () => {
     render(<AnalyticsBarChart buckets={buckets} series={series} currency="THB" />);
 
