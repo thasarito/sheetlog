@@ -93,6 +93,7 @@ function CategoryButton({
   const clickResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
   const wasLongPressRef = useRef(false);
+  const isCancelledTouchRef = useRef(false);
   const startPosRef = useRef<GesturePosition | null>(null);
   const ownerRef = useRef<GestureOwner>(null);
   const touchIdentifierRef = useRef<number | null>(null);
@@ -149,6 +150,7 @@ function CategoryButton({
       clearTimer();
       removeTouchListeners();
       isLongPressRef.current = false;
+      isCancelledTouchRef.current = false;
       startPosRef.current = null;
       ownerRef.current = null;
       touchIdentifierRef.current = null;
@@ -166,6 +168,20 @@ function CategoryButton({
     [clearTimer, removeTouchListeners, scheduleClickReset],
   );
 
+  const cancelTouchUntilTerminal = useCallback(() => {
+    const wasActive = isLongPressRef.current;
+    clearTimer();
+    isLongPressRef.current = false;
+    startPosRef.current = null;
+    pointerIdRef.current = null;
+
+    if (!isCancelledTouchRef.current && wasActive) {
+      latestRef.current.onCancel?.();
+    }
+    isCancelledTouchRef.current = true;
+    return wasLongPressRef.current;
+  }, [clearTimer]);
+
   const beginLongPress = useCallback(
     (
       owner: Exclude<GestureOwner, null>,
@@ -177,6 +193,7 @@ function CategoryButton({
       clearClickResetTimer();
       wasLongPressRef.current = false;
       isLongPressRef.current = false;
+      isCancelledTouchRef.current = false;
       ownerRef.current = owner;
       startPosRef.current = position;
       pointerIdRef.current = pointerId ?? null;
@@ -218,7 +235,7 @@ function CategoryButton({
       if (!latestRef.current.onLongPress) return;
       if (event.touches.length !== 1 || event.changedTouches.length !== 1) {
         if (ownerRef.current === "touch") {
-          finishGesture(isLongPressRef.current ? "cancel" : "abandon");
+          cancelTouchUntilTerminal();
         }
         return;
       }
@@ -233,6 +250,15 @@ function CategoryButton({
         finishGesture(isLongPressRef.current ? "cancel" : "abandon");
       };
 
+      const finishCancelledTouch = (terminalEvent: TouchEvent) => {
+        const shouldSuppressClick = wasLongPressRef.current;
+        if (shouldSuppressClick && terminalEvent.cancelable) {
+          terminalEvent.preventDefault();
+        }
+        finishGesture("abandon");
+        if (shouldSuppressClick) scheduleClickReset();
+      };
+
       const handleDocumentTouchStart = (touchEvent: TouchEvent) => {
         const activeIdentifier = touchIdentifierRef.current;
         if (ownerRef.current !== "touch" || activeIdentifier === null) return;
@@ -241,12 +267,13 @@ function CategoryButton({
           touchEvent.changedTouches,
           activeIdentifier,
         );
-        if (
-          touchEvent.touches.length !== 1 ||
-          !ownedTouch ||
-          !changedOwnedTouch
-        ) {
+        if (!ownedTouch) {
           finishUnexpectedTouch();
+          return;
+        }
+        if (touchEvent.touches.length !== 1 || !changedOwnedTouch) {
+          const shouldSuppressClick = cancelTouchUntilTerminal();
+          if (shouldSuppressClick) touchEvent.preventDefault();
         }
       };
 
@@ -255,11 +282,19 @@ function CategoryButton({
         if (ownerRef.current !== "touch" || activeIdentifier === null) return;
         const ownedTouch = findTouch(touchEvent.touches, activeIdentifier);
         if (!ownedTouch) {
-          finishUnexpectedTouch();
+          if (isCancelledTouchRef.current) {
+            finishCancelledTouch(touchEvent);
+          } else {
+            finishUnexpectedTouch();
+          }
           return;
         }
 
         const currentPosition = touchPosition(ownedTouch);
+        if (isCancelledTouchRef.current) {
+          if (wasLongPressRef.current) touchEvent.preventDefault();
+          return;
+        }
         if (isLongPressRef.current) {
           touchEvent.preventDefault();
           latestRef.current.onDrag?.(currentPosition);
@@ -285,6 +320,10 @@ function CategoryButton({
           touchEvent.changedTouches,
           activeIdentifier,
         );
+        if (isCancelledTouchRef.current) {
+          if (endedTouch) finishCancelledTouch(touchEvent);
+          return;
+        }
         if (!endedTouch) {
           finishUnexpectedTouch();
           return;
@@ -299,6 +338,15 @@ function CategoryButton({
           touchEvent.changedTouches,
           activeIdentifier,
         );
+        if (isCancelledTouchRef.current) {
+          if (
+            cancelledTouch ||
+            !findTouch(touchEvent.touches, activeIdentifier)
+          ) {
+            finishCancelledTouch(touchEvent);
+          }
+          return;
+        }
         if (
           cancelledTouch ||
           !findTouch(touchEvent.touches, activeIdentifier)
@@ -308,13 +356,13 @@ function CategoryButton({
       };
 
       document.addEventListener("touchstart", handleDocumentTouchStart, {
-        passive: true,
+        passive: false,
       });
       document.addEventListener("touchmove", handleDocumentTouchMove, {
         passive: false,
       });
       document.addEventListener("touchend", handleDocumentTouchEnd, {
-        passive: true,
+        passive: false,
       });
       document.addEventListener("touchcancel", handleDocumentTouchCancel, {
         passive: true,
@@ -336,6 +384,8 @@ function CategoryButton({
     return () => {
       button.removeEventListener("touchstart", handleTouchStart);
 
+      const wasActive = isLongPressRef.current;
+      const cancel = latestRef.current.onCancel;
       const pointerId = pointerIdRef.current;
       if (
         pointerId !== null &&
@@ -351,17 +401,22 @@ function CategoryButton({
       removeTouchListeners();
       isLongPressRef.current = false;
       wasLongPressRef.current = false;
+      isCancelledTouchRef.current = false;
       startPosRef.current = null;
       ownerRef.current = null;
       touchIdentifierRef.current = null;
       pointerIdRef.current = null;
+
+      if (wasActive) cancel?.();
     };
   }, [
     beginLongPress,
+    cancelTouchUntilTerminal,
     clearClickResetTimer,
     clearTimer,
     finishGesture,
     removeTouchListeners,
+    scheduleClickReset,
   ]);
 
   const handlePointerDown = (

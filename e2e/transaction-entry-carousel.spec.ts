@@ -191,7 +191,30 @@ test.describe("Transaction type and category carousel", () => {
     expect(tabGeometry.buttonHeight).toBeGreaterThanOrEqual(44);
     expect(tabGeometry.boxShadow).toBe("none");
 
+    await expenseSlide.evaluate((element) => {
+      const grid = element.querySelector<HTMLElement>(
+        '[data-testid="category-grid"]',
+      );
+      if (!grid) throw new Error("Category grid missing");
+      grid.style.minHeight = `${element.clientHeight + 160}px`;
+    });
+    const verticalScrollBefore = await expenseSlide.evaluate(
+      (element) => element.scrollTop,
+    );
+    const horizontalScrollBefore = await viewport.evaluate(
+      (element) => element.scrollLeft,
+    );
+
     await touchSwipe(page, viewport, 3, -120);
+    await expect
+      .poll(() => expenseSlide.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(verticalScrollBefore);
+    expect(await viewport.evaluate((element) => element.scrollLeft)).toBe(
+      horizontalScrollBefore,
+    );
+    await expenseSlide.evaluate((element) => {
+      element.scrollTop = 0;
+    });
     await expect(page.getByRole("button", { name: "Expense" })).toHaveAttribute(
       "aria-pressed",
       "true",
