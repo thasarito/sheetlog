@@ -86,12 +86,18 @@ vi.mock("../../app/providers", () => ({
 vi.mock("../../hooks/useOnboarding", () => ({
   useOnboarding: () => ({
     onboarding: {
+      sheetFolderId: null,
       accounts: [{ name: "Wallet" }, { name: "Bank" }],
+      accountsConfirmed: true,
       categories: {
         expense: [{ name: "Coffee" }],
         income: [{ name: "Salary" }],
         transfer: [{ name: "Transfer" }],
       },
+      categoriesConfirmed: true,
+      analyticsBaseCurrency: "THB",
+      analyticsBaseCurrencyUpdatedAt: null,
+      analyticsBigSpendingThreshold: null,
     },
   }),
 }));
