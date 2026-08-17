@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { format, isSameDay, subDays } from "date-fns";
 import { RefreshCw, Search, X } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -43,6 +44,7 @@ const HISTORY_SKELETON_KEYS = [
   "history-skeleton-e",
   "history-skeleton-f",
 ];
+const HISTORY_INITIAL_RECT = { width: 390, height: 560 };
 
 function dateLabel(dateKey: string, today: Date): string {
   const date = new Date(`${dateKey}T00:00:00`);
@@ -175,14 +177,17 @@ function TransactionHistoryVirtualList({
   } | null>(null);
   const previousItemsRef = useRef<HistoryListItem[] | null>(null);
   const today = useMemo(() => new Date(), []);
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (items[index]?.kind === "date" ? 36 : 64),
-    getItemKey: (index) => items[index]?.key ?? index,
-    overscan: 8,
-    initialRect: { width: 390, height: 560 },
-    measureElement: (element) => {
+  const getScrollElement = useCallback(() => scrollRef.current, []);
+  const estimateSize = useCallback(
+    (index: number) => (items[index]?.kind === "date" ? 36 : 64),
+    [items],
+  );
+  const getItemKey = useCallback(
+    (index: number) => items[index]?.key ?? index,
+    [items],
+  );
+  const measureElement = useCallback(
+    (element: Element) => {
       const measuredHeight = element.getBoundingClientRect().height;
       if (measuredHeight > 0) {
         return measuredHeight;
@@ -190,6 +195,16 @@ function TransactionHistoryVirtualList({
       const index = Number(element.getAttribute("data-index"));
       return items[index]?.kind === "date" ? 36 : 64;
     },
+    [items],
+  );
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement,
+    estimateSize,
+    getItemKey,
+    overscan: 8,
+    initialRect: HISTORY_INITIAL_RECT,
+    measureElement,
   });
   useLayoutEffect(() => {
     if (previousItemsRef.current === items) {
@@ -277,6 +292,8 @@ export function TransactionHistoryDrawer({
   onOpenChange,
   onEditTransaction,
 }: TransactionHistoryDrawerProps) {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const history = useTransactionHistoryQuery(open);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -319,7 +336,22 @@ export function TransactionHistoryDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} shouldScaleBackground={false}>
-      <DrawerContent className="h-[94dvh] max-h-[94dvh] overflow-hidden">
+      <DrawerContent
+        className="h-[94dvh] max-h-[94dvh] overflow-hidden"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+          titleRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current?.focus();
+          returnFocusRef.current = null;
+        }}
+      >
         <DrawerHeader className="grid grid-cols-[40px_1fr_40px] items-center gap-2 border-b border-border/70 px-3 pb-3 pt-4 text-center">
           <button
             type="button"
@@ -330,7 +362,9 @@ export function TransactionHistoryDrawer({
             <X className="h-5 w-5" />
           </button>
           <div className="min-w-0">
-            <DrawerTitle>Transactions</DrawerTitle>
+            <DrawerTitle ref={titleRef} tabIndex={-1}>
+              Transactions
+            </DrawerTitle>
             <DrawerDescription className="sr-only">
               Search and browse the complete transaction history.
             </DrawerDescription>
