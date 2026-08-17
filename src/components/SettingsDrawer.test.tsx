@@ -8,6 +8,7 @@ import type {
 } from '../lib/settingsReconciliation';
 import type { SettingsSyncState } from '../lib/settingsSync';
 import type { OnboardingState } from '../lib/types';
+import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 import { SettingsDrawer } from './SettingsDrawer';
 
 const defaultSettingsState = (): SettingsSyncState => ({
@@ -17,6 +18,16 @@ const defaultSettingsState = (): SettingsSyncState => ({
   errors: {},
   lastSyncedAt: '2026-08-16T12:00:00.000Z',
 });
+
+const analyticsSync: AnalyticsSyncController = {
+  records: [],
+  rates: [],
+  hasLocalHistory: true,
+  status: 'synced',
+  lastSyncedAt: '2026-08-17T12:34:00.000Z',
+  isResyncing: false,
+  resync: vi.fn(),
+};
 
 const mocks = vi.hoisted(() => ({
   isOnline: true,
@@ -115,6 +126,7 @@ function renderDrawer() {
       open
       onOpenChange={mocks.onOpenChange}
       onToast={mocks.onToast}
+      analyticsSync={analyticsSync}
     />,
   );
 }
@@ -135,6 +147,7 @@ describe('SettingsDrawer settings sync', () => {
     mocks.sync.importLegacyQuickNotes.mockReset().mockResolvedValue(undefined);
     mocks.onOpenChange.mockReset();
     mocks.onToast.mockReset();
+    vi.mocked(analyticsSync.resync).mockReset();
   });
 
   it('shows a synced status and lets the user refresh settings manually', async () => {
@@ -149,6 +162,15 @@ describe('SettingsDrawer settings sync', () => {
     await user.click(syncButton);
 
     expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows analytics completion and starts a background resync', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+
+    expect(screen.getByText('Synced · 12:34 PM')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Resync analytics' }));
+    expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
   });
 
   it('shows pending progress and prevents duplicate refreshes while busy', () => {
@@ -229,6 +251,7 @@ describe('SettingsDrawer settings sync', () => {
         open
         onOpenChange={mocks.onOpenChange}
         onToast={mocks.onToast}
+        analyticsSync={analyticsSync}
       />,
     );
     expect(screen.getByRole('button', { name: 'Import' })).toBeVisible();

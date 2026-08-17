@@ -2,10 +2,12 @@ import { Settings } from 'lucide-react';
 import { useState } from 'react';
 import { AuthUserProfile } from './AuthUserProfile';
 import { SettingsDrawer } from './SettingsDrawer';
+import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 
 type HeaderProps = {
   showSettings?: boolean;
   onToast?: (message: string) => void;
+  analyticsSync?: AnalyticsSyncController;
 };
 
 const iconUrl = `${import.meta.env.BASE_URL}icon.svg`;
@@ -13,6 +15,7 @@ const iconUrl = `${import.meta.env.BASE_URL}icon.svg`;
 export function Header({
   showSettings = false,
   onToast,
+  analyticsSync,
 }: HeaderProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -40,11 +43,12 @@ export function Header({
       </div>
 
       {/* Settings Drawer */}
-      {showSettings && onToast && (
+      {showSettings && onToast && analyticsSync && (
         <SettingsDrawer
           open={isDrawerOpen}
           onOpenChange={setIsDrawerOpen}
           onToast={onToast}
+          analyticsSync={analyticsSync}
         />
       )}
     </header>

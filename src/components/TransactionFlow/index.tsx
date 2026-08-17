@@ -1352,6 +1352,7 @@ export function TransactionFlow() {
         <Header
           showSettings
           onToast={handleToast}
+          analyticsSync={analyticsSync}
         />
 
         {/* Main content - full height */}
