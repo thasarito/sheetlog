@@ -272,6 +272,22 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(
       analyticsDialog.getByRole('button', { name: 'Month, month to date' }),
     ).toHaveAttribute('aria-pressed', 'true');
+    const analyticsTransactions = analyticsDialog.getByRole('region', {
+      name: 'Transactions',
+    });
+    await expect(analyticsTransactions.getByText('Today')).toBeVisible();
+    await expect(analyticsTransactions.getByText('Yesterday')).toBeVisible();
+    const analyticsTransactionsHeading = analyticsTransactions.getByRole('heading', {
+      name: 'Transactions',
+    });
+    await analyticsTransactionsHeading.evaluate((element) =>
+      element.scrollIntoView({ block: 'start' }),
+    );
+    await expect(analyticsTransactionsHeading).toBeVisible();
+    await page.screenshot({
+      path: 'test-results/analytics-grouped-transactions-mobile.png',
+      fullPage: true,
+    });
     await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
     await expect(analyticsViewAll).toBeFocused();
 
