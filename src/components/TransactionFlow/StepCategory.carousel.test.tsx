@@ -145,13 +145,19 @@ describe("StepCategory carousel", () => {
     expect(viewport.scrollLeft).toBe(600);
   });
 
-  it("reserves a square four-row viewport with hidden vertical scrollbars", () => {
-    const viewport = renderCarousel();
+  it("fills the available step width", () => {
+    renderCarousel();
     const categorySection = screen.getByRole("region", {
       name: "Transaction type and categories",
     });
 
-    expect(categorySection).toHaveClass("mx-auto", "w-full", "max-w-[390px]");
+    expect(categorySection).toHaveClass("w-full");
+    expect(categorySection).not.toHaveClass("mx-auto", "max-w-[390px]");
+  });
+
+  it("reserves a square four-row viewport with hidden vertical scrollbars", () => {
+    const viewport = renderCarousel();
+
     expect(viewport).toHaveClass("aspect-square", "w-full", "flex-none");
     expect(viewport).not.toHaveClass("flex-1");
 
