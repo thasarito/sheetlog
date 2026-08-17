@@ -56,7 +56,7 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
   const { sheetId } = useWorkspace();
-  const baseCurrency = baseCurrencyValue.trim().toUpperCase();
+  const baseCurrency = (baseCurrencyValue || 'THB').trim().toUpperCase();
   const history = useTransactionHistoryQuery(true);
 
   const requirements = useMemo(
