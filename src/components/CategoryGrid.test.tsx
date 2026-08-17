@@ -46,6 +46,23 @@ describe("CategoryGrid", () => {
     );
   });
 
+  it("constrains extreme custom colors to a contrast-safe foreground mix", () => {
+    const extremeCategories = [
+      { name: "White Icon", icon: "Wallet", color: "#ffffff" },
+      { name: "Black Icon", icon: "Wallet", color: "#000000" },
+    ];
+    renderGrid({ categories: extremeCategories });
+
+    for (const category of extremeCategories) {
+      const icon = screen
+        .getByRole("button", { name: category.name })
+        .querySelector("svg");
+      expect(icon).toHaveStyle({
+        color: `color-mix(in srgb, ${category.color} 30%, hsl(var(--foreground)))`,
+      });
+    }
+  });
+
   it("keeps an ordinary tap selecting the category", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
