@@ -70,7 +70,7 @@ function CategoryButton({
 }: CategoryButtonProps) {
   const icon = resolveCategoryIcon(category, transactionType);
   const color = resolveCategoryColor(category, transactionType);
-  const displayColor = `color-mix(in srgb, ${color} 70%, hsl(var(--foreground)))`;
+  const displayColor = `color-mix(in srgb, ${color} 30%, hsl(var(--foreground)))`;
 
   const [isHovered, setIsHovered] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
