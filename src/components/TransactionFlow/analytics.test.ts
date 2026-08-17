@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseTransactionRow } from '../../lib/transactionRows';
 import type { TransactionRecord, TransactionType } from '../../lib/types';
+import * as analyticsModule from './analytics';
 import {
   buildAnalyticsSummary,
   getAnalyticsPeriods,
@@ -63,13 +64,36 @@ describe('getAnalyticsPeriods', () => {
     expect(result.comparison.start).toEqual(new Date(2026, 0, 1));
     expect(result.comparison.end).toEqual(new Date(2026, 1, 14, 23, 59, 59, 999));
   });
+
+  it('uses an immediately preceding comparison with the same inclusive custom length', () => {
+    const result = (
+      getAnalyticsPeriods as unknown as (
+        range: AnalyticsRange,
+        now: Date,
+        customPeriod: { start: Date; end: Date },
+      ) => ReturnType<typeof getAnalyticsPeriods>
+    )(
+      'custom' as AnalyticsRange,
+      new Date(2026, 7, 17, 12),
+      { start: new Date(2026, 7, 5, 12), end: new Date(2026, 7, 12, 8) },
+    );
+
+    expect(result.current).toEqual({
+      start: new Date(2026, 7, 5),
+      end: new Date(2026, 7, 12, 23, 59, 59, 999),
+    });
+    expect(result.comparison).toEqual({
+      start: new Date(2026, 6, 28),
+      end: new Date(2026, 7, 4, 23, 59, 59, 999),
+    });
+  });
 });
 
 describe.each<[AnalyticsRange, number]>([
   ['week', 7],
-  ['month', 3],
-  ['quarter', 3],
-])('buildAnalyticsSummary(%s)', (range, minimumBuckets) => {
+  ['month', 17],
+  ['quarter', 7],
+])('buildAnalyticsSummary(%s)', (range, expectedBuckets) => {
   it('returns range-appropriate buckets', () => {
     const summary = buildAnalyticsSummary({
       transactions: [],
@@ -78,7 +102,102 @@ describe.each<[AnalyticsRange, number]>([
       now: new Date(2026, 7, 17, 12),
     });
 
-    expect(summary.buckets.length).toBeGreaterThanOrEqual(minimumBuckets);
+    expect(summary.buckets).toHaveLength(expectedBuckets);
+  });
+});
+
+describe('stacked category series', () => {
+  const categoryRows = [
+    transaction({ id: 'food', date: '2026-08-17T10:00:00', amount: 500, category: 'Food' }),
+    transaction({ id: 'rent', date: '2026-08-16T10:00:00', amount: 400, category: 'Rent' }),
+    transaction({ id: 'travel', date: '2026-08-15T10:00:00', amount: 300, category: 'Travel' }),
+    transaction({ id: 'health', date: '2026-08-14T10:00:00', amount: 200, category: 'Health' }),
+    transaction({ id: 'books', date: '2026-08-13T10:00:00', amount: 100, category: 'Books' }),
+    transaction({ id: 'gifts', date: '2026-08-12T10:00:00', amount: 50, category: 'Gifts' }),
+  ];
+
+  it('keeps four ranked category series and groups the remainder as Other', () => {
+    const summary = buildAnalyticsSummary({
+      transactions: categoryRows,
+      range: 'week',
+      currency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+    }) as ReturnType<typeof buildAnalyticsSummary> & {
+      series: Array<{ label: string; tone: string; categoryNames: string[] }>;
+    };
+
+    expect(summary.series).toEqual([
+      expect.objectContaining({ label: 'Food', tone: 'emerald', categoryNames: ['Food'] }),
+      expect.objectContaining({ label: 'Rent', tone: 'cyan', categoryNames: ['Rent'] }),
+      expect.objectContaining({ label: 'Travel', tone: 'violet', categoryNames: ['Travel'] }),
+      expect.objectContaining({ label: 'Health', tone: 'rose', categoryNames: ['Health'] }),
+      expect.objectContaining({ label: 'Other', tone: 'slate', categoryNames: ['Books', 'Gifts'] }),
+    ]);
+  });
+
+  it('uses every stable series in every bucket and keeps all transaction types filterable', () => {
+    const summary = buildAnalyticsSummary({
+      transactions: [
+        ...categoryRows,
+        transaction({
+          id: 'salary',
+          date: '2026-08-17T09:00:00',
+          type: 'income',
+          amount: 2000,
+          category: 'Salary',
+        }),
+        transaction({
+          id: 'move',
+          date: '2026-08-17T08:00:00',
+          type: 'transfer',
+          amount: 1000,
+          category: 'Savings',
+        }),
+      ],
+      range: 'week',
+      currency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+    }) as ReturnType<typeof buildAnalyticsSummary> & {
+      buckets: Array<
+        ReturnType<typeof buildAnalyticsSummary>['buckets'][number] & {
+          segments: Array<{ seriesKey: string; amount: number }>;
+        }
+      >;
+      series: Array<{ key: string }>;
+    };
+
+    expect(summary.buckets.every((bucket) => bucket.segments.length === 5)).toBe(true);
+    expect(summary.buckets.at(-1)?.segments.map((segment) => segment.seriesKey)).toEqual(
+      summary.series.map((series) => series.key),
+    );
+    expect(summary.buckets.at(-1)?.transactionIds).toEqual(
+      expect.arrayContaining(['food', 'salary', 'move']),
+    );
+  });
+
+  it('uses daily custom buckets through 31 days and weekly buckets above 31 days', () => {
+    const daily = buildAnalyticsSummary({
+      transactions: [],
+      range: 'custom' as AnalyticsRange,
+      currency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+      customPeriod: { start: new Date(2026, 7, 1), end: new Date(2026, 7, 12) },
+    } as Parameters<typeof buildAnalyticsSummary>[0] & {
+      customPeriod: { start: Date; end: Date };
+    });
+    const weekly = buildAnalyticsSummary({
+      transactions: [],
+      range: 'custom' as AnalyticsRange,
+      currency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+      customPeriod: { start: new Date(2026, 5, 1), end: new Date(2026, 7, 17) },
+    } as Parameters<typeof buildAnalyticsSummary>[0] & {
+      customPeriod: { start: Date; end: Date };
+    });
+
+    expect(daily.buckets).toHaveLength(12);
+    expect(weekly.buckets).toHaveLength(12);
+    expect(weekly.buckets[0].accessibleLabel).toBe('June 1 through June 7');
   });
 });
 
@@ -158,8 +277,8 @@ describe('buildAnalyticsSummary totals', () => {
       { category: 'Transport', amount: 50, share: 38 },
     ]);
     const bucketTransactionIds = summary.buckets.flatMap((bucket) => bucket.transactionIds);
-    expect(bucketTransactionIds).not.toContain('income');
-    expect(bucketTransactionIds).not.toContain('transfer');
+    expect(bucketTransactionIds).toContain('income');
+    expect(bucketTransactionIds).toContain('transfer');
     expect(summary.transactions.map((row) => row.id)).not.toContain('usd');
     expect(summary.transactions.map((row) => row.id)).not.toContain('previous');
     expect(summary.transactions.map((row) => row.id)).not.toContain('zero');
@@ -285,6 +404,47 @@ describe('buildAnalyticsSummary totals', () => {
 
     expect(summary.expenseTotal).toBe(10);
     expect(summary.categories).toEqual([{ category: 'Dining Out', amount: 100, share: 100 }]);
+  });
+});
+
+describe('buildAnalyticsScope', () => {
+  it('recomputes all overview values for a selected bucket', () => {
+    const summary = buildAnalyticsSummary({
+      transactions: [
+        transaction({ id: 'expense', date: '2026-08-17T10:00:00', amount: 100 }),
+        transaction({
+          id: 'income',
+          date: '2026-08-17T09:00:00',
+          type: 'income',
+          amount: 250,
+          category: 'Salary',
+        }),
+        transaction({ id: 'older', date: '2026-08-16T10:00:00', amount: 40 }),
+      ],
+      range: 'week',
+      currency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+    });
+    const buildAnalyticsScope = (
+      analyticsModule as unknown as {
+        buildAnalyticsScope: (
+          value: typeof summary,
+          key?: string,
+        ) => {
+          expenseTotal: number;
+          incomeTotal: number;
+          netTotal: number;
+          transactions: TransactionRecord[];
+        };
+      }
+    ).buildAnalyticsScope;
+
+    const scope = buildAnalyticsScope(summary, summary.buckets.at(-1)?.key);
+
+    expect(scope.expenseTotal).toBe(100);
+    expect(scope.incomeTotal).toBe(250);
+    expect(scope.netTotal).toBe(150);
+    expect(scope.transactions.map((row) => row.id)).toEqual(['expense', 'income']);
   });
 });
 

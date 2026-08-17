@@ -1,6 +1,5 @@
 import {
   addDays,
-  addMonths,
   differenceInCalendarDays,
   endOfDay,
   endOfMonth,
@@ -16,7 +15,7 @@ import {
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord, TransactionType } from '../../lib/types';
 
-export type AnalyticsRange = 'week' | 'month' | 'quarter';
+export type AnalyticsRange = 'week' | 'month' | 'quarter' | 'custom';
 
 export type DatePeriod = { start: Date; end: Date };
 
@@ -30,11 +29,26 @@ export type AnalyticsComparison = {
   percentage: number | null;
 };
 
+export type AnalyticsSeriesTone = 'emerald' | 'cyan' | 'violet' | 'rose' | 'slate';
+
+export type AnalyticsSeries = {
+  key: string;
+  label: string;
+  tone: AnalyticsSeriesTone;
+  categoryNames: string[];
+};
+
+export type AnalyticsBucketSegment = {
+  seriesKey: string;
+  amount: number;
+};
+
 export type AnalyticsBucket = {
   key: string;
   label: string;
   accessibleLabel: string;
   amount: number;
+  segments: AnalyticsBucketSegment[];
   transactionIds: string[];
 };
 
@@ -44,18 +58,22 @@ export type AnalyticsCategory = {
   share: number;
 };
 
-export type AnalyticsSummary = {
+export type AnalyticsScope = {
+  expenseTotal: number;
+  incomeTotal: number;
+  netTotal: number;
+  categories: AnalyticsCategory[];
+  transactions: TransactionRecord[];
+};
+
+export type AnalyticsSummary = AnalyticsScope & {
   range: AnalyticsRange;
   currency: string;
   periods: AnalyticsPeriods;
-  expenseTotal: number;
   previousExpenseTotal: number;
-  incomeTotal: number;
-  netTotal: number;
   comparison: AnalyticsComparison;
   buckets: AnalyticsBucket[];
-  categories: AnalyticsCategory[];
-  transactions: TransactionRecord[];
+  series: AnalyticsSeries[];
   hasExpenseRows: boolean;
 };
 
@@ -64,10 +82,21 @@ type BuildAnalyticsSummaryInput = {
   range: AnalyticsRange;
   currency: string;
   now: Date;
+  customPeriod?: DatePeriod;
 };
+
+const SERIES_TONES: AnalyticsSeriesTone[] = ['emerald', 'cyan', 'violet', 'rose'];
 
 function minDate(left: Date, right: Date): Date {
   return left.getTime() <= right.getTime() ? left : right;
+}
+
+function normalizePeriod(period: DatePeriod): DatePeriod {
+  const startsFirst = period.start.getTime() <= period.end.getTime();
+  return {
+    start: startOfDay(startsFirst ? period.start : period.end),
+    end: endOfDay(startsFirst ? period.end : period.start),
+  };
 }
 
 function contains(period: DatePeriod, date: Date): boolean {
@@ -75,8 +104,26 @@ function contains(period: DatePeriod, date: Date): boolean {
   return time >= period.start.getTime() && time <= period.end.getTime();
 }
 
-export function getAnalyticsPeriods(range: AnalyticsRange, now: Date): AnalyticsPeriods {
+export function getAnalyticsPeriods(
+  range: AnalyticsRange,
+  now: Date,
+  customPeriod?: DatePeriod,
+): AnalyticsPeriods {
   const currentEnd = endOfDay(now);
+
+  if (range === 'custom') {
+    const current = normalizePeriod(
+      customPeriod ?? { start: startOfMonth(now), end: currentEnd },
+    );
+    const inclusiveDays = differenceInCalendarDays(current.end, current.start) + 1;
+    return {
+      current,
+      comparison: {
+        start: startOfDay(subDays(current.start, inclusiveDays)),
+        end: endOfDay(subDays(current.start, 1)),
+      },
+    };
+  }
 
   if (range === 'week') {
     const currentStart = startOfDay(subDays(now, 6));
@@ -117,6 +164,10 @@ export function getAnalyticsPeriods(range: AnalyticsRange, now: Date): Analytics
 function finiteAmount(row: TransactionRecord): number {
   const amount = Number(row.amount);
   return Number.isFinite(amount) ? amount : 0;
+}
+
+function categoryName(row: TransactionRecord): string {
+  return row.category.trim() || 'Uncategorized';
 }
 
 function analyticsDate(row: TransactionRecord): Date | null {
@@ -162,12 +213,55 @@ function buildComparison(current: number, previous: number): AnalyticsComparison
   };
 }
 
+function categoryTotals(rows: TransactionRecord[]): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    if (row.type !== 'expense') continue;
+    const name = categoryName(row);
+    totals.set(name, (totals.get(name) ?? 0) + finiteAmount(row));
+  }
+  return totals;
+}
+
+function sortCategoryEntries(entries: Array<[string, number]>): Array<[string, number]> {
+  return entries.sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+}
+
+function buildSeries(rows: TransactionRecord[]): AnalyticsSeries[] {
+  const totals = categoryTotals(rows);
+  const top = sortCategoryEntries([...totals.entries()].filter(([, amount]) => amount > 0)).slice(
+    0,
+    4,
+  );
+  const topNames = new Set(top.map(([name]) => name));
+  const series: AnalyticsSeries[] = top.map(([name], index) => ({
+    key: `category-${index}`,
+    label: name,
+    tone: SERIES_TONES[index],
+    categoryNames: [name],
+  }));
+  const remaining = sortCategoryEntries(
+    [...totals.entries()].filter(([name]) => !topNames.has(name)),
+  ).map(([name]) => name);
+
+  if (remaining.length > 0) {
+    series.push({
+      key: 'other',
+      label: 'Other',
+      tone: 'slate',
+      categoryNames: remaining,
+    });
+  }
+  return series;
+}
+
 function makeBucket(
   key: string,
   label: string,
   accessibleLabel: string,
   period: DatePeriod,
   rows: TransactionRecord[],
+  series: AnalyticsSeries[],
 ): AnalyticsBucket {
   const matching = rows.filter((row) => {
     const date = analyticsDate(row);
@@ -179,66 +273,77 @@ function makeBucket(
     label,
     accessibleLabel,
     amount: sumType(expenses, 'expense'),
-    transactionIds: expenses.map((row) => row.id),
+    segments: series.map((item) => {
+      const names = new Set(item.categoryNames);
+      return {
+        seriesKey: item.key,
+        amount: expenses.reduce(
+          (total, row) => total + (names.has(categoryName(row)) ? finiteAmount(row) : 0),
+          0,
+        ),
+      };
+    }),
+    transactionIds: matching.map((row) => row.id),
   };
+}
+
+function makeDailyBucket(
+  date: Date,
+  rows: TransactionRecord[],
+  series: AnalyticsSeries[],
+  range: AnalyticsRange,
+  crossesMonths: boolean,
+): AnalyticsBucket {
+  const label =
+    range === 'week'
+      ? format(date, 'EEEEE')
+      : crossesMonths
+        ? format(date, 'MMM d')
+        : format(date, 'd');
+  return makeBucket(
+    format(date, 'yyyy-MM-dd'),
+    label,
+    format(date, 'EEEE, MMMM d'),
+    { start: startOfDay(date), end: endOfDay(date) },
+    rows,
+    series,
+  );
 }
 
 function buildBuckets(
   range: AnalyticsRange,
   current: DatePeriod,
   rows: TransactionRecord[],
+  series: AnalyticsSeries[],
 ): AnalyticsBucket[] {
-  if (range === 'week') {
-    return Array.from({ length: 7 }, (_, index) => {
-      const start = startOfDay(addDays(current.start, index));
-      return makeBucket(
-        format(start, 'yyyy-MM-dd'),
-        format(start, 'EEEEE'),
-        format(start, 'EEEE, MMMM d'),
-        { start, end: endOfDay(start) },
-        rows,
-      );
-    });
+  const elapsedDays = differenceInCalendarDays(current.end, current.start) + 1;
+  const daily = range === 'week' || range === 'month' || (range === 'custom' && elapsedDays <= 31);
+
+  if (daily) {
+    const crossesMonths = current.start.getMonth() !== current.end.getMonth();
+    return Array.from({ length: elapsedDays }, (_, index) =>
+      makeDailyBucket(addDays(current.start, index), rows, series, range, crossesMonths),
+    );
   }
 
-  if (range === 'month') {
-    const elapsedDays = differenceInCalendarDays(current.end, current.start) + 1;
-    return Array.from({ length: Math.ceil(elapsedDays / 7) }, (_, index) => {
-      const start = startOfDay(addDays(current.start, index * 7));
-      const end = minDate(current.end, endOfDay(addDays(start, 6)));
-      return makeBucket(
-        `${format(start, 'yyyy-MM-dd')}-week`,
-        `${format(start, 'd')}–${format(end, 'd')}`,
-        `${format(start, 'MMMM d')} through ${format(end, 'MMMM d')}`,
-        { start, end },
-        rows,
-      );
-    });
-  }
-
-  return Array.from({ length: 3 }, (_, index) => {
-    const start = startOfMonth(addMonths(current.start, index));
-    const end = minDate(current.end, endOfMonth(start));
+  return Array.from({ length: Math.ceil(elapsedDays / 7) }, (_, index) => {
+    const start = startOfDay(addDays(current.start, index * 7));
+    const end = minDate(current.end, endOfDay(addDays(start, 6)));
     return makeBucket(
-      format(start, 'yyyy-MM'),
-      format(start, 'MMM'),
-      format(start, 'MMMM yyyy'),
+      `${format(start, 'yyyy-MM-dd')}-week`,
+      format(start, 'MMM d'),
+      `${format(start, 'MMMM d')} through ${format(end, 'MMMM d')}`,
       { start, end },
       rows,
+      series,
     );
   });
 }
 
 function buildCategories(rows: TransactionRecord[]): AnalyticsCategory[] {
-  const totals = new Map<string, number>();
-  for (const row of rows) {
-    if (row.type !== 'expense') continue;
-    totals.set(row.category, (totals.get(row.category) ?? 0) + finiteAmount(row));
-  }
-
-  const positiveCategories = [...totals.entries()]
-    .filter(([, amount]) => amount > 0)
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  const positiveCategories = sortCategoryEntries(
+    [...categoryTotals(rows).entries()].filter(([, amount]) => amount > 0),
+  );
   const positiveTotal = positiveCategories.reduce((total, [, amount]) => total + amount, 0);
 
   return positiveCategories.map(([category, amount]) => ({
@@ -248,18 +353,42 @@ function buildCategories(rows: TransactionRecord[]): AnalyticsCategory[] {
   }));
 }
 
+export function buildAnalyticsScope(
+  summary: AnalyticsSummary,
+  bucketKey?: string | null,
+): AnalyticsScope {
+  const selectedIds = bucketKey
+    ? new Set(summary.buckets.find((bucket) => bucket.key === bucketKey)?.transactionIds ?? [])
+    : null;
+  const transactions = selectedIds
+    ? summary.transactions.filter((row) => selectedIds.has(row.id))
+    : summary.transactions;
+  const expenseTotal = sumType(transactions, 'expense');
+  const incomeTotal = sumType(transactions, 'income');
+
+  return {
+    expenseTotal,
+    incomeTotal,
+    netTotal: incomeTotal - expenseTotal,
+    categories: buildCategories(transactions),
+    transactions,
+  };
+}
+
 export function buildAnalyticsSummary({
   transactions,
   range,
   currency,
   now,
+  customPeriod,
 }: BuildAnalyticsSummaryInput): AnalyticsSummary {
-  const periods = getAnalyticsPeriods(range, now);
+  const periods = getAnalyticsPeriods(range, now, customPeriod);
   const currentRows = rowsInPeriod(transactions, periods.current, currency);
   const comparisonRows = rowsInPeriod(transactions, periods.comparison, currency);
   const expenseTotal = sumType(currentRows, 'expense');
   const incomeTotal = sumType(currentRows, 'income');
   const previousExpenseTotal = sumType(comparisonRows, 'expense');
+  const series = buildSeries(currentRows);
 
   return {
     range,
@@ -270,7 +399,8 @@ export function buildAnalyticsSummary({
     incomeTotal,
     netTotal: incomeTotal - expenseTotal,
     comparison: buildComparison(expenseTotal, previousExpenseTotal),
-    buckets: buildBuckets(range, periods.current, currentRows),
+    buckets: buildBuckets(range, periods.current, currentRows, series),
+    series,
     categories: buildCategories(currentRows),
     transactions: currentRows,
     hasExpenseRows: currentRows.some((row) => row.type === 'expense' && finiteAmount(row) !== 0),
@@ -297,7 +427,9 @@ export function getComparisonText(
       ? 'previous 7 days'
       : range === 'month'
         ? 'the same days last month'
-        : 'the same elapsed days last quarter';
+        : range === 'quarter'
+          ? 'the same elapsed days last quarter'
+          : 'the previous period';
   return `${comparison.percentage}% ${comparison.direction} ${period}`;
 }
 
