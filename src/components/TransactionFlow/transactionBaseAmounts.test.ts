@@ -110,12 +110,23 @@ describe('transaction base amounts', () => {
     });
   });
 
-  it('formats quiet visible and explicit spoken values', () => {
+  it('formats quiet visible and explicit spoken values across signs and currencies', () => {
     const expense = transaction('expense');
     const income = transaction('income', { type: 'income' });
+    const transfer = transaction('transfer', { type: 'transfer' });
     const ready = {
       status: 'ready',
       currency: 'THB',
+      amount: 100,
+    } as const;
+    const usdReady = {
+      status: 'ready',
+      currency: 'USD',
+      amount: 100,
+    } as const;
+    const eurReady = {
+      status: 'ready',
+      currency: 'EUR',
       amount: 100,
     } as const;
     const unavailable = {
@@ -125,6 +136,11 @@ describe('transaction base amounts', () => {
 
     expect(formatTransactionBaseAmount(expense, ready)).toBe('≈ −฿100.00');
     expect(formatTransactionBaseAmount(income, ready)).toBe('≈ +฿100.00');
+    expect(formatTransactionBaseAmount(transfer, ready)).toBe('≈ +฿100.00');
+    expect(formatTransactionBaseAmount(expense, usdReady)).toBe('≈ −$100.00');
+    expect(formatTransactionBaseAmount(expense, eurReady)).toBe(
+      '≈ −EUR 100.00',
+    );
     expect(formatTransactionBaseAmount(expense, unavailable)).toBe('≈ ฿—');
     expect(getTransactionBaseAmountAccessibleText(expense, ready)).toBe(
       'approximately minus 100.00 THB',
