@@ -3,9 +3,10 @@
 ## Goal
 
 Refine the existing Sheetlog Analytics carousel slide and detail sheet so their bar charts show
-category composition over time. Week and month use daily buckets; quarter uses weekly buckets; and
-custom accepts an inclusive date range. The chart uses the selected range's four largest expense
-categories plus a neutral `Other` remainder, with stable category colors across every bucket.
+category composition over time. Week and month use daily buckets, quarter uses weekly buckets,
+year to date uses calendar-month buckets, and custom accepts an inclusive date range. The chart
+uses the selected range's four largest expense categories plus a neutral `Other` remainder, with
+stable category colors across every bucket.
 
 Selecting a chart bucket in the Analytics detail sheet updates Overview, Top categories, and
 Transactions together. Budget, forecasting, exchange-rate conversion, and mouse-drag carousel
@@ -14,7 +15,7 @@ behavior remain out of scope.
 ## Approved Direction
 
 Use one category-aware analytics model shared by the compact slide and detail sheet. Compute the
-top four categories once for the complete selected W/M/Q/C range, assign their colors once, and
+top four categories once for the complete selected W/M/Q/Y/C range, assign their colors once, and
 reuse that identity, order, and color in every time bucket. All remaining expense categories are
 grouped into `Other` and rendered with a neutral color.
 
@@ -45,17 +46,21 @@ dark card, new navigation, or unrelated financial features.
 | W | Rolling seven days including today | Seven daily buckets | Every weekday |
 | M | Calendar month to date | One bucket per elapsed day | Day 1, 8, 15, 22, and the final elapsed day |
 | Q | Calendar quarter to date | Consecutive seven-day buckets, with the final bucket truncated at today | Month boundaries or every fourth week |
+| Y | Calendar year to date, January 1 through today | One bucket per elapsed calendar month, with the final bucket truncated at today | Every month |
 | C | Inclusive user-selected date range | Daily through 31 days; consecutive weekly buckets for longer ranges | The corresponding daily or weekly sparse-label rule |
 
 Every bucket has an exact accessible date or date-range label even when its visual label is omitted.
-Changing W/M/Q/C or applying a new custom range resets the selected bucket and category filter
-because both belong to the previous time scale.
+Y compares with the previous January 1 through the date reached by applying the current period's
+zero-based elapsed-day count, capped at December 31 for leap-year safety. Changing W/M/Q/Y/C or
+applying a new custom range resets the selected bucket and category filter because both belong to
+the previous time scale.
 
 ## Layout and Range Control
 
 The stacked bar chart is the first content section in the Analytics detail sheet. Its heading sits
-on the left, while one compact W/M/Q/C toggle group sits on the right. The control remains one
-segmented group rather than four disconnected buttons.
+on the left, while one compact W/M/Q/Y/C toggle group sits on the right. The control remains one
+segmented group rather than five disconnected buttons, with C last because it opens a separate
+custom-range interaction.
 
 Selecting C activates custom mode and opens a Shadcn-style range picker. A calendar-icon trigger
 beneath the heading displays the formatted inclusive range and reopens the picker. The picker uses
@@ -108,7 +113,7 @@ the complete textual equivalent of the selected visual bar.
 
 ## Coordinated Detail-Sheet Filtering
 
-With no bucket selected, the detail sheet shows the complete W/M/Q/C range. Selecting a bucket
+With no bucket selected, the detail sheet shows the complete W/M/Q/Y/C range. Selecting a bucket
 derives one scoped transaction set from that bucket's date boundaries, including expenses, income,
 and transfers.
 
@@ -155,7 +160,7 @@ spend.
 
 ## Component and Data Boundaries
 
-- `analytics.ts` owns time boundaries, daily/weekly bucket construction, stable top-four series,
+- `analytics.ts` owns time boundaries, daily/weekly/monthly bucket construction, stable top-four series,
   `Other`, signed segment totals, and selected-scope summaries.
 - `AnalyticsBarChart.tsx` renders category stacks and the optional composite selection control. It
   receives fully derived data and does not rank categories.
@@ -165,7 +170,7 @@ spend.
   comparison, toggle, and View all action.
 - `AnalyticsDrawer.tsx` owns bucket/category selection state and renders the coordinated Overview,
   category rows, and Transactions sections.
-- `HomeDashboardCarousel.tsx` continues to own W/M/Q/C state, the custom date range, and lazy
+- `HomeDashboardCarousel.tsx` continues to own W/M/Q/Y/C state, the custom date range, and lazy
   transaction-history loading.
 
 No new charting or state-management dependency is required. Existing TanStack Query history data,
@@ -191,6 +196,8 @@ does not currently contain them.
 - W returns exactly seven daily category-stacked buckets.
 - M returns one daily bucket per elapsed calendar day, including short months.
 - Q returns consecutive weekly buckets and truncates the final bucket at today.
+- Y covers January 1 through today, returns one bucket per elapsed calendar month, truncates the
+  current month at today, and compares with the same elapsed span of the previous year.
 - C opens a range Calendar, displays the chosen inclusive range, uses daily buckets through 31 days,
   and uses consecutive weekly buckets for longer ranges.
 - The same four category series and colors are reused across all buckets for a selected range.
@@ -199,7 +206,7 @@ does not currently contain them.
 - Selecting a bucket recomputes Overview and category amounts and filters Transactions.
 - Bucket plus category selection intersects correctly, including `Other`.
 - Range changes clear stale selections.
-- The stacked chart is the first sheet section and W/M/Q/C is one compact right-aligned toggle group.
+- The stacked chart is the first sheet section and W/M/Q/Y/C is one compact right-aligned toggle group.
 - Selecting a bar leaves that bar fully colored, neutralizes every other bar, and adds no selected-bar
   border or outline.
 - Overview follows the chart and its half donut recomputes category composition with bar selection.
@@ -211,7 +218,7 @@ does not currently contain them.
 ## Prototype Scope
 
 The temporary HTML prototype demonstrates the approved chart-first hierarchy and coordinated
-W/M/Q/C, custom Calendar, half-donut Overview, bar, and category interactions with representative
+W/M/Q/Y/C, custom Calendar, half-donut Overview, bar, and category interactions with representative
 data. Its custom Calendar is limited to the representative July 1–August 17 dataset. It is not
 production code and does not change application files, dependencies, persistence, query behavior,
 or live financial data.
