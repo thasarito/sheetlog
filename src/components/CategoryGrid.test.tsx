@@ -24,6 +24,28 @@ function renderGrid(
   return { ...result, props };
 }
 
+function touch(identifier: number, clientX: number, clientY: number): Touch {
+  return { identifier, clientX, clientY } as Touch;
+}
+
+function dispatchTouch(
+  target: HTMLElement | Document,
+  type: "touchstart" | "touchmove" | "touchend" | "touchcancel",
+  touches: Touch[],
+  changedTouches: Touch[],
+) {
+  const event = new Event(type, {
+    bubbles: true,
+    cancelable: true,
+  });
+  Object.defineProperties(event, {
+    touches: { configurable: true, value: touches },
+    changedTouches: { configurable: true, value: changedTouches },
+  });
+  fireEvent(target, event);
+  return event;
+}
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -132,41 +154,228 @@ describe("CategoryGrid", () => {
     expect(onLongPress).toHaveBeenCalledWith("Food Delivery", { x: 24, y: 28 });
   });
 
-  it("locks native scrolling only after long press activation and reports cancellation", async () => {
+  it("keeps native touch ownership outside the tile and ignores touch-derived pointer cancellation", async () => {
     vi.useFakeTimers();
+    const onLongPress = vi.fn();
     const onDrag = vi.fn();
+    const onRelease = vi.fn();
     const onCancel = vi.fn();
-    renderGrid({ onDrag, onCancel });
+    const onSelect = vi.fn();
+    renderGrid({ onLongPress, onDrag, onRelease, onCancel, onSelect });
     const tile = screen.getByRole("button", { name: "Food Delivery" });
+    const setPointerCapture = vi.fn();
     Object.defineProperties(tile, {
       hasPointerCapture: { configurable: true, value: () => false },
-      setPointerCapture: { configurable: true, value: vi.fn() },
+      setPointerCapture: { configurable: true, value: setPointerCapture },
     });
+    const start = touch(41, 24, 28);
 
-    fireEvent.pointerDown(tile, { pointerId: 9, clientX: 24, clientY: 28 });
-    const pendingMove = new Event("touchmove", {
-      bubbles: true,
-      cancelable: true,
+    dispatchTouch(tile, "touchstart", [start], [start]);
+    fireEvent.pointerDown(tile, {
+      pointerId: 41,
+      pointerType: "touch",
+      clientX: 24,
+      clientY: 28,
     });
-    tile.dispatchEvent(pendingMove);
-    expect(pendingMove.defaultPrevented).toBe(false);
-
     await act(async () => vi.advanceTimersByTimeAsync(400));
-    const lockedMove = new Event("touchmove", {
-      bubbles: true,
-      cancelable: true,
-    });
-    tile.dispatchEvent(lockedMove);
-    fireEvent.pointerMove(tile, {
-      pointerId: 9,
-      clientX: 32,
-      clientY: 36,
-    });
-    fireEvent.pointerCancel(tile, { pointerId: 9 });
 
-    expect(lockedMove.defaultPrevented).toBe(true);
-    expect(onDrag).toHaveBeenCalledWith({ x: 32, y: 36 });
+    expect(onLongPress).toHaveBeenCalledWith("Food Delivery", {
+      x: 24,
+      y: 28,
+    });
+    expect(setPointerCapture).not.toHaveBeenCalled();
+
+    fireEvent.pointerLeave(tile, {
+      pointerId: 41,
+      pointerType: "touch",
+      clientX: 80,
+      clientY: -72,
+    });
+    fireEvent.pointerCancel(tile, {
+      pointerId: 41,
+      pointerType: "touch",
+    });
+
+    const moved = touch(41, 80, -72);
+    const moveEvent = dispatchTouch(document, "touchmove", [moved], [moved]);
+
+    expect(moveEvent.defaultPrevented).toBe(true);
+    expect(onDrag).toHaveBeenLastCalledWith({ x: 80, y: -72 });
+    expect(onCancel).not.toHaveBeenCalled();
+
+    dispatchTouch(document, "touchend", [], [moved]);
+
+    expect(onRelease).toHaveBeenCalledWith({ x: 80, y: -72 });
+    fireEvent.click(tile);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("leaves native scrolling available before touch activation", async () => {
+    vi.useFakeTimers();
+    const onLongPress = vi.fn();
+    renderGrid({ onLongPress });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+    const start = touch(42, 20, 20);
+
+    dispatchTouch(tile, "touchstart", [start], [start]);
+    fireEvent.pointerDown(tile, {
+      pointerId: 42,
+      pointerType: "touch",
+      clientX: 20,
+      clientY: 20,
+    });
+    const moved = touch(42, 36, 20);
+    const moveEvent = dispatchTouch(document, "touchmove", [moved], [moved]);
+
+    expect(moveEvent.defaultPrevented).toBe(false);
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    expect(onLongPress).not.toHaveBeenCalled();
+  });
+
+  it("cancels an active native touch for matching touchcancel and suppresses its click", async () => {
+    vi.useFakeTimers();
+    const onCancel = vi.fn();
+    const onSelect = vi.fn();
+    renderGrid({ onCancel, onSelect });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+    const start = touch(43, 24, 28);
+
+    dispatchTouch(tile, "touchstart", [start], [start]);
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    dispatchTouch(document, "touchcancel", [], [start]);
+
     expect(onCancel).toHaveBeenCalledOnce();
+    fireEvent.click(tile);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("cancels an active native touch when a second touch begins anywhere", async () => {
+    vi.useFakeTimers();
+    const onCancel = vi.fn();
+    const onDrag = vi.fn();
+    renderGrid({ onCancel, onDrag });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+    const first = touch(44, 24, 28);
+    const second = touch(45, 240, 400);
+
+    dispatchTouch(tile, "touchstart", [first], [first]);
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    dispatchTouch(document, "touchstart", [first, second], [second]);
+    dispatchTouch(document, "touchmove", [first], [first]);
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onDrag).not.toHaveBeenCalled();
+  });
+
+  it("cancels a pending native touch when a second touch begins anywhere", async () => {
+    vi.useFakeTimers();
+    const onLongPress = vi.fn();
+    const onCancel = vi.fn();
+    renderGrid({ onLongPress, onCancel });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+    const first = touch(48, 24, 28);
+    const second = touch(49, 240, 400);
+
+    dispatchTouch(tile, "touchstart", [first], [first]);
+    dispatchTouch(document, "touchstart", [first, second], [second]);
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+
+    expect(onLongPress).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("does not release when touchend omits the initiating identifier", async () => {
+    vi.useFakeTimers();
+    const onRelease = vi.fn();
+    const onCancel = vi.fn();
+    renderGrid({ onRelease, onCancel });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+    const start = touch(46, 24, 28);
+
+    dispatchTouch(tile, "touchstart", [start], [start]);
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    dispatchTouch(document, "touchend", [], [touch(99, 80, 80)]);
+
+    expect(onRelease).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it.each(["mouse", "pen"] as const)(
+    "keeps an active %s pointer captured across leave and cancels it on pointercancel",
+    async (pointerType) => {
+      vi.useFakeTimers();
+      const onDrag = vi.fn();
+      const onCancel = vi.fn();
+      const onSelect = vi.fn();
+      renderGrid({ onDrag, onCancel, onSelect });
+      const tile = screen.getByRole("button", { name: "Food Delivery" });
+      let captured = false;
+      const setPointerCapture = vi.fn(() => {
+        captured = true;
+      });
+      const releasePointerCapture = vi.fn(() => {
+        captured = false;
+      });
+      Object.defineProperties(tile, {
+        hasPointerCapture: { configurable: true, value: () => captured },
+        setPointerCapture: { configurable: true, value: setPointerCapture },
+        releasePointerCapture: {
+          configurable: true,
+          value: releasePointerCapture,
+        },
+      });
+
+      fireEvent.pointerDown(tile, {
+        pointerId: 47,
+        pointerType,
+        clientX: 24,
+        clientY: 28,
+      });
+      await act(async () => vi.advanceTimersByTimeAsync(400));
+      fireEvent.pointerLeave(tile, {
+        pointerId: 47,
+        pointerType,
+      });
+      fireEvent.pointerMove(tile, {
+        pointerId: 47,
+        pointerType,
+        clientX: 64,
+        clientY: 12,
+      });
+
+      expect(onDrag).toHaveBeenCalledWith({ x: 64, y: 12 });
+      expect(onCancel).not.toHaveBeenCalled();
+
+      fireEvent.pointerCancel(tile, {
+        pointerId: 47,
+        pointerType,
+      });
+
+      expect(releasePointerCapture).toHaveBeenCalledWith(47);
+      expect(onCancel).toHaveBeenCalledOnce();
+      fireEvent.click(tile);
+      expect(onSelect).not.toHaveBeenCalled();
+    },
+  );
+
+  it("removes native document listeners when a pending tile unmounts", async () => {
+    vi.useFakeTimers();
+    const onLongPress = vi.fn();
+    const onDrag = vi.fn();
+    const onRelease = vi.fn();
+    const { unmount } = renderGrid({ onLongPress, onDrag, onRelease });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+    const start = touch(50, 24, 28);
+
+    dispatchTouch(tile, "touchstart", [start], [start]);
+    unmount();
+    dispatchTouch(document, "touchmove", [touch(50, 80, -72)], []);
+    dispatchTouch(document, "touchend", [], [touch(50, 80, -72)]);
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+
+    expect(onLongPress).not.toHaveBeenCalled();
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(onRelease).not.toHaveBeenCalled();
   });
 
   it("cancels a pending long press when its tile unmounts", async () => {

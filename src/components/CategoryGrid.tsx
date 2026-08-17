@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   DEFAULT_CATEGORY_COLORS,
@@ -46,6 +46,18 @@ function resolveCategoryColor(
 const LONG_PRESS_THRESHOLD = 400;
 const MOVEMENT_TOLERANCE = 10;
 
+type GesturePosition = { x: number; y: number };
+type GestureOwner = "touch" | "pointer" | null;
+type GestureOutcome = "release" | "cancel" | "abandon";
+
+function findTouch(touches: TouchList, identifier: number): Touch | undefined {
+  return Array.from(touches).find((item) => item.identifier === identifier);
+}
+
+function touchPosition(touch: Touch): GesturePosition {
+  return { x: touch.clientX, y: touch.clientY };
+}
+
 function triggerHaptic() {
   if ("vibrate" in navigator) {
     navigator.vibrate(10);
@@ -78,105 +90,380 @@ function CategoryButton({
   const [isHovered, setIsHovered] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clickResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
-  const wasLongPressRef = useRef(false); // Track if release was from long press
-  const startPosRef = useRef<{ x: number; y: number } | null>(null);
+  const wasLongPressRef = useRef(false);
+  const startPosRef = useRef<GesturePosition | null>(null);
+  const ownerRef = useRef<GestureOwner>(null);
+  const touchIdentifierRef = useRef<number | null>(null);
+  const pointerIdRef = useRef<number | null>(null);
+  const removeTouchListenersRef = useRef<(() => void) | null>(null);
+  const latestRef = useRef({
+    categoryName: category.name,
+    onLongPress,
+    onDrag,
+    onRelease,
+    onCancel,
+  });
+  latestRef.current = {
+    categoryName: category.name,
+    onLongPress,
+    onDrag,
+    onRelease,
+    onCancel,
+  };
 
-  useEffect(() => {
-    const button = buttonRef.current;
-    if (!button) return;
-    const preventNativeScroll = (event: TouchEvent) => {
-      if (isLongPressRef.current) event.preventDefault();
-    };
-    button.addEventListener("touchmove", preventNativeScroll, {
-      passive: false,
-    });
-    return () => {
-      button.removeEventListener("touchmove", preventNativeScroll);
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = null;
-      isLongPressRef.current = false;
-      startPosRef.current = null;
-    };
-  }, []);
-
-  const clearTimer = () => {
+  const clearTimer = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-  };
+  }, []);
+
+  const clearClickResetTimer = useCallback(() => {
+    if (clickResetTimerRef.current) {
+      clearTimeout(clickResetTimerRef.current);
+      clickResetTimerRef.current = null;
+    }
+  }, []);
+
+  const removeTouchListeners = useCallback(() => {
+    const remove = removeTouchListenersRef.current;
+    removeTouchListenersRef.current = null;
+    remove?.();
+  }, []);
+
+  const scheduleClickReset = useCallback(() => {
+    clearClickResetTimer();
+    clickResetTimerRef.current = setTimeout(() => {
+      wasLongPressRef.current = false;
+      clickResetTimerRef.current = null;
+    }, 0);
+  }, [clearClickResetTimer]);
+
+  const finishGesture = useCallback(
+    (outcome: GestureOutcome, position?: GesturePosition) => {
+      const wasActive = isLongPressRef.current;
+      const { onRelease: release, onCancel: cancel } = latestRef.current;
+
+      clearTimer();
+      removeTouchListeners();
+      isLongPressRef.current = false;
+      startPosRef.current = null;
+      ownerRef.current = null;
+      touchIdentifierRef.current = null;
+      pointerIdRef.current = null;
+
+      if (!wasActive) return;
+
+      scheduleClickReset();
+      if (outcome === "release" && position) {
+        release?.(position);
+      } else if (outcome === "cancel") {
+        cancel?.();
+      }
+    },
+    [clearTimer, removeTouchListeners, scheduleClickReset],
+  );
+
+  const beginLongPress = useCallback(
+    (
+      owner: Exclude<GestureOwner, null>,
+      position: GesturePosition,
+      pointerTarget?: HTMLButtonElement,
+      pointerId?: number,
+    ) => {
+      clearTimer();
+      clearClickResetTimer();
+      wasLongPressRef.current = false;
+      isLongPressRef.current = false;
+      ownerRef.current = owner;
+      startPosRef.current = position;
+      pointerIdRef.current = pointerId ?? null;
+
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        if (ownerRef.current !== owner || !startPosRef.current) return;
+
+        const { categoryName, onLongPress: activate } = latestRef.current;
+        if (!activate) {
+          finishGesture("abandon");
+          return;
+        }
+
+        isLongPressRef.current = true;
+        wasLongPressRef.current = true;
+        if (
+          owner === "pointer" &&
+          pointerTarget &&
+          pointerId !== undefined &&
+          typeof pointerTarget.hasPointerCapture === "function" &&
+          typeof pointerTarget.setPointerCapture === "function" &&
+          !pointerTarget.hasPointerCapture(pointerId)
+        ) {
+          pointerTarget.setPointerCapture(pointerId);
+        }
+        triggerHaptic();
+        activate(categoryName, position);
+      }, LONG_PRESS_THRESHOLD);
+    },
+    [clearClickResetTimer, clearTimer, finishGesture],
+  );
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (!latestRef.current.onLongPress) return;
+      if (event.touches.length !== 1 || event.changedTouches.length !== 1) {
+        if (ownerRef.current === "touch") {
+          finishGesture(isLongPressRef.current ? "cancel" : "abandon");
+        }
+        return;
+      }
+      if (ownerRef.current !== null) return;
+
+      const initiatingTouch = event.changedTouches[0];
+      const identifier = initiatingTouch.identifier;
+      const position = touchPosition(initiatingTouch);
+      touchIdentifierRef.current = identifier;
+
+      const finishUnexpectedTouch = () => {
+        finishGesture(isLongPressRef.current ? "cancel" : "abandon");
+      };
+
+      const handleDocumentTouchStart = (touchEvent: TouchEvent) => {
+        const activeIdentifier = touchIdentifierRef.current;
+        if (ownerRef.current !== "touch" || activeIdentifier === null) return;
+        const ownedTouch = findTouch(touchEvent.touches, activeIdentifier);
+        const changedOwnedTouch = findTouch(
+          touchEvent.changedTouches,
+          activeIdentifier,
+        );
+        if (
+          touchEvent.touches.length !== 1 ||
+          !ownedTouch ||
+          !changedOwnedTouch
+        ) {
+          finishUnexpectedTouch();
+        }
+      };
+
+      const handleDocumentTouchMove = (touchEvent: TouchEvent) => {
+        const activeIdentifier = touchIdentifierRef.current;
+        if (ownerRef.current !== "touch" || activeIdentifier === null) return;
+        const ownedTouch = findTouch(touchEvent.touches, activeIdentifier);
+        if (!ownedTouch) {
+          finishUnexpectedTouch();
+          return;
+        }
+
+        const currentPosition = touchPosition(ownedTouch);
+        if (isLongPressRef.current) {
+          touchEvent.preventDefault();
+          latestRef.current.onDrag?.(currentPosition);
+          return;
+        }
+
+        const startPosition = startPosRef.current;
+        if (
+          startPosition &&
+          Math.hypot(
+            currentPosition.x - startPosition.x,
+            currentPosition.y - startPosition.y,
+          ) > MOVEMENT_TOLERANCE
+        ) {
+          finishGesture("abandon");
+        }
+      };
+
+      const handleDocumentTouchEnd = (touchEvent: TouchEvent) => {
+        const activeIdentifier = touchIdentifierRef.current;
+        if (ownerRef.current !== "touch" || activeIdentifier === null) return;
+        const endedTouch = findTouch(
+          touchEvent.changedTouches,
+          activeIdentifier,
+        );
+        if (!endedTouch) {
+          finishUnexpectedTouch();
+          return;
+        }
+        finishGesture("release", touchPosition(endedTouch));
+      };
+
+      const handleDocumentTouchCancel = (touchEvent: TouchEvent) => {
+        const activeIdentifier = touchIdentifierRef.current;
+        if (ownerRef.current !== "touch" || activeIdentifier === null) return;
+        const cancelledTouch = findTouch(
+          touchEvent.changedTouches,
+          activeIdentifier,
+        );
+        if (
+          cancelledTouch ||
+          !findTouch(touchEvent.touches, activeIdentifier)
+        ) {
+          finishUnexpectedTouch();
+        }
+      };
+
+      document.addEventListener("touchstart", handleDocumentTouchStart, {
+        passive: true,
+      });
+      document.addEventListener("touchmove", handleDocumentTouchMove, {
+        passive: false,
+      });
+      document.addEventListener("touchend", handleDocumentTouchEnd, {
+        passive: true,
+      });
+      document.addEventListener("touchcancel", handleDocumentTouchCancel, {
+        passive: true,
+      });
+      removeTouchListenersRef.current = () => {
+        document.removeEventListener("touchstart", handleDocumentTouchStart);
+        document.removeEventListener("touchmove", handleDocumentTouchMove);
+        document.removeEventListener("touchend", handleDocumentTouchEnd);
+        document.removeEventListener(
+          "touchcancel",
+          handleDocumentTouchCancel,
+        );
+      };
+
+      beginLongPress("touch", position);
+    };
+
+    button.addEventListener("touchstart", handleTouchStart, { passive: true });
+    return () => {
+      button.removeEventListener("touchstart", handleTouchStart);
+
+      const pointerId = pointerIdRef.current;
+      if (
+        pointerId !== null &&
+        typeof button.hasPointerCapture === "function" &&
+        typeof button.releasePointerCapture === "function" &&
+        button.hasPointerCapture(pointerId)
+      ) {
+        button.releasePointerCapture(pointerId);
+      }
+
+      clearTimer();
+      clearClickResetTimer();
+      removeTouchListeners();
+      isLongPressRef.current = false;
+      wasLongPressRef.current = false;
+      startPosRef.current = null;
+      ownerRef.current = null;
+      touchIdentifierRef.current = null;
+      pointerIdRef.current = null;
+    };
+  }, [
+    beginLongPress,
+    clearClickResetTimer,
+    clearTimer,
+    finishGesture,
+    removeTouchListeners,
+  ]);
 
   const handlePointerDown = (
     event: React.PointerEvent<HTMLButtonElement>,
   ) => {
-    if (!onLongPress) return;
+    if (
+      event.pointerType === "touch" ||
+      !latestRef.current.onLongPress ||
+      ownerRef.current !== null
+    ) {
+      return;
+    }
 
-    const target = event.currentTarget;
-    const pointerId = event.pointerId;
     const position = { x: event.clientX, y: event.clientY };
-    startPosRef.current = position;
-    isLongPressRef.current = false;
-
-    timerRef.current = setTimeout(() => {
-      if (!startPosRef.current) return;
-      isLongPressRef.current = true;
-      if (!target.hasPointerCapture(pointerId)) {
-        target.setPointerCapture(pointerId);
-      }
-      triggerHaptic();
-      onLongPress(category.name, position);
-    }, LONG_PRESS_THRESHOLD);
+    beginLongPress(
+      "pointer",
+      position,
+      event.currentTarget,
+      event.pointerId,
+    );
   };
 
   const releasePointer = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+    if (
+      typeof event.currentTarget.hasPointerCapture === "function" &&
+      typeof event.currentTarget.releasePointerCapture === "function" &&
+      event.currentTarget.hasPointerCapture(event.pointerId)
+    ) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    const position = { x: e.clientX, y: e.clientY };
+  const handlePointerMove = (event: React.PointerEvent) => {
+    if (
+      event.pointerType === "touch" ||
+      ownerRef.current !== "pointer" ||
+      pointerIdRef.current !== event.pointerId
+    ) {
+      return;
+    }
+
+    const position = { x: event.clientX, y: event.clientY };
 
     if (isLongPressRef.current) {
-      onDrag?.(position);
+      latestRef.current.onDrag?.(position);
     } else if (startPosRef.current) {
       const dx = position.x - startPosRef.current.x;
       const dy = position.y - startPosRef.current.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      if (distance > MOVEMENT_TOLERANCE) {
-        clearTimer();
+      if (Math.hypot(dx, dy) > MOVEMENT_TOLERANCE) {
+        finishGesture("abandon");
       }
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
-    releasePointer(e);
-    clearTimer();
-    const position = { x: e.clientX, y: e.clientY };
-
-    if (isLongPressRef.current) {
-      onRelease?.(position);
-      wasLongPressRef.current = true; // Mark that this was a long press release
+  const handlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (
+      event.pointerType === "touch" ||
+      ownerRef.current !== "pointer" ||
+      pointerIdRef.current !== event.pointerId
+    ) {
+      return;
     }
 
-    isLongPressRef.current = false;
-    startPosRef.current = null;
+    releasePointer(event);
+    finishGesture("release", { x: event.clientX, y: event.clientY });
   };
 
-  const handlePointerCancel = (e: React.PointerEvent<HTMLButtonElement>) => {
-    releasePointer(e);
-    clearTimer();
-    if (isLongPressRef.current) onCancel?.();
-    isLongPressRef.current = false;
-    startPosRef.current = null;
+  const handlePointerCancel = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
+    if (
+      event.pointerType === "touch" ||
+      ownerRef.current !== "pointer" ||
+      pointerIdRef.current !== event.pointerId
+    ) {
+      return;
+    }
+
+    releasePointer(event);
+    finishGesture(isLongPressRef.current ? "cancel" : "abandon");
+  };
+
+  const handlePointerLeave = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
+    setIsHovered(false);
+    if (
+      event.pointerType === "touch" ||
+      ownerRef.current !== "pointer" ||
+      pointerIdRef.current !== event.pointerId ||
+      isLongPressRef.current
+    ) {
+      return;
+    }
+
+    finishGesture("abandon");
   };
 
   const handleClick = () => {
-    // Skip if this click is from a long press release
     if (wasLongPressRef.current) {
       wasLongPressRef.current = false;
+      clearClickResetTimer();
       return;
     }
     onSelect(category.name);
@@ -193,10 +480,7 @@ function CategoryButton({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onPointerEnter={() => setIsHovered(true)}
-      onPointerLeave={(event) => {
-        setIsHovered(false);
-        handlePointerCancel(event);
-      }}
+      onPointerLeave={handlePointerLeave}
       onContextMenu={(event) => event.preventDefault()}
     >
       <motion.span
