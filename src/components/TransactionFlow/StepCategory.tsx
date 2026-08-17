@@ -257,7 +257,7 @@ export function StepCategory({
     <section
       aria-roledescription="carousel"
       aria-label="Transaction type and categories"
-      className="mx-auto flex w-full max-w-[390px] min-h-0 flex-col select-none"
+      className="flex w-full min-h-0 flex-col select-none"
       onKeyDown={(event) => {
         const target = event.target as HTMLElement;
         const isNavigationTarget =
