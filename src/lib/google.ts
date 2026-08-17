@@ -18,6 +18,7 @@ import { createCachedTransactionRecord } from "./transactionHistory";
 import type {
   AccountItem,
   AnalyticsBaseCurrencySetting,
+  AnalyticsBigSpendingThresholdSetting,
   CategoryConfigWithMeta,
   TransactionHistorySnapshot,
   TransactionRecord,
@@ -30,6 +31,7 @@ const CATEGORY_TAB = "Category";
 const QUICK_NOTE_TAB = "Quick Note";
 const SETTINGS_TAB = "Settings";
 const ANALYTICS_BASE_CURRENCY_KEY = "analyticsBaseCurrency";
+const ANALYTICS_BIG_SPENDING_THRESHOLD_KEY = "analyticsBigSpendingThreshold";
 const ACCOUNT_HEADER_ROW = ["Account", "Icon", "Color"];
 const CATEGORY_HEADER_ROW = ["Type", "Category", "Icon", "Color"];
 const SETTINGS_HEADER_ROW = ["Key", "Value", "Updated At"];
@@ -676,6 +678,92 @@ export async function writeAnalyticsBaseCurrencySetting(
   });
 }
 
+function parseAnalyticsBigSpendingThreshold(
+  rows: string[][]
+): AnalyticsBigSpendingThresholdSetting | null {
+  const row = rows.find(
+    (candidate) =>
+      candidate[0]?.trim() === ANALYTICS_BIG_SPENDING_THRESHOLD_KEY
+  );
+  if (!row) return null;
+  const updatedAt = row[2]?.trim();
+  try {
+    const value = JSON.parse(row[1] ?? "") as {
+      amount?: unknown;
+      currency?: unknown;
+    };
+    if (
+      !isCurrency(value.currency) ||
+      !(
+        value.amount === null ||
+        (typeof value.amount === "number" &&
+          Number.isFinite(value.amount) &&
+          value.amount > 0)
+      ) ||
+      typeof updatedAt !== "string" ||
+      !Number.isFinite(Date.parse(updatedAt))
+    ) {
+      return null;
+    }
+    return { amount: value.amount, currency: value.currency, updatedAt };
+  } catch {
+    return null;
+  }
+}
+
+export async function readAnalyticsBigSpendingThresholdSetting(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<AnalyticsBigSpendingThresholdSetting | null> {
+  if ((await getSheetTabId(accessToken, spreadsheetId, SETTINGS_TAB)) === null) {
+    return null;
+  }
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A2:C`;
+  const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
+  return parseAnalyticsBigSpendingThreshold(data.values ?? []);
+}
+
+export async function writeAnalyticsBigSpendingThresholdSetting(
+  accessToken: string,
+  spreadsheetId: string,
+  setting: AnalyticsBigSpendingThresholdSetting
+): Promise<void> {
+  await ensureSettingsSheet(accessToken, spreadsheetId);
+  const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A2:C`;
+  const data = await fetchWithAuth<{ values?: string[][] }>(readUrl, accessToken);
+  const rows = data.values ?? [];
+  const existingIndex = rows.findIndex(
+    (row) => row[0]?.trim() === ANALYTICS_BIG_SPENDING_THRESHOLD_KEY
+  );
+  const values = [
+    [
+      ANALYTICS_BIG_SPENDING_THRESHOLD_KEY,
+      JSON.stringify({ amount: setting.amount, currency: setting.currency }),
+      setting.updatedAt,
+    ],
+  ];
+
+  if (existingIndex >= 0) {
+    const rowNumber = existingIndex + 2;
+    const range = `${SETTINGS_TAB}!A${rowNumber}:C${rowNumber}`;
+    await fetchWithAuth(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
+      accessToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({ values }),
+      }
+    );
+    return;
+  }
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A:C:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+  await fetchWithAuth(url, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ values }),
+  });
+}
+
 async function clearRange(
   accessToken: string,
   spreadsheetId: string,
@@ -695,10 +783,12 @@ export async function readOnboardingConfig(
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
   analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
+  analyticsBigSpendingThreshold?: AnalyticsBigSpendingThresholdSetting;
 } | null> {
   let accounts: AccountItem[] | null = null;
   let categories: CategoryConfigWithMeta | null = null;
   let analyticsBaseCurrency: AnalyticsBaseCurrencySetting | null = null;
+  let analyticsBigSpendingThreshold: AnalyticsBigSpendingThresholdSetting | null = null;
 
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${ACCOUNT_TAB}!A2:C`;
@@ -719,18 +809,29 @@ export async function readOnboardingConfig(
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A2:C`;
     const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
-    analyticsBaseCurrency = parseAnalyticsBaseCurrency(data.values ?? []);
+    const rows = data.values ?? [];
+    analyticsBaseCurrency = parseAnalyticsBaseCurrency(rows);
+    analyticsBigSpendingThreshold = parseAnalyticsBigSpendingThreshold(rows);
   } catch {
     analyticsBaseCurrency = null;
+    analyticsBigSpendingThreshold = null;
   }
 
-  if (!accounts && !categories && !analyticsBaseCurrency) {
+  if (
+    !accounts &&
+    !categories &&
+    !analyticsBaseCurrency &&
+    !analyticsBigSpendingThreshold
+  ) {
     return null;
   }
   return {
     ...(accounts ? { accounts } : {}),
     ...(categories ? { categories } : {}),
     ...(analyticsBaseCurrency ? { analyticsBaseCurrency } : {}),
+    ...(analyticsBigSpendingThreshold
+      ? { analyticsBigSpendingThreshold }
+      : {}),
   };
 }
 
@@ -738,6 +839,7 @@ type OnboardingConfigUpdates = {
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
   analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
+  analyticsBigSpendingThreshold?: AnalyticsBigSpendingThresholdSetting;
 };
 
 export async function writeOnboardingConfig(
@@ -745,7 +847,12 @@ export async function writeOnboardingConfig(
   spreadsheetId: string,
   updates: OnboardingConfigUpdates
 ): Promise<void> {
-  if (!updates.accounts && !updates.categories && !updates.analyticsBaseCurrency) {
+  if (
+    !updates.accounts &&
+    !updates.categories &&
+    !updates.analyticsBaseCurrency &&
+    !updates.analyticsBigSpendingThreshold
+  ) {
     return;
   }
 
@@ -811,6 +918,14 @@ export async function writeOnboardingConfig(
       accessToken,
       spreadsheetId,
       updates.analyticsBaseCurrency
+    );
+  }
+
+  if (updates.analyticsBigSpendingThreshold) {
+    await writeAnalyticsBigSpendingThresholdSetting(
+      accessToken,
+      spreadsheetId,
+      updates.analyticsBigSpendingThreshold
     );
   }
 }

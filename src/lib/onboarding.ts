@@ -9,6 +9,7 @@ import { setOnboardingState } from './settings';
 import type {
   AccountItem,
   AnalyticsBaseCurrencySetting,
+  AnalyticsBigSpendingThresholdSetting,
   CategoryConfigWithMeta,
   OnboardingState,
 } from './types';
@@ -19,6 +20,7 @@ export type OnboardingSheetConfig = {
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
   analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
+  analyticsBigSpendingThreshold?: AnalyticsBigSpendingThresholdSetting;
 };
 
 function hasAllCategories(categories: CategoryConfigWithMeta): boolean {
@@ -99,6 +101,29 @@ export function mergeOnboardingState(
     settingsNeedPush = true;
   }
 
+  const remoteThreshold = config.analyticsBigSpendingThreshold;
+  const localThreshold = current.analyticsBigSpendingThreshold;
+  const remoteThresholdTime = remoteThreshold
+    ? Date.parse(remoteThreshold.updatedAt)
+    : Number.NaN;
+  const localThresholdTime = localThreshold ? Date.parse(localThreshold.updatedAt) : Number.NaN;
+
+  if (remoteThreshold && Number.isFinite(remoteThresholdTime)) {
+    if (!Number.isFinite(localThresholdTime) || remoteThresholdTime > localThresholdTime) {
+      next = { ...next, analyticsBigSpendingThreshold: remoteThreshold };
+      changed = true;
+    } else if (
+      remoteThresholdTime < localThresholdTime ||
+      (remoteThresholdTime === localThresholdTime &&
+        (remoteThreshold.amount !== localThreshold?.amount ||
+          remoteThreshold.currency !== localThreshold.currency))
+    ) {
+      settingsNeedPush = true;
+    }
+  } else if (localThreshold) {
+    settingsNeedPush = true;
+  }
+
   return { next, changed, settingsNeedPush };
 }
 
@@ -113,7 +138,9 @@ export async function hydrateOnboardingFromSheet(
     return {
       next: current,
       changed: false,
-      settingsNeedPush: Boolean(current.analyticsBaseCurrencyUpdatedAt),
+      settingsNeedPush: Boolean(
+        current.analyticsBaseCurrencyUpdatedAt || current.analyticsBigSpendingThreshold,
+      ),
     };
   }
   const merged = mergeOnboardingState(current, sheetConfig, options);

@@ -315,6 +315,11 @@ export function TransactionFlow() {
   const lastSyncErrorRef = useRef<string | null>(null);
 
   const categories = onboarding.categories ?? DEFAULT_CATEGORIES;
+  const bigSpendingThreshold =
+    onboarding.analyticsBigSpendingThreshold &&
+    onboarding.analyticsBigSpendingThreshold.currency === onboarding.analyticsBaseCurrency
+      ? onboarding.analyticsBigSpendingThreshold.amount
+      : null;
 
   const categoryGroups = useMemo(() => {
     return TYPE_OPTIONS.reduce((acc, typeOption) => {
@@ -1354,6 +1359,8 @@ export function TransactionFlow() {
               <div className="min-h-0">
                 <HomeDashboardCarousel
                   baseCurrency={onboarding.analyticsBaseCurrency}
+                  bigSpendingThreshold={bigSpendingThreshold}
+                  onToast={handleToast}
                   onEditTransaction={handleEditTransaction}
                   onViewAllTransactions={() => setHistoryDrawerOpen(true)}
                 />

@@ -9,6 +9,7 @@ import {
 import { isSheetlogAppId, type SheetlogAppId } from './sheetlogApps';
 import type {
   AccountItem,
+  AnalyticsBigSpendingThresholdSetting,
   CategoryConfigWithMeta,
   OnboardingState,
   RecentCategories,
@@ -28,6 +29,7 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   categoriesConfirmed: false,
   analyticsBaseCurrency: DEFAULT_CURRENCY,
   analyticsBaseCurrencyUpdatedAt: null,
+  analyticsBigSpendingThreshold: null,
 };
 
 export const LEGACY_ONBOARDING_STATE_KEY = 'onboardingState';
@@ -188,11 +190,35 @@ export function migrateStoredOnboardingState(
       Number.isFinite(Date.parse(value.analyticsBaseCurrencyUpdatedAt))
         ? value.analyticsBaseCurrencyUpdatedAt
         : null,
+    analyticsBigSpendingThreshold: normalizeAnalyticsBigSpendingThreshold(
+      value.analyticsBigSpendingThreshold,
+    ),
   };
   return {
     state,
     migrated: legacyFormat || JSON.stringify(state) !== JSON.stringify(value),
   };
+}
+
+function normalizeAnalyticsBigSpendingThreshold(
+  value: unknown,
+): AnalyticsBigSpendingThresholdSetting | null {
+  if (!value || typeof value !== 'object') return null;
+  const parsed = value as Record<string, unknown>;
+  const amount = parsed.amount;
+  const updatedAt = parsed.updatedAt;
+  if (
+    !isCurrency(parsed.currency) ||
+    !(
+      amount === null ||
+      (typeof amount === 'number' && Number.isFinite(amount) && amount > 0)
+    ) ||
+    typeof updatedAt !== 'string' ||
+    !Number.isFinite(Date.parse(updatedAt))
+  ) {
+    return null;
+  }
+  return { amount, currency: parsed.currency, updatedAt };
 }
 
 export function normalizeOnboardingState(value: unknown): OnboardingState {

@@ -105,6 +105,7 @@ export type AnalyticsSummary = AnalyticsScope & {
   series: AnalyticsSeries[];
   hasExpenseRows: boolean;
   convertedAmounts: Record<string, number>;
+  excludedBigSpendingCount: number;
 };
 
 export type MissingAnalyticsRate = {
@@ -124,11 +125,15 @@ type BuildAnalyticsSummaryInput = {
   now: Date;
   customPeriod?: DatePeriod;
   periodOffset?: number;
+  bigSpendingThreshold?: number | null;
 };
 
 const SERIES_TONES: AnalyticsSeriesTone[] = ['emerald', 'cyan', 'violet', 'rose'];
 const MONDAY_WEEK = { weekStartsOn: 1 as const };
-type AnalyticsRateRequestInput = Omit<BuildAnalyticsSummaryInput, 'rates'>;
+type AnalyticsRateRequestInput = Omit<
+  BuildAnalyticsSummaryInput,
+  'rates' | 'bigSpendingThreshold'
+>;
 
 type ConvertedAmount = (row: TransactionRecord) => number;
 
@@ -581,6 +586,7 @@ export function buildAnalyticsSummary({
   now,
   customPeriod,
   periodOffset = 0,
+  bigSpendingThreshold,
 }: BuildAnalyticsSummaryInput): AnalyticsBuildResult {
   const periods = getAnalyticsPeriods(range, now, customPeriod, periodOffset);
   const currentRows = rowsInPeriod(transactions, periods.current);
@@ -619,17 +625,31 @@ export function buildAnalyticsSummary({
     const rate = resolvedRates.get(`${row.currency}:${format(date, 'yyyy-MM-dd')}`);
     return rate ? amount / rate : 0;
   };
-  const expenseTotal = sumType(currentRows, 'expense', convertedAmount);
-  const incomeTotal = sumType(currentRows, 'income', convertedAmount);
-  const previousExpenseTotal = sumType(comparisonRows, 'expense', convertedAmount);
-  const series = buildSeries(currentRows, convertedAmount);
+  const threshold =
+    typeof bigSpendingThreshold === 'number' &&
+    Number.isFinite(bigSpendingThreshold) &&
+    bigSpendingThreshold > 0
+      ? bigSpendingThreshold
+      : null;
+  const isBigSpending = (row: TransactionRecord) => {
+    if (threshold === null || row.type !== 'expense') return false;
+    const amount = convertedAmount(row);
+    return amount > 0 && amount >= threshold;
+  };
+  const scopedCurrentRows = currentRows.filter((row) => !isBigSpending(row));
+  const scopedComparisonRows = comparisonRows.filter((row) => !isBigSpending(row));
+  const excludedBigSpendingCount = currentRows.length - scopedCurrentRows.length;
+  const expenseTotal = sumType(scopedCurrentRows, 'expense', convertedAmount);
+  const incomeTotal = sumType(scopedCurrentRows, 'income', convertedAmount);
+  const previousExpenseTotal = sumType(scopedComparisonRows, 'expense', convertedAmount);
+  const series = buildSeries(scopedCurrentRows, convertedAmount);
   const convertedAmounts = Object.fromEntries(
-    currentRows.map((row) => [row.id, convertedAmount(row)]),
+    scopedCurrentRows.map((row) => [row.id, convertedAmount(row)]),
   );
   const buckets = buildBuckets(
     range,
     periods.current,
-    currentRows,
+    scopedCurrentRows,
     series,
     convertedAmount,
   );
@@ -648,12 +668,13 @@ export function buildAnalyticsSummary({
       buckets,
       axisGroups: buildAxisGroups(range, periods.current, buckets.length),
       series,
-      categories: buildCategories(currentRows, convertedAmount),
-      transactions: currentRows,
-      hasExpenseRows: currentRows.some(
+      categories: buildCategories(scopedCurrentRows, convertedAmount),
+      transactions: scopedCurrentRows,
+      hasExpenseRows: scopedCurrentRows.some(
         (row) => row.type === 'expense' && finiteAmount(row) !== 0,
       ),
       convertedAmounts,
+      excludedBigSpendingCount,
     },
   };
 }
