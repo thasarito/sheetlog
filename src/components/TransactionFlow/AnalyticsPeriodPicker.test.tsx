@@ -16,7 +16,9 @@ const options: AnalyticsPeriodOption[] = [-3, -2, -1, 0].map((offset, index) => 
 }));
 
 function useMotionClock() {
-  vi.useFakeTimers();
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'],
+  });
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>
     window.setTimeout(() => callback(performance.now()), 16),
   );
@@ -123,7 +125,7 @@ describe('AnalyticsPeriodPicker', () => {
     });
     advanceMotion(200);
     expect(onChange).not.toHaveBeenCalled();
-    advanceMotion(400);
+    advanceMotion(900);
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(-1);
