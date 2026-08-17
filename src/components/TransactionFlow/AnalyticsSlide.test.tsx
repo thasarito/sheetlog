@@ -22,11 +22,20 @@ const summary: AnalyticsSummary = {
   incomeTotal: 0,
   netTotal: -3240,
   comparison: { direction: 'below', percentage: 12 },
+  series: [
+    {
+      key: 'category-0',
+      label: 'Dining Out',
+      tone: 'emerald',
+      categoryNames: ['Dining Out'],
+    },
+  ],
   buckets: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, index) => ({
     key: `day-${index}`,
     label,
     accessibleLabel: `Day ${index + 1}`,
     amount: 100 + index * 25,
+    segments: [{ seriesKey: 'category-0', amount: 100 + index * 25 }],
     transactionIds: [],
   })),
   categories: [{ category: 'Dining Out', amount: 920, share: 28 }],
@@ -35,7 +44,7 @@ const summary: AnalyticsSummary = {
 };
 
 describe('AnalyticsSlide', () => {
-  it('renders the approved W/M/Q summary and actions', async () => {
+  it('renders the approved W/M/Q/C stacked summary and actions', async () => {
     const user = userEvent.setup();
     const onRangeChange = vi.fn();
     const onViewAll = vi.fn();
@@ -55,10 +64,38 @@ describe('AnalyticsSlide', () => {
     expect(screen.getByText('฿3,240')).toBeInTheDocument();
     expect(screen.getByText('12% below previous 7 days')).toBeInTheDocument();
     expect(screen.getByText(/Dining Out/)).toBeInTheDocument();
+    expect(screen.getByTestId('segment-day-0-category-0')).toHaveAttribute(
+      'data-tone',
+      'emerald',
+    );
     await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
     expect(onRangeChange).toHaveBeenCalledWith('month');
+    await user.click(screen.getByRole('button', { name: 'Custom date range' }));
+    expect(onRangeChange).toHaveBeenCalledWith('custom');
     await user.click(screen.getByRole('button', { name: 'View all analytics' }));
     expect(onViewAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses custom range copy for a custom summary', () => {
+    render(
+      <AnalyticsSlide
+        range="custom"
+        onRangeChange={vi.fn()}
+        summary={{
+          ...summary,
+          range: 'custom',
+          comparison: { direction: 'above', percentage: 10 },
+        }}
+        isLoading={false}
+        isOffline={false}
+        error={null}
+        onRetry={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('spent · custom range')).toBeInTheDocument();
+    expect(screen.getByText('10% above the previous period')).toBeInTheDocument();
   });
 
   it('renders fixed in-slide loading, empty, and uncached-error states', () => {

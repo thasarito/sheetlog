@@ -2,9 +2,22 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { MouseEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  AnalyticsRange,
+  AnalyticsSummary,
+  DatePeriod,
+} from "./analytics";
 import { HomeDashboardCarousel } from "./HomeDashboardCarousel";
 
 const historyEnabledCalls: boolean[] = [];
+const analyticsSlideCalls: Array<{
+  range: AnalyticsRange;
+  onRangeChange: (range: AnalyticsRange) => void;
+  summary?: AnalyticsSummary;
+}> = [];
+const analyticsDrawerCalls: Array<{
+  customPeriod: DatePeriod;
+}> = [];
 
 vi.mock("./useTransactionHistoryQuery", () => ({
   useTransactionHistoryQuery: (enabled: boolean) => {
@@ -32,30 +45,49 @@ vi.mock("./TopDashboard", () => ({
 }));
 
 vi.mock("./AnalyticsSlide", () => ({
-  AnalyticsSlide: ({
-    onViewAll,
-  }: {
+  AnalyticsSlide: (props: {
+    range: AnalyticsRange;
+    onRangeChange: (range: AnalyticsRange) => void;
+    summary?: AnalyticsSummary;
     onViewAll: (event: MouseEvent<HTMLButtonElement>) => void;
-  }) => (
-    <button type="button" onClick={onViewAll}>
-      Analytics content
-    </button>
-  ),
+  }) => {
+    analyticsSlideCalls.push(props);
+    return (
+      <div>
+        <button type="button" onClick={props.onViewAll}>
+          Analytics content
+        </button>
+        <button type="button" onClick={() => props.onRangeChange("month")}>
+          Test month range
+        </button>
+        <button type="button" onClick={() => props.onRangeChange("quarter")}>
+          Test quarter range
+        </button>
+        <button type="button" onClick={() => props.onRangeChange("custom")}>
+          Test custom range
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock("./AnalyticsDrawer", () => ({
   AnalyticsDrawer: ({
     open,
     onOpenChange,
+    customPeriod,
   }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-  }) =>
-    open ? (
+    customPeriod: DatePeriod;
+  }) => {
+    analyticsDrawerCalls.push({ customPeriod });
+    return open ? (
       <button type="button" onClick={() => onOpenChange(false)}>
         Close analytics drawer
       </button>
-    ) : null,
+    ) : null;
+  },
 }));
 
 function renderCarousel() {
@@ -83,7 +115,11 @@ function renderCarousel() {
 }
 
 describe("HomeDashboardCarousel", () => {
-  beforeEach(() => historyEnabledCalls.splice(0));
+  beforeEach(() => {
+    historyEnabledCalls.splice(0);
+    analyticsSlideCalls.splice(0);
+    analyticsDrawerCalls.splice(0);
+  });
 
   it("starts on Transactions and lazily enables history on Analytics", async () => {
     const user = userEvent.setup();
@@ -138,6 +174,35 @@ describe("HomeDashboardCarousel", () => {
     );
     await user.click(screen.getByText("Transactions content"));
     expect(onViewAllTransactions).toHaveBeenCalledTimes(1);
+  });
+
+  it("builds daily month, weekly quarter, and shared month-to-date custom state", async () => {
+    const user = userEvent.setup();
+    renderCarousel();
+    await user.click(screen.getByRole("button", { name: "Analytics slide" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Analytics slide" }),
+      ).toHaveAttribute("aria-current", "true"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Test month range" }));
+    const monthSummary = analyticsSlideCalls.at(-1)?.summary;
+    expect(monthSummary?.range).toBe("month");
+    expect(monthSummary?.buckets.every((bucket) => !bucket.key.endsWith("-week"))).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Test quarter range" }));
+    const quarterSummary = analyticsSlideCalls.at(-1)?.summary;
+    expect(quarterSummary?.range).toBe("quarter");
+    expect(quarterSummary?.buckets.every((bucket) => bucket.key.endsWith("-week"))).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Test custom range" }));
+    const customSummary = analyticsSlideCalls.at(-1)?.summary;
+    const customDrawer = analyticsDrawerCalls.at(-1);
+    expect(customSummary?.range).toBe("custom");
+    expect(customSummary?.periods.current.start.getDate()).toBe(1);
+    expect(customSummary?.buckets.every((bucket) => !bucket.key.endsWith("-week"))).toBe(true);
+    expect(customDrawer?.customPeriod).toEqual(customSummary?.periods.current);
   });
 
   it("suppresses an accidental action click after a horizontal touch drag", () => {

@@ -27,7 +27,8 @@ type AnalyticsSlideProps = {
 function rangeLabel(range: AnalyticsRange): string {
   if (range === 'week') return 'spent · last 7 days';
   if (range === 'month') return 'spent · month to date';
-  return 'spent · quarter to date';
+  if (range === 'quarter') return 'spent · quarter to date';
+  return 'spent · custom range';
 }
 
 export function AnalyticsSlide({
@@ -121,8 +122,9 @@ export function AnalyticsSlide({
           </div>
           <AnalyticsBarChart
             buckets={summary.buckets}
+            series={summary.series}
             currency={summary.currency}
-            className="mt-1 h-10"
+            className="mt-1 h-12"
           />
           {error ? (
             <p className="text-[10px] text-muted-foreground">

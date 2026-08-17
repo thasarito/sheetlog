@@ -1,3 +1,4 @@
+import { endOfDay, startOfMonth } from "date-fns";
 import {
   useEffect,
   useMemo,
@@ -42,6 +43,10 @@ export function HomeDashboardCarousel({
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [drawerCurrency, setDrawerCurrency] = useState(currency);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
+  const [customPeriod, setCustomPeriod] = useState(() => ({
+    start: startOfMonth(analyticsNow),
+    end: endOfDay(analyticsNow),
+  }));
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
   const analyticsTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -58,9 +63,17 @@ export function HomeDashboardCarousel({
             range,
             currency,
             now: analyticsNow,
+            customPeriod,
           })
         : undefined,
-    [analyticsNow, currency, history.hasCompleteCache, range, transactions],
+    [
+      analyticsNow,
+      currency,
+      customPeriod,
+      history.hasCompleteCache,
+      range,
+      transactions,
+    ],
   );
   const currencies = useMemo(() => {
     const values = new Set(
@@ -289,6 +302,8 @@ export function HomeDashboardCarousel({
         transactions={transactions}
         range={range}
         onRangeChange={setRange}
+        customPeriod={customPeriod}
+        onCustomPeriodChange={setCustomPeriod}
         currency={drawerCurrency}
         onCurrencyChange={setDrawerCurrency}
         currencies={currencies}
