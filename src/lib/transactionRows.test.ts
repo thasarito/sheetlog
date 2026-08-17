@@ -221,14 +221,14 @@ describe("transaction Sheet rows", () => {
     });
   });
 
-  it("falls back safely for a finite numeric date outside the JavaScript Date range", () => {
+  it("marks an out-of-range numeric date invalid while retaining a safe fallback", () => {
     const parsed = parseTransactionRow(
       legacyRowWith(0, Number.MAX_VALUE),
       5,
     );
 
     expect(Number.isFinite(new Date(parsed.date).getTime())).toBe(true);
-    expect(parsed.sheetRowValid).toBe(true);
+    expect(parsed.sheetRowValid).toBe(false);
   });
 
   it("treats only exact transaction type values as valid", () => {

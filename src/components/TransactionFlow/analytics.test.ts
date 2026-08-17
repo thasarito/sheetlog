@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { parseTransactionRow } from '../../lib/transactionRows';
 import type { TransactionRecord, TransactionType } from '../../lib/types';
 import {
   buildAnalyticsSummary,
@@ -164,6 +165,61 @@ describe('buildAnalyticsSummary totals', () => {
     expect(summary.transactions.map((row) => row.id)).not.toContain('zero');
     expect(summary.transactions.map((row) => row.id)).not.toContain('malformed-date');
     expect(summary.transactions.map((row) => row.id)).not.toContain('non-finite');
+  });
+
+  it('excludes malformed Sheet rows after parsing safe fallbacks', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 17, 12));
+
+    try {
+      const invalidDate = parseTransactionRow(
+        [
+          'not-a-date',
+          'expense',
+          900,
+          'Malformed date',
+          '',
+          '2026-08-17T12:00:00',
+          'PWA',
+          'THB',
+          'Cash',
+          'Me',
+          'invalid-date',
+        ],
+        2,
+      );
+      const invalidType = parseTransactionRow(
+        [
+          '2026-08-17T10:00:00',
+          'refund',
+          500,
+          'Malformed type',
+          '',
+          '2026-08-17T10:00:00',
+          'PWA',
+          'THB',
+          'Cash',
+          'Me',
+          'invalid-type',
+        ],
+        3,
+      );
+
+      expect(invalidDate.sheetRowValid).toBe(false);
+      expect(invalidType.sheetRowValid).toBe(false);
+
+      const summary = buildAnalyticsSummary({
+        transactions: [invalidDate, invalidType],
+        range: 'week',
+        currency: 'THB',
+        now: new Date(2026, 7, 17, 12),
+      });
+
+      expect(summary.expenseTotal).toBe(0);
+      expect(summary.transactions).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('returns no prior comparison when prior net expense is not positive', () => {

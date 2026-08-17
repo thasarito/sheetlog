@@ -66,8 +66,6 @@ type BuildAnalyticsSummaryInput = {
   now: Date;
 };
 
-type AnalyticsAnnotatedTransaction = TransactionRecord & { analyticsExcluded?: boolean };
-
 function minDate(left: Date, right: Date): Date {
   return left.getTime() <= right.getTime() ? left : right;
 }
@@ -139,7 +137,7 @@ function rowsInPeriod(
       const date = analyticsDate(row);
       const amount = Number(row.amount);
       return (
-        !(row as AnalyticsAnnotatedTransaction).analyticsExcluded &&
+        row.sheetRowValid !== false &&
         row.currency === currency &&
         date !== null &&
         contains(period, date) &&
