@@ -307,7 +307,7 @@ export function StepCategory({
             }}
             aria-label={`${TYPE_META[typeOption].label} categories, slide ${index + 1} of ${TYPE_OPTIONS.length}`}
             aria-hidden={selectedIndex !== index}
-            className="h-full min-w-full snap-center snap-always overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="h-full min-w-full snap-center snap-always overflow-y-auto px-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             <CategoryGrid
               categories={categoryGroups[typeOption] ?? []}

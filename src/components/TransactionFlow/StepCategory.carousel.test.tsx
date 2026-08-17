@@ -155,6 +155,17 @@ describe("StepCategory carousel", () => {
     expect(categorySection).not.toHaveClass("mx-auto", "max-w-[390px]");
   });
 
+  it("insets category content inside each full-width slide", () => {
+    renderCarousel();
+
+    for (const label of ["Expense", "Income", "Transfer"]) {
+      const slide = screen.getByLabelText(
+        new RegExp(`^${label} categories, slide`),
+      );
+      expect(slide).toHaveClass("min-w-full", "px-2");
+    }
+  });
+
   it("reserves a square four-row viewport with hidden vertical scrollbars", () => {
     const viewport = renderCarousel();
 
