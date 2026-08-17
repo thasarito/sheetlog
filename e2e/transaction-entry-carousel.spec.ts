@@ -40,10 +40,11 @@ async function seedQuickNote(page: Page) {
     const value = JSON.stringify({
       "expense:Food Delivery": [
         {
-          id: "breakfast",
+          id: "ios-snap-target",
           icon: "Coffee",
-          label: "Breakfast",
-          note: "Breakfast",
+          label: "iOS Snap 73",
+          note: "iOS snap target selected",
+          amount: "73.21",
         },
       ],
     });
@@ -228,7 +229,9 @@ test.describe("Transaction type and category carousel", () => {
     ).toBeVisible();
   });
 
-  test("keeps the long-press quick-note gesture", async ({ page }) => {
+  test("keeps a native quick-note drag alive outside the tile and applies the selected note", async ({
+    page,
+  }) => {
     await seedQuickNote(page);
     await page.reload();
     const viewport = page.getByTestId("transaction-type-carousel");
@@ -246,16 +249,36 @@ test.describe("Transaction type and category carousel", () => {
       touchPoints: [touchPoint],
     });
     await page.waitForTimeout(450);
-    await expect(page.getByText("Breakfast", { exact: true })).toBeVisible();
+
+    const label = page.getByText("iOS Snap 73", { exact: true });
+    await expect(label).toBeVisible();
+    const targetBox = await label
+      .locator("xpath=..")
+      .locator("circle")
+      .boundingBox();
+    if (!targetBox) throw new Error("Quick-note radial target missing");
+    const targetPoint = {
+      x: targetBox.x + targetBox.width / 2,
+      y: targetBox.y + targetBox.height / 2,
+    };
     const scrollLeftBeforeDrag = await viewport.evaluate(
       (element) => element.scrollLeft,
     );
+
+    await tile.dispatchEvent("pointercancel", {
+      pointerId: 41,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    await expect(label).toBeVisible();
+
     await client.send("Input.dispatchTouchEvent", {
       type: "touchMove",
-      touchPoints: [{ x: touchPoint.x + 24, y: touchPoint.y - 24 }],
+      touchPoints: [targetPoint],
     });
     await page.waitForTimeout(50);
-    await expect(page.getByText("Breakfast", { exact: true })).toBeVisible();
+
+    await expect(label).toBeVisible();
     expect(await viewport.evaluate((element) => element.scrollLeft)).toBe(
       scrollLeftBeforeDrag,
     );
@@ -264,7 +287,12 @@ test.describe("Transaction type and category carousel", () => {
       touchPoints: [],
     });
     await client.detach();
+
     await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByLabel("Transaction note")).toHaveValue(
+      "iOS snap target selected",
+    );
   });
 
   test("moves the type indicator during an active category swipe", async ({
