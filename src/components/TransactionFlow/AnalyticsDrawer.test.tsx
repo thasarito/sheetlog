@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
 import type { AnalyticsRange, DatePeriod } from './analytics';
@@ -136,12 +136,12 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
   });
 
-  it('keeps W M Q C on the right and opens the controlled custom range picker', async () => {
+  it('keeps W M Q Y C on the right and opens the controlled custom range picker', async () => {
     renderDrawer({ range: 'custom' });
 
     const controls = screen.getByTestId('analytics-range-controls');
     expect(within(controls).getByRole('group', { name: 'Analytics range' })).toBeInTheDocument();
-    expect(within(controls).getAllByRole('button')).toHaveLength(4);
+    expect(within(controls).getAllByRole('button')).toHaveLength(5);
     const picker = screen.getByRole('button', { name: /Custom date range, Aug 1 – Aug 17/ });
     expect(picker).toBeInTheDocument();
     await waitFor(() => expect(picker).toHaveAttribute('aria-expanded', 'true'));
@@ -191,17 +191,17 @@ describe('AnalyticsDrawer', () => {
 
   it('politely announces the selected period and recomputed expense total', async () => {
     const user = userEvent.setup();
-    let selectedRange: AnalyticsRange = 'week';
-    const { rerender } = render(
-      <AnalyticsDrawer
-        {...baseProps}
-        range={selectedRange}
-        onRangeChange={(range) => {
-          selectedRange = range;
-          rerender(<AnalyticsDrawer {...baseProps} range={selectedRange} />);
-        }}
-      />,
-    );
+    function RangeHarness() {
+      const [selectedRange, setSelectedRange] = useState<AnalyticsRange>('week');
+      return (
+        <AnalyticsDrawer
+          {...baseProps}
+          range={selectedRange}
+          onRangeChange={setSelectedRange}
+        />
+      );
+    }
+    render(<RangeHarness />);
 
     const status = screen.getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
@@ -211,6 +211,10 @@ describe('AnalyticsDrawer', () => {
     await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
     expect(status).toHaveTextContent('Month, month to date · Expenses ฿200');
 
+    await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
+    expect(status).toHaveTextContent('Year, year to date · Expenses ฿200');
+
+    await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
     expect(status).toHaveTextContent(
       'Monday, August 17, ฿120 · Dining Out ฿120 · Income ฿0 · Net -฿120',

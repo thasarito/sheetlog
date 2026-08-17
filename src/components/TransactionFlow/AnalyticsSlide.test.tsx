@@ -44,7 +44,7 @@ const summary: AnalyticsSummary = {
 };
 
 describe('AnalyticsSlide', () => {
-  it('renders the approved W/M/Q/C stacked summary and actions', async () => {
+  it('renders the approved W/M/Q/Y/C stacked summary and actions', async () => {
     const user = userEvent.setup();
     const onRangeChange = vi.fn();
     const onViewAll = vi.fn();
@@ -70,10 +70,30 @@ describe('AnalyticsSlide', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
     expect(onRangeChange).toHaveBeenCalledWith('month');
+    await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
+    expect(onRangeChange).toHaveBeenCalledWith('year');
     await user.click(screen.getByRole('button', { name: 'Custom date range' }));
     expect(onRangeChange).toHaveBeenCalledWith('custom');
     await user.click(screen.getByRole('button', { name: 'View all analytics' }));
     expect(onViewAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses year-to-date copy for a year summary', () => {
+    render(
+      <AnalyticsSlide
+        range="year"
+        onRangeChange={vi.fn()}
+        summary={{ ...summary, range: 'year' }}
+        isLoading={false}
+        isOffline={false}
+        error={null}
+        onRetry={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('spent · year to date')).toBeInTheDocument();
+    expect(screen.getByText('12% below the same elapsed days last year')).toBeInTheDocument();
   });
 
   it('uses custom range copy for a custom summary', () => {

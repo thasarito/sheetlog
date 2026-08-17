@@ -4,13 +4,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
 
 describe('AnalyticsRangeToggle', () => {
-  it('renders the compact W M Q C group and selects custom', async () => {
+  it('renders the compact W M Q Y C group and selects year and custom', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<AnalyticsRangeToggle value="week" onChange={onChange} />);
 
-    expect(screen.getByRole('group', { name: 'Analytics range' })).toHaveClass('grid-cols-4');
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    expect(screen.getByRole('group', { name: 'Analytics range' })).toHaveClass('grid-cols-5');
+    expect(screen.getAllByRole('button')).toHaveLength(5);
+    await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
+    expect(onChange).toHaveBeenCalledWith('year', expect.any(HTMLButtonElement));
     await user.click(screen.getByRole('button', { name: 'Custom date range' }));
     expect(onChange).toHaveBeenCalledWith('custom', expect.any(HTMLButtonElement));
   });

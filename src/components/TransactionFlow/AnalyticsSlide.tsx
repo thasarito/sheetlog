@@ -29,6 +29,7 @@ function rangeLabel(range: AnalyticsRange): string {
   if (range === 'week') return 'spent · last 7 days';
   if (range === 'month') return 'spent · month to date';
   if (range === 'quarter') return 'spent · quarter to date';
+  if (range === 'year') return 'spent · year to date';
   return 'spent · custom range';
 }
 
