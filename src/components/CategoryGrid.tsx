@@ -84,21 +84,32 @@ function CategoryButton({
     }
   };
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) => {
     if (!onLongPress) return;
 
-    e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-
-    const position = { x: e.clientX, y: e.clientY };
+    const target = event.currentTarget;
+    const pointerId = event.pointerId;
+    const position = { x: event.clientX, y: event.clientY };
     startPosRef.current = position;
     isLongPressRef.current = false;
 
     timerRef.current = setTimeout(() => {
+      if (!startPosRef.current) return;
       isLongPressRef.current = true;
+      if (!target.hasPointerCapture(pointerId)) {
+        target.setPointerCapture(pointerId);
+      }
       triggerHaptic();
       onLongPress(category.name, position);
     }, LONG_PRESS_THRESHOLD);
+  };
+
+  const releasePointer = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -117,8 +128,8 @@ function CategoryButton({
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    releasePointer(e);
     clearTimer();
     const position = { x: e.clientX, y: e.clientY };
 
@@ -131,8 +142,8 @@ function CategoryButton({
     startPosRef.current = null;
   };
 
-  const handlePointerCancel = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  const handlePointerCancel = (e: React.PointerEvent<HTMLButtonElement>) => {
+    releasePointer(e);
     clearTimer();
     isLongPressRef.current = false;
     startPosRef.current = null;
@@ -150,32 +161,33 @@ function CategoryButton({
   return (
     <button
       type="button"
-      className="flex flex-col items-center rounded-2xl px-2 py-3 text-center transition touch-none select-none"
+      className="flex aspect-square min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent bg-surface-2 p-2 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onPointerEnter={() => setIsHovered(true)}
-      onPointerLeave={(e) => {
+      onPointerLeave={(event) => {
         setIsHovered(false);
-        handlePointerCancel(e);
+        handlePointerCancel(event);
       }}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={(event) => event.preventDefault()}
     >
       <motion.span
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
-          isHovered ? "border-primary ring-2 ring-primary/20" : "border-border"
-        }`}
-        style={{ backgroundColor: `${color}20` }}
-        animate={{ scale: isHovered ? 1.05 : 1 }}
+        className="flex h-6 w-6 items-center justify-center"
+        animate={{ scale: isHovered ? 1.08 : 1 }}
         transition={springTransition}
       >
         <DynamicIcon name={icon} className="h-5 w-5" style={{ color }} />
       </motion.span>
       <motion.span
-        className="mt-2 text-[11px] font-semibold leading-snug"
-        animate={{ color: isHovered ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}
+        className="text-[10px] font-semibold leading-[1.15] text-muted-foreground"
+        animate={{
+          color: isHovered
+            ? "hsl(var(--foreground))"
+            : "hsl(var(--muted-foreground))",
+        }}
         transition={springTransition}
       >
         {category.name}
@@ -193,7 +205,7 @@ export function CategoryGrid({
   transactionType = "expense",
 }: CategoryGridProps) {
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div data-testid="category-grid" className="grid grid-cols-4 gap-2">
       {categories.map((category) => (
         <CategoryButton
           key={category.name}
