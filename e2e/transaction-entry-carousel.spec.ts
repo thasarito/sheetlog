@@ -317,6 +317,39 @@ test.describe("Transaction type and category carousel", () => {
     }
   });
 
+  test("reserves four category rows and gives remaining height to home activity", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const viewport = page.getByTestId("transaction-type-carousel");
+    const expenseSlide = page.getByLabel(
+      "Expense categories, slide 1 of 3",
+    );
+    const activity = page.getByRole("region", { name: "Home activity" });
+
+    const categoryBox = await viewport.boundingBox();
+    const activityBox = await activity.boundingBox();
+    if (!categoryBox || !activityBox) {
+      throw new Error("Dashboard layout missing");
+    }
+
+    const scrollStyle = await expenseSlide.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        overflowY: style.overflowY,
+        scrollbarWidth: style.scrollbarWidth,
+      };
+    });
+
+    expect(Math.abs(categoryBox.width - categoryBox.height)).toBeLessThan(1);
+    expect(activityBox.height).toBeGreaterThan(250);
+    expect(scrollStyle).toEqual({
+      overflowY: "auto",
+      scrollbarWidth: "none",
+    });
+  });
+
   test("keeps category labels and icons contrast-safe in both themes", async ({
     page,
   }) => {

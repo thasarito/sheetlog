@@ -115,6 +115,24 @@ describe("StepCategory carousel", () => {
     expect(viewport.scrollLeft).toBe(600);
   });
 
+  it("reserves a square four-row viewport with hidden vertical scrollbars", () => {
+    const viewport = renderCarousel();
+
+    expect(viewport).toHaveClass("aspect-square", "w-full", "flex-none");
+    expect(viewport).not.toHaveClass("flex-1");
+
+    for (const label of ["Expense", "Income", "Transfer"]) {
+      const slide = screen.getByLabelText(
+        new RegExp(`^${label} categories, slide`),
+      );
+      expect(slide).toHaveClass(
+        "overflow-y-auto",
+        "[scrollbar-width:none]",
+        "[&::-webkit-scrollbar]:hidden",
+      );
+    }
+  });
+
   it("suppresses category selection after a horizontal drag but preserves a tap", () => {
     renderCarousel();
     const category = screen.getByRole("button", { name: "Food Delivery" });

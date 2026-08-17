@@ -1159,7 +1159,7 @@ export function TransactionFlow() {
     {
       key: "step-type-category",
       label: "Type & category",
-      className: "h-full min-h-0",
+      className: "min-h-0",
       content: (
         <StepCategory
           form={form}
@@ -1350,7 +1350,7 @@ export function TransactionFlow() {
         {/* Main content - full height */}
         <div className="flex-1 min-h-0 pb-6">
           {step === 0 ? (
-            <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
+            <div className="grid h-full grid-rows-[minmax(0,1fr)_auto] gap-4">
               <div className="min-h-0">
                 <HomeDashboardCarousel
                   currency={currency}
@@ -1362,7 +1362,6 @@ export function TransactionFlow() {
                 <StepCard
                   animationKey={activeStep.key}
                   className={activeStep.className}
-                  containerClassName="h-full"
                 >
                   {activeStep.content}
                 </StepCard>
