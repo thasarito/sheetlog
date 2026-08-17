@@ -19,10 +19,13 @@ import { useTransactions } from "../../app/providers";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { Skeleton } from "../ui/skeleton";
 import { CarouselActionButton } from "./CarouselActionButton";
+import { TransactionBaseAmountLine } from "./TransactionHistoryItems";
 import { useLocalTransactionsQuery } from "./useLocalTransactionsQuery";
 import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
+import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
 
 type TopDashboardProps = {
+  baseCurrency: string;
   onEditTransaction?: (t: TransactionRecord) => void;
   onViewAll?: () => void;
   transactionsOverride?: TransactionRecord[];
@@ -30,6 +33,7 @@ type TopDashboardProps = {
 };
 
 export function TopDashboard({
+  baseCurrency,
   onEditTransaction,
   onViewAll,
   transactionsOverride,
@@ -89,6 +93,11 @@ export function TopDashboard({
     // reconciled records deterministically after deduplication.
     return unique.sort(compareTransactionsByDate);
   }, [localTransactions, sheetTransactions, transactionsOverride]);
+  const baseAmounts = useTransactionBaseAmounts(
+    transactions,
+    baseCurrency,
+    true,
+  );
 
   const today = useMemo(() => new Date(), []);
 
@@ -387,25 +396,31 @@ export function TopDashboard({
                         ) : null}
                       </div>
 
-                      <span
-                        className={cn(
-                          "font-medium tabular-nums whitespace-nowrap",
-                          t.type === "income"
-                            ? "text-emerald-500"
-                            : t.type === "expense"
-                            ? "text-foreground"
-                            : "text-blue-500" // transfer
-                        )}
-                      >
-                        {t.type === "expense" ? "" : "+"}
-                        {t.currency === "THB"
-                          ? "฿"
-                          : t.currency === "USD"
-                          ? "$"
-                          : t.currency}
-                        {Number(t.amount).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                        })}
+                      <span className="flex flex-col items-end whitespace-nowrap tabular-nums">
+                        <span
+                          className={cn(
+                            "font-medium",
+                            t.type === "income"
+                              ? "text-emerald-500"
+                              : t.type === "expense"
+                                ? "text-foreground"
+                                : "text-blue-500", // transfer
+                          )}
+                        >
+                          {t.type === "expense" ? "" : "+"}
+                          {t.currency === "THB"
+                            ? "฿"
+                            : t.currency === "USD"
+                              ? "$"
+                              : t.currency}
+                          {Number(t.amount).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                        <TransactionBaseAmountLine
+                          transaction={t}
+                          state={baseAmounts.states[t.id]}
+                        />
                       </span>
                     </button>
                   </div>

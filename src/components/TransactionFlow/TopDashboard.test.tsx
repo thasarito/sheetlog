@@ -3,12 +3,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "../../lib/types";
+import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
 import { TopDashboard } from "./TopDashboard";
 
 const mocks = vi.hoisted(() => ({
   local: [] as TransactionRecord[],
   recent: [] as TransactionRecord[],
   lastSyncAt: null as string | null,
+  baseAmountStates: {} as Record<string, TransactionBaseAmountState>,
 }));
 
 vi.mock("../../app/providers", () => ({
@@ -29,6 +31,14 @@ vi.mock("./useLocalTransactionsQuery", () => ({
   useLocalTransactionsQuery: () => ({
     data: mocks.local,
     isLoading: false,
+  }),
+}));
+
+vi.mock("./useTransactionBaseAmounts", () => ({
+  useTransactionBaseAmounts: () => ({
+    states: mocks.baseAmountStates,
+    refetch: vi.fn(),
+    isRefreshing: false,
   }),
 }));
 
@@ -71,6 +81,7 @@ function renderDashboard(
   return render(
     <QueryClientProvider client={queryClient}>
       <TopDashboard
+        baseCurrency="THB"
         onEditTransaction={onEditTransaction}
         onViewAll={onViewAll}
       />
@@ -92,6 +103,7 @@ beforeEach(() => {
   mocks.local = [];
   mocks.recent = [];
   mocks.lastSyncAt = null;
+  mocks.baseAmountStates = {};
 });
 
 afterEach(() => {
@@ -244,5 +256,35 @@ describe("TopDashboard local reconciliation", () => {
 
     expect(screen.getByText("฿70")).toBeInTheDocument();
     expect(screen.queryByText("฿1029")).not.toBeInTheDocument();
+  });
+
+  it("shows a quiet base-currency approximation only for a foreign row", () => {
+    mocks.recent = [
+      transaction("foreign", {
+        amount: 3,
+        currency: "USD",
+        category: "Foreign coffee",
+      }),
+      transaction("base", {
+        amount: 40,
+        currency: "THB",
+        category: "Local lunch",
+      }),
+    ];
+    mocks.baseAmountStates = {
+      foreign: { status: "ready", currency: "THB", amount: 100 },
+    };
+
+    renderDashboard();
+
+    expect(screen.getByText("≈ −฿100.00")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Foreign coffee.*approximately minus 100\.00 THB/i,
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByText("Local lunch").closest("button"),
+    ).not.toHaveTextContent("≈");
   });
 });

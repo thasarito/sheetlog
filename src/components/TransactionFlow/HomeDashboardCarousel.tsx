@@ -422,6 +422,7 @@ export function HomeDashboardCarousel({
             className="h-full min-w-full snap-center snap-always"
           >
             <TopDashboard
+              baseCurrency={baseCurrency}
               onEditTransaction={onEditTransaction}
               onViewAll={onViewAllTransactions}
             />
