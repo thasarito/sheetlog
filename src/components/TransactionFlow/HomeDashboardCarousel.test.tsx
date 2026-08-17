@@ -25,6 +25,10 @@ const analyticsDrawerCalls: Array<{
   periodOffset: number;
   onPeriodChange: (offset: number) => void;
 }> = [];
+const analyticsRangeDrawerCalls: Array<{
+  open: boolean;
+  value: DatePeriod;
+}> = [];
 
 const historyRecords = [
   {
@@ -99,10 +103,7 @@ vi.mock("./AnalyticsSlide", () => ({
         </button>
         <button
           type="button"
-          onClick={(event) => {
-            props.onRangeChange("custom");
-            props.onCustomRequest(event.currentTarget);
-          }}
+          onClick={(event) => props.onCustomRequest(event.currentTarget)}
         >
           Test custom range
         </button>
@@ -144,6 +145,42 @@ vi.mock("./AnalyticsDrawer", () => ({
   },
 }));
 
+vi.mock("./AnalyticsRangeDrawer", () => ({
+  AnalyticsRangeDrawer: ({
+    open,
+    onOpenChange,
+    value,
+    onApply,
+  }: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    value: DatePeriod;
+    onApply: (period: DatePeriod) => void;
+  }) => {
+    analyticsRangeDrawerCalls.push({ open, value });
+    if (!open) return null;
+    return (
+      <div role="dialog" aria-label="Custom date range">
+        <button
+          type="button"
+          onClick={() => {
+            onApply({
+              start: new Date(2026, 7, 5),
+              end: new Date(2026, 7, 12),
+            });
+            onOpenChange(false);
+          }}
+        >
+          Apply test custom range
+        </button>
+        <button type="button" onClick={() => onOpenChange(false)}>
+          Cancel test custom range
+        </button>
+      </div>
+    );
+  },
+}));
+
 function renderCarousel() {
   const onViewAllTransactions = vi.fn();
   render(
@@ -173,6 +210,7 @@ describe("HomeDashboardCarousel", () => {
     historyEnabledCalls.splice(0);
     analyticsSlideCalls.splice(0);
     analyticsDrawerCalls.splice(0);
+    analyticsRangeDrawerCalls.splice(0);
   });
 
   it("starts on Transactions and lazily enables history on Analytics", async () => {
@@ -345,13 +383,30 @@ describe("HomeDashboardCarousel", () => {
     expect(yearSummary?.buckets.every((bucket) => bucket.key.endsWith("-month"))).toBe(true);
 
     await user.click(screen.getByRole("button", { name: "Test custom range" }));
+    expect(analyticsSlideCalls.at(-1)?.summary?.range).toBe("year");
+    expect(
+      screen.getByRole("dialog", { name: "Custom date range" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Close analytics drawer" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Apply test custom range" }),
+    );
     const customSummary = analyticsSlideCalls.at(-1)?.summary;
     const customDrawer = analyticsDrawerCalls.at(-1);
     expect(customSummary?.range).toBe("custom");
-    expect(customSummary?.periods.current.start.getDate()).toBe(1);
-    expect(customSummary?.buckets.every((bucket) => !bucket.key.endsWith("-week"))).toBe(true);
-    expect(customDrawer?.customPeriod).toEqual(customSummary?.periods.current);
-    expect(screen.getByRole("button", { name: "Close analytics drawer" })).toBeInTheDocument();
+    expect(customSummary?.periods.current.start).toEqual(new Date(2026, 7, 5));
+    expect(customSummary?.periods.current.end.getDate()).toBe(12);
+    expect(customDrawer?.customPeriod).toEqual({
+      start: new Date(2026, 7, 5),
+      end: new Date(2026, 7, 12),
+    });
+    expect(analyticsRangeDrawerCalls.at(-1)?.open).toBe(false);
+    expect(
+      screen.queryByRole("button", { name: "Close analytics drawer" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shares the selected period with the sheet and resets it when range changes", async () => {

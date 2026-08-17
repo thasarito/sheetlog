@@ -3,6 +3,7 @@ import { Drawer as DrawerPrimitive } from "vaul";
 import { cn } from "../../lib/utils";
 
 const Drawer = DrawerPrimitive.Root;
+const DrawerNestedRoot = DrawerPrimitive.NestedRoot;
 const DrawerTrigger = DrawerPrimitive.Trigger;
 const DrawerPortal = DrawerPrimitive.Portal;
 const DrawerClose = DrawerPrimitive.Close;
@@ -115,6 +116,7 @@ DrawerDescription.displayName = DrawerPrimitive.Description.displayName;
 
 export {
   Drawer,
+  DrawerNestedRoot,
   DrawerTrigger,
   DrawerPortal,
   DrawerClose,

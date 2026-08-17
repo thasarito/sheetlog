@@ -176,15 +176,63 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
   });
 
-  it('keeps W M Q Y C on the right and opens the controlled custom range picker', async () => {
-    renderDrawer({ range: 'custom' });
+  it('cancels a nested custom range without closing Analytics or clearing filters', async () => {
+    const user = userEvent.setup();
+    renderDrawer();
 
-    const controls = screen.getByTestId('analytics-range-controls');
-    expect(within(controls).getByRole('group', { name: 'Analytics range' })).toBeInTheDocument();
-    expect(within(controls).getAllByRole('button')).toHaveLength(5);
-    const picker = screen.getByRole('button', { name: /Custom date range, Aug 1 – Aug 17/ });
-    expect(picker).toBeInTheDocument();
-    await waitFor(() => expect(picker).toHaveAttribute('aria-expanded', 'true'));
+    await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
+    await user.click(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' }));
+    expect(screen.getByText('No matching transactions')).toBeInTheDocument();
+
+    const customTrigger = screen.getByRole('button', { name: 'Custom date range' });
+    await user.click(customTrigger);
+
+    const customDialog = screen.getByRole('dialog', { name: 'Custom date range' });
+    expect(customDialog).toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: 'Analytics', hidden: true }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel custom range' }));
+
+    expect(customDialog).toHaveAttribute('data-state', 'closed');
+    expect(screen.getByRole('dialog', { name: 'Analytics' })).toBeVisible();
+    expect(screen.getByText('No matching transactions')).toBeInTheDocument();
+    await waitFor(() => expect(customTrigger).toHaveFocus());
+  });
+
+  it('applies a nested custom range and leaves Analytics open', async () => {
+    const user = userEvent.setup();
+
+    function CustomRangeHarness() {
+      const [selectedRange, setSelectedRange] = useState<AnalyticsRange>('month');
+      const [selectedPeriod, setSelectedPeriod] = useState(customPeriod);
+      return (
+        <AnalyticsDrawer
+          {...baseProps}
+          range={selectedRange}
+          onRangeChange={setSelectedRange}
+          customPeriod={selectedPeriod}
+          onCustomPeriodChange={setSelectedPeriod}
+        />
+      );
+    }
+
+    render(<CustomRangeHarness />);
+    const customTrigger = screen.getByRole('button', { name: 'Custom date range' });
+    await user.click(customTrigger);
+    const customDialog = screen.getByRole('dialog', { name: 'Custom date range' });
+    await user.click(screen.getByRole('button', { name: /August 15th, 2026/ }));
+    await user.click(screen.getByRole('button', { name: /August 16th, 2026/ }));
+    await user.click(screen.getByRole('button', { name: 'Apply custom range' }));
+
+    expect(customDialog).toHaveAttribute('data-state', 'closed');
+    expect(screen.getByRole('dialog', { name: 'Analytics' })).toBeVisible();
+    expect(
+      screen.getByRole('status', { name: 'Analytics summary update' }),
+    ).toHaveTextContent(
+      'Custom, Aug 15 through Aug 16 · Expenses ฿80',
+    );
+    expect(customTrigger).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('resets drill-down when the analytics scope changes', async () => {

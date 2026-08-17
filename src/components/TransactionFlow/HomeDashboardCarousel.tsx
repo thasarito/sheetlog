@@ -11,6 +11,7 @@ import { tryParseDate } from "../../lib/date-utils";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import { AnalyticsDrawer } from "./AnalyticsDrawer";
+import { AnalyticsRangeDrawer } from "./AnalyticsRangeDrawer";
 import {
   buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
@@ -53,6 +54,7 @@ export function HomeDashboardCarousel({
   const [range, setRange] = useState<AnalyticsRange>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [drawerCurrency, setDrawerCurrency] = useState(currency);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
   const [customPeriod, setCustomPeriod] = useState(() => ({
@@ -62,6 +64,7 @@ export function HomeDashboardCarousel({
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
   const analyticsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const customRangeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const pointerStart = useRef<{
     startX: number;
     startY: number;
@@ -71,7 +74,9 @@ export function HomeDashboardCarousel({
   } | null>(null);
   const suppressClick = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
-  const history = useTransactionHistoryQuery(historyActivated || analyticsOpen);
+  const history = useTransactionHistoryQuery(
+    historyActivated || analyticsOpen || customRangeOpen,
+  );
   const transactions = history.records;
   const periodOptions = useMemo(
     () => buildAnalyticsPeriodOptions(range, transactions, analyticsNow),
@@ -106,6 +111,13 @@ export function HomeDashboardCarousel({
     values.add(currency);
     return [...values].sort();
   }, [currency, transactions]);
+  const earliestDate = useMemo(() => {
+    const dates = transactions
+      .map((transaction) => tryParseDate(transaction.date))
+      .filter((date): date is Date => date !== null);
+    if (dates.length === 0) return customPeriod.start;
+    return new Date(Math.min(...dates.map((date) => date.getTime())));
+  }, [customPeriod.start, transactions]);
   const updatedAt = history.meta
     ? tryParseDate(history.meta.capturedAt)?.getTime()
     : undefined;
@@ -262,9 +274,9 @@ export function HomeDashboardCarousel({
   };
 
   const handleCustomRangeRequest = (trigger: HTMLButtonElement) => {
-    analyticsTriggerRef.current = trigger;
+    customRangeTriggerRef.current = trigger;
     setHistoryActivated(true);
-    setAnalyticsOpen(true);
+    setCustomRangeOpen(true);
   };
 
   const handleRangeChange = (nextRange: AnalyticsRange) => {
@@ -381,6 +393,19 @@ export function HomeDashboardCarousel({
           {SLIDES[activeIndex]}, slide {activeIndex + 1} of {SLIDES.length}
         </p>
       </section>
+
+      <AnalyticsRangeDrawer
+        open={customRangeOpen}
+        onOpenChange={setCustomRangeOpen}
+        value={customPeriod}
+        minDate={earliestDate}
+        maxDate={analyticsNow}
+        onApply={(period) => {
+          setCustomPeriod(period);
+          setRange("custom");
+        }}
+        returnFocusTo={customRangeTriggerRef.current}
+      />
 
       <AnalyticsDrawer
         open={analyticsOpen}

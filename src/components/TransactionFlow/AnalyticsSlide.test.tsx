@@ -70,15 +70,17 @@ const periodProps = {
 };
 
 describe('AnalyticsSlide', () => {
-  it('renders the approved W/M/Q/Y/C stacked summary and actions', async () => {
+  it('routes W M Q Y immediately and requests Custom without committing it', async () => {
     const user = userEvent.setup();
     const onRangeChange = vi.fn();
+    const onCustomRequest = vi.fn();
     const onViewAll = vi.fn();
     render(
       <AnalyticsSlide
         {...periodProps}
         range="week"
         onRangeChange={onRangeChange}
+        onCustomRequest={onCustomRequest}
         summary={summary}
         isLoading={false}
         isOffline={false}
@@ -90,7 +92,6 @@ describe('AnalyticsSlide', () => {
 
     expect(screen.getByText('฿3,240')).toBeInTheDocument();
     expect(screen.getByText('12% below previous 7 days')).toBeInTheDocument();
-    expect(screen.getByText(/Dining Out/)).toBeInTheDocument();
     expect(screen.getByTestId('segment-day-0-category-0')).toHaveAttribute(
       'data-tone',
       'emerald',
@@ -100,11 +101,14 @@ describe('AnalyticsSlide', () => {
     expect(chart).toHaveClass('min-h-10', 'flex-1');
     expect(chart).not.toHaveClass('h-10');
     await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
-    expect(onRangeChange).toHaveBeenCalledWith('month');
     await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
-    expect(onRangeChange).toHaveBeenCalledWith('year');
+    expect(onRangeChange).toHaveBeenNthCalledWith(1, 'month');
+    expect(onRangeChange).toHaveBeenNthCalledWith(2, 'year');
+
     await user.click(screen.getByRole('button', { name: 'Custom date range' }));
-    expect(onRangeChange).toHaveBeenCalledWith('custom');
+    expect(onRangeChange).not.toHaveBeenCalledWith('custom');
+    expect(onCustomRequest).toHaveBeenCalledWith(expect.any(HTMLButtonElement));
+
     await user.click(screen.getByRole('button', { name: 'View all analytics' }));
     expect(onViewAll).toHaveBeenCalledTimes(1);
   });
