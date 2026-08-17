@@ -179,6 +179,14 @@ describe("StepAmount nearby place suggestions", () => {
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
+
+  it("reserves the nearby-place slot when nearby places are unavailable", () => {
+    render(<StepAmountHarness placesEnabled={false} />);
+
+    const slot = screen.getByTestId("nearby-place-slot");
+    expect(slot).toHaveClass("min-h-[42px]");
+    expect(slot).toBeEmptyDOMElement();
+  });
 });
 
 describe("StepAmount note clearing", () => {
@@ -351,4 +359,5 @@ describe("StepAmount existing caller defaults", () => {
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
+
 });

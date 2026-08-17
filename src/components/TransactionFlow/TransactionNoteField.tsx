@@ -370,16 +370,16 @@ export function TransactionNoteField({
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {liveStatus}
       </span>
-      {placesEnabled && value.trim() === "" ? (
-        <div>
+      <div data-testid="nearby-place-slot" className="min-h-[42px]">
+        {placesEnabled && value.trim() === "" ? (
           <NearbyPlaceChips
             suggestions={places?.nearbySuggestions ?? []}
             isLoading={places?.isNearbyLoading ?? false}
             onPointerDown={(event) => event.preventDefault()}
             onSelect={handleNearbySelect}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }
