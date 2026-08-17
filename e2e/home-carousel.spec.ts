@@ -1,5 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { differenceInCalendarDays, format, startOfQuarter, subDays } from 'date-fns';
+import {
+  differenceInCalendarDays,
+  differenceInCalendarMonths,
+  format,
+  startOfQuarter,
+  startOfYear,
+  subDays,
+} from 'date-fns';
 import type { TransactionRecord, TransactionType } from '../src/lib/types';
 
 function transaction(
@@ -161,6 +168,19 @@ test.describe('Home Transactions and Analytics carousel', () => {
     );
     await expect(
       analyticsSlide.locator('[data-testid^="analytics-bar-"][data-testid$="-week"]').first(),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Year, year to date' }).click();
+    await expect(page.getByRole('button', { name: 'Year, year to date' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const expectedYearMonths =
+      differenceInCalendarMonths(new Date(), startOfYear(new Date())) + 1;
+    await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
+      expectedYearMonths,
+    );
+    await expect(
+      analyticsSlide.locator('[data-testid^="analytics-bar-"][data-testid$="-month"]').first(),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Month, month to date' }).click();
 
