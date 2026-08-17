@@ -1,9 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
+  addDays,
   differenceInCalendarDays,
   endOfQuarter,
   format,
   getDaysInMonth,
+  startOfMonth,
   startOfQuarter,
   subDays,
 } from 'date-fns';
@@ -346,6 +348,27 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
       getDaysInMonth(analyticsNow),
     );
+    const monthStart = startOfMonth(analyticsNow);
+    const expectedMonthAxis = Array.from(
+      { length: getDaysInMonth(analyticsNow) },
+      (_, index) =>
+        index % 7 === 0
+          ? String(index + 1)
+          : format(addDays(monthStart, index), 'EEEEE'),
+    );
+    const compactMonthAxis = analyticsSlide.getByTestId('analytics-month-axis');
+    const compactMonthLabels = compactMonthAxis.getByTestId('analytics-month-axis-label');
+    await expect(compactMonthLabels).toHaveCount(expectedMonthAxis.length);
+    expect(await compactMonthLabels.allTextContents()).toEqual(expectedMonthAxis);
+    expect(await compactMonthAxis.textContent()).not.toContain('…');
+    await expect
+      .poll(() =>
+        analyticsSlide
+          .locator('[data-testid^="segment-"]')
+          .first()
+          .evaluate((segment) => segment.parentElement?.getBoundingClientRect().width ?? 0),
+      )
+      .toBeGreaterThan(6);
     await page.getByRole('button', { name: 'Quarter' }).click();
     const expectedQuarterWeeks = Math.ceil(
       (differenceInCalendarDays(endOfQuarter(analyticsNow), startOfQuarter(analyticsNow)) + 1) / 7,
@@ -410,6 +433,11 @@ test.describe('Home Transactions and Analytics carousel', () => {
     ).toHaveCount(0);
     await expect(analyticsDialog.getByText(/Frankfurter|All currencies/i)).toHaveCount(0);
     await expect(analyticsDialog.getByText('Transfers are excluded from totals.')).toHaveCount(0);
+    const sheetMonthAxis = analyticsDialog.getByTestId('analytics-month-axis');
+    await expect(sheetMonthAxis).toBeVisible();
+    expect(
+      await sheetMonthAxis.getByTestId('analytics-month-axis-label').allTextContents(),
+    ).toEqual(expectedMonthAxis);
 
     const firstAnalyticsBar = analyticsDialog
       .getByRole('listbox', { name: 'Select analytics period' })
