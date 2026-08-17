@@ -36,6 +36,8 @@ const state = vi.hoisted(() => ({
   historyEnabled: vi.fn(),
   readRates: vi.fn(),
   backfill: vi.fn(),
+  metadataWriteError: null as Error | null,
+  metadataWriteCount: 0,
 }));
 
 vi.mock('../../app/providers', () => ({
@@ -55,6 +57,22 @@ vi.mock('./exchangeRates', async (importOriginal) => ({
   readHistoricalRates: state.readRates,
   backfillHistoricalRateChunks: state.backfill,
 }));
+
+vi.mock('./analyticsSyncMetadata', async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import('./analyticsSyncMetadata')
+  >();
+  return {
+    ...original,
+    writeAnalyticsSyncMetadata: async (
+      ...args: Parameters<typeof original.writeAnalyticsSyncMetadata>
+    ) => {
+      state.metadataWriteCount += 1;
+      if (state.metadataWriteError) throw state.metadataWriteError;
+      return original.writeAnalyticsSyncMetadata(...args);
+    },
+  };
+});
 
 function transaction(
   currency = 'USD',
@@ -110,6 +128,14 @@ function createHarness() {
   return { queryClient, wrapper: Wrapper };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 describe('useAnalyticsSync', () => {
   beforeEach(async () => {
     state.sheetId = 'sheet-a';
@@ -138,6 +164,8 @@ describe('useAnalyticsSync', () => {
       refreshFailed: false,
     });
     state.backfill.mockReset().mockResolvedValue({ completed: [], failed: [] });
+    state.metadataWriteError = null;
+    state.metadataWriteCount = 0;
     await db.settings.clear();
   });
 
@@ -233,6 +261,35 @@ describe('useAnalyticsSync', () => {
     );
   });
 
+  it('does not reuse a prior synced marker after the current history refresh fails', async () => {
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    const { wrapper } = createHarness();
+    const rendered = renderHook(() => useAnalyticsSync('THB'), { wrapper });
+    await waitFor(() => expect(rendered.result.current.status).toBe('synced'));
+
+    act(() => {
+      state.history.remoteStatus = 'error';
+      state.history.remoteError = new Error('Google unavailable');
+      rendered.rerender();
+    });
+
+    expect(rendered.result.current.status).toBe('incomplete');
+  });
+
+  it('reports one metadata write failure without retrying in a render loop', async () => {
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    state.metadataWriteError = new Error('IndexedDB unavailable');
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useAnalyticsSync('THB'), { wrapper });
+
+    await waitFor(() => expect(state.metadataWriteCount).toBeGreaterThan(0));
+    await waitFor(() => expect(result.current.status).toBe('incomplete'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(state.metadataWriteCount).toBe(1);
+  });
+
   it('replaces a stale completion marker when local FX requirements change', async () => {
     state.history.isDownloading = false;
     state.history.remoteStatus = 'success';
@@ -291,6 +348,40 @@ describe('useAnalyticsSync', () => {
     ]);
   });
 
+  it('does not start automatic and forced backfills concurrently', async () => {
+    state.history.records = [transaction('THB')];
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    state.readRates.mockResolvedValue({ rates: [], refreshFailed: false });
+    const refresh = deferred<{
+      data: { records: TransactionRecord[]; meta: typeof state.history.meta };
+    }>();
+    state.history.refresh.mockReturnValue(refresh.promise);
+    const { wrapper } = createHarness();
+    const rendered = renderHook(() => useAnalyticsSync('THB'), { wrapper });
+    await waitFor(() => expect(rendered.result.current.status).toBe('synced'));
+    state.backfill.mockClear();
+
+    act(() => rendered.result.current.resync());
+    await waitFor(() => expect(state.history.refresh).toHaveBeenCalledTimes(1));
+    act(() => {
+      state.history.records = [transaction('THB'), transaction('EUR')];
+      rendered.rerender();
+    });
+    await waitFor(() => expect(state.readRates).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(state.backfill).not.toHaveBeenCalled();
+
+    await act(async () => {
+      refresh.resolve({
+        data: { records: [transaction('EUR')], meta: state.history.meta },
+      });
+    });
+    await waitFor(() => expect(state.backfill).toHaveBeenCalledTimes(1));
+  });
+
   it('reports an incomplete manual resync when a forced rate refresh fails', async () => {
     state.history.isDownloading = false;
     state.history.remoteStatus = 'success';
@@ -298,8 +389,11 @@ describe('useAnalyticsSync', () => {
       data: { records: state.history.records, meta: state.history.meta },
     });
     const { wrapper } = createHarness();
-    const { result } = renderHook(() => useAnalyticsSync('THB'), { wrapper });
-    await waitFor(() => expect(result.current.status).toBe('synced'));
+    const rendered = renderHook(
+      ({ baseCurrency }) => useAnalyticsSync(baseCurrency),
+      { initialProps: { baseCurrency: 'THB' }, wrapper },
+    );
+    await waitFor(() => expect(rendered.result.current.status).toBe('synced'));
     state.backfill.mockResolvedValue({
       completed: [],
       failed: [
@@ -310,10 +404,14 @@ describe('useAnalyticsSync', () => {
       ],
     });
 
-    act(() => result.current.resync());
+    act(() => rendered.result.current.resync());
 
-    await waitFor(() => expect(result.current.isResyncing).toBe(false));
-    await waitFor(() => expect(result.current.status).toBe('incomplete'));
+    await waitFor(() => expect(rendered.result.current.isResyncing).toBe(false));
+    await waitFor(() => expect(rendered.result.current.status).toBe('incomplete'));
     expect(await db.settings.get('analytics-sync:sheet-a:THB')).toBeUndefined();
+
+    act(() => rendered.rerender({ baseCurrency: 'USD' }));
+    await waitFor(() => expect(rendered.result.current.status).toBe('synced'));
+    expect(await db.settings.get('analytics-sync:sheet-a:USD')).toBeDefined();
   });
 });

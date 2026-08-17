@@ -7,6 +7,7 @@ import {
   UpdateTransactionRecordError,
   useUpdateTransactionMutation,
 } from "./useUpdateTransactionMutation";
+import { transactionQueryKeys } from "./transactionQueryKeys";
 
 const mocks = vi.hoisted(() => ({
   updateTransaction: vi.fn(),
@@ -48,6 +49,7 @@ function createHarness() {
     },
   });
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+  const refetch = vi.spyOn(queryClient, "refetchQueries");
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -55,7 +57,7 @@ function createHarness() {
       </QueryClientProvider>
     );
   }
-  return { invalidate, queryClient, wrapper: Wrapper };
+  return { invalidate, queryClient, refetch, wrapper: Wrapper };
 }
 
 describe("useUpdateTransactionMutation", () => {
@@ -97,7 +99,7 @@ describe("useUpdateTransactionMutation", () => {
     mocks.updateTransaction.mockResolvedValue(
       transaction({ status: "synced", error: undefined, currency: "USD" }),
     );
-    const { invalidate, wrapper } = createHarness();
+    const { invalidate, refetch, wrapper } = createHarness();
     const { result } = renderHook(() => useUpdateTransactionMutation(), {
       wrapper,
     });
@@ -112,6 +114,10 @@ describe("useUpdateTransactionMutation", () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["transactionHistory"],
       refetchType: "none",
+    });
+    expect(refetch).toHaveBeenCalledWith({
+      queryKey: transactionQueryKeys.historyRemoteAll,
+      type: "active",
     });
   });
 });

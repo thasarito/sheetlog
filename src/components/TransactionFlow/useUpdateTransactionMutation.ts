@@ -42,7 +42,7 @@ export function useUpdateTransactionMutation() {
       return record;
     },
     onSettled: async () => {
-      await Promise.all([
+      const invalidations = [
         queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
         queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
         queryClient.invalidateQueries({
@@ -53,7 +53,12 @@ export function useUpdateTransactionMutation() {
           queryKey: transactionQueryKeys.reimbursements,
         }),
         queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
-      ]);
+      ];
+      void queryClient.refetchQueries({
+        queryKey: transactionQueryKeys.historyRemoteAll,
+        type: "active",
+      });
+      await Promise.all(invalidations);
     },
   });
 }

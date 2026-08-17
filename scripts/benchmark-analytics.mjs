@@ -20,30 +20,70 @@ function percentile(values, fraction) {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
 }
 
-function makeBrowserTransactions(size) {
-  const start = Date.parse('2025-01-01T12:00:00.000Z');
-  const end = NOW.getTime();
-  const currencies = ['THB', 'USD', 'EUR', 'JPY', 'GBP'];
-  const types = ['expense', 'income', 'transfer'];
-  const categories = ['Dining Out', 'Groceries', 'Transport', 'Shopping', 'Health'];
-  return Array.from({ length: size }, (_, index) => {
-    const timestamp = new Date(
-      start + Math.floor(((end - start) * index) / Math.max(1, size - 1)),
-    ).toISOString();
-    return {
-      id: `browser-${index}`,
-      type: types[index % types.length],
-      amount: 10 + ((index * 7919) % 75000) / 100,
-      currency: currencies[(index * 7) % currencies.length],
-      account: index % 2 ? 'Card' : 'Cash',
-      for: 'Me',
-      category: categories[index % categories.length],
-      date: timestamp,
+function makeBrowserTransactions() {
+  const categories = [
+    'Food Delivery',
+    'Dining Out',
+    'Groceries & Home Supplies',
+    'Transport',
+    'Travel',
+    'Subscriptions',
+  ];
+  const rows = [];
+  const start = new Date(Date.UTC(2025, 0, 1, 12));
+  const end = new Date(Date.UTC(2026, 7, 17, 12));
+  let day = 0;
+
+  for (
+    let cursor = new Date(start);
+    cursor <= end;
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString();
+    const dateKey = date.slice(0, 10);
+    const common = {
+      type: 'expense',
+      for: 'Self',
+      date,
       status: 'synced',
-      createdAt: timestamp,
-      updatedAt: timestamp,
+      createdAt: date,
+      updatedAt: date,
+      sheetId: 'mock-sheet-id-dev',
+      sheetRowValid: true,
     };
-  });
+    rows.push({
+      ...common,
+      id: `thb-${dateKey}`,
+      amount: 120 + (day % 17) * 13,
+      currency: 'THB',
+      account: day % 2 === 0 ? 'Cash' : 'Bank',
+      category: categories[day % categories.length],
+      note: 'Daily THB expense',
+    });
+    rows.push({
+      ...common,
+      id: `usd-${dateKey}`,
+      amount: 4 + (day % 11),
+      currency: 'USD',
+      account: 'Credit Card',
+      category: categories[(day + 2) % categories.length],
+      note: 'Daily USD expense',
+    });
+    if (cursor.getUTCDate() === 1) {
+      rows.push({
+        ...common,
+        id: `income-${dateKey}`,
+        type: 'income',
+        amount: 60_000,
+        currency: 'THB',
+        account: 'Bank',
+        category: 'Salary',
+        note: 'Monthly salary',
+      });
+    }
+    day += 1;
+  }
+  return rows;
 }
 
 async function waitForServer(child) {
@@ -84,9 +124,32 @@ async function runBrowserBenchmark() {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
-    const transactions = makeBrowserTransactions(1_208);
+    const transactions = makeBrowserTransactions();
+    if (
+      transactions.length !== 1_208 ||
+      transactions.filter(
+        (row) => row.type === 'expense' && row.currency === 'USD',
+      ).length !== 594
+    ) {
+      throw new Error('Browser benchmark fixture no longer matches the baseline');
+    }
     await page.addInitScript((rows) => {
       window.localStorage.setItem('sheetlog.mock.transactions', JSON.stringify(rows));
+      window.localStorage.setItem(
+        'sheetlog.mock.analyticsBaseCurrency',
+        JSON.stringify({
+          currency: 'THB',
+          updatedAt: '2026-08-17T00:00:00.000Z',
+        }),
+      );
+      window.localStorage.setItem(
+        'sheetlog.mock.analyticsBigSpendingThreshold',
+        JSON.stringify({
+          amount: null,
+          currency: 'THB',
+          updatedAt: '2026-08-17T00:00:00.000Z',
+        }),
+      );
     }, transactions);
 
     let frankfurterRequests = 0;

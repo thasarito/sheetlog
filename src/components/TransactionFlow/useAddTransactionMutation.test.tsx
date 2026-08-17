@@ -32,7 +32,9 @@ function createHarness() {
       mutations: { retry: false },
     },
   });
+  const realRefetch = queryClient.refetchQueries.bind(queryClient);
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+  const refetch = vi.spyOn(queryClient, "refetchQueries");
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -40,7 +42,7 @@ function createHarness() {
       </QueryClientProvider>
     );
   }
-  return { invalidate, queryClient, wrapper: Wrapper };
+  return { invalidate, queryClient, realRefetch, refetch, wrapper: Wrapper };
 }
 
 function validValues(
@@ -91,7 +93,7 @@ describe("useAddTransactionMutation", () => {
   });
 
   it("omits the place property for ordinary free-text transactions", async () => {
-    const { invalidate, queryClient, wrapper } = createHarness();
+    const { invalidate, queryClient, refetch, wrapper } = createHarness();
     const { result } = renderHook(() => useAddTransactionMutation(), {
       wrapper,
     });
@@ -106,6 +108,29 @@ describe("useAddTransactionMutation", () => {
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: transactionQueryKeys.history,
         refetchType: "none",
+      });
+      expect(refetch).toHaveBeenCalledWith({
+        queryKey: ["transactionHistory", "remote"],
+        type: "active",
+      });
+    });
+    queryClient.clear();
+  });
+
+  it("does not wait for the background remote history refresh", async () => {
+    const { queryClient, realRefetch, refetch, wrapper } = createHarness();
+    refetch.mockImplementation((filters, options) =>
+      filters?.queryKey?.[1] === "remote"
+        ? new Promise(() => {})
+        : realRefetch(filters, options),
+    );
+    const { result } = renderHook(() => useAddTransactionMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync(validValues())).resolves.toMatchObject({
+        id: "transaction-1",
       });
     });
     queryClient.clear();

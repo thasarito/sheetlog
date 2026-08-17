@@ -87,7 +87,7 @@ export function useCreateReimbursementMutation() {
       return record;
     },
     onSettled: async (_record, _error, variables) => {
-      await Promise.all([
+      const invalidations = [
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.local,
         }),
@@ -103,7 +103,12 @@ export function useCreateReimbursementMutation() {
             variables.source.id,
           ),
         }),
-      ]);
+      ];
+      void queryClient.refetchQueries({
+        queryKey: transactionQueryKeys.historyRemoteAll,
+        type: "active",
+      });
+      await Promise.all(invalidations);
     },
   });
 }
