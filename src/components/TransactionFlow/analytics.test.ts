@@ -837,6 +837,95 @@ describe('multi-currency analytics', () => {
   });
 });
 
+describe('no big spending analytics', () => {
+  it('excludes equal and larger expenses from current and comparison scopes', () => {
+    const summary = readySummary({
+      transactions: [
+        transaction({ id: 'below', date: '2026-08-17T10:00:00', amount: 9_999 }),
+        transaction({ id: 'equal', date: '2026-08-18T10:00:00', amount: 10_000 }),
+        transaction({ id: 'above', date: '2026-08-19T10:00:00', amount: 20_000 }),
+        transaction({ id: 'prior-below', date: '2026-08-16T10:00:00', amount: 8_000 }),
+        transaction({ id: 'prior-equal', date: '2026-08-15T10:00:00', amount: 10_000 }),
+      ],
+      range: 'week',
+      baseCurrency: 'THB',
+      bigSpendingThreshold: 10_000,
+      rates: [],
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    expect(summary.expenseTotal).toBe(9_999);
+    expect(summary.previousExpenseTotal).toBe(8_000);
+    expect(summary.excludedBigSpendingCount).toBe(2);
+    expect(summary.transactions.map((row) => row.id)).toEqual(['below']);
+    expect(summary.buckets.flatMap((bucket) => bucket.transactionIds)).toEqual(['below']);
+  });
+
+  it('compares foreign expenses after conversion and retains other transaction types', () => {
+    const summary = readySummary({
+      transactions: [
+        transaction({
+          id: 'usd-large',
+          date: '2026-08-17T10:00:00',
+          amount: 300,
+          currency: 'USD',
+        }),
+        transaction({ id: 'refund', date: '2026-08-17T09:00:00', amount: -20_000 }),
+        transaction({
+          id: 'income',
+          date: '2026-08-17T08:00:00',
+          type: 'income',
+          amount: 30_000,
+        }),
+        transaction({
+          id: 'transfer',
+          date: '2026-08-17T07:00:00',
+          type: 'transfer',
+          amount: 30_000,
+        }),
+      ],
+      range: 'week',
+      baseCurrency: 'THB',
+      bigSpendingThreshold: 10_000,
+      rates: [
+        {
+          id: 'THB:USD:2026-08-17',
+          base: 'THB',
+          quote: 'USD',
+          date: '2026-08-17',
+          rate: 0.03,
+          fetchedAt: '2026-08-17T12:00:00.000Z',
+        },
+      ],
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    expect(summary.excludedBigSpendingCount).toBe(1);
+    expect(summary.expenseTotal).toBe(-20_000);
+    expect(summary.incomeTotal).toBe(30_000);
+    expect(summary.transactions.map((row) => row.id)).toEqual([
+      'refund',
+      'income',
+      'transfer',
+    ]);
+  });
+
+  it('preserves existing results when the threshold is omitted', () => {
+    const summary = readySummary({
+      transactions: [
+        transaction({ id: 'large', date: '2026-08-17T10:00:00', amount: 20_000 }),
+      ],
+      range: 'week',
+      baseCurrency: 'THB',
+      rates: [],
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    expect(summary.expenseTotal).toBe(20_000);
+    expect(summary.excludedBigSpendingCount).toBe(0);
+  });
+});
+
 describe('getOfflineFreshness', () => {
   it('reports when the complete cache was last updated', () => {
     expect(getOfflineFreshness(new Date(2026, 7, 17, 9, 30).getTime())).toBe(
