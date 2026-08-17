@@ -3,6 +3,7 @@ import { parseTransactionRow } from '../../lib/transactionRows';
 import type { TransactionRecord, TransactionType } from '../../lib/types';
 import * as analyticsModule from './analytics';
 import {
+  buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
   getAnalyticsPeriods,
   getComparisonText,
@@ -102,6 +103,96 @@ describe('getAnalyticsPeriods', () => {
       end: new Date(2026, 7, 4, 23, 59, 59, 999),
     });
   });
+
+  it('uses complete historical calendar periods while current periods remain to-date', () => {
+    const now = new Date(2026, 7, 17, 12);
+
+    expect(getAnalyticsPeriods('month', now, undefined, 0).current).toEqual({
+      start: new Date(2026, 7, 1),
+      end: new Date(2026, 7, 17, 23, 59, 59, 999),
+    });
+    expect(getAnalyticsPeriods('month', now, undefined, -1)).toEqual({
+      current: {
+        start: new Date(2026, 6, 1),
+        end: new Date(2026, 6, 31, 23, 59, 59, 999),
+      },
+      comparison: {
+        start: new Date(2026, 5, 1),
+        end: new Date(2026, 5, 30, 23, 59, 59, 999),
+      },
+    });
+  });
+
+  it('moves through adjacent rolling seven-day blocks', () => {
+    const result = getAnalyticsPeriods('week', new Date(2026, 7, 17, 12), undefined, -1);
+
+    expect(result.current).toEqual({
+      start: new Date(2026, 7, 4),
+      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+    });
+    expect(result.comparison).toEqual({
+      start: new Date(2026, 6, 28),
+      end: new Date(2026, 7, 3, 23, 59, 59, 999),
+    });
+  });
+});
+
+describe('buildAnalyticsPeriodOptions', () => {
+  it('builds every continuous local period including empty gaps', () => {
+    const options = buildAnalyticsPeriodOptions(
+      'month',
+      [transaction({ id: 'old', date: '2026-05-09T12:00:00', amount: 10 })],
+      new Date(2026, 7, 17, 12),
+    );
+
+    expect(options.map(({ offset, label }) => ({ offset, label }))).toEqual([
+      { offset: -3, label: 'May 2026' },
+      { offset: -2, label: 'June 2026' },
+      { offset: -1, label: 'July 2026' },
+      { offset: 0, label: 'August 2026' },
+    ]);
+  });
+
+  it('keeps only current when local history is empty or unavailable', () => {
+    const options = buildAnalyticsPeriodOptions(
+      'year',
+      [
+        transaction({ id: 'future', date: '2027-01-01T12:00:00', amount: 10 }),
+        {
+          ...transaction({ id: 'invalid', date: '2024-01-01T12:00:00', amount: 10 }),
+          sheetRowValid: false,
+        },
+      ],
+      new Date(2026, 7, 17, 12),
+    );
+
+    expect(options.map(({ offset, label }) => ({ offset, label }))).toEqual([
+      { offset: 0, label: '2026' },
+    ]);
+  });
+
+  it('uses every valid local transaction regardless of type or currency as its bound', () => {
+    const options = buildAnalyticsPeriodOptions(
+      'quarter',
+      [
+        transaction({
+          id: 'old-transfer',
+          date: '2025-11-02T12:00:00',
+          type: 'transfer',
+          amount: 10,
+          currency: 'USD',
+        }),
+      ],
+      new Date(2026, 7, 17, 12),
+    );
+
+    expect(options.map(({ offset, label }) => ({ offset, label }))).toEqual([
+      { offset: -3, label: 'Q4 2025' },
+      { offset: -2, label: 'Q1 2026' },
+      { offset: -1, label: 'Q2 2026' },
+      { offset: 0, label: 'Q3 2026' },
+    ]);
+  });
 });
 
 describe.each<[AnalyticsRange, number]>([
@@ -119,6 +210,25 @@ describe.each<[AnalyticsRange, number]>([
 
     expect(summary.buckets).toHaveLength(expectedBuckets);
   });
+});
+
+it('builds a summary for the selected historical offset', () => {
+  const summary = buildAnalyticsSummary({
+    transactions: [
+      transaction({ id: 'july', date: '2026-07-20T10:00:00', amount: 70 }),
+      transaction({ id: 'august', date: '2026-08-10T10:00:00', amount: 80 }),
+    ],
+    range: 'month',
+    currency: 'THB',
+    now: new Date(2026, 7, 17, 12),
+    periodOffset: -1,
+  });
+
+  expect(summary.periods.current).toEqual({
+    start: new Date(2026, 6, 1),
+    end: new Date(2026, 6, 31, 23, 59, 59, 999),
+  });
+  expect(summary.expenseTotal).toBe(70);
 });
 
 it('builds one labeled bucket per elapsed month for year to date', () => {
@@ -535,6 +645,15 @@ describe('getComparisonText', () => {
     );
     expect(getComparisonText({ direction: 'above', percentage: 8 }, 'year')).toBe(
       '8% above the same elapsed days last year',
+    );
+    expect(getComparisonText({ direction: 'below', percentage: 12 }, 'month', -1)).toBe(
+      '12% below previous month',
+    );
+    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'quarter', -1)).toBe(
+      '8% above previous quarter',
+    );
+    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'year', -1)).toBe(
+      '8% above previous year',
     );
   });
 });
