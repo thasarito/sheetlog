@@ -32,6 +32,7 @@ import {
 import { SETTINGS_SECTIONS, type SettingsSection } from '../lib/settingsSync';
 import type { CategoryItem, QuickNote, TransactionType } from '../lib/types';
 import { AppearancePicker } from './AppearancePicker';
+import { AnalyticsBaseCurrencySetting } from './AnalyticsBaseCurrencySetting';
 import { DynamicIcon } from './DynamicIcon';
 import { QuickNoteFlow } from './QuickNotes/QuickNoteFlow';
 import { persistQuickNotesOptimistically } from './QuickNotes/quickNotesPersistence';
@@ -371,6 +372,8 @@ export function SettingsDrawer({
   const {
     onboarding,
     isSyncing,
+    isUpdating,
+    updateOnboarding,
     refreshSettings,
     settingsSyncResult,
     settingsSyncState,
@@ -1056,6 +1059,22 @@ export function SettingsDrawer({
                                 </SettingsGroup>
                               </>
                             ) : null}
+
+                            <SettingsSectionLabel>ANALYTICS</SettingsSectionLabel>
+                            <SettingsGroup>
+                              <AnalyticsBaseCurrencySetting
+                                value={onboarding.analyticsBaseCurrency}
+                                disabled={isUpdating}
+                                onChange={(analyticsBaseCurrency) => {
+                                  void updateOnboarding({
+                                    analyticsBaseCurrency,
+                                    analyticsBaseCurrencyUpdatedAt: new Date().toISOString(),
+                                  }).catch(() =>
+                                    onToast('Base currency saved locally; sync pending'),
+                                  );
+                                }}
+                              />
+                            </SettingsGroup>
 
                             <SettingsSectionLabel>MANAGE</SettingsSectionLabel>
                             <SettingsGroup>
