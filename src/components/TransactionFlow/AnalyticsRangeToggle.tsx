@@ -10,12 +10,13 @@ const OPTIONS: Array<{ value: AnalyticsRange; short: string; label: string }> = 
   { value: 'week', short: 'W', label: 'Week, last 7 days' },
   { value: 'month', short: 'M', label: 'Month, month to date' },
   { value: 'quarter', short: 'Q', label: 'Quarter, quarter to date' },
+  { value: 'custom', short: 'C', label: 'Custom date range' },
 ];
 
 export function AnalyticsRangeToggle({ value, onChange }: AnalyticsRangeToggleProps) {
   return (
     <fieldset
-      className="grid h-11 w-32 grid-cols-3 rounded-xl bg-surface-2 p-1"
+      className="grid h-11 w-36 grid-cols-4 rounded-xl bg-surface-2 p-1"
       aria-label="Analytics range"
     >
       {OPTIONS.map((option) => (

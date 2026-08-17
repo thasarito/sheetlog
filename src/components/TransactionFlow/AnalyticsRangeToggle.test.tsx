@@ -1,0 +1,17 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
+
+describe('AnalyticsRangeToggle', () => {
+  it('renders the compact W M Q C group and selects custom', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<AnalyticsRangeToggle value="week" onChange={onChange} />);
+
+    expect(screen.getByRole('group', { name: 'Analytics range' })).toHaveClass('grid-cols-4');
+    expect(screen.getAllByRole('button')).toHaveLength(4);
+    await user.click(screen.getByRole('button', { name: 'Custom date range' }));
+    expect(onChange).toHaveBeenCalledWith('custom');
+  });
+});

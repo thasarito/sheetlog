@@ -74,6 +74,45 @@ input[type="date"] {
   -webkit-tap-highlight-color: transparent;
 }
 
+.analytics-calendar {
+  --rdp-accent-color: hsl(var(--primary));
+  --rdp-accent-background-color: hsl(var(--accent));
+  --rdp-day-height: 2.5rem;
+  --rdp-day-width: 2.5rem;
+  --rdp-day_button-height: 2.5rem;
+  --rdp-day_button-width: 2.5rem;
+  --rdp-range_middle-background-color: hsl(var(--accent));
+  --rdp-range_middle-color: hsl(var(--accent-foreground));
+  --rdp-selected-border: 2px solid transparent;
+  margin: 0;
+  max-width: 100%;
+}
+
+.analytics-calendar .rdp-months,
+.analytics-calendar .rdp-month,
+.analytics-calendar .rdp-month_grid {
+  width: 100%;
+}
+
+.analytics-calendar .rdp-month_caption {
+  align-items: center;
+  font-size: 0.875rem;
+  justify-content: center;
+}
+
+.analytics-calendar .rdp-weekday {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.analytics-calendar .rdp-day_button:focus-visible,
+.analytics-calendar .rdp-button_next:focus-visible,
+.analytics-calendar .rdp-button_previous:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.45);
+  outline-offset: 1px;
+}
+
 /* react-colorful custom styles */
 .react-colorful {
   width: 100% !important;
