@@ -22,7 +22,7 @@
 - `src/components/AnalyticsBigSpendingThresholdSetting.tsx`: own cutoff draft, validation, commit, clear, and Escape behavior.
 - `src/components/SettingsDrawer.tsx`: render the cutoff beneath base currency and clear it when base currency changes.
 - `src/components/TransactionFlow/analytics.ts`: apply the optional threshold after conversion and return the excluded count.
-- `src/components/TransactionFlow/AnalyticsDrawer.tsx`: render the single `BanknoteX` toggle with accessible state.
+- `src/components/TransactionFlow/AnalyticsDrawer.tsx`: render the single `BadgeDollarSign` toggle with accessible state.
 - `src/components/TransactionFlow/HomeDashboardCarousel.tsx`: keep unfiltered compact analytics, build filtered drawer analytics, and reset mode on close.
 - `src/components/TransactionFlow/index.tsx`: resolve the current-base cutoff and pass it with the toast callback.
 - Existing colocated test files cover each modified boundary; one new component test covers the Settings input.
@@ -674,7 +674,7 @@ Expected: FAIL because the component module does not exist.
 Create `src/components/AnalyticsBigSpendingThresholdSetting.tsx`:
 
 ```tsx
-import { BanknoteX } from 'lucide-react';
+import { BadgeDollarSign } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Currency } from '../lib/currencies';
 
@@ -725,7 +725,7 @@ export function AnalyticsBigSpendingThresholdSetting({
   return (
     <div className="flex min-h-14 items-center gap-3 bg-card px-4 py-2">
       <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#FF9500] text-white">
-        <BanknoteX className="h-4 w-4" />
+        <BadgeDollarSign className="h-4 w-4" />
       </div>
       <label htmlFor="analytics-big-spending-threshold" className="min-w-0 flex-1 text-[17px]">
         Big spending cutoff
@@ -1120,7 +1120,7 @@ Expected: FAIL because the new props, icon, filtered drawer summary, and reset b
 
 - [ ] **Step 4: Render the icon-only controlled toggle**
 
-In `AnalyticsDrawer.tsx`, import `BanknoteX` and `cn`, add these props, and derive the accessible
+In `AnalyticsDrawer.tsx`, import `BadgeDollarSign` and `cn`, add these props, and derive the accessible
 label:
 
 ```ts
@@ -1156,7 +1156,7 @@ Place exactly one button at the end of the range-control row:
     noBigSpending && 'bg-primary/12 text-primary',
   )}
 >
-  <BanknoteX className="h-5 w-5" aria-hidden="true" />
+  <BadgeDollarSign className="h-5 w-5" aria-hidden="true" />
 </button>
 ```
 

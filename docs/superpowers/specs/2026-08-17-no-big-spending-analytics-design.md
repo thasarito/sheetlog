@@ -36,7 +36,8 @@ the mode off so an exclusion cannot silently remain active on a later visit.
 ## Analytics Interaction
 
 Add one icon button to the analytics detail sheet's existing range-control row. Use Lucide's
-`BanknoteX` icon. The control has a minimum 44-by-44-pixel target, no shadow, and no visible text.
+`BadgeDollarSign` icon. The control has a minimum 44-by-44-pixel target, no shadow, and no visible
+text.
 It uses `aria-pressed` to expose state and a selected surface/text treatment to distinguish on from
 off without changing layout.
 

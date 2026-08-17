@@ -33,6 +33,7 @@ import { SETTINGS_SECTIONS, type SettingsSection } from '../lib/settingsSync';
 import type { CategoryItem, QuickNote, TransactionType } from '../lib/types';
 import { AppearancePicker } from './AppearancePicker';
 import { AnalyticsBaseCurrencySetting } from './AnalyticsBaseCurrencySetting';
+import { AnalyticsBigSpendingThresholdSetting } from './AnalyticsBigSpendingThresholdSetting';
 import { DynamicIcon } from './DynamicIcon';
 import { QuickNoteFlow } from './QuickNotes/QuickNoteFlow';
 import { persistQuickNotesOptimistically } from './QuickNotes/quickNotesPersistence';
@@ -1066,11 +1067,40 @@ export function SettingsDrawer({
                                 value={onboarding.analyticsBaseCurrency}
                                 disabled={isUpdating}
                                 onChange={(analyticsBaseCurrency) => {
+                                  const updatedAt = new Date().toISOString();
                                   void updateOnboarding({
                                     analyticsBaseCurrency,
-                                    analyticsBaseCurrencyUpdatedAt: new Date().toISOString(),
+                                    analyticsBaseCurrencyUpdatedAt: updatedAt,
+                                    analyticsBigSpendingThreshold: {
+                                      amount: null,
+                                      currency: analyticsBaseCurrency,
+                                      updatedAt,
+                                    },
                                   }).catch(() =>
                                     onToast('Base currency saved locally; sync pending'),
+                                  );
+                                }}
+                              />
+                              <div className="ml-[56px] h-px bg-border/70" />
+                              <AnalyticsBigSpendingThresholdSetting
+                                currency={onboarding.analyticsBaseCurrency}
+                                value={
+                                  onboarding.analyticsBigSpendingThreshold?.currency ===
+                                  onboarding.analyticsBaseCurrency
+                                    ? onboarding.analyticsBigSpendingThreshold.amount
+                                    : null
+                                }
+                                disabled={isUpdating}
+                                onInvalid={() => onToast('Enter an amount greater than zero.')}
+                                onCommit={(amount) => {
+                                  void updateOnboarding({
+                                    analyticsBigSpendingThreshold: {
+                                      amount,
+                                      currency: onboarding.analyticsBaseCurrency,
+                                      updatedAt: new Date().toISOString(),
+                                    },
+                                  }).catch(() =>
+                                    onToast('Big spending cutoff saved locally; sync pending'),
                                   );
                                 }}
                               />
