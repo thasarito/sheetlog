@@ -40,20 +40,22 @@ function transaction(
   };
 }
 
-function createWrapper() {
+function createHarness() {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   });
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+  function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
         {children}
       </QueryClientProvider>
     );
-  };
+  }
+  return { invalidate, queryClient, wrapper: Wrapper };
 }
 
 describe("useUpdateTransactionMutation", () => {
@@ -64,8 +66,9 @@ describe("useUpdateTransactionMutation", () => {
   it("rejects an error status with the latest record attached", async () => {
     const latestRecord = transaction();
     mocks.updateTransaction.mockResolvedValue(latestRecord);
+    const { wrapper } = createHarness();
     const { result } = renderHook(() => useUpdateTransactionMutation(), {
-      wrapper: createWrapper(),
+      wrapper,
     });
 
     let rejection: unknown;
@@ -88,5 +91,27 @@ describe("useUpdateTransactionMutation", () => {
     expect((rejection as UpdateTransactionRecordError).record).toBe(
       latestRecord,
     );
+  });
+
+  it("marks history stale without waiting for a remote refetch", async () => {
+    mocks.updateTransaction.mockResolvedValue(
+      transaction({ status: "synced", error: undefined, currency: "USD" }),
+    );
+    const { invalidate, wrapper } = createHarness();
+    const { result } = renderHook(() => useUpdateTransactionMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: "linked-child",
+        input: { currency: "USD", date: "2026-08-17T09:00:00" },
+      });
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["transactionHistory"],
+      refetchType: "none",
+    });
   });
 });

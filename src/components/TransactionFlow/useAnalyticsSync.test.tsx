@@ -173,6 +173,27 @@ describe('useAnalyticsSync', () => {
     expect(state.backfill).not.toHaveBeenCalled();
   });
 
+  it('immediately schedules a newly observed foreign transaction', async () => {
+    state.history.records = [transaction('THB')];
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    state.readRates.mockResolvedValue({ rates: [], refreshFailed: false });
+    const { wrapper } = createHarness();
+    const { rerender } = renderHook(() => useAnalyticsSync('THB'), { wrapper });
+    await waitFor(() => expect(state.historyEnabled).toHaveBeenCalledWith(true));
+    expect(state.backfill).not.toHaveBeenCalled();
+
+    act(() => {
+      state.history.records = [transaction('THB'), transaction('EUR')];
+      rerender();
+    });
+
+    await waitFor(() => expect(state.backfill).toHaveBeenCalledTimes(1));
+    expect(state.backfill.mock.calls[0][0]).toEqual([
+      { base: 'THB', quotes: ['EUR'], from: '2026-08-10', to: '2026-08-17' },
+    ]);
+  });
+
   it('records completion only after fresh history and every rate are available', async () => {
     state.history.isDownloading = false;
     state.history.remoteStatus = 'success';

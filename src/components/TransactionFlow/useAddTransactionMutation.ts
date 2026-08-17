@@ -34,6 +34,7 @@ export function useAddTransactionMutation() {
         queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.history,
+          refetchType: "none",
         }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.reimbursements,

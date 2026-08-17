@@ -94,6 +94,7 @@ export function useCreateReimbursementMutation() {
         queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.history,
+          refetchType: "none",
         }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.reimbursement(

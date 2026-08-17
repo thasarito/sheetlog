@@ -105,6 +105,7 @@ describe("useAddTransactionMutation", () => {
     await waitFor(() => {
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: transactionQueryKeys.history,
+        refetchType: "none",
       });
     });
     queryClient.clear();

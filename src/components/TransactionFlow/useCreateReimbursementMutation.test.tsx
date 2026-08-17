@@ -248,6 +248,7 @@ describe("useCreateReimbursementMutation", () => {
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: transactionQueryKeys.history,
+        refetchType: "none",
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: transactionQueryKeys.reimbursement(
