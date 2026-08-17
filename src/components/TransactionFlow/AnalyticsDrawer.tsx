@@ -149,7 +149,9 @@ export function AnalyticsDrawer({
         ? 'Month, month to date'
         : range === 'quarter'
           ? 'Quarter, quarter to date'
-          : `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`;
+          : range === 'year'
+            ? 'Year, year to date'
+            : `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`;
   const analyticsAnnouncement = hasCompleteHistory
     ? selectedBucketDetails
       ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, currency)} · Net ${formatAnalyticsAmount(scope.netTotal, currency)}`
