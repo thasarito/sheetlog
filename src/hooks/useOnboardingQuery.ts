@@ -9,13 +9,17 @@ import { useSession, useWorkspace, useConnectivity } from '../app/providers';
 import { getSessionTokenGeneration } from '../app/providers/session/session.generation';
 import {
   readAnalyticsBaseCurrencySetting as readRealAnalyticsBaseCurrencySetting,
+  readAnalyticsBigSpendingThresholdSetting as readRealAnalyticsBigSpendingThresholdSetting,
   writeAnalyticsBaseCurrencySetting as writeRealAnalyticsBaseCurrencySetting,
+  writeAnalyticsBigSpendingThresholdSetting as writeRealAnalyticsBigSpendingThresholdSetting,
 } from '../lib/google';
 import { isGoogleAuthError } from '../lib/googleErrors';
 import {
   IS_DEV_MODE,
   readAnalyticsBaseCurrencySetting as readMockAnalyticsBaseCurrencySetting,
+  readAnalyticsBigSpendingThresholdSetting as readMockAnalyticsBigSpendingThresholdSetting,
   writeAnalyticsBaseCurrencySetting as writeMockAnalyticsBaseCurrencySetting,
+  writeAnalyticsBigSpendingThresholdSetting as writeMockAnalyticsBigSpendingThresholdSetting,
 } from '../lib/mock';
 import { mergeOnboardingState } from '../lib/onboarding';
 import {
@@ -41,6 +45,12 @@ const readAnalyticsBaseCurrencySetting = IS_DEV_MODE
 const writeAnalyticsBaseCurrencySetting = IS_DEV_MODE
   ? writeMockAnalyticsBaseCurrencySetting
   : writeRealAnalyticsBaseCurrencySetting;
+const readAnalyticsBigSpendingThresholdSetting = IS_DEV_MODE
+  ? readMockAnalyticsBigSpendingThresholdSetting
+  : readRealAnalyticsBigSpendingThresholdSetting;
+const writeAnalyticsBigSpendingThresholdSetting = IS_DEV_MODE
+  ? writeMockAnalyticsBigSpendingThresholdSetting
+  : writeRealAnalyticsBigSpendingThresholdSetting;
 
 export const settingsKeys = {
   all: ['settings'] as const,
@@ -165,18 +175,23 @@ async function refreshSettingsCaches(
   );
 }
 
-async function reconcileAnalyticsBaseCurrency(
+async function reconcileAnalyticsSettings(
   accessToken: string,
   sheetId: string,
   userId: string,
 ): Promise<void> {
-  const remoteSetting = await readAnalyticsBaseCurrencySetting(
-    accessToken,
-    sheetId,
-  );
-  const remoteConfig = remoteSetting
-    ? { analyticsBaseCurrency: remoteSetting }
-    : {};
+  const [remoteBaseCurrency, remoteBigSpendingThreshold] = await Promise.all([
+    readAnalyticsBaseCurrencySetting(accessToken, sheetId),
+    readAnalyticsBigSpendingThresholdSetting(accessToken, sheetId),
+  ]);
+  const remoteConfig = {
+    ...(remoteBaseCurrency
+      ? { analyticsBaseCurrency: remoteBaseCurrency }
+      : {}),
+    ...(remoteBigSpendingThreshold
+      ? { analyticsBigSpendingThreshold: remoteBigSpendingThreshold }
+      : {}),
+  };
   const current = await readLocalOnboardingState(sheetId);
   if (mergeOnboardingState(current, remoteConfig).changed) {
     await mutateLocalOnboarding(sheetId, userId, (latest) =>
@@ -186,11 +201,26 @@ async function reconcileAnalyticsBaseCurrency(
 
   const latest = await readLocalOnboardingState(sheetId);
   const result = mergeOnboardingState(latest, remoteConfig);
-  if (result.settingsNeedPush && result.next.analyticsBaseCurrencyUpdatedAt) {
-    await writeAnalyticsBaseCurrencySetting(accessToken, sheetId, {
-      currency: result.next.analyticsBaseCurrency,
-      updatedAt: result.next.analyticsBaseCurrencyUpdatedAt,
-    });
+  if (result.settingsNeedPush) {
+    const writes: Promise<void>[] = [];
+    if (result.next.analyticsBaseCurrencyUpdatedAt) {
+      writes.push(
+        writeAnalyticsBaseCurrencySetting(accessToken, sheetId, {
+          currency: result.next.analyticsBaseCurrency,
+          updatedAt: result.next.analyticsBaseCurrencyUpdatedAt,
+        }),
+      );
+    }
+    if (result.next.analyticsBigSpendingThreshold) {
+      writes.push(
+        writeAnalyticsBigSpendingThresholdSetting(
+          accessToken,
+          sheetId,
+          result.next.analyticsBigSpendingThreshold,
+        ),
+      );
+    }
+    await Promise.all(writes);
   }
 }
 
@@ -258,7 +288,7 @@ export function useOnboardingSync() {
           verifiedWorkspaceCount: rememberedWorkspaceCount(sheetId, userId),
           signOut,
         });
-        await reconcileAnalyticsBaseCurrency(accessToken, sheetId, userId);
+        await reconcileAnalyticsSettings(accessToken, sheetId, userId);
         await refreshSettingsCaches(
           queryClient,
           sheetId,

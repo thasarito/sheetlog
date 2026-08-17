@@ -4,7 +4,9 @@ import {
   encodeA1Range,
   GoogleApiError,
   readAnalyticsBaseCurrencySetting,
+  readAnalyticsBigSpendingThresholdSetting,
   writeAnalyticsBaseCurrencySetting,
+  writeAnalyticsBigSpendingThresholdSetting,
 } from './google';
 import { readSheetSettingsConfig, replaceSheetSettingsSection } from './googleSettings';
 import {
@@ -1088,6 +1090,89 @@ describe('Google Sheet analytics settings', () => {
     expect(fetchMock).not.toHaveBeenCalledWith(
       expect.stringContaining('Settings!A2:C:clear'),
       expect.anything(),
+    );
+  });
+
+  it('reads a valid timestamped big spending cutoff', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('?fields=sheets(')) {
+          return jsonResponse({
+            sheets: [{ properties: { sheetId: 4, title: 'Settings' } }],
+          });
+        }
+        const values = url.includes('/values/Settings!A2:C')
+          ? [
+              [
+                'analyticsBigSpendingThreshold',
+                JSON.stringify({ amount: 10_000, currency: 'THB' }),
+                '2026-08-17T10:00:00.000Z',
+              ],
+            ]
+          : [];
+        return jsonResponse({ values });
+      }),
+    );
+
+    await expect(
+      readAnalyticsBigSpendingThresholdSetting('token', 'sheet-id'),
+    ).resolves.toEqual({
+      amount: 10_000,
+      currency: 'THB',
+      updatedAt: '2026-08-17T10:00:00.000Z',
+    });
+  });
+
+  it('writes a timestamped cutoff tombstone without replacing unknown rows', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('?fields=sheets(')) {
+        return {
+          ok: true,
+          json: async () => ({ sheets: [{ properties: { sheetId: 4, title: 'Settings' } }] }),
+        };
+      }
+      if (url.includes('/values/Settings!A2:C') && !init?.method) {
+        return {
+          ok: true,
+          json: async () => ({
+            values: [
+              ['theme', 'dark', '2026-01-01T00:00:00.000Z'],
+              [
+                'analyticsBigSpendingThreshold',
+                JSON.stringify({ amount: 10_000, currency: 'THB' }),
+                '2026-08-16T00:00:00.000Z',
+              ],
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await writeAnalyticsBigSpendingThresholdSetting('token', 'sheet-id', {
+      amount: null,
+      currency: 'USD',
+      updatedAt: '2026-08-17T00:00:00.000Z',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/values/Settings!A3:C3?valueInputOption=RAW'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          values: [
+            [
+              'analyticsBigSpendingThreshold',
+              JSON.stringify({ amount: null, currency: 'USD' }),
+              '2026-08-17T00:00:00.000Z',
+            ],
+          ],
+        }),
+      }),
     );
   });
 });

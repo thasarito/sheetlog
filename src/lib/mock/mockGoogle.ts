@@ -14,6 +14,7 @@ import { createCachedTransactionRecord } from '../transactionHistory';
 import type {
   AccountItem,
   AnalyticsBaseCurrencySetting,
+  AnalyticsBigSpendingThresholdSetting,
   CategoryConfigWithMeta,
   TransactionHistorySnapshot,
   TransactionRecord,
@@ -21,11 +22,13 @@ import type {
 import {
   getMockAccounts,
   getMockAnalyticsBaseCurrency,
+  getMockAnalyticsBigSpendingThreshold,
   getMockCategories,
   getMockQuickNotes,
   getMockTransactions,
   setMockAccounts,
   setMockAnalyticsBaseCurrency,
+  setMockAnalyticsBigSpendingThreshold,
   setMockCategories,
   setMockQuickNotes,
   setMockTransactions,
@@ -242,6 +245,23 @@ export async function writeAnalyticsBaseCurrencySetting(
   setMockAnalyticsBaseCurrency(setting);
 }
 
+export async function readAnalyticsBigSpendingThresholdSetting(
+  _accessToken: string,
+  _spreadsheetId: string,
+): Promise<AnalyticsBigSpendingThresholdSetting | null> {
+  await delay();
+  return getMockAnalyticsBigSpendingThreshold();
+}
+
+export async function writeAnalyticsBigSpendingThresholdSetting(
+  _accessToken: string,
+  _spreadsheetId: string,
+  setting: AnalyticsBigSpendingThresholdSetting,
+): Promise<void> {
+  await delay();
+  setMockAnalyticsBigSpendingThreshold(setting);
+}
+
 export async function readOnboardingConfig(
   _accessToken: string,
   _spreadsheetId: string,
@@ -249,17 +269,20 @@ export async function readOnboardingConfig(
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
   analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
+  analyticsBigSpendingThreshold?: AnalyticsBigSpendingThresholdSetting;
 } | null> {
   await delay();
 
   const accounts = getMockAccounts();
   const categories = getMockCategories();
   const analyticsBaseCurrency = getMockAnalyticsBaseCurrency();
+  const analyticsBigSpendingThreshold = getMockAnalyticsBigSpendingThreshold();
 
   return {
     accounts: accounts.length > 0 ? accounts : undefined,
     categories,
     ...(analyticsBaseCurrency ? { analyticsBaseCurrency } : {}),
+    ...(analyticsBigSpendingThreshold ? { analyticsBigSpendingThreshold } : {}),
   };
 }
 
@@ -273,6 +296,7 @@ export async function writeOnboardingConfig(
     accounts?: AccountItem[];
     categories?: CategoryConfigWithMeta;
     analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
+    analyticsBigSpendingThreshold?: AnalyticsBigSpendingThresholdSetting;
   },
 ): Promise<void> {
   await delay();
@@ -290,6 +314,14 @@ export async function writeOnboardingConfig(
       _accessToken,
       _spreadsheetId,
       updates.analyticsBaseCurrency,
+    );
+  }
+
+  if (updates.analyticsBigSpendingThreshold) {
+    await writeAnalyticsBigSpendingThresholdSetting(
+      _accessToken,
+      _spreadsheetId,
+      updates.analyticsBigSpendingThreshold,
     );
   }
 }

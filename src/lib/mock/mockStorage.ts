@@ -5,6 +5,7 @@
 import type {
   AccountItem,
   AnalyticsBaseCurrencySetting,
+  AnalyticsBigSpendingThresholdSetting,
   CategoryConfigWithMeta,
   QuickNotesConfig,
   TransactionRecord,
@@ -16,6 +17,7 @@ const ACCOUNTS_KEY = `${STORAGE_PREFIX}.accounts`;
 const CATEGORIES_KEY = `${STORAGE_PREFIX}.categories`;
 const QUICK_NOTES_KEY = `${STORAGE_PREFIX}.quickNotes`;
 const ANALYTICS_BASE_CURRENCY_KEY = `${STORAGE_PREFIX}.analyticsBaseCurrency`;
+const ANALYTICS_BIG_SPENDING_THRESHOLD_KEY = `${STORAGE_PREFIX}.analyticsBigSpendingThreshold`;
 
 export interface MockSheetData {
   transactions: TransactionRecord[];
@@ -23,6 +25,7 @@ export interface MockSheetData {
   categories: CategoryConfigWithMeta;
   quickNotes: QuickNotesConfig | null;
   analyticsBaseCurrency: AnalyticsBaseCurrencySetting | null;
+  analyticsBigSpendingThreshold: AnalyticsBigSpendingThresholdSetting | null;
 }
 
 const DEFAULT_ACCOUNTS: AccountItem[] = [
@@ -126,6 +129,19 @@ export function setMockAnalyticsBaseCurrency(setting: AnalyticsBaseCurrencySetti
   setToStorage(ANALYTICS_BASE_CURRENCY_KEY, setting);
 }
 
+export function getMockAnalyticsBigSpendingThreshold(): AnalyticsBigSpendingThresholdSetting | null {
+  return getFromStorage<AnalyticsBigSpendingThresholdSetting | null>(
+    ANALYTICS_BIG_SPENDING_THRESHOLD_KEY,
+    null,
+  );
+}
+
+export function setMockAnalyticsBigSpendingThreshold(
+  setting: AnalyticsBigSpendingThresholdSetting | null,
+): void {
+  setToStorage(ANALYTICS_BIG_SPENDING_THRESHOLD_KEY, setting);
+}
+
 export function getMockSheetData(): MockSheetData {
   return {
     transactions: getMockTransactions(),
@@ -133,6 +149,7 @@ export function getMockSheetData(): MockSheetData {
     categories: getMockCategories(),
     quickNotes: getMockQuickNotes(),
     analyticsBaseCurrency: getMockAnalyticsBaseCurrency(),
+    analyticsBigSpendingThreshold: getMockAnalyticsBigSpendingThreshold(),
   };
 }
 
@@ -156,6 +173,9 @@ export function setMockSheetData(data: Partial<MockSheetData>): void {
   if (data.analyticsBaseCurrency) {
     setMockAnalyticsBaseCurrency(data.analyticsBaseCurrency);
   }
+  if (data.analyticsBigSpendingThreshold !== undefined) {
+    setMockAnalyticsBigSpendingThreshold(data.analyticsBigSpendingThreshold);
+  }
 }
 
 export function clearMockData(): void {
@@ -164,6 +184,7 @@ export function clearMockData(): void {
   localStorage.removeItem(CATEGORIES_KEY);
   localStorage.removeItem(QUICK_NOTES_KEY);
   localStorage.removeItem(ANALYTICS_BASE_CURRENCY_KEY);
+  localStorage.removeItem(ANALYTICS_BIG_SPENDING_THRESHOLD_KEY);
 }
 
 export { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES };

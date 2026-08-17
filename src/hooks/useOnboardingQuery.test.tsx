@@ -62,7 +62,9 @@ const runnerMocks = vi.hoisted(() => ({
 
 const analyticsCurrencyMocks = vi.hoisted(() => ({
   readAnalyticsBaseCurrencySetting: vi.fn(),
+  readAnalyticsBigSpendingThresholdSetting: vi.fn(),
   writeAnalyticsBaseCurrencySetting: vi.fn(),
+  writeAnalyticsBigSpendingThresholdSetting: vi.fn(),
 }));
 
 vi.mock('../app/providers', () => ({
@@ -150,6 +152,12 @@ describe('settings-backed onboarding hooks', () => {
       .mockReset()
       .mockResolvedValue(null);
     analyticsCurrencyMocks.writeAnalyticsBaseCurrencySetting
+      .mockReset()
+      .mockResolvedValue(undefined);
+    analyticsCurrencyMocks.readAnalyticsBigSpendingThresholdSetting
+      .mockReset()
+      .mockResolvedValue(null);
+    analyticsCurrencyMocks.writeAnalyticsBigSpendingThresholdSetting
       .mockReset()
       .mockResolvedValue(undefined);
     runnerMocks.runSettingsReconciliation.mockReset().mockResolvedValue({
@@ -317,6 +325,67 @@ describe('settings-backed onboarding hooks', () => {
       currency: 'EUR',
       updatedAt: '2026-08-17T11:00:00.000Z',
     });
+  });
+
+  it('hydrates a newer big spending threshold during settings reconciliation', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    await setOnboardingState(
+      {
+        ...getDefaultOnboardingState(),
+        analyticsBigSpendingThreshold: {
+          amount: 500,
+          currency: 'THB',
+          updatedAt: '2026-08-16T10:00:00.000Z',
+        },
+      },
+      'sheet-a',
+    );
+    analyticsCurrencyMocks.readAnalyticsBigSpendingThresholdSetting.mockResolvedValue({
+      amount: 1_000,
+      currency: 'THB',
+      updatedAt: '2026-08-17T10:00:00.000Z',
+    });
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useOnboardingSync(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await expect(readLocalOnboardingState('sheet-a')).resolves.toMatchObject({
+      analyticsBigSpendingThreshold: {
+        amount: 1_000,
+        currency: 'THB',
+        updatedAt: '2026-08-17T10:00:00.000Z',
+      },
+    });
+    expect(
+      analyticsCurrencyMocks.writeAnalyticsBigSpendingThresholdSetting,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('pushes a local big spending threshold when the Sheet has none', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    const threshold = {
+      amount: 2_000,
+      currency: 'THB' as const,
+      updatedAt: '2026-08-17T11:00:00.000Z',
+    };
+    await setOnboardingState(
+      {
+        ...getDefaultOnboardingState(),
+        analyticsBigSpendingThreshold: threshold,
+      },
+      'sheet-a',
+    );
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useOnboardingSync(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(
+      analyticsCurrencyMocks.writeAnalyticsBigSpendingThresholdSetting,
+    ).toHaveBeenCalledWith('token-a', 'sheet-a', threshold);
   });
 
   it('reconciles on TanStack reconnect before the connectivity context rerenders', async () => {
