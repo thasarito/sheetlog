@@ -65,6 +65,7 @@ export function StepCategory({
   const activeType = type ?? TYPE_OPTIONS[0];
   const selectedIndex = Math.max(0, TYPE_OPTIONS.indexOf(activeType));
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [visualProgress, setVisualProgress] = useState(selectedIndex);
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
   const navigationTargetRef = useRef(selectedIndex);
@@ -141,6 +142,14 @@ export function StepCategory({
   const handleScroll = () => {
     const viewport = viewportRef.current;
     if (!viewport || viewport.clientWidth === 0) return;
+    const progress = Math.max(
+      0,
+      Math.min(
+        TYPE_OPTIONS.length - 1,
+        viewport.scrollLeft / viewport.clientWidth,
+      ),
+    );
+    setVisualProgress(progress);
     const index = Math.max(
       0,
       Math.min(
@@ -183,6 +192,7 @@ export function StepCategory({
   useEffect(() => {
     const viewport = viewportRef.current;
     navigationTargetRef.current = selectedIndex;
+    setVisualProgress(selectedIndex);
     if (!viewport || viewport.clientWidth === 0) return;
     const targetLeft = selectedIndex * viewport.clientWidth;
     if (Math.abs(viewport.scrollLeft - targetLeft) > 1) {
@@ -242,6 +252,7 @@ export function StepCategory({
         onChange={(value) => scrollToType(TYPE_OPTIONS.indexOf(value))}
         layoutId="transactionType"
         variant="compact"
+        visualProgress={visualProgress}
       />
 
       <div
@@ -273,6 +284,7 @@ export function StepCategory({
               onLongPress={radialHandlers.onLongPressStart}
               onDrag={radialHandlers.onDrag}
               onRelease={radialHandlers.onRelease}
+              onCancel={radialHandlers.onCancel}
               transactionType={typeOption}
             />
           </section>

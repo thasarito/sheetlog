@@ -16,6 +16,7 @@ type AnimatedTabsProps<T extends string> = {
   variant?: "default" | "pill" | "simple" | "compact";
   className?: string;
   disabled?: boolean;
+  visualProgress?: number;
 };
 
 const springTransition = { type: "spring", stiffness: 380, damping: 30 };
@@ -28,6 +29,7 @@ export function AnimatedTabs<T extends string>({
   variant = "default",
   className,
   disabled,
+  visualProgress,
 }: AnimatedTabsProps<T>) {
   if (variant === "pill") {
     return (
@@ -68,20 +70,40 @@ export function AnimatedTabs<T extends string>({
   }
 
   if (variant === "compact") {
+    const selectedIndex = Math.max(
+      0,
+      tabs.findIndex((tab) => tab.value === value),
+    );
+    const progress = Math.max(
+      0,
+      Math.min(tabs.length - 1, visualProgress ?? selectedIndex),
+    );
+    const visualIndex = Math.round(progress);
+
     return (
       <div
         data-testid="animated-tabs-compact"
         data-animated-tabs-variant="compact"
         className={cn(
-          "grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1",
+          "relative grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1",
           className,
         )}
         style={{
           gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
         }}
       >
-        {tabs.map((tab) => {
+        <motion.div
+          data-testid="animated-tabs-compact-indicator"
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-1 left-1 top-1 rounded-xl bg-surface-3"
+          style={{
+            width: `calc((100% - ${8 + (tabs.length - 1) * 4}px) / ${tabs.length})`,
+            transform: `translateX(calc(${progress * 100}% + ${progress * 4}px))`,
+          }}
+        />
+        {tabs.map((tab, index) => {
           const isSelected = tab.value === value;
+          const isVisuallySelected = index === visualIndex;
           const Icon = tab.icon;
           return (
             <button
@@ -95,26 +117,23 @@ export function AnimatedTabs<T extends string>({
               )}
               disabled={disabled}
             >
-              {isSelected ? (
-                <motion.div
-                  layoutId={layoutId}
-                  className="absolute inset-0 rounded-xl bg-surface-3"
-                  transition={springTransition}
-                />
-              ) : null}
               {Icon ? (
                 <Icon
                   className={cn(
                     "relative z-10 h-4 w-4",
-                    isSelected ? "text-primary" : "text-muted-foreground",
+                    isVisuallySelected
+                      ? "text-primary"
+                      : "text-muted-foreground",
                   )}
                 />
               ) : null}
               <span
-                className={cn(
-                  "relative z-10",
-                  isSelected ? "text-foreground" : "text-muted-foreground",
-                )}
+                  className={cn(
+                    "relative z-10",
+                    isVisuallySelected
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
               >
                 {tab.label}
               </span>

@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -6,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CategoryItem, TransactionType } from "../../lib/types";
 import { StepCategory } from "./StepCategory";
 import { useTransactionForm } from "./useTransactionForm";
@@ -62,6 +63,10 @@ function renderCarousel() {
   return viewport;
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("StepCategory carousel", () => {
   it("syncs a tab click to the form and clears the old category", async () => {
     const user = userEvent.setup();
@@ -101,6 +106,26 @@ describe("StepCategory carousel", () => {
     await waitFor(() =>
       expect(screen.getByTestId("form-type")).toHaveTextContent("transfer"),
     );
+  });
+
+  it("animates tab progress before committing the nearest slide", async () => {
+    vi.useFakeTimers();
+    const viewport = renderCarousel();
+
+    viewport.scrollLeft = 150;
+    fireEvent.scroll(viewport);
+
+    expect(
+      screen.getByTestId("animated-tabs-compact-indicator"),
+    ).toHaveStyle({ transform: "translateX(calc(50% + 2px))" });
+    expect(screen.getByTestId("form-type")).toHaveTextContent("expense");
+    expect(screen.getByRole("button", { name: "Expense" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await act(async () => vi.advanceTimersByTimeAsync(80));
+    expect(screen.getByTestId("form-type")).toHaveTextContent("income");
   });
 
   it("advances through rapid sequential arrow navigation", async () => {

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   DEFAULT_CATEGORY_COLORS,
@@ -17,6 +17,7 @@ interface CategoryGridProps {
   onLongPress?: (category: string, position: { x: number; y: number }) => void;
   onDrag?: (position: { x: number; y: number }) => void;
   onRelease?: (position: { x: number; y: number }) => void;
+  onCancel?: () => void;
   transactionType?: TransactionType;
 }
 
@@ -58,6 +59,7 @@ interface CategoryButtonProps {
   onLongPress?: (category: string, position: { x: number; y: number }) => void;
   onDrag?: (position: { x: number; y: number }) => void;
   onRelease?: (position: { x: number; y: number }) => void;
+  onCancel?: () => void;
 }
 
 function CategoryButton({
@@ -67,16 +69,30 @@ function CategoryButton({
   onLongPress,
   onDrag,
   onRelease,
+  onCancel,
 }: CategoryButtonProps) {
   const icon = resolveCategoryIcon(category, transactionType);
   const color = resolveCategoryColor(category, transactionType);
   const displayColor = `color-mix(in srgb, ${color} 30%, hsl(var(--foreground)))`;
 
   const [isHovered, setIsHovered] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
   const wasLongPressRef = useRef(false); // Track if release was from long press
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+    const preventNativeScroll = (event: TouchEvent) => {
+      if (isLongPressRef.current) event.preventDefault();
+    };
+    button.addEventListener("touchmove", preventNativeScroll, {
+      passive: false,
+    });
+    return () => button.removeEventListener("touchmove", preventNativeScroll);
+  }, []);
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -146,6 +162,7 @@ function CategoryButton({
   const handlePointerCancel = (e: React.PointerEvent<HTMLButtonElement>) => {
     releasePointer(e);
     clearTimer();
+    if (isLongPressRef.current) onCancel?.();
     isLongPressRef.current = false;
     startPosRef.current = null;
   };
@@ -161,6 +178,7 @@ function CategoryButton({
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       className="grid aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onClick={handleClick}
@@ -201,6 +219,7 @@ export function CategoryGrid({
   onLongPress,
   onDrag,
   onRelease,
+  onCancel,
   transactionType = "expense",
 }: CategoryGridProps) {
   return (
@@ -214,6 +233,7 @@ export function CategoryGrid({
           onLongPress={onLongPress}
           onDrag={onDrag}
           onRelease={onRelease}
+          onCancel={onCancel}
         />
       ))}
     </div>

@@ -231,6 +231,7 @@ test.describe("Transaction type and category carousel", () => {
   test("keeps the long-press quick-note gesture", async ({ page }) => {
     await seedQuickNote(page);
     await page.reload();
+    const viewport = page.getByTestId("transaction-type-carousel");
     const tile = page.getByRole("button", { name: "Food Delivery" });
     const box = await tile.boundingBox();
     if (!box) throw new Error("Food Delivery tile missing");
@@ -246,6 +247,61 @@ test.describe("Transaction type and category carousel", () => {
     });
     await page.waitForTimeout(450);
     await expect(page.getByText("Breakfast", { exact: true })).toBeVisible();
+    const scrollLeftBeforeDrag = await viewport.evaluate(
+      (element) => element.scrollLeft,
+    );
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: touchPoint.x + 24, y: touchPoint.y - 24 }],
+    });
+    await page.waitForTimeout(50);
+    await expect(page.getByText("Breakfast", { exact: true })).toBeVisible();
+    expect(await viewport.evaluate((element) => element.scrollLeft)).toBe(
+      scrollLeftBeforeDrag,
+    );
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await client.detach();
+    await expect(page.getByRole("dialog")).toBeVisible();
+  });
+
+  test("moves the type indicator during an active category swipe", async ({
+    page,
+  }) => {
+    const viewport = page.getByTestId("transaction-type-carousel");
+    const tile = page.getByRole("button", { name: "Food Delivery" });
+    const indicator = page.getByTestId("animated-tabs-compact-indicator");
+    const tileBox = await tile.boundingBox();
+    const indicatorBefore = await indicator.boundingBox();
+    if (!tileBox || !indicatorBefore) throw new Error("Carousel geometry missing");
+    const client = await page.context().newCDPSession(page);
+    const start = {
+      x: tileBox.x + tileBox.width / 2,
+      y: tileBox.y + tileBox.height / 2,
+    };
+
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [start],
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: start.x - 180, y: start.y + 2 }],
+    });
+    await page.waitForTimeout(16);
+
+    const indicatorDuring = await indicator.boundingBox();
+    if (!indicatorDuring) throw new Error("Type indicator missing");
+    expect(await viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(
+      0,
+    );
+    expect(indicatorDuring.x).toBeGreaterThan(indicatorBefore.x + 10);
+    await expect(
+      page.getByRole("button", { name: "Expense" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
     await client.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],

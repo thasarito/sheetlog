@@ -131,4 +131,41 @@ describe("CategoryGrid", () => {
     expect(setPointerCapture).toHaveBeenCalledWith(7);
     expect(onLongPress).toHaveBeenCalledWith("Food Delivery", { x: 24, y: 28 });
   });
+
+  it("locks native scrolling only after long press activation and reports cancellation", async () => {
+    vi.useFakeTimers();
+    const onDrag = vi.fn();
+    const onCancel = vi.fn();
+    renderGrid({ onDrag, onCancel });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+    Object.defineProperties(tile, {
+      hasPointerCapture: { configurable: true, value: () => false },
+      setPointerCapture: { configurable: true, value: vi.fn() },
+    });
+
+    fireEvent.pointerDown(tile, { pointerId: 9, clientX: 24, clientY: 28 });
+    const pendingMove = new Event("touchmove", {
+      bubbles: true,
+      cancelable: true,
+    });
+    tile.dispatchEvent(pendingMove);
+    expect(pendingMove.defaultPrevented).toBe(false);
+
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    const lockedMove = new Event("touchmove", {
+      bubbles: true,
+      cancelable: true,
+    });
+    tile.dispatchEvent(lockedMove);
+    fireEvent.pointerMove(tile, {
+      pointerId: 9,
+      clientX: 32,
+      clientY: 36,
+    });
+    fireEvent.pointerCancel(tile, { pointerId: 9 });
+
+    expect(lockedMove.defaultPrevented).toBe(true);
+    expect(onDrag).toHaveBeenCalledWith({ x: 32, y: 36 });
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
 });
