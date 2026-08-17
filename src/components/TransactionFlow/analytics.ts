@@ -22,7 +22,8 @@ import {
   subYears,
 } from 'date-fns';
 import { tryParseDate } from '../../lib/date-utils';
-import type { TransactionRecord, TransactionType } from '../../lib/types';
+import type { ExchangeRateRecord, TransactionRecord, TransactionType } from '../../lib/types';
+import { findHistoricalQuoteRate, type HistoricalRateRequest } from './exchangeRates';
 
 export type AnalyticsRange = 'week' | 'month' | 'quarter' | 'year' | 'custom';
 
@@ -92,18 +93,32 @@ export type AnalyticsSummary = AnalyticsScope & {
   buckets: AnalyticsBucket[];
   series: AnalyticsSeries[];
   hasExpenseRows: boolean;
+  convertedAmounts: Record<string, number>;
 };
+
+export type MissingAnalyticsRate = {
+  currency: string;
+  date: string;
+};
+
+export type AnalyticsBuildResult =
+  | { status: 'ready'; summary: AnalyticsSummary }
+  | { status: 'missing-rates'; missingRates: MissingAnalyticsRate[] };
 
 type BuildAnalyticsSummaryInput = {
   transactions: TransactionRecord[];
   range: AnalyticsRange;
-  currency: string;
+  baseCurrency: string;
+  rates: ExchangeRateRecord[];
   now: Date;
   customPeriod?: DatePeriod;
   periodOffset?: number;
 };
 
 const SERIES_TONES: AnalyticsSeriesTone[] = ['emerald', 'cyan', 'violet', 'rose'];
+type AnalyticsRateRequestInput = Omit<BuildAnalyticsSummaryInput, 'rates'>;
+
+type ConvertedAmount = (row: TransactionRecord) => number;
 
 function minDate(left: Date, right: Date): Date {
   return left.getTime() <= right.getTime() ? left : right;
@@ -298,22 +313,24 @@ export function buildAnalyticsPeriodOptions(
   );
 }
 
-function sumType(rows: TransactionRecord[], type: TransactionType): number {
-  return rows.reduce((total, row) => total + (row.type === type ? finiteAmount(row) : 0), 0);
+function sumType(
+  rows: TransactionRecord[],
+  type: TransactionType,
+  convertedAmount: ConvertedAmount,
+): number {
+  return rows.reduce(
+    (total, row) => total + (row.type === type ? convertedAmount(row) : 0),
+    0,
+  );
 }
 
-function rowsInPeriod(
-  rows: TransactionRecord[],
-  period: DatePeriod,
-  currency: string,
-): TransactionRecord[] {
+function rowsInPeriod(rows: TransactionRecord[], period: DatePeriod): TransactionRecord[] {
   return rows
     .filter((row) => {
       const date = analyticsDate(row);
       const amount = Number(row.amount);
       return (
         row.sheetRowValid !== false &&
-        row.currency === currency &&
         date !== null &&
         contains(period, date) &&
         Number.isFinite(amount) &&
@@ -337,12 +354,15 @@ function buildComparison(current: number, previous: number): AnalyticsComparison
   };
 }
 
-function categoryTotals(rows: TransactionRecord[]): Map<string, number> {
+function categoryTotals(
+  rows: TransactionRecord[],
+  convertedAmount: ConvertedAmount,
+): Map<string, number> {
   const totals = new Map<string, number>();
   for (const row of rows) {
     if (row.type !== 'expense') continue;
     const name = categoryName(row);
-    totals.set(name, (totals.get(name) ?? 0) + finiteAmount(row));
+    totals.set(name, (totals.get(name) ?? 0) + convertedAmount(row));
   }
   return totals;
 }
@@ -351,8 +371,11 @@ function sortCategoryEntries(entries: Array<[string, number]>): Array<[string, n
   return entries.sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
 }
 
-function buildSeries(rows: TransactionRecord[]): AnalyticsSeries[] {
-  const totals = categoryTotals(rows);
+function buildSeries(
+  rows: TransactionRecord[],
+  convertedAmount: ConvertedAmount,
+): AnalyticsSeries[] {
+  const totals = categoryTotals(rows, convertedAmount);
   const top = sortCategoryEntries([...totals.entries()].filter(([, amount]) => amount > 0)).slice(
     0,
     4,
@@ -386,6 +409,7 @@ function makeBucket(
   period: DatePeriod,
   rows: TransactionRecord[],
   series: AnalyticsSeries[],
+  convertedAmount: ConvertedAmount,
 ): AnalyticsBucket {
   const matching = rows.filter((row) => {
     const date = analyticsDate(row);
@@ -396,13 +420,14 @@ function makeBucket(
     key,
     label,
     accessibleLabel,
-    amount: sumType(expenses, 'expense'),
+    amount: sumType(expenses, 'expense', convertedAmount),
     segments: series.map((item) => {
       const names = new Set(item.categoryNames);
       return {
         seriesKey: item.key,
         amount: expenses.reduce(
-          (total, row) => total + (names.has(categoryName(row)) ? finiteAmount(row) : 0),
+          (total, row) =>
+            total + (names.has(categoryName(row)) ? convertedAmount(row) : 0),
           0,
         ),
       };
@@ -415,6 +440,7 @@ function makeDailyBucket(
   date: Date,
   rows: TransactionRecord[],
   series: AnalyticsSeries[],
+  convertedAmount: ConvertedAmount,
   range: AnalyticsRange,
   crossesMonths: boolean,
 ): AnalyticsBucket {
@@ -431,6 +457,7 @@ function makeDailyBucket(
     { start: startOfDay(date), end: endOfDay(date) },
     rows,
     series,
+    convertedAmount,
   );
 }
 
@@ -439,6 +466,7 @@ function buildBuckets(
   current: DatePeriod,
   rows: TransactionRecord[],
   series: AnalyticsSeries[],
+  convertedAmount: ConvertedAmount,
 ): AnalyticsBucket[] {
   const elapsedDays = differenceInCalendarDays(current.end, current.start) + 1;
   const daily = range === 'week' || range === 'month' || (range === 'custom' && elapsedDays <= 31);
@@ -446,7 +474,14 @@ function buildBuckets(
   if (daily) {
     const crossesMonths = current.start.getMonth() !== current.end.getMonth();
     return Array.from({ length: elapsedDays }, (_, index) =>
-      makeDailyBucket(addDays(current.start, index), rows, series, range, crossesMonths),
+      makeDailyBucket(
+        addDays(current.start, index),
+        rows,
+        series,
+        convertedAmount,
+        range,
+        crossesMonths,
+      ),
     );
   }
 
@@ -462,6 +497,7 @@ function buildBuckets(
         { start, end },
         rows,
         series,
+        convertedAmount,
       );
     });
   }
@@ -476,13 +512,19 @@ function buildBuckets(
       { start, end },
       rows,
       series,
+      convertedAmount,
     );
   });
 }
 
-function buildCategories(rows: TransactionRecord[]): AnalyticsCategory[] {
+function buildCategories(
+  rows: TransactionRecord[],
+  convertedAmount: ConvertedAmount,
+): AnalyticsCategory[] {
   const categories = sortCategoryEntries(
-    [...categoryTotals(rows).entries()].filter(([, amount]) => amount !== 0),
+    [...categoryTotals(rows, convertedAmount).entries()].filter(
+      ([, amount]) => amount !== 0,
+    ),
   );
   const positiveTotal = categories.reduce(
     (total, [, amount]) => total + Math.max(0, amount),
@@ -506,14 +548,16 @@ export function buildAnalyticsScope(
   const transactions = selectedIds
     ? summary.transactions.filter((row) => selectedIds.has(row.id))
     : summary.transactions;
-  const expenseTotal = sumType(transactions, 'expense');
-  const incomeTotal = sumType(transactions, 'income');
+  const convertedAmount: ConvertedAmount = (row) =>
+    summary.convertedAmounts[row.id] ?? 0;
+  const expenseTotal = sumType(transactions, 'expense', convertedAmount);
+  const incomeTotal = sumType(transactions, 'income', convertedAmount);
 
   return {
     expenseTotal,
     incomeTotal,
     netTotal: incomeTotal - expenseTotal,
-    categories: buildCategories(transactions),
+    categories: buildCategories(transactions, convertedAmount),
     transactions,
   };
 }
@@ -521,34 +565,113 @@ export function buildAnalyticsScope(
 export function buildAnalyticsSummary({
   transactions,
   range,
-  currency,
+  baseCurrency,
+  rates,
   now,
   customPeriod,
   periodOffset = 0,
-}: BuildAnalyticsSummaryInput): AnalyticsSummary {
+}: BuildAnalyticsSummaryInput): AnalyticsBuildResult {
   const periods = getAnalyticsPeriods(range, now, customPeriod, periodOffset);
-  const currentRows = rowsInPeriod(transactions, periods.current, currency);
-  const comparisonRows = rowsInPeriod(transactions, periods.comparison, currency);
-  const expenseTotal = sumType(currentRows, 'expense');
-  const incomeTotal = sumType(currentRows, 'income');
-  const previousExpenseTotal = sumType(comparisonRows, 'expense');
-  const series = buildSeries(currentRows);
+  const currentRows = rowsInPeriod(transactions, periods.current);
+  const comparisonRows = rowsInPeriod(transactions, periods.comparison);
+  const contributingRows = [
+    ...currentRows.filter((row) => row.type === 'expense' || row.type === 'income'),
+    ...comparisonRows.filter((row) => row.type === 'expense'),
+  ];
+  const scopedRates = rates.filter((rate) => rate.base === baseCurrency);
+  const resolvedRates = new Map<string, number>();
+  const missingRates = new Map<string, MissingAnalyticsRate>();
+
+  for (const row of contributingRows) {
+    if (row.currency === baseCurrency) continue;
+    const date = analyticsDate(row);
+    if (!date) continue;
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const rowKey = `${row.currency}:${dateKey}`;
+    const rate = findHistoricalQuoteRate(scopedRates, row.currency, dateKey);
+    if (rate === null) {
+      missingRates.set(rowKey, { currency: row.currency, date: dateKey });
+    } else {
+      resolvedRates.set(rowKey, rate);
+    }
+  }
+
+  if (missingRates.size > 0) {
+    return { status: 'missing-rates', missingRates: [...missingRates.values()] };
+  }
+
+  const convertedAmount: ConvertedAmount = (row) => {
+    const amount = finiteAmount(row);
+    if (row.currency === baseCurrency) return amount;
+    const date = analyticsDate(row);
+    if (!date) return 0;
+    const rate = resolvedRates.get(`${row.currency}:${format(date, 'yyyy-MM-dd')}`);
+    return rate ? amount / rate : 0;
+  };
+  const expenseTotal = sumType(currentRows, 'expense', convertedAmount);
+  const incomeTotal = sumType(currentRows, 'income', convertedAmount);
+  const previousExpenseTotal = sumType(comparisonRows, 'expense', convertedAmount);
+  const series = buildSeries(currentRows, convertedAmount);
+  const convertedAmounts = Object.fromEntries(
+    currentRows.map((row) => [row.id, convertedAmount(row)]),
+  );
 
   return {
-    range,
-    currency,
-    periods,
-    expenseTotal,
-    previousExpenseTotal,
-    incomeTotal,
-    netTotal: incomeTotal - expenseTotal,
-    comparison: buildComparison(expenseTotal, previousExpenseTotal),
-    buckets: buildBuckets(range, periods.current, currentRows, series),
-    series,
-    categories: buildCategories(currentRows),
-    transactions: currentRows,
-    hasExpenseRows: currentRows.some((row) => row.type === 'expense' && finiteAmount(row) !== 0),
+    status: 'ready',
+    summary: {
+      range,
+      currency: baseCurrency,
+      periods,
+      expenseTotal,
+      previousExpenseTotal,
+      incomeTotal,
+      netTotal: incomeTotal - expenseTotal,
+      comparison: buildComparison(expenseTotal, previousExpenseTotal),
+      buckets: buildBuckets(
+        range,
+        periods.current,
+        currentRows,
+        series,
+        convertedAmount,
+      ),
+      series,
+      categories: buildCategories(currentRows, convertedAmount),
+      transactions: currentRows,
+      hasExpenseRows: currentRows.some(
+        (row) => row.type === 'expense' && finiteAmount(row) !== 0,
+      ),
+      convertedAmounts,
+    },
   };
+}
+
+export function getAnalyticsRateRequest({
+  transactions,
+  range,
+  baseCurrency,
+  now,
+  customPeriod,
+  periodOffset = 0,
+}: AnalyticsRateRequestInput): HistoricalRateRequest | null {
+  const periods = getAnalyticsPeriods(range, now, customPeriod, periodOffset);
+  const currentRows = rowsInPeriod(transactions, periods.current);
+  const comparisonRows = rowsInPeriod(transactions, periods.comparison);
+  const quotes = [
+    ...currentRows.filter((row) => row.type === 'expense' || row.type === 'income'),
+    ...comparisonRows.filter((row) => row.type === 'expense'),
+  ]
+    .map((row) => row.currency)
+    .filter((currency) => currency !== baseCurrency);
+  const uniqueQuotes = [...new Set(quotes)].sort();
+
+  return uniqueQuotes.length === 0
+    ? null
+    : {
+        base: baseCurrency,
+        quotes: uniqueQuotes,
+        from: format(subDays(periods.comparison.start, 7), 'yyyy-MM-dd'),
+        to: format(periods.current.end, 'yyyy-MM-dd'),
+      };
 }
 
 export function formatAnalyticsAmount(amount: number, currency: string): string {

@@ -1353,7 +1353,7 @@ export function TransactionFlow() {
             <div className="grid h-full grid-rows-[minmax(0,1fr)_auto] gap-4">
               <div className="min-h-0">
                 <HomeDashboardCarousel
-                  currency={currency}
+                  baseCurrency={onboarding.analyticsBaseCurrency}
                   onEditTransaction={handleEditTransaction}
                   onViewAllTransactions={() => setHistoryDrawerOpen(true)}
                 />
