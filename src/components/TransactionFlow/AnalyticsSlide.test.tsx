@@ -43,6 +43,7 @@ const summary: AnalyticsSummary = {
   transactions: [],
   hasExpenseRows: true,
   convertedAmounts: {},
+  excludedBigSpendingCount: 0,
 };
 
 const periodOptions: AnalyticsPeriodOption[] = [

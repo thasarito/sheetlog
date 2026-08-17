@@ -25,6 +25,8 @@ import { useTransactionHistoryQuery } from "./useTransactionHistoryQuery";
 
 type HomeDashboardCarouselProps = {
   baseCurrency: string;
+  bigSpendingThreshold: number | null;
+  onToast: (message: string) => void;
   onEditTransaction: (transaction: TransactionRecord) => void;
   onViewAllTransactions: () => void;
 };
@@ -48,6 +50,8 @@ function ownsNestedHorizontalGesture(target: EventTarget | null): boolean {
 
 export function HomeDashboardCarousel({
   baseCurrency,
+  bigSpendingThreshold,
+  onToast,
   onEditTransaction,
   onViewAllTransactions,
 }: HomeDashboardCarouselProps) {
@@ -58,6 +62,7 @@ export function HomeDashboardCarousel({
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [initialAnalyticsBucket, setInitialAnalyticsBucket] = useState<string | null>(null);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
+  const [noBigSpending, setNoBigSpending] = useState(false);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
   const [customPeriod, setCustomPeriod] = useState(() => ({
     start: startOfMonth(analyticsNow),
@@ -136,6 +141,37 @@ export function HomeDashboardCarousel({
   ]);
   const summary =
     analyticsResult?.status === "ready" ? analyticsResult.summary : undefined;
+  const drawerAnalyticsResult = useMemo(() => {
+    if (!noBigSpending || bigSpendingThreshold === null) return analyticsResult;
+    if (!history.hasCompleteCache) return undefined;
+    if (rateRequest && ratesQuery.data === undefined && !ratesQuery.error) return undefined;
+    return buildAnalyticsSummary({
+      transactions,
+      range,
+      baseCurrency,
+      bigSpendingThreshold,
+      rates: ratesQuery.data?.rates ?? [],
+      now: analyticsNow,
+      customPeriod,
+      periodOffset,
+    });
+  }, [
+    analyticsNow,
+    analyticsResult,
+    baseCurrency,
+    bigSpendingThreshold,
+    customPeriod,
+    history.hasCompleteCache,
+    noBigSpending,
+    periodOffset,
+    range,
+    rateRequest,
+    ratesQuery.data,
+    ratesQuery.error,
+    transactions,
+  ]);
+  const drawerSummary =
+    drawerAnalyticsResult?.status === 'ready' ? drawerAnalyticsResult.summary : undefined;
   const missingRate =
     analyticsResult?.status === "missing-rates"
       ? analyticsResult.missingRates[0]
@@ -190,6 +226,10 @@ export function HomeDashboardCarousel({
       Math.max(earliestOffset, Math.min(latestOffset, periodOffset)),
     );
   }, [periodOffset, periodOptions, range]);
+
+  useEffect(() => {
+    if (bigSpendingThreshold === null) setNoBigSpending(false);
+  }, [bigSpendingThreshold]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -315,6 +355,7 @@ export function HomeDashboardCarousel({
     setAnalyticsOpen(open);
     if (open) setHistoryActivated(true);
     if (!open) {
+      setNoBigSpending(false);
       window.requestAnimationFrame(() => analyticsTriggerRef.current?.focus());
     }
   };
@@ -469,8 +510,18 @@ export function HomeDashboardCarousel({
         initialSelectedBucket={initialAnalyticsBucket}
         onOpenChange={handleAnalyticsOpenChange}
         transactions={transactions}
-        summary={summary}
+        summary={drawerSummary}
         missingRate={missingRate}
+        baseCurrency={baseCurrency}
+        bigSpendingThreshold={bigSpendingThreshold}
+        noBigSpending={noBigSpending}
+        onNoBigSpendingToggle={() => {
+          if (bigSpendingThreshold === null) {
+            onToast('Set a big spending cutoff in Settings.');
+            return;
+          }
+          setNoBigSpending((current) => !current);
+        }}
         range={range}
         onRangeChange={handleRangeChange}
         periodOptions={periodOptions}

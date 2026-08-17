@@ -20,4 +20,5 @@ export const MOCK_ONBOARDING_STATE: OnboardingState = {
   categoriesConfirmed: true,
   analyticsBaseCurrency: DEFAULT_CURRENCY,
   analyticsBaseCurrencyUpdatedAt: null,
+  analyticsBigSpendingThreshold: null,
 };

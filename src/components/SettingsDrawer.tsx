@@ -1085,8 +1085,9 @@ export function SettingsDrawer({
                               <AnalyticsBigSpendingThresholdSetting
                                 currency={onboarding.analyticsBaseCurrency}
                                 value={
-                                  onboarding.analyticsBigSpendingThreshold?.currency ===
-                                  onboarding.analyticsBaseCurrency
+                                  onboarding.analyticsBigSpendingThreshold &&
+                                  onboarding.analyticsBigSpendingThreshold.currency ===
+                                    onboarding.analyticsBaseCurrency
                                     ? onboarding.analyticsBigSpendingThreshold.amount
                                     : null
                                 }

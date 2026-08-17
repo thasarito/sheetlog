@@ -1,8 +1,9 @@
 import { format, parseISO } from 'date-fns';
-import { X } from 'lucide-react';
+import { BadgeDollarSign, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
+import { cn } from '../../lib/utils';
 import {
   Drawer,
   DrawerClose,
@@ -42,6 +43,10 @@ type AnalyticsDrawerProps = {
   transactions: TransactionRecord[];
   summary?: AnalyticsSummary;
   missingRate?: MissingAnalyticsRate;
+  baseCurrency: string;
+  bigSpendingThreshold: number | null;
+  noBigSpending: boolean;
+  onNoBigSpendingToggle: () => void;
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
   periodOptions: AnalyticsPeriodOption[];
@@ -66,6 +71,10 @@ export function AnalyticsDrawer({
   transactions,
   summary: incomingSummary,
   missingRate,
+  baseCurrency,
+  bigSpendingThreshold,
+  noBigSpending,
+  onNoBigSpendingToggle,
   range,
   onRangeChange,
   periodOptions,
@@ -123,7 +132,15 @@ export function AnalyticsDrawer({
   // biome-ignore lint/correctness/useExhaustiveDependencies: scalar custom endpoints intentionally define the controlled date scope
   useEffect(() => {
     clearFilters();
-  }, [clearFilters, customEnd, customStart, periodOffset, range, summary?.currency]);
+  }, [
+    clearFilters,
+    customEnd,
+    customStart,
+    noBigSpending,
+    periodOffset,
+    range,
+    summary?.currency,
+  ]);
 
   useEffect(() => {
     if (!open) clearFilters();
@@ -210,6 +227,17 @@ export function AnalyticsDrawer({
       : isLoading
         ? `Loading ${rangeAnnouncement} analytics`
         : 'Analytics unavailable';
+  const thresholdLabel =
+    bigSpendingThreshold === null
+      ? null
+      : formatAnalyticsAmount(bigSpendingThreshold, baseCurrency);
+  const excludedCount = summary?.excludedBigSpendingCount ?? 0;
+  const noBigSpendingLabel =
+    thresholdLabel === null
+      ? 'No big spending mode unavailable; set a big spending cutoff in Settings'
+      : noBigSpending
+        ? `No big spending mode on; ${excludedCount} ${excludedCount === 1 ? 'expense' : 'expenses'} at or above ${thresholdLabel} excluded`
+        : `Turn on no big spending mode; exclude expenses at or above ${thresholdLabel}`;
 
   return (
     <Drawer open={open} onOpenChange={handleDrawerOpenChange}>
@@ -254,6 +282,18 @@ export function AnalyticsDrawer({
               className="flex items-center justify-end gap-3 pt-3"
             >
               <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
+              <button
+                type="button"
+                aria-label={noBigSpendingLabel}
+                aria-pressed={noBigSpending}
+                onClick={onNoBigSpendingToggle}
+                className={cn(
+                  'flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                  noBigSpending && 'bg-primary/10 text-primary',
+                )}
+              >
+                <BadgeDollarSign className="h-5 w-5" aria-hidden="true" />
+              </button>
             </div>
 
             {range !== 'custom' ? (

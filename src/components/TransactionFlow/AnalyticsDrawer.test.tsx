@@ -104,8 +104,18 @@ function makeSummary(
   return result.summary;
 }
 
+function defaultNoBigSpendingProps() {
+  return {
+    baseCurrency: 'THB',
+    bigSpendingThreshold: null,
+    noBigSpending: false,
+    onNoBigSpendingToggle: vi.fn(),
+  } as const;
+}
+
 const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
   open: true,
+  ...defaultNoBigSpendingProps(),
   onOpenChange: vi.fn(),
   transactions,
   range: 'week',
@@ -142,7 +152,6 @@ function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>>
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
 describe('AnalyticsDrawer', () => {
   it('renders the shared grouped axis for a complete quarter', () => {
     renderDrawer({
@@ -543,6 +552,37 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Category F/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Category G/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Category A/ })).not.toBeInTheDocument();
+  });
+
+  it('renders one icon-only no big spending toggle with accessible state', async () => {
+    const user = userEvent.setup();
+    const onToggle = vi.fn();
+    renderDrawer({
+      summary: { ...makeSummary(), excludedBigSpendingCount: 2 },
+      baseCurrency: 'THB',
+      bigSpendingThreshold: 10_000,
+      noBigSpending: true,
+      onNoBigSpendingToggle: onToggle,
+    });
+
+    const toggle = screen.getByRole('button', {
+      name: 'No big spending mode on; 2 expenses at or above ฿10,000 excluded',
+    });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveTextContent('');
+    expect(screen.getAllByRole('button', { name: /big spending/i })).toHaveLength(1);
+    await user.click(toggle);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains through its accessible name when the cutoff is not configured', () => {
+    renderDrawer();
+
+    expect(
+      screen.getByRole('button', {
+        name: 'No big spending mode unavailable; set a big spending cutoff in Settings',
+      }),
+    ).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('shows the missing historical rate before generic offline errors', async () => {

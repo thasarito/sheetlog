@@ -32,6 +32,8 @@ const analyticsDrawerCalls: Array<{
   onPeriodChange: (offset: number) => void;
   summary?: AnalyticsSummary;
   missingRate?: MissingAnalyticsRate;
+  noBigSpending: boolean;
+  onNoBigSpendingToggle: () => void;
 }> = [];
 const analyticsRangeDrawerCalls: Array<{
   open: boolean;
@@ -158,6 +160,8 @@ vi.mock("./AnalyticsDrawer", () => ({
     onPeriodChange,
     summary,
     missingRate,
+    noBigSpending,
+    onNoBigSpendingToggle,
   }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -168,6 +172,8 @@ vi.mock("./AnalyticsDrawer", () => ({
     onPeriodChange: (offset: number) => void;
     summary?: AnalyticsSummary;
     missingRate?: MissingAnalyticsRate;
+    noBigSpending: boolean;
+    onNoBigSpendingToggle: () => void;
   }) => {
     analyticsDrawerCalls.push({
       customPeriod,
@@ -177,11 +183,18 @@ vi.mock("./AnalyticsDrawer", () => ({
       onPeriodChange,
       summary,
       missingRate,
+      noBigSpending,
+      onNoBigSpendingToggle,
     });
     return open ? (
-      <button type="button" onClick={() => onOpenChange(false)}>
-        Close analytics drawer
-      </button>
+      <div>
+        <button type="button" onClick={onNoBigSpendingToggle}>
+          Toggle no big spending
+        </button>
+        <button type="button" onClick={() => onOpenChange(false)}>
+          Close analytics drawer
+        </button>
+      </div>
     ) : null;
   },
 }));
@@ -222,11 +235,19 @@ vi.mock("./AnalyticsRangeDrawer", () => ({
   },
 }));
 
-function renderCarousel() {
+function renderCarousel({
+  bigSpendingThreshold = null,
+  onToast = vi.fn(),
+}: {
+  bigSpendingThreshold?: number | null;
+  onToast?: (message: string) => void;
+} = {}) {
   const onViewAllTransactions = vi.fn();
   render(
     <HomeDashboardCarousel
       baseCurrency="THB"
+      bigSpendingThreshold={bigSpendingThreshold}
+      onToast={onToast}
       onEditTransaction={vi.fn()}
       onViewAllTransactions={onViewAllTransactions}
     />,
@@ -574,5 +595,81 @@ describe("HomeDashboardCarousel", () => {
     expect(latestSlide?.summary?.currency).toBe('THB');
     expect(latestSlide?.summary?.expenseTotal).toBe(200);
     expect(latestDrawer?.summary).toBe(latestSlide?.summary);
+  });
+
+  it('filters only drawer analytics and resets the mode after close', async () => {
+    const user = userEvent.setup();
+    const date = new Date().toISOString();
+    historyData = [
+      {
+        id: 'ordinary',
+        type: 'expense',
+        amount: 100,
+        currency: 'THB',
+        account: 'Cash',
+        for: 'Me',
+        category: 'Dining Out',
+        date,
+        status: 'synced',
+        createdAt: date,
+        updatedAt: date,
+      },
+      {
+        id: 'large',
+        type: 'expense',
+        amount: 10_000,
+        currency: 'THB',
+        account: 'Cash',
+        for: 'Me',
+        category: 'Travel',
+        date,
+        status: 'synced',
+        createdAt: date,
+        updatedAt: date,
+      },
+    ];
+    renderCarousel({ bigSpendingThreshold: 10_000 });
+
+    await user.click(screen.getByRole('button', { name: 'Analytics slide' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Analytics slide' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      ),
+    );
+    await user.click(screen.getByText('Analytics content'));
+    await user.click(screen.getByRole('button', { name: 'Toggle no big spending' }));
+
+    await waitFor(() => {
+      expect(analyticsSlideCalls.at(-1)?.summary?.expenseTotal).toBe(10_100);
+      expect(analyticsDrawerCalls.at(-1)?.summary?.expenseTotal).toBe(100);
+      expect(analyticsDrawerCalls.at(-1)?.noBigSpending).toBe(true);
+    });
+
+    await user.click(screen.getByText('Close analytics drawer'));
+    await user.click(screen.getByText('Analytics content'));
+    await waitFor(() => {
+      expect(analyticsDrawerCalls.at(-1)?.noBigSpending).toBe(false);
+      expect(analyticsDrawerCalls.at(-1)?.summary?.expenseTotal).toBe(10_100);
+    });
+  });
+
+  it('directs an unconfigured mode press to Settings', async () => {
+    const user = userEvent.setup();
+    const onToast = vi.fn();
+    renderCarousel({ onToast });
+
+    await user.click(screen.getByRole('button', { name: 'Analytics slide' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Analytics slide' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      ),
+    );
+    await user.click(screen.getByText('Analytics content'));
+    await user.click(screen.getByRole('button', { name: 'Toggle no big spending' }));
+
+    expect(onToast).toHaveBeenCalledWith('Set a big spending cutoff in Settings.');
+    expect(analyticsDrawerCalls.at(-1)?.noBigSpending).toBe(false);
   });
 });
