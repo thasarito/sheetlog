@@ -1388,6 +1388,7 @@ export function TransactionFlow() {
 
       <TransactionHistoryDrawer
         open={historyDrawerOpen}
+        baseCurrency={onboarding.analyticsBaseCurrency}
         onOpenChange={setHistoryDrawerOpen}
         onEditTransaction={(transaction) => {
           void handleEditTransaction(transaction);

@@ -21,16 +21,19 @@ import {
   DrawerTitle,
 } from "../ui/drawer";
 import { Skeleton } from "../ui/skeleton";
+import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
 import {
   flattenTransactionHistory,
   TransactionHistoryDateHeader,
   type TransactionHistoryListItem,
   TransactionHistoryRow,
 } from "./TransactionHistoryItems";
+import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
 import { useTransactionHistoryQuery } from "./useTransactionHistoryQuery";
 
 type TransactionHistoryDrawerProps = {
   open: boolean;
+  baseCurrency: string;
   onOpenChange: (open: boolean) => void;
   onEditTransaction: (transaction: TransactionRecord) => void;
 };
@@ -48,9 +51,11 @@ const HISTORY_INITIAL_RECT = { width: 390, height: 560 };
 function TransactionHistoryVirtualList({
   items,
   onEdit,
+  baseAmountStates,
 }: {
   items: TransactionHistoryListItem[];
   onEdit: (transaction: TransactionRecord) => void;
+  baseAmountStates: Readonly<Record<string, TransactionBaseAmountState>>;
 }) {
   const scrollRef = useRef<HTMLElement>(null);
   const anchorRef = useRef<{
@@ -160,6 +165,7 @@ function TransactionHistoryVirtualList({
                 <TransactionHistoryRow
                   transaction={item.transaction}
                   onSelect={onEdit}
+                  baseAmount={baseAmountStates[item.transaction.id]}
                 />
               )}
             </div>
@@ -172,12 +178,18 @@ function TransactionHistoryVirtualList({
 
 export function TransactionHistoryDrawer({
   open,
+  baseCurrency,
   onOpenChange,
   onEditTransaction,
 }: TransactionHistoryDrawerProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const history = useTransactionHistoryQuery(open);
+  const baseAmounts = useTransactionBaseAmounts(
+    history.records,
+    baseCurrency,
+    open,
+  );
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -206,6 +218,7 @@ export function TransactionHistoryDrawer({
   }`;
   const hasIncompleteLocalRows =
     !history.hasCompleteCache && history.records.length > 0;
+  const isRefreshing = history.isRefreshing || baseAmounts.isRefreshing;
   const incompleteHistoryMessage = history.isLoading || history.isDownloading
     ? "Showing local entries while full history downloads."
     : !history.isOnline
@@ -215,6 +228,10 @@ export function TransactionHistoryDrawer({
   const handleEdit = (transaction: TransactionRecord) => {
     onOpenChange(false);
     onEditTransaction(transaction);
+  };
+  const refresh = () => {
+    void history.refresh();
+    void baseAmounts.refetch();
   };
 
   return (
@@ -255,12 +272,12 @@ export function TransactionHistoryDrawer({
           <button
             type="button"
             aria-label="Refresh transaction history"
-            disabled={!history.isOnline || history.isRefreshing}
-            onClick={() => void history.refresh()}
+            disabled={!history.isOnline || isRefreshing}
+            onClick={refresh}
             className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <RefreshCw
-              className={cn("h-4 w-4", history.isRefreshing && "animate-spin")}
+              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
             />
           </button>
         </DrawerHeader>
@@ -282,7 +299,7 @@ export function TransactionHistoryDrawer({
             <div className="flex min-h-5 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
               <span>{countLabel}</span>
               <span className="truncate text-right">
-                {history.isRefreshing
+                {isRefreshing
                   ? "Updating…"
                   : history.meta
                     ? `Saved ${format(parseDate(history.meta.capturedAt), "MMM d, HH:mm")}`
@@ -302,7 +319,7 @@ export function TransactionHistoryDrawer({
               <button
                 type="button"
                 aria-label="Retry history refresh"
-                onClick={() => void history.refresh()}
+                onClick={refresh}
                 className="shrink-0 font-semibold underline underline-offset-2"
               >
                 Retry
@@ -329,7 +346,7 @@ export function TransactionHistoryDrawer({
                 <button
                   type="button"
                   aria-label="Retry history refresh"
-                  onClick={() => void history.refresh()}
+                  onClick={refresh}
                   className="shrink-0 font-semibold underline underline-offset-2"
                 >
                   Retry
@@ -339,7 +356,11 @@ export function TransactionHistoryDrawer({
           ) : null}
 
           {filteredTransactions.length > 0 ? (
-            <TransactionHistoryVirtualList items={items} onEdit={handleEdit} />
+            <TransactionHistoryVirtualList
+              items={items}
+              onEdit={handleEdit}
+              baseAmountStates={baseAmounts.states}
+            />
           ) : debouncedSearch && history.records.length > 0 ? (
             <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">
               No transactions match this search.
@@ -370,7 +391,7 @@ export function TransactionHistoryDrawer({
               <button
                 type="button"
                 aria-label="Retry history refresh"
-                onClick={() => void history.refresh()}
+                onClick={refresh}
                 className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
               >
                 Retry

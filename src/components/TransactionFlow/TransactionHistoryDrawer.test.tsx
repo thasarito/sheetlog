@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "../../lib/types";
+import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
 import { TransactionHistoryDrawer } from "./TransactionHistoryDrawer";
+import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
 
 const originalScrollTo = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
@@ -27,10 +29,20 @@ const mocks = vi.hoisted(() => ({
     isOnline: true,
     refresh: vi.fn(),
   },
+  baseAmountStates: {} as Record<string, TransactionBaseAmountState>,
+  rateRefetch: vi.fn(),
 }));
 
 vi.mock("./useTransactionHistoryQuery", () => ({
   useTransactionHistoryQuery: () => mocks.history,
+}));
+
+vi.mock("./useTransactionBaseAmounts", () => ({
+  useTransactionBaseAmounts: vi.fn(() => ({
+    states: mocks.baseAmountStates,
+    refetch: mocks.rateRefetch,
+    isRefreshing: false,
+  })),
 }));
 
 vi.mock("../ui/drawer", () => ({
@@ -137,6 +149,9 @@ beforeEach(() => {
   mocks.history.isDownloading = false;
   mocks.history.isOnline = true;
   mocks.history.refresh.mockReset();
+  mocks.baseAmountStates = {};
+  mocks.rateRefetch.mockReset();
+  vi.mocked(useTransactionBaseAmounts).mockClear();
 });
 
 afterEach(() => {
@@ -171,6 +186,7 @@ describe("TransactionHistoryDrawer", () => {
     render(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={vi.fn()}
         onEditTransaction={vi.fn()}
       />,
@@ -202,6 +218,7 @@ describe("TransactionHistoryDrawer", () => {
     const rendered = render(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={vi.fn()}
         onEditTransaction={vi.fn()}
       />,
@@ -223,6 +240,7 @@ describe("TransactionHistoryDrawer", () => {
     rendered.rerender(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={vi.fn()}
         onEditTransaction={vi.fn()}
       />,
@@ -267,6 +285,7 @@ describe("TransactionHistoryDrawer", () => {
     render(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={onOpenChange}
         onEditTransaction={onEditTransaction}
       />,
@@ -296,6 +315,7 @@ describe("TransactionHistoryDrawer", () => {
     render(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={vi.fn()}
         onEditTransaction={vi.fn()}
       />,
@@ -317,6 +337,7 @@ describe("TransactionHistoryDrawer", () => {
     render(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={vi.fn()}
         onEditTransaction={vi.fn()}
       />,
@@ -340,6 +361,7 @@ describe("TransactionHistoryDrawer", () => {
     render(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={vi.fn()}
         onEditTransaction={vi.fn()}
       />,
@@ -361,6 +383,7 @@ describe("TransactionHistoryDrawer", () => {
     render(
       <TransactionHistoryDrawer
         open
+        baseCurrency="THB"
         onOpenChange={vi.fn()}
         onEditTransaction={vi.fn()}
       />,
@@ -370,5 +393,46 @@ describe("TransactionHistoryDrawer", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Google unavailable");
     await user.click(screen.getByRole("button", { name: "Retry history refresh" }));
     await waitFor(() => expect(mocks.history.refresh).toHaveBeenCalled());
+  });
+
+  it("converts the complete record set independently of search and refreshes rates", async () => {
+    const foreign = transaction("foreign", {
+      amount: 3,
+      currency: "USD",
+      category: "Foreign coffee",
+    });
+    const local = transaction("local", { category: "Local lunch" });
+    mocks.history.records = [foreign, local];
+    mocks.baseAmountStates = {
+      foreign: { status: "ready", currency: "THB", amount: 100 },
+    };
+    const user = userEvent.setup();
+
+    render(
+      <TransactionHistoryDrawer
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("≈ −฿100.00")).toBeInTheDocument();
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+      "foreign",
+    );
+    expect(await screen.findByText("1 transaction")).toBeInTheDocument();
+    expect(useTransactionBaseAmounts).toHaveBeenLastCalledWith(
+      mocks.history.records,
+      "THB",
+      true,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Refresh transaction history" }),
+    );
+    expect(mocks.history.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.rateRefetch).toHaveBeenCalledTimes(1);
   });
 });
