@@ -24,7 +24,7 @@ import {
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsCategories } from './AnalyticsCategories';
 import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
-import { AnalyticsRangePicker } from './AnalyticsRangePicker';
+import { AnalyticsRangeDrawer } from './AnalyticsRangeDrawer';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
 import { TransactionRow } from './TransactionRow';
 
@@ -70,11 +70,10 @@ export function AnalyticsDrawer({
   now = new Date(),
 }: AnalyticsDrawerProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const previousDrawerOpen = useRef(false);
+  const customRangeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [customPickerOpen, setCustomPickerOpen] = useState(false);
-  const [customPickerRequest, setCustomPickerRequest] = useState(0);
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
   const summary = useMemo(
@@ -104,14 +103,8 @@ export function AnalyticsDrawer({
   }, [currency, customEnd, customStart, range]);
 
   useEffect(() => {
-    const justOpened = open && !previousDrawerOpen.current;
-    if (!open || range !== 'custom') {
-      setCustomPickerOpen(false);
-    } else if (justOpened) {
-      setCustomPickerRequest((request) => request + 1);
-    }
-    previousDrawerOpen.current = open;
-  }, [open, range]);
+    if (!open) setCustomRangeOpen(false);
+  }, [open]);
 
   const filteredTransactions = useMemo(() => {
     if (!selectedSeries) return scope.transactions;
@@ -131,16 +124,23 @@ export function AnalyticsDrawer({
     onSelectTransaction(transaction);
   };
   const handleDrawerOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && customPickerOpen) return;
-    if (!nextOpen) setCustomPickerOpen(false);
+    if (!nextOpen) setCustomRangeOpen(false);
     onOpenChange(nextOpen);
   };
-  const handleRangeChange = (nextRange: AnalyticsRange) => {
-    setCustomPickerOpen(false);
+  const handleRangeChange = (
+    nextRange: AnalyticsRange,
+    trigger?: HTMLButtonElement,
+  ) => {
     if (nextRange === 'custom') {
-      setCustomPickerRequest((request) => request + 1);
+      customRangeTriggerRef.current = trigger ?? null;
+      setCustomRangeOpen(true);
+      return;
     }
     onRangeChange(nextRange);
+  };
+  const applyCustomPeriod = (period: DatePeriod) => {
+    onCustomPeriodChange(period);
+    onRangeChange('custom');
   };
   const rangeAnnouncement =
     range === 'week'
@@ -244,19 +244,6 @@ export function AnalyticsDrawer({
                 )}
                 <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
               </div>
-
-              {range === 'custom' ? (
-                <div className="flex justify-end">
-                  <AnalyticsRangePicker
-                    value={customPeriod}
-                    minDate={earliestDate}
-                    maxDate={now}
-                    openRequest={customPickerRequest}
-                    onChange={onCustomPeriodChange}
-                    onOpenChange={setCustomPickerOpen}
-                  />
-                </div>
-              ) : null}
 
               <section aria-label="Spending trend">
                 <AnalyticsBarChart
@@ -396,6 +383,16 @@ export function AnalyticsDrawer({
           )}
         </div>
       </DrawerContent>
+      <AnalyticsRangeDrawer
+        nested
+        open={customRangeOpen}
+        onOpenChange={setCustomRangeOpen}
+        value={customPeriod}
+        minDate={earliestDate}
+        maxDate={now}
+        onApply={applyCustomPeriod}
+        returnFocusTo={customRangeTriggerRef.current}
+      />
     </Drawer>
   );
 }

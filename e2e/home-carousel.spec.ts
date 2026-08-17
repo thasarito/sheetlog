@@ -222,14 +222,34 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeFocused();
     await expect(analyticsDialog.getByText('Transfers are excluded from totals.')).toBeVisible();
 
+    const firstAnalyticsBar = analyticsDialog.getByRole('option').first();
+    await expect(firstAnalyticsBar).toHaveAttribute('aria-selected', 'false');
+
     await analyticsDialog.getByRole('button', { name: 'Custom date range' }).click();
-    await expect(
-      page.getByRole('button', { name: /Custom date range, / }),
-    ).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Choose custom date range' })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Choose custom date range' })).toHaveCount(0);
+    const nestedRangeDialog = page.getByRole('dialog', { name: 'Custom date range' });
+    await expect(nestedRangeDialog).toBeVisible();
+    await expect(analyticsDialog).toBeAttached();
+
+    const nestedStart = subDays(new Date(), 6);
+    const nestedEnd = subDays(new Date(), 3);
+    await nestedRangeDialog
+      .getByRole('button', {
+        name: new RegExp(format(nestedStart, 'MMMM do, yyyy')),
+      })
+      .click();
+    await nestedRangeDialog
+      .getByRole('button', {
+        name: new RegExp(format(nestedEnd, 'MMMM do, yyyy')),
+      })
+      .click();
+    await nestedRangeDialog.getByRole('button', { name: 'Apply custom range' }).click();
+
+    await expect(nestedRangeDialog).toHaveCount(0);
     await expect(analyticsDialog).toBeVisible();
+    await expect(firstAnalyticsBar).toHaveAttribute('aria-selected', 'false');
+    await expect(
+      analyticsDialog.getByRole('button', { name: 'Custom date range' }),
+    ).toHaveAttribute('aria-pressed', 'true');
 
     await analyticsDialog.getByRole('button', { name: 'Month, month to date' }).click();
     const selectedDay = format(subDays(new Date(), 2), 'EEEE, MMMM d');
