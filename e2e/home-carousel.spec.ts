@@ -125,6 +125,20 @@ test.describe('Home Transactions and Analytics carousel', () => {
       'aria-pressed',
       'true',
     );
+    const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
+    const compactPeriodPicker = analyticsSlide.getByTestId('analytics-period-picker');
+    await expect(compactPeriodPicker.getByRole('option')).toHaveCount(3);
+    const currentWeekLabel = await compactPeriodPicker
+      .getByRole('option', { selected: true })
+      .textContent();
+    await touchSwipe(page, compactPeriodPicker, 180, 2);
+    await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
+    await expect(compactPeriodPicker.getByRole('option', { selected: true })).not.toHaveText(
+      currentWeekLabel ?? '',
+    );
+    const historicalWeekLabel =
+      (await compactPeriodPicker.getByRole('option', { selected: true }).textContent())?.trim() ??
+      '';
     await expect
       .poll(() =>
         page
@@ -132,6 +146,9 @@ test.describe('Home Transactions and Analytics carousel', () => {
           .evaluateAll((bars) => Math.max(...bars.map((bar) => bar.getBoundingClientRect().height))),
       )
       .toBeGreaterThan(0);
+    await expect
+      .poll(async () => (await analyticsSlide.locator('figure[aria-label^="Expense trend"]').boundingBox())?.height ?? 0)
+      .toBeGreaterThan(40);
     const compactLayout = await viewport.evaluate((element) => {
       const slide = element.querySelector('section[aria-label^="Analytics,"]');
       const viewAll = element.querySelector('button[aria-label="View all analytics"]');
@@ -150,12 +167,23 @@ test.describe('Home Transactions and Analytics carousel', () => {
       clientWidth: document.documentElement.clientWidth,
     }));
     expect(pageWidth.bodyScrollWidth).toBe(pageWidth.clientWidth);
+    const analyticsViewAll = page.getByRole('button', { name: 'View all analytics' });
+    await analyticsViewAll.click();
+    let analyticsDialog = page.getByRole('dialog', { name: 'Analytics' });
+    await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeFocused();
+    await expect(
+      analyticsDialog
+        .getByTestId('analytics-period-picker')
+        .getByRole('option', { selected: true }),
+    ).toHaveText(historicalWeekLabel);
+    await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
+    await expect(analyticsViewAll).toBeFocused();
+
     await page.getByRole('button', { name: 'Month, month to date' }).click();
     await expect(page.getByRole('button', { name: 'Month, month to date' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
     await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
       Number(format(new Date(), 'd')),
     );
@@ -184,12 +212,11 @@ test.describe('Home Transactions and Analytics carousel', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: 'Month, month to date' }).click();
 
-    const analyticsViewAll = page.getByRole('button', { name: 'View all analytics' });
     await touchSwipe(page, analyticsViewAll, geometry.viewportWidth * 0.7, 4);
     await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await analyticsViewAll.click();
-    const analyticsDialog = page.getByRole('dialog', { name: 'Analytics' });
+    analyticsDialog = page.getByRole('dialog', { name: 'Analytics' });
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeVisible();
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeFocused();
     await expect(analyticsDialog.getByText('Transfers are excluded from totals.')).toBeVisible();
@@ -228,6 +255,23 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(analyticsDialog.getByRole('button', { name: /income Salary/ })).toBeVisible();
     await page.screenshot({ path: 'test-results/stacked-analytics-selected-mobile.png', fullPage: true });
 
+    await analyticsDialog.getByRole('button', { name: 'Transport, ฿260, 100%' }).click();
+    await expect(
+      analyticsDialog.getByRole('button', { name: 'Transport, ฿260, 100%' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
+    await expect(analyticsViewAll).toBeFocused();
+    await analyticsViewAll.click();
+    analyticsDialog = page.getByRole('dialog', { name: 'Analytics' });
+    await expect(
+      analyticsDialog.getByRole('button', { name: /Clear selected period filter/ }),
+    ).toHaveCount(0);
+    await expect(analyticsDialog.getByRole('button', { name: /expense Food Delivery/ })).toBeVisible();
+    await expect(analyticsDialog.getByRole('button', { name: /expense Coffee & Snacks/ })).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('button', { name: 'Month, month to date' }),
+    ).toHaveAttribute('aria-pressed', 'true');
     await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
     await expect(analyticsViewAll).toBeFocused();
 
