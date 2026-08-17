@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { MouseEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  AnalyticsPeriodOption,
   AnalyticsRange,
   AnalyticsSummary,
   DatePeriod,
@@ -13,17 +14,40 @@ const historyEnabledCalls: boolean[] = [];
 const analyticsSlideCalls: Array<{
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
+  periodOptions: AnalyticsPeriodOption[];
+  periodOffset: number;
+  onPeriodChange: (offset: number) => void;
   summary?: AnalyticsSummary;
 }> = [];
 const analyticsDrawerCalls: Array<{
   customPeriod: DatePeriod;
+  periodOptions: AnalyticsPeriodOption[];
+  periodOffset: number;
+  onPeriodChange: (offset: number) => void;
 }> = [];
+
+const historyRecords = [
+  {
+    id: "older-expense",
+    type: "expense" as const,
+    amount: 100,
+    currency: "THB",
+    account: "Cash",
+    for: "Me",
+    category: "Dining Out",
+    date: "2026-07-01T12:00:00",
+    status: "synced" as const,
+    sheetRowValid: true,
+    createdAt: "2026-07-01T12:00:00",
+    updatedAt: "2026-07-01T12:00:00",
+  },
+];
 
 vi.mock("./useTransactionHistoryQuery", () => ({
   useTransactionHistoryQuery: (enabled: boolean) => {
     historyEnabledCalls.push(enabled);
     return {
-      records: [],
+      records: historyRecords,
       meta: null,
       error: null,
       hasCompleteCache: true,
@@ -48,6 +72,9 @@ vi.mock("./AnalyticsSlide", () => ({
   AnalyticsSlide: (props: {
     range: AnalyticsRange;
     onRangeChange: (range: AnalyticsRange) => void;
+    periodOptions: AnalyticsPeriodOption[];
+    periodOffset: number;
+    onPeriodChange: (offset: number) => void;
     onCustomRequest: (trigger: HTMLButtonElement) => void;
     summary?: AnalyticsSummary;
     onViewAll: (event: MouseEvent<HTMLButtonElement>) => void;
@@ -60,6 +87,9 @@ vi.mock("./AnalyticsSlide", () => ({
         </button>
         <button type="button" onClick={() => props.onRangeChange("month")}>
           Test month range
+        </button>
+        <button type="button" onClick={() => props.onPeriodChange(-1)}>
+          Test previous period
         </button>
         <button type="button" onClick={() => props.onRangeChange("quarter")}>
           Test quarter range
@@ -76,6 +106,9 @@ vi.mock("./AnalyticsSlide", () => ({
         >
           Test custom range
         </button>
+        <button type="button" data-home-carousel-swipe-lock="true">
+          Nested period swipe target
+        </button>
       </div>
     );
   },
@@ -86,12 +119,23 @@ vi.mock("./AnalyticsDrawer", () => ({
     open,
     onOpenChange,
     customPeriod,
+    periodOptions,
+    periodOffset,
+    onPeriodChange,
   }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     customPeriod: DatePeriod;
+    periodOptions: AnalyticsPeriodOption[];
+    periodOffset: number;
+    onPeriodChange: (offset: number) => void;
   }) => {
-    analyticsDrawerCalls.push({ customPeriod });
+    analyticsDrawerCalls.push({
+      customPeriod,
+      periodOptions,
+      periodOffset,
+      onPeriodChange,
+    });
     return open ? (
       <button type="button" onClick={() => onOpenChange(false)}>
         Close analytics drawer
@@ -215,6 +259,32 @@ describe("HomeDashboardCarousel", () => {
       ).toHaveAttribute("aria-current", "true"),
     );
 
+    const nestedTarget = screen.getByRole("button", {
+      name: "Nested period swipe target",
+    });
+    fireEvent.pointerDown(nestedTarget, {
+      pointerId: 3,
+      pointerType: "touch",
+      clientX: 100,
+      clientY: 90,
+    });
+    fireEvent.pointerMove(viewport, {
+      pointerId: 3,
+      pointerType: "touch",
+      clientX: 260,
+      clientY: 94,
+    });
+    fireEvent.pointerUp(viewport, {
+      pointerId: 3,
+      pointerType: "touch",
+      clientX: 260,
+      clientY: 94,
+    });
+    expect(screen.getByRole("button", { name: "Analytics slide" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Transactions slide" }));
@@ -282,6 +352,30 @@ describe("HomeDashboardCarousel", () => {
     expect(customSummary?.buckets.every((bucket) => !bucket.key.endsWith("-week"))).toBe(true);
     expect(customDrawer?.customPeriod).toEqual(customSummary?.periods.current);
     expect(screen.getByRole("button", { name: "Close analytics drawer" })).toBeInTheDocument();
+  });
+
+  it("shares the selected period with the sheet and resets it when range changes", async () => {
+    const user = userEvent.setup();
+    renderCarousel();
+    await user.click(screen.getByRole("button", { name: "Analytics slide" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Analytics slide" }),
+      ).toHaveAttribute("aria-current", "true"),
+    );
+
+    expect(analyticsSlideCalls.at(-1)?.periodOptions.length).toBeGreaterThan(1);
+    await user.click(screen.getByRole("button", { name: "Test previous period" }));
+    expect(analyticsSlideCalls.at(-1)?.periodOffset).toBe(-1);
+    expect(analyticsDrawerCalls.at(-1)?.periodOffset).toBe(-1);
+    expect(analyticsSlideCalls.at(-1)?.summary?.periods.current.end).toEqual(
+      analyticsDrawerCalls.at(-1)?.periodOptions.find(({ offset }) => offset === -1)?.period.end,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Test month range" }));
+    expect(analyticsSlideCalls.at(-1)?.range).toBe("month");
+    expect(analyticsSlideCalls.at(-1)?.periodOffset).toBe(0);
+    expect(analyticsDrawerCalls.at(-1)?.periodOffset).toBe(0);
   });
 
   it("suppresses an accidental action click after a horizontal touch drag", () => {
