@@ -183,6 +183,8 @@ describe("useTransactionHistoryQuery", () => {
     });
     expect(result.current.records[0].status).toBe("pending");
     expect(result.current.hasCompleteCache).toBe(true);
+    expect(result.current.hasLocalSnapshot).toBe(true);
+    expect(result.current.remoteStatus).toBe("pending");
     expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
   });
 
@@ -263,6 +265,9 @@ describe("useTransactionHistoryQuery", () => {
     await waitFor(() => {
       expect(result.current.records.map(({ id }) => id)).toEqual(["fresh"]);
     });
+    expect(result.current.remoteStatus).toBe("success");
+    expect(result.current.remoteFetchedAt).toEqual(expect.any(Number));
+    expect(result.current.remoteError).toBeNull();
     expect(
       (await readTransactionHistorySnapshot("sheet-a"))?.records.map(
         ({ id }) => id,
