@@ -1,4 +1,4 @@
-import { parseDate } from "./date-utils";
+import { tryParseDate } from "./date-utils";
 import { parseSheetTransactionPlace } from "./transactionPlace";
 import type { TransactionRecord, TransactionType } from "./types";
 
@@ -38,17 +38,20 @@ function finiteNumber(value: unknown): number | null {
   return null;
 }
 
-function parseSheetDate(value: unknown, fallback: string): string {
+function parseSheetDate(
+  value: unknown,
+  fallback: string,
+): { value: string; isValid: boolean } {
   if (typeof value !== "string" && typeof value !== "number") {
-    return fallback;
+    return { value: fallback, isValid: false };
   }
 
-  try {
-    const parsed = parseDate(value);
-    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : fallback;
-  } catch {
-    return fallback;
+  const parsed = tryParseDate(value);
+  if (!parsed) {
+    return { value: fallback, isValid: false };
   }
+
+  return { value: parsed.toISOString(), isValid: true };
 }
 
 export function serializeTransactionRow(
@@ -133,7 +136,8 @@ export function parseTransactionRow(
   const stableId = String(idRaw ?? "").trim();
   const relation = String(reimbursesTransactionIdRaw ?? "").trim();
   const now = new Date().toISOString();
-  const timestamp = parseSheetDate(createdAt, now);
+  const dateResult = parseSheetDate(date, now);
+  const timestamp = parseSheetDate(createdAt, now).value;
   const place = parseSheetTransactionPlace(
     note,
     placeProviderRaw,
@@ -142,7 +146,7 @@ export function parseTransactionRow(
 
   return {
     id: stableId || `row-${rowIndex}`,
-    date: parseSheetDate(date, now),
+    date: dateResult.value,
     type: typeIsValid ? (typeRaw as TransactionType) : "expense",
     amount: amount ?? 0,
     category: String(category || "Uncategorized"),
@@ -154,7 +158,11 @@ export function parseTransactionRow(
     for: String(forValue || ""),
     status: "synced",
     sheetRow: rowIndex,
-    sheetRowValid: typeIsValid && amount !== null && stableId.length > 0,
+    sheetRowValid:
+      dateResult.isValid &&
+      typeIsValid &&
+      amount !== null &&
+      stableId.length > 0,
     reimbursesTransactionId: relation || undefined,
     ...(place ? { place } : {}),
   };

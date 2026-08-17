@@ -32,8 +32,8 @@ import {
   transactionSchema,
   type TransactionFormValues,
 } from "./transactionSchema";
-import { TopDashboard } from "./TopDashboard";
 import { TransactionHistoryDrawer } from "./TransactionHistoryDrawer";
+import { HomeDashboardCarousel } from "./HomeDashboardCarousel";
 import { CategoryGridDrawer } from "../CategoryGridDrawer";
 import { DateTimeDrawer } from "../DateTimeDrawer";
 import {
@@ -1352,9 +1352,10 @@ export function TransactionFlow() {
           {step === 0 ? (
             <div className="grid h-full grid-rows-[1fr_3fr] gap-4">
               <div className="min-h-0">
-                <TopDashboard
+                <HomeDashboardCarousel
+                  currency={currency}
                   onEditTransaction={handleEditTransaction}
-                  onViewAll={() => setHistoryDrawerOpen(true)}
+                  onViewAllTransactions={() => setHistoryDrawerOpen(true)}
                 />
               </div>
               <div className="min-h-0">

@@ -1,0 +1,87 @@
+import { cn } from '../../lib/utils';
+import { formatAnalyticsAmount, type AnalyticsBucket } from './analytics';
+
+type AnalyticsBarChartProps = {
+  buckets: AnalyticsBucket[];
+  currency: string;
+  selectedKey?: string | null;
+  onSelect?: (key: string) => void;
+  className?: string;
+};
+
+export function AnalyticsBarChart({
+  buckets,
+  currency,
+  selectedKey,
+  onSelect,
+  className,
+}: AnalyticsBarChartProps) {
+  const maximum = Math.max(1, ...buckets.map((bucket) => Math.abs(bucket.amount)));
+  const hasNegative = buckets.some((bucket) => bucket.amount < 0);
+  const summary = buckets
+    .map(
+      (bucket) =>
+        `${bucket.accessibleLabel} ${formatAnalyticsAmount(bucket.amount, currency)}`,
+    )
+    .join(', ');
+
+  return (
+    <figure className={className} aria-label={`Expense trend: ${summary}`}>
+      <div className="flex h-full items-stretch gap-2" aria-hidden={onSelect ? undefined : true}>
+        {buckets.map((bucket) => {
+          const negative = bucket.amount < 0;
+          const availableHeight = hasNegative ? 50 : 100;
+          const bar = (
+            <span
+              className={cn(
+                'absolute inset-x-1 bg-primary/55',
+                negative ? 'top-1/2 rounded-b-sm bg-warning/55' : 'rounded-t-sm',
+                selectedKey === bucket.key && 'bg-primary',
+              )}
+              style={{
+                height:
+                  bucket.amount === 0
+                    ? '0%'
+                    : `${Math.max(4, (Math.abs(bucket.amount) / maximum) * availableHeight)}%`,
+                bottom: negative ? undefined : hasNegative ? '50%' : 0,
+              }}
+            />
+          );
+
+          return (
+            <div
+              key={bucket.key}
+              className="grid h-full min-w-0 flex-1 grid-rows-[minmax(4px,1fr)_auto] items-center gap-0.5"
+            >
+              {onSelect ? (
+                <button
+                  type="button"
+                  aria-label={`Filter by ${bucket.accessibleLabel}, ${formatAnalyticsAmount(bucket.amount, currency)}`}
+                  aria-pressed={selectedKey === bucket.key}
+                  onClick={() => onSelect(bucket.key)}
+                  className={cn(
+                    'relative h-full min-h-11 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                    selectedKey === bucket.key && 'ring-2 ring-primary/30',
+                  )}
+                >
+                  {hasNegative ? (
+                    <span className="absolute inset-x-0 top-1/2 border-t border-border/70" />
+                  ) : null}
+                  {bar}
+                </button>
+              ) : (
+                <div className="relative h-full w-full">
+                  {hasNegative ? (
+                    <span className="absolute inset-x-0 top-1/2 border-t border-border/70" />
+                  ) : null}
+                  {bar}
+                </div>
+              )}
+              <span className="text-[9px] leading-none text-muted-foreground">{bucket.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </figure>
+  );
+}

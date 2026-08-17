@@ -42,29 +42,30 @@ export function serialNumberToDate(serial: number): Date {
  *
  * Returns a valid Date object or falls back to current date.
  */
-export function parseDate(dateStr: string | number): Date {
-  // Handle serial number from Google Sheets
-  if (typeof dateStr === "number") {
-    return serialNumberToDate(dateStr);
+export function tryParseDate(dateValue: string | number): Date | null {
+  if (typeof dateValue === "number") {
+    const serialDate = serialNumberToDate(dateValue);
+    return isValid(serialDate) ? serialDate : null;
   }
 
-  // Try ISO format first (from new transactions created in-app)
-  if (dateStr.includes("T")) {
-    const isoDate = new Date(dateStr);
+  if (dateValue.includes("T")) {
+    const isoDate = new Date(dateValue);
     if (isValid(isoDate)) {
       return isoDate;
     }
   }
 
-  // Try common formatted date patterns (legacy support)
   const formats = ["M/d/yyyy HH:mm:ss", "M/d/yyyy", "d/M/yyyy", "yyyy-MM-dd"];
-  for (const fmt of formats) {
-    const parsed = parse(dateStr, fmt, new Date());
+  for (const dateFormat of formats) {
+    const parsed = parse(dateValue, dateFormat, new Date());
     if (isValid(parsed)) {
       return parsed;
     }
   }
 
-  // Last resort - return current date
-  return new Date();
+  return null;
+}
+
+export function parseDate(dateValue: string | number): Date {
+  return tryParseDate(dateValue) ?? new Date();
 }
