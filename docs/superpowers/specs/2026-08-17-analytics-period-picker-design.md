@@ -9,6 +9,8 @@ Refine the existing Analytics home slide and detail sheet with three coordinated
 2. Closing the Analytics sheet clears its selected chart bucket and category drill-down filters.
 3. W/M/Q/Y gain a shared, horizontally swipeable period picker that exposes every continuous
    period from the earliest locally available transaction through the current period.
+4. The Analytics sheet's Transactions section uses the same day headers and transaction-row
+   presentation as the full Transactions sheet.
 
 The approved stacked-category model, custom date picker, borderless home carousel, no-shadow rule,
 and transaction-entry layout remain unchanged.
@@ -124,6 +126,24 @@ the compact slide.
 Selecting a transaction still closes the sheet and enters the existing editor. The filter reset
 must also occur on that close path rather than depending only on the explicit Close button.
 
+## Grouped Transactions in Analytics
+
+The Analytics sheet keeps its current filtered result set: the selected range, historical period,
+chart bucket, category, and currency continue to determine which transactions appear. It does not
+gain the full Transactions sheet's search, refresh, independent query, or nested scrolling
+behavior.
+
+Extract the full Transactions sheet's existing day-header and transaction-row presentation into
+reusable primitives. Both sheets render those primitives so time, category/note, account/status,
+amount sign/color, read-only behavior, focus treatment, and `Today`/`Yesterday`/calendar-day
+labels cannot drift. The full Transactions sheet retains virtualization for large histories;
+Analytics renders its already-filtered rows directly within its existing sheet scroller. This
+avoids a nested virtual scroll area while reusing the visible design and date-label logic.
+
+Analytics transactions remain sorted newest first and grouped by local calendar day. Selecting an
+editable row clears Analytics drill-down state, closes the Analytics sheet, and enters the existing
+transaction editor. If the active filters produce no rows, retain `No matching transactions`.
+
 ## Component and Data Boundaries
 
 - `analytics.ts` owns period-option generation, offset-to-boundary resolution, comparison periods,
@@ -135,7 +155,11 @@ must also occur on that close path rather than depending only on the explicit Cl
   changes, and prevents nested picker gestures from activating the outer carousel.
 - `AnalyticsSlide.tsx` renders the shared picker above a flex-growing read-only chart.
 - `AnalyticsDrawer.tsx` renders the shared picker above the selectable chart and resets local
-  bucket/category state when its scope changes or the sheet closes.
+  bucket/category state when its scope changes or the sheet closes. It maps its filtered rows
+  through the shared transaction day-header and row primitives.
+- The transaction-history presentation module owns reusable day labels, day headers, and row
+  rendering. `TransactionHistoryDrawer.tsx` keeps ownership of search, fetching, virtualization,
+  and its scroll container.
 
 No new query, mutation, charting, carousel, or state-management dependency is needed. The existing
 TanStack Query transaction-history result remains the source of locally available records.
@@ -181,6 +205,9 @@ offline messaging remain inside their current slide or sheet bounds.
   lower-panel geometry.
 - Closing the sheet through every close path clears selected bucket and category filters; reopening
   shows the unfiltered selected period.
+- Analytics transactions use the same day headers and row presentation as the Transactions sheet,
+  stay grouped newest-day first after every drill-down change, and preserve the existing edit flow.
+- Analytics does not add search, refresh, a second history query, or a nested virtualized scroller.
 - No new border, shadow, or desktop mouse-drag behavior is introduced.
 - Focused unit/component tests, the full test suite, lint, TypeScript, production build, Mobile
   Chrome E2E, and Cloudflare Pages all pass before merge.
