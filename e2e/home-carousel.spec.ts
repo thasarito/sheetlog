@@ -1,10 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   differenceInCalendarDays,
-  differenceInCalendarMonths,
+  endOfQuarter,
   format,
+  getDaysInMonth,
   startOfQuarter,
-  startOfYear,
   subDays,
 } from 'date-fns';
 import type { TransactionRecord, TransactionType } from '../src/lib/types';
@@ -244,8 +244,8 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(page.getByText('Bonus', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible();
     const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
-    await expect(analyticsSlide.getByText('฿1,416', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Week, last 7 days' })).toHaveAttribute(
+    await expect(analyticsSlide.getByText('฿220', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Week' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -337,17 +337,18 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
     await expect(analyticsViewAll).toBeFocused();
 
-    await page.getByRole('button', { name: 'Month, month to date' }).click();
-    await expect(page.getByRole('button', { name: 'Month, month to date' })).toHaveAttribute(
+    await page.getByRole('button', { name: 'Month' }).click();
+    await expect(page.getByRole('button', { name: 'Month' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
+    const analyticsNow = new Date();
     await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
-      Number(format(new Date(), 'd')),
+      getDaysInMonth(analyticsNow),
     );
-    await page.getByRole('button', { name: 'Quarter, quarter to date' }).click();
+    await page.getByRole('button', { name: 'Quarter' }).click();
     const expectedQuarterWeeks = Math.ceil(
-      (differenceInCalendarDays(new Date(), startOfQuarter(new Date())) + 1) / 7,
+      (differenceInCalendarDays(endOfQuarter(analyticsNow), startOfQuarter(analyticsNow)) + 1) / 7,
     );
     await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
       expectedQuarterWeeks,
@@ -355,16 +356,12 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(
       analyticsSlide.locator('[data-testid^="analytics-bar-"][data-testid$="-week"]').first(),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Year, year to date' }).click();
-    await expect(page.getByRole('button', { name: 'Year, year to date' })).toHaveAttribute(
+    await page.getByRole('button', { name: 'Year' }).click();
+    await expect(page.getByRole('button', { name: 'Year' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    const expectedYearMonths =
-      differenceInCalendarMonths(new Date(), startOfYear(new Date())) + 1;
-    await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
-      expectedYearMonths,
-    );
+    await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(12);
     await expect(
       analyticsSlide.locator('[data-testid^="analytics-bar-"][data-testid$="-month"]').first(),
     ).toBeVisible();
@@ -396,7 +393,7 @@ test.describe('Home Transactions and Analytics carousel', () => {
       'true',
     );
     await expect(page.getByRole('dialog', { name: 'Analytics' })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Month, month to date' }).click();
+    await page.getByRole('button', { name: 'Month' }).click();
 
     await touchSwipe(page, analyticsViewAll, geometry.viewportWidth * 0.7, 4);
     await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
@@ -412,7 +409,7 @@ test.describe('Home Transactions and Analytics carousel', () => {
       analyticsDialog.getByRole('combobox', { name: 'Analytics currency' }),
     ).toHaveCount(0);
     await expect(analyticsDialog.getByText(/Frankfurter|All currencies/i)).toHaveCount(0);
-    await expect(analyticsDialog.getByText('Transfers are excluded from totals.')).toBeVisible();
+    await expect(analyticsDialog.getByText('Transfers are excluded from totals.')).toHaveCount(0);
 
     const firstAnalyticsBar = analyticsDialog
       .getByRole('listbox', { name: 'Select analytics period' })
@@ -446,7 +443,7 @@ test.describe('Home Transactions and Analytics carousel', () => {
       analyticsDialog.getByRole('button', { name: 'Custom date range' }),
     ).toHaveAttribute('aria-pressed', 'true');
 
-    await analyticsDialog.getByRole('button', { name: 'Month, month to date' }).click();
+    await analyticsDialog.getByRole('button', { name: 'Month' }).click();
     const selectedDay = format(subDays(new Date(), 2), 'EEEE, MMMM d');
     const selectedBar = analyticsDialog.getByRole('option', {
       name: new RegExp(`${selectedDay}, ฿260`),
@@ -495,7 +492,7 @@ test.describe('Home Transactions and Analytics carousel', () => {
       }),
     ).toBeVisible();
     await expect(
-      analyticsDialog.getByRole('button', { name: 'Month, month to date' }),
+      analyticsDialog.getByRole('button', { name: 'Month' }),
     ).toHaveAttribute('aria-pressed', 'true');
     const analyticsTransactions = analyticsDialog.getByRole('region', {
       name: 'Transactions',
@@ -516,8 +513,8 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
     await expect(analyticsViewAll).toBeFocused();
 
-    await page.getByRole('button', { name: 'Month, month to date' }).click();
-    await expect(page.getByRole('button', { name: 'Month, month to date' })).toHaveAttribute(
+    await page.getByRole('button', { name: 'Month' }).click();
+    await expect(page.getByRole('button', { name: 'Month' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );

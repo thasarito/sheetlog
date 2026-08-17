@@ -50,41 +50,62 @@ function transaction({
 }
 
 describe('getAnalyticsPeriods', () => {
-  it('uses rolling seven-day windows for week', () => {
+  it('uses a Monday-through-Sunday calendar week', () => {
     const result = getAnalyticsPeriods('week', new Date(2026, 7, 17, 12));
 
-    expect(result.current.start).toEqual(new Date(2026, 7, 11));
-    expect(result.current.end).toEqual(new Date(2026, 7, 17, 23, 59, 59, 999));
-    expect(result.comparison.start).toEqual(new Date(2026, 7, 4));
-    expect(result.comparison.end).toEqual(new Date(2026, 7, 10, 23, 59, 59, 999));
+    expect(result).toEqual({
+      current: {
+        start: new Date(2026, 7, 17),
+        end: new Date(2026, 7, 23, 23, 59, 59, 999),
+      },
+      comparison: {
+        start: new Date(2026, 7, 10),
+        end: new Date(2026, 7, 16, 23, 59, 59, 999),
+      },
+    });
   });
 
-  it('caps a prior-month comparison at the prior month end', () => {
-    const result = getAnalyticsPeriods('month', new Date(2026, 2, 31, 12));
+  it('uses complete current and prior calendar months', () => {
+    const result = getAnalyticsPeriods('month', new Date(2026, 2, 15, 12));
 
-    expect(result.comparison.start).toEqual(new Date(2026, 1, 1));
-    expect(result.comparison.end).toEqual(new Date(2026, 1, 28, 23, 59, 59, 999));
+    expect(result).toEqual({
+      current: {
+        start: new Date(2026, 2, 1),
+        end: new Date(2026, 2, 31, 23, 59, 59, 999),
+      },
+      comparison: {
+        start: new Date(2026, 1, 1),
+        end: new Date(2026, 1, 28, 23, 59, 59, 999),
+      },
+    });
   });
 
-  it('uses the same elapsed days in the previous quarter', () => {
+  it('uses complete current and prior calendar quarters', () => {
     const result = getAnalyticsPeriods('quarter', new Date(2026, 4, 15, 12));
 
-    expect(result.current.start).toEqual(new Date(2026, 3, 1));
-    expect(result.comparison.start).toEqual(new Date(2026, 0, 1));
-    expect(result.comparison.end).toEqual(new Date(2026, 1, 14, 23, 59, 59, 999));
+    expect(result).toEqual({
+      current: {
+        start: new Date(2026, 3, 1),
+        end: new Date(2026, 5, 30, 23, 59, 59, 999),
+      },
+      comparison: {
+        start: new Date(2026, 0, 1),
+        end: new Date(2026, 2, 31, 23, 59, 59, 999),
+      },
+    });
   });
 
-  it('uses calendar year to date and the same elapsed prior-year span', () => {
+  it('uses complete current and prior calendar years', () => {
     const result = getAnalyticsPeriods('year', new Date(2026, 7, 17, 12));
 
     expect(result).toEqual({
       current: {
         start: new Date(2026, 0, 1),
-        end: new Date(2026, 7, 17, 23, 59, 59, 999),
+        end: new Date(2026, 11, 31, 23, 59, 59, 999),
       },
       comparison: {
         start: new Date(2025, 0, 1),
-        end: new Date(2025, 7, 17, 23, 59, 59, 999),
+        end: new Date(2025, 11, 31, 23, 59, 59, 999),
       },
     });
   });
@@ -112,12 +133,12 @@ describe('getAnalyticsPeriods', () => {
     });
   });
 
-  it('uses complete historical calendar periods while current periods remain to-date', () => {
+  it('uses complete current and historical calendar periods', () => {
     const now = new Date(2026, 7, 17, 12);
 
     expect(getAnalyticsPeriods('month', now, undefined, 0).current).toEqual({
       start: new Date(2026, 7, 1),
-      end: new Date(2026, 7, 17, 23, 59, 59, 999),
+      end: new Date(2026, 7, 31, 23, 59, 59, 999),
     });
     expect(getAnalyticsPeriods('month', now, undefined, -1)).toEqual({
       current: {
@@ -131,16 +152,16 @@ describe('getAnalyticsPeriods', () => {
     });
   });
 
-  it('moves through adjacent rolling seven-day blocks', () => {
+  it('moves through adjacent Monday-aligned weeks', () => {
     const result = getAnalyticsPeriods('week', new Date(2026, 7, 17, 12), undefined, -1);
 
     expect(result.current).toEqual({
-      start: new Date(2026, 7, 4),
-      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+      start: new Date(2026, 7, 10),
+      end: new Date(2026, 7, 16, 23, 59, 59, 999),
     });
     expect(result.comparison).toEqual({
-      start: new Date(2026, 6, 28),
-      end: new Date(2026, 7, 3, 23, 59, 59, 999),
+      start: new Date(2026, 7, 3),
+      end: new Date(2026, 7, 9, 23, 59, 59, 999),
     });
   });
 });
@@ -160,8 +181,22 @@ describe('buildAnalyticsPeriodOptions', () => {
       { offset: 0, label: 'August 2026' },
     ]);
     expect(options.at(-1)?.accessibleLabel).toBe(
-      'August 1, 2026 through August 17, 2026',
+      'August 1, 2026 through August 31, 2026',
     );
+  });
+
+  it('builds continuous Monday-aligned week options', () => {
+    const options = buildAnalyticsPeriodOptions(
+      'week',
+      [transaction({ id: 'old', date: '2026-08-09T12:00:00', amount: 10 })],
+      new Date(2026, 7, 17, 12),
+    );
+
+    expect(options.map(({ offset, label }) => ({ offset, label }))).toEqual([
+      { offset: -2, label: 'Aug 3–9' },
+      { offset: -1, label: 'Aug 10–16' },
+      { offset: 0, label: 'Aug 17–23' },
+    ]);
   });
 
   it('keeps only current when local history is empty or unavailable', () => {
@@ -181,7 +216,7 @@ describe('buildAnalyticsPeriodOptions', () => {
       { offset: 0, label: '2026' },
     ]);
     expect(options[0]?.accessibleLabel).toBe(
-      'January 1, 2026 through August 17, 2026',
+      'January 1, 2026 through December 31, 2026',
     );
   });
 
@@ -207,17 +242,18 @@ describe('buildAnalyticsPeriodOptions', () => {
       { offset: 0, label: 'Q3 2026' },
     ]);
     expect(options.at(-1)?.accessibleLabel).toBe(
-      'July 1, 2026 through August 17, 2026',
+      'July 1, 2026 through September 30, 2026',
     );
   });
 });
 
 describe.each<[AnalyticsRange, number]>([
   ['week', 7],
-  ['month', 17],
-  ['quarter', 7],
+  ['month', 31],
+  ['quarter', 14],
+  ['year', 12],
 ])('buildAnalyticsSummary(%s)', (range, expectedBuckets) => {
-  it('returns range-appropriate buckets', () => {
+  it('returns buckets for the complete calendar period', () => {
     const summary = readySummary({
       transactions: [],
       range,
@@ -250,7 +286,7 @@ it('builds a summary for the selected historical offset', () => {
   expect(summary.expenseTotal).toBe(70);
 });
 
-it('builds one labeled bucket per elapsed month for year to date', () => {
+it('builds all twelve labeled month buckets for the current year', () => {
   const summary = readySummary({
     transactions: [],
     range: 'year',
@@ -259,28 +295,67 @@ it('builds one labeled bucket per elapsed month for year to date', () => {
     now: new Date(2026, 7, 17, 12),
   });
 
-  expect(summary.buckets.map(({ key, label }) => ({ key, label }))).toEqual([
-    { key: '2026-01-month', label: 'Jan' },
-    { key: '2026-02-month', label: 'Feb' },
-    { key: '2026-03-month', label: 'Mar' },
-    { key: '2026-04-month', label: 'Apr' },
-    { key: '2026-05-month', label: 'May' },
-    { key: '2026-06-month', label: 'Jun' },
-    { key: '2026-07-month', label: 'Jul' },
-    { key: '2026-08-month', label: 'Aug' },
+  expect(summary.buckets.map((bucket) => bucket.label)).toEqual([
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ]);
   expect(summary.buckets[0].accessibleLabel).toBe('January 1 through January 31');
-  expect(summary.buckets.at(-1)?.accessibleLabel).toBe('August 1 through August 17');
+  expect(summary.buckets.at(-1)?.accessibleLabel).toBe('December 1 through December 31');
+});
+
+it.each([
+  ['week', '2026-08-23T12:00:00'],
+  ['month', '2026-08-31T12:00:00'],
+  ['quarter', '2026-09-30T12:00:00'],
+  ['year', '2026-12-31T12:00:00'],
+] as const)('includes future rows inside the current %s', (range, date) => {
+  const summary = readySummary({
+    transactions: [transaction({ id: 'future', date, amount: 25 })],
+    range,
+    baseCurrency: 'THB',
+    rates: [],
+    now: new Date(2026, 7, 17, 12),
+  });
+
+  expect(summary.expenseTotal).toBe(25);
+  expect(summary.transactions.map((row) => row.id)).toContain('future');
+});
+
+it('groups full-quarter weekly buckets beneath their start month', () => {
+  const summary = readySummary({
+    transactions: [],
+    range: 'quarter',
+    baseCurrency: 'THB',
+    rates: [],
+    now: new Date(2026, 4, 15, 12),
+  });
+
+  expect(summary.buckets).toHaveLength(13);
+  expect(summary.axisGroups).toEqual([
+    { key: '2026-04', label: 'Apr', bucketCount: 5 },
+    { key: '2026-05', label: 'May', bucketCount: 4 },
+    { key: '2026-06', label: 'Jun', bucketCount: 4 },
+  ]);
 });
 
 describe('stacked category series', () => {
   const categoryRows = [
     transaction({ id: 'food', date: '2026-08-17T10:00:00', amount: 500, category: 'Food' }),
-    transaction({ id: 'rent', date: '2026-08-16T10:00:00', amount: 400, category: 'Rent' }),
-    transaction({ id: 'travel', date: '2026-08-15T10:00:00', amount: 300, category: 'Travel' }),
-    transaction({ id: 'health', date: '2026-08-14T10:00:00', amount: 200, category: 'Health' }),
-    transaction({ id: 'books', date: '2026-08-13T10:00:00', amount: 100, category: 'Books' }),
-    transaction({ id: 'gifts', date: '2026-08-12T10:00:00', amount: 50, category: 'Gifts' }),
+    transaction({ id: 'rent', date: '2026-08-18T10:00:00', amount: 400, category: 'Rent' }),
+    transaction({ id: 'travel', date: '2026-08-19T10:00:00', amount: 300, category: 'Travel' }),
+    transaction({ id: 'health', date: '2026-08-20T10:00:00', amount: 200, category: 'Health' }),
+    transaction({ id: 'books', date: '2026-08-21T10:00:00', amount: 100, category: 'Books' }),
+    transaction({ id: 'gifts', date: '2026-08-22T10:00:00', amount: 50, category: 'Gifts' }),
   ];
 
   it('keeps four ranked category series and groups the remainder as Other', () => {
@@ -327,10 +402,10 @@ describe('stacked category series', () => {
     });
 
     expect(summary.buckets.every((bucket) => bucket.segments.length === 5)).toBe(true);
-    expect(summary.buckets.at(-1)?.segments.map((segment) => segment.seriesKey)).toEqual(
+    expect(summary.buckets[0]?.segments.map((segment) => segment.seriesKey)).toEqual(
       summary.series.map((series) => series.key),
     );
-    expect(summary.buckets.at(-1)?.transactionIds).toEqual(
+    expect(summary.buckets[0]?.transactionIds).toEqual(
       expect.arrayContaining(['food', 'salary', 'move']),
     );
   });
@@ -371,13 +446,13 @@ describe('analytics bucket accessibility', () => {
 
     expect(new Set(summary.buckets.map((bucket) => bucket.accessibleLabel)).size).toBe(7);
     expect(summary.buckets.map((bucket) => bucket.accessibleLabel)).toEqual([
-      'Tuesday, August 11',
-      'Wednesday, August 12',
-      'Thursday, August 13',
-      'Friday, August 14',
-      'Saturday, August 15',
-      'Sunday, August 16',
       'Monday, August 17',
+      'Tuesday, August 18',
+      'Wednesday, August 19',
+      'Thursday, August 20',
+      'Friday, August 21',
+      'Saturday, August 22',
+      'Sunday, August 23',
     ]);
   });
 });
@@ -387,7 +462,7 @@ describe('buildAnalyticsSummary totals', () => {
     transaction({ id: 'expense-1', date: '2026-08-17T10:00:00', amount: 100 }),
     transaction({
       id: 'expense-2',
-      date: '2026-08-16T10:00:00',
+      date: '2026-08-18T10:00:00',
       amount: 50,
       category: 'Transport',
     }),
@@ -596,7 +671,7 @@ describe('buildAnalyticsScope', () => {
           amount: 250,
           category: 'Salary',
         }),
-        transaction({ id: 'older', date: '2026-08-16T10:00:00', amount: 40 }),
+        transaction({ id: 'older', date: '2026-08-18T10:00:00', amount: 40 }),
       ],
       range: 'week',
       baseCurrency: 'THB',
@@ -617,7 +692,7 @@ describe('buildAnalyticsScope', () => {
       }
     ).buildAnalyticsScope;
 
-    const scope = buildAnalyticsScope(summary, summary.buckets.at(-1)?.key);
+    const scope = buildAnalyticsScope(summary, summary.buckets[0]?.key);
 
     expect(scope.expenseTotal).toBe(100);
     expect(scope.incomeTotal).toBe(250);
@@ -628,7 +703,7 @@ describe('buildAnalyticsScope', () => {
   it('preserves a refund-only category in the selected bucket breakdown', () => {
     const summary = readySummary({
       transactions: [
-        transaction({ id: 'dining', date: '2026-08-16T10:00:00', amount: 100 }),
+        transaction({ id: 'dining', date: '2026-08-18T10:00:00', amount: 100 }),
         transaction({
           id: 'refund',
           date: '2026-08-17T10:00:00',
@@ -642,7 +717,7 @@ describe('buildAnalyticsScope', () => {
       now: new Date(2026, 7, 17, 12),
     });
 
-    const scope = analyticsModule.buildAnalyticsScope(summary, summary.buckets.at(-1)?.key);
+    const scope = analyticsModule.buildAnalyticsScope(summary, summary.buckets[0]?.key);
 
     expect(scope.expenseTotal).toBe(-40);
     expect(scope.categories).toEqual([{ category: 'Dining Out', amount: -40, share: 0 }]);
@@ -656,7 +731,7 @@ describe('multi-currency analytics', () => {
         transaction({ id: 'thb', date: '2026-08-17T10:00:00', amount: 100 }),
         transaction({
           id: 'usd',
-          date: '2026-08-16T10:00:00',
+          date: '2026-08-17T09:00:00',
           amount: 3,
           currency: 'USD',
         }),
@@ -736,8 +811,8 @@ describe('multi-currency analytics', () => {
     expect(request).toEqual({
       base: 'THB',
       quotes: ['EUR', 'USD'],
-      from: '2026-07-28',
-      to: '2026-08-17',
+      from: '2026-08-03',
+      to: '2026-08-23',
     });
   });
 
@@ -779,22 +854,16 @@ describe('getComparisonText', () => {
     expect(getComparisonText({ direction: 'refunds', percentage: null }, 'week')).toBe(
       'Net refunds exceeded expenses',
     );
+    expect(getComparisonText({ direction: 'below', percentage: 12 }, 'week')).toBe(
+      '12% below previous week',
+    );
     expect(getComparisonText({ direction: 'below', percentage: 12 }, 'month')).toBe(
-      '12% below the same days last month',
-    );
-    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'quarter')).toBe(
-      '8% above the same elapsed days last quarter',
-    );
-    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'year')).toBe(
-      '8% above the same elapsed days last year',
-    );
-    expect(getComparisonText({ direction: 'below', percentage: 12 }, 'month', -1)).toBe(
       '12% below previous month',
     );
-    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'quarter', -1)).toBe(
+    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'quarter')).toBe(
       '8% above previous quarter',
     );
-    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'year', -1)).toBe(
+    expect(getComparisonText({ direction: 'above', percentage: 8 }, 'year')).toBe(
       '8% above previous year',
     );
   });

@@ -37,15 +37,10 @@ type AnalyticsSlideProps = {
 
 function rangeLabel(
   range: AnalyticsRange,
-  periodOffset: number,
   selectedPeriodLabel?: string,
 ): string {
-  if (periodOffset < 0 && selectedPeriodLabel) return `spent · ${selectedPeriodLabel}`;
-  if (range === 'week') return 'spent · last 7 days';
-  if (range === 'month') return 'spent · month to date';
-  if (range === 'quarter') return 'spent · quarter to date';
-  if (range === 'year') return 'spent · year to date';
-  return 'spent · custom range';
+  if (range === 'custom') return 'spent · custom range';
+  return `spent · ${selectedPeriodLabel ?? range}`;
 }
 
 function customPeriodLabel(period: DatePeriod): string {
@@ -181,7 +176,7 @@ export function AnalyticsSlide({
                 {formatAnalyticsAmount(summary.expenseTotal, summary.currency)}
               </p>
               <p className="truncate text-[10px] text-muted-foreground">
-                {rangeLabel(range, periodOffset, selectedPeriod?.label)}
+                {rangeLabel(range, selectedPeriod?.label)}
               </p>
             </div>
             <p className="mt-1 flex items-center gap-1 text-[11px] leading-none text-muted-foreground">
@@ -191,12 +186,13 @@ export function AnalyticsSlide({
               {summary.comparison.direction === 'above' ? (
                 <ArrowUp className="h-3.5 w-3.5 text-warning" />
               ) : null}
-              {getComparisonText(summary.comparison, range, periodOffset)}
+              {getComparisonText(summary.comparison, range)}
             </p>
           </div>
           {periodControl}
           <AnalyticsBarChart
             buckets={summary.buckets}
+            axisGroups={summary.axisGroups}
             series={summary.series}
             currency={summary.currency}
             onBucketActivate={onBucketSelect}

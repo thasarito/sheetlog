@@ -7,10 +7,10 @@ type AnalyticsRangeToggleProps = {
 };
 
 const OPTIONS: Array<{ value: AnalyticsRange; short: string; label: string }> = [
-  { value: 'week', short: 'W', label: 'Week, last 7 days' },
-  { value: 'month', short: 'M', label: 'Month, month to date' },
-  { value: 'quarter', short: 'Q', label: 'Quarter, quarter to date' },
-  { value: 'year', short: 'Y', label: 'Year, year to date' },
+  { value: 'week', short: 'W', label: 'Week' },
+  { value: 'month', short: 'M', label: 'Month' },
+  { value: 'quarter', short: 'Q', label: 'Quarter' },
+  { value: 'year', short: 'Y', label: 'Year' },
   { value: 'custom', short: 'C', label: 'Custom date range' },
 ];
 

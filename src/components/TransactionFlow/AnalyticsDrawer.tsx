@@ -194,17 +194,9 @@ export function AnalyticsDrawer({
   };
   const selectedPeriod = periodOptions.find((option) => option.offset === periodOffset);
   const rangeAnnouncement =
-    periodOffset < 0 && selectedPeriod
-      ? selectedPeriod.accessibleLabel
-      : range === 'week'
-      ? 'Week, last 7 days'
-      : range === 'month'
-        ? 'Month, month to date'
-        : range === 'quarter'
-          ? 'Quarter, quarter to date'
-          : range === 'year'
-            ? 'Year, year to date'
-            : `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`;
+    range === 'custom'
+      ? `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`
+      : selectedPeriod?.accessibleLabel ?? range;
   const analyticsAnnouncement = !open
     ? ''
     : missingRate
@@ -312,6 +304,7 @@ export function AnalyticsDrawer({
                 <section aria-label="Spending trend">
                   <AnalyticsBarChart
                     buckets={summary.buckets}
+                    axisGroups={summary.axisGroups}
                     series={summary.series}
                     currency={summary.currency}
                     selectedKey={selectedBucket}
@@ -370,9 +363,6 @@ export function AnalyticsDrawer({
                     </p>
                   </div>
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Transfers are excluded from totals.
-                </p>
               </section>
 
               <section aria-labelledby="analytics-categories">

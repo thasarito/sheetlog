@@ -13,7 +13,7 @@ import { AnalyticsDrawer } from './AnalyticsDrawer';
 
 const customPeriod: DatePeriod = {
   start: new Date(2026, 7, 1),
-  end: new Date(2026, 7, 17),
+  end: new Date(2026, 7, 19),
 };
 
 const transactions: TransactionRecord[] = [
@@ -39,11 +39,11 @@ const transactions: TransactionRecord[] = [
     account: 'Cash',
     for: 'Me',
     category: 'Coffee',
-    date: '2026-08-16T12:00:00',
+    date: '2026-08-18T12:00:00',
     status: 'synced',
     sheetRowValid: true,
-    createdAt: '2026-08-16T12:00:00',
-    updatedAt: '2026-08-16T12:00:00',
+    createdAt: '2026-08-18T12:00:00',
+    updatedAt: '2026-08-18T12:00:00',
   },
   {
     id: 'income',
@@ -53,11 +53,11 @@ const transactions: TransactionRecord[] = [
     account: 'Bank',
     for: 'Me',
     category: 'Salary',
-    date: '2026-08-15T12:00:00',
+    date: '2026-08-19T12:00:00',
     status: 'synced',
     sheetRowValid: true,
-    createdAt: '2026-08-15T12:00:00',
-    updatedAt: '2026-08-15T12:00:00',
+    createdAt: '2026-08-19T12:00:00',
+    updatedAt: '2026-08-19T12:00:00',
   },
 ];
 
@@ -65,21 +65,21 @@ const periodOptions: AnalyticsPeriodOption[] = [
   {
     key: 'week-previous',
     offset: -1,
-    label: 'Aug 4–10',
-    accessibleLabel: 'August 4, 2026 through August 10, 2026',
+    label: 'Aug 10–16',
+    accessibleLabel: 'August 10, 2026 through August 16, 2026',
     period: {
-      start: new Date(2026, 7, 4),
-      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+      start: new Date(2026, 7, 10),
+      end: new Date(2026, 7, 16, 23, 59, 59, 999),
     },
   },
   {
     key: 'week-current',
     offset: 0,
-    label: 'Aug 11–17',
-    accessibleLabel: 'August 11, 2026 through August 17, 2026',
+    label: 'Aug 17–23',
+    accessibleLabel: 'August 17, 2026 through August 23, 2026',
     period: {
-      start: new Date(2026, 7, 11),
-      end: new Date(2026, 7, 17, 23, 59, 59, 999),
+      start: new Date(2026, 7, 17),
+      end: new Date(2026, 7, 23, 23, 59, 59, 999),
     },
   },
 ];
@@ -89,13 +89,14 @@ function makeSummary(
   range: AnalyticsRange = 'week',
   selectedCustomPeriod: DatePeriod = customPeriod,
   periodOffset = 0,
+  now = new Date(2026, 7, 17, 12),
 ) {
   const result = buildAnalyticsSummary({
     transactions: rows,
     range,
     baseCurrency: 'THB',
     rates: [],
-    now: new Date(2026, 7, 17, 12),
+    now,
     customPeriod: selectedCustomPeriod,
     periodOffset,
   });
@@ -121,7 +122,7 @@ const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
   error: null,
   onRetry: vi.fn(),
   onSelectTransaction: vi.fn(),
-  now: new Date(2026, 7, 17, 12),
+  now: new Date(2026, 7, 19, 12),
 };
 
 function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>> = {}) {
@@ -132,6 +133,7 @@ function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>>
       props.range,
       props.customPeriod,
       props.periodOffset,
+      props.now,
     );
   }
   return render(<AnalyticsDrawer {...props} />);
@@ -142,6 +144,19 @@ afterEach(() => {
 });
 
 describe('AnalyticsDrawer', () => {
+  it('renders the shared grouped axis for a complete quarter', () => {
+    renderDrawer({
+      range: 'quarter',
+      transactions: [],
+      now: new Date(2026, 4, 15, 12),
+    });
+
+    const axis = screen.getByTestId('analytics-grouped-axis');
+    expect(axis).toHaveTextContent('Apr');
+    expect(axis).toHaveTextContent('May');
+    expect(axis).toHaveTextContent('Jun');
+  });
+
   it('opens with a requested bucket selected and filters matching transactions', async () => {
     renderDrawer({ initialSelectedBucket: '2026-08-17' });
 
@@ -170,7 +185,7 @@ describe('AnalyticsDrawer', () => {
     const transactionSection = screen.getByRole('region', { name: 'Transactions' });
     expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
     expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
-    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Monday, Aug 17')).toBeInTheDocument();
     expect(
       within(transactionSection).getByRole('button', { name: /expense Dining Out/ }),
     ).toHaveTextContent('−฿120.00');
@@ -188,7 +203,7 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Coffee/ })).not.toBeInTheDocument();
-    expect(within(transactionSection).getAllByText('Today')).toHaveLength(1);
+    expect(within(transactionSection).getAllByText('Monday, Aug 17')).toHaveLength(1);
     expect(within(transactionSection).queryByText('Yesterday')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toHaveTextContent(
       'Monday, August 17 · ฿120',
@@ -197,7 +212,28 @@ describe('AnalyticsDrawer', () => {
     await user.click(screen.getByRole('button', { name: /Clear selected period filter/ }));
     expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
     expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
-    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Monday, Aug 17')).toBeInTheDocument();
+  });
+
+  it('hides transfer helper copy while keeping transfers out of totals', () => {
+    renderDrawer({
+      transactions: [
+        ...transactions,
+        {
+          ...transactions[0],
+          id: 'transfer',
+          type: 'transfer',
+          amount: 900,
+          category: 'Savings',
+        },
+      ],
+    });
+
+    const overview = screen.getByRole('region', { name: 'Overview' });
+    expect(within(overview).getAllByText('฿200').length).toBeGreaterThan(0);
+    expect(within(overview).getByText('฿500')).toBeInTheDocument();
+    expect(within(overview).getByText('฿300')).toBeInTheDocument();
+    expect(screen.queryByText('Transfers are excluded from totals.')).not.toBeInTheDocument();
   });
 
   it('intersects category and bucket filters while clearing each independently', async () => {
@@ -266,8 +302,8 @@ describe('AnalyticsDrawer', () => {
     const customTrigger = screen.getByRole('button', { name: 'Custom date range' });
     await user.click(customTrigger);
     const customDialog = screen.getByRole('dialog', { name: 'Custom date range' });
-    await user.click(screen.getByRole('button', { name: /August 15th, 2026/ }));
-    await user.click(screen.getByRole('button', { name: /August 16th, 2026/ }));
+    await user.click(screen.getByRole('button', { name: /August 18th, 2026/ }));
+    await user.click(screen.getByRole('button', { name: /August 19th, 2026/ }));
     await user.click(screen.getByRole('button', { name: 'Apply custom range' }));
 
     expect(customDialog).toHaveAttribute('data-state', 'closed');
@@ -275,7 +311,7 @@ describe('AnalyticsDrawer', () => {
     expect(
       screen.getByRole('status', { name: 'Analytics summary update' }),
     ).toHaveTextContent(
-      'Custom, Aug 15 through Aug 16 · Expenses ฿80',
+      'Custom, Aug 18 through Aug 19 · Expenses ฿80',
     );
     expect(customTrigger).toHaveAttribute('aria-pressed', 'true');
   });
@@ -316,7 +352,7 @@ describe('AnalyticsDrawer', () => {
 
     await user.click(
       screen.getByRole('option', {
-        name: 'August 4, 2026 through August 10, 2026',
+        name: 'August 10, 2026 through August 16, 2026',
       }),
     );
     expect(onPeriodChange).toHaveBeenCalledWith(-1);
@@ -352,7 +388,7 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
     expect(
-      screen.getByRole('option', { name: 'August 11, 2026 through August 17, 2026' }),
+      screen.getByRole('option', { name: 'August 17, 2026 through August 23, 2026' }),
     ).toHaveAttribute('aria-selected', 'true');
   });
 
@@ -367,7 +403,7 @@ describe('AnalyticsDrawer', () => {
       onSelectTransaction,
     });
 
-    await user.click(screen.getByRole('button', { name: 'Quarter, quarter to date' }));
+    await user.click(screen.getByRole('button', { name: 'Quarter' }));
     expect(onRangeChange).toHaveBeenCalledWith('quarter');
     expect(screen.queryByRole('combobox', { name: 'Analytics currency' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Frankfurter|All currencies/i)).not.toBeInTheDocument();
@@ -380,12 +416,41 @@ describe('AnalyticsDrawer', () => {
     const user = userEvent.setup();
     function RangeHarness() {
       const [selectedRange, setSelectedRange] = useState<AnalyticsRange>('week');
+      const selectedPeriodOptions =
+        selectedRange === 'month'
+          ? [
+              {
+                key: 'month-current',
+                offset: 0,
+                label: 'August 2026',
+                accessibleLabel: 'August 1, 2026 through August 31, 2026',
+                period: {
+                  start: new Date(2026, 7, 1),
+                  end: new Date(2026, 7, 31, 23, 59, 59, 999),
+                },
+              },
+            ]
+          : selectedRange === 'year'
+            ? [
+                {
+                  key: 'year-current',
+                  offset: 0,
+                  label: '2026',
+                  accessibleLabel: 'January 1, 2026 through December 31, 2026',
+                  period: {
+                    start: new Date(2026, 0, 1),
+                    end: new Date(2026, 11, 31, 23, 59, 59, 999),
+                  },
+                },
+              ]
+            : periodOptions;
       return (
         <AnalyticsDrawer
           {...baseProps}
           summary={makeSummary(transactions, selectedRange)}
           range={selectedRange}
           onRangeChange={setSelectedRange}
+          periodOptions={selectedPeriodOptions}
         />
       );
     }
@@ -394,15 +459,19 @@ describe('AnalyticsDrawer', () => {
     const status = screen.getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
     expect(status).toHaveAttribute('aria-atomic', 'true');
-    expect(status).toHaveTextContent('Week, last 7 days · Expenses ฿200');
+    expect(status).toHaveTextContent(
+      'August 17, 2026 through August 23, 2026 · Expenses ฿200',
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
-    expect(status).toHaveTextContent('Month, month to date · Expenses ฿200');
+    await user.click(screen.getByRole('button', { name: 'Month' }));
+    expect(status).toHaveTextContent('August 1, 2026 through August 31, 2026 · Expenses ฿200');
 
-    await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
-    expect(status).toHaveTextContent('Year, year to date · Expenses ฿200');
+    await user.click(screen.getByRole('button', { name: 'Year' }));
+    expect(status).toHaveTextContent(
+      'January 1, 2026 through December 31, 2026 · Expenses ฿200',
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
+    await user.click(screen.getByRole('button', { name: 'Month' }));
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
     expect(status).toHaveTextContent(
       'Monday, August 17, ฿120 · Dining Out ฿120 · Income ฿0 · Net -฿120',
@@ -413,7 +482,9 @@ describe('AnalyticsDrawer', () => {
     const { rerender } = renderDrawer({ isLoading: true, hasCompleteHistory: false });
 
     const status = screen.getByRole('status', { name: 'Analytics summary update' });
-    expect(status).toHaveTextContent('Loading Week, last 7 days analytics');
+    expect(status).toHaveTextContent(
+      'Loading August 17, 2026 through August 23, 2026 analytics',
+    );
     expect(status).not.toHaveTextContent('Expenses ฿200');
     expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
 
