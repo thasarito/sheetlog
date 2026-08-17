@@ -109,6 +109,12 @@ export type AnalyticsBaseCurrencySetting = {
   updatedAt: string;
 };
 
+export type AnalyticsBigSpendingThresholdSetting = {
+  amount: number | null;
+  currency: Currency;
+  updatedAt: string;
+};
+
 export interface OnboardingState {
   sheetFolderId: string | null;
   accounts: AccountItem[];
@@ -117,6 +123,7 @@ export interface OnboardingState {
   categoriesConfirmed: boolean;
   analyticsBaseCurrency: Currency;
   analyticsBaseCurrencyUpdatedAt: string | null;
+  analyticsBigSpendingThreshold: AnalyticsBigSpendingThresholdSetting | null;
 }
 
 export interface QuickNote {

@@ -52,4 +52,74 @@ describe('mergeOnboardingState analytics base currency', () => {
     expect(result.changed).toBe(false);
     expect(result.settingsNeedPush).toBe(true);
   });
+
+  it('hydrates a newer remote big spending cutoff', () => {
+    const current = {
+      ...getDefaultOnboardingState(),
+      analyticsBigSpendingThreshold: {
+        amount: 5_000,
+        currency: 'THB' as const,
+        updatedAt: '2026-08-16T10:00:00.000Z',
+      },
+    };
+    const remote = {
+      amount: 10_000,
+      currency: 'THB' as const,
+      updatedAt: '2026-08-17T10:00:00.000Z',
+    };
+
+    const result = mergeOnboardingState(current, {
+      analyticsBigSpendingThreshold: remote,
+    });
+
+    expect(result.next.analyticsBigSpendingThreshold).toEqual(remote);
+    expect(result.changed).toBe(true);
+    expect(result.settingsNeedPush).toBe(false);
+  });
+
+  it('keeps a newer local cutoff and schedules it for push', () => {
+    const local = {
+      amount: 10_000,
+      currency: 'THB' as const,
+      updatedAt: '2026-08-17T10:00:00.000Z',
+    };
+
+    const result = mergeOnboardingState(
+      { ...getDefaultOnboardingState(), analyticsBigSpendingThreshold: local },
+      {
+        analyticsBigSpendingThreshold: {
+          amount: 5_000,
+          currency: 'THB',
+          updatedAt: '2026-08-16T10:00:00.000Z',
+        },
+      },
+    );
+
+    expect(result.next.analyticsBigSpendingThreshold).toEqual(local);
+    expect(result.changed).toBe(false);
+    expect(result.settingsNeedPush).toBe(true);
+  });
+
+  it('hydrates a timestamped remote clear', () => {
+    const result = mergeOnboardingState(
+      {
+        ...getDefaultOnboardingState(),
+        analyticsBigSpendingThreshold: {
+          amount: 10_000,
+          currency: 'THB',
+          updatedAt: '2026-08-16T10:00:00.000Z',
+        },
+      },
+      {
+        analyticsBigSpendingThreshold: {
+          amount: null,
+          currency: 'THB',
+          updatedAt: '2026-08-17T10:00:00.000Z',
+        },
+      },
+    );
+
+    expect(result.next.analyticsBigSpendingThreshold?.amount).toBeNull();
+    expect(result.changed).toBe(true);
+  });
 });
