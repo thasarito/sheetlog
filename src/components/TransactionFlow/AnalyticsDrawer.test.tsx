@@ -258,6 +258,47 @@ describe('AnalyticsDrawer', () => {
     expect(screen.queryByText('Transfers are excluded from totals.')).not.toBeInTheDocument();
   });
 
+  it('shows resolved and unavailable base amounts from the analytics summary', () => {
+    const foreignExpense: TransactionRecord = {
+      ...transactions[0],
+      id: 'foreign-expense',
+      amount: 3,
+      currency: 'USD',
+      category: 'Foreign coffee',
+    };
+    const foreignTransfer: TransactionRecord = {
+      ...transactions[0],
+      id: 'foreign-transfer',
+      type: 'transfer',
+      amount: 3,
+      currency: 'USD',
+      category: 'Foreign savings',
+    };
+    const summary = {
+      ...makeSummary(),
+      transactions: [foreignExpense, foreignTransfer],
+      convertedAmounts: { 'foreign-expense': 100 },
+    };
+
+    renderDrawer({
+      transactions: [foreignExpense, foreignTransfer],
+      summary,
+    });
+
+    expect(screen.getByText('≈ −฿100.00')).toBeInTheDocument();
+    expect(screen.getByText('≈ ฿—')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: /Foreign coffee.*approximately minus 100\.00 THB/,
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', {
+        name: /Foreign savings.*base amount unavailable in THB/,
+      }),
+    ).toBeEnabled();
+  });
+
   it('intersects category and bucket filters while clearing each independently', async () => {
     const user = userEvent.setup();
     renderDrawer();

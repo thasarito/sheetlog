@@ -30,6 +30,7 @@ import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
 import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
 import { AnalyticsRangeDrawer } from './AnalyticsRangeDrawer';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
+import { buildTransactionBaseAmountStates } from './transactionBaseAmounts';
 import {
   flattenTransactionHistory,
   TransactionHistoryDateHeader,
@@ -170,6 +171,18 @@ export function AnalyticsDrawer({
   }
   const filteredTransactions =
     activeFilteredTransactions ?? retainedFilteredTransactions.current ?? [];
+  const transactionBaseCurrency = summary?.currency ?? baseCurrency;
+  const convertedAmounts = summary?.convertedAmounts;
+  const transactionBaseAmountStates = useMemo(
+    () =>
+      buildTransactionBaseAmountStates(
+        filteredTransactions,
+        transactionBaseCurrency,
+        convertedAmounts ?? {},
+        false,
+      ),
+    [convertedAmounts, filteredTransactions, transactionBaseCurrency],
+  );
   const activeTransactionItems = useMemo(
     () => (open ? flattenTransactionHistory(filteredTransactions) : null),
     [filteredTransactions, open],
@@ -461,6 +474,7 @@ export function AnalyticsDrawer({
                         key={item.key}
                         transaction={item.transaction}
                         onSelect={selectTransaction}
+                        baseAmount={transactionBaseAmountStates[item.transaction.id]}
                       />
                     ),
                   )

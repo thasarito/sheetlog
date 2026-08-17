@@ -782,7 +782,7 @@ describe('multi-currency analytics', () => {
     });
   });
 
-  it('batches sorted contributing quotes with a seven-day lookback', () => {
+  it('batches sorted current-display and contributing quotes with a seven-day lookback', () => {
     const request = getAnalyticsRateRequest({
       transactions: [
         transaction({ id: 'usd', date: '2026-08-16T10:00:00', amount: 3, currency: 'USD' }),
@@ -810,13 +810,13 @@ describe('multi-currency analytics', () => {
 
     expect(request).toEqual({
       base: 'THB',
-      quotes: ['EUR', 'USD'],
+      quotes: ['EUR', 'GBP', 'USD'],
       from: '2026-08-03',
       to: '2026-08-23',
     });
   });
 
-  it('needs no rate request for base rows or foreign transfers', () => {
+  it('requests display rates for foreign transfers', () => {
     expect(
       getAnalyticsRateRequest({
         transactions: [
@@ -833,7 +833,64 @@ describe('multi-currency analytics', () => {
         baseCurrency: 'THB',
         now: new Date(2026, 7, 17, 12),
       }),
-    ).toBeNull();
+    ).toEqual({
+      base: 'THB',
+      quotes: ['USD'],
+      from: '2026-08-03',
+      to: '2026-08-23',
+    });
+  });
+
+  it('converts a foreign transfer for display without making its rate block totals', () => {
+    const transactions = [
+      transaction({
+        id: 'foreign-transfer',
+        date: '2026-08-17T09:00:00',
+        type: 'transfer',
+        amount: 3,
+        currency: 'USD',
+      }),
+    ];
+    const input = {
+      transactions,
+      range: 'week' as const,
+      baseCurrency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+    };
+
+    const withoutTransferRate = buildAnalyticsSummary({
+      ...input,
+      rates: [],
+    });
+    expect(withoutTransferRate.status).toBe('ready');
+    if (withoutTransferRate.status !== 'ready') {
+      throw new Error('Expected ready analytics');
+    }
+    expect(withoutTransferRate.summary.convertedAmounts).not.toHaveProperty(
+      'foreign-transfer',
+    );
+
+    const withTransferRate = buildAnalyticsSummary({
+      ...input,
+      rates: [
+        {
+          id: 'THB:USD:2026-08-17',
+          base: 'THB',
+          quote: 'USD',
+          date: '2026-08-17',
+          rate: 0.03,
+          fetchedAt: '2026-08-17T12:00:00.000Z',
+        },
+      ],
+    });
+    expect(withTransferRate.status).toBe('ready');
+    if (withTransferRate.status !== 'ready') {
+      throw new Error('Expected ready analytics');
+    }
+    expect(withTransferRate.summary.convertedAmounts['foreign-transfer']).toBe(
+      100,
+    );
+    expect(withTransferRate.summary.expenseTotal).toBe(0);
   });
 });
 
