@@ -31,6 +31,11 @@ describe('findHistoricalQuoteRate', () => {
     expect(findHistoricalQuoteRate(records, 'USD', '2026-08-16')).toBe(0.03);
     expect(findHistoricalQuoteRate(records, 'USD', '2026-08-13')).toBeNull();
   });
+
+  it('does not reuse an observation more than seven calendar days old', () => {
+    expect(findHistoricalQuoteRate(records, 'USD', '2026-08-21')).toBe(0.031);
+    expect(findHistoricalQuoteRate(records, 'USD', '2026-08-25')).toBeNull();
+  });
 });
 
 describe('fetchHistoricalRates', () => {

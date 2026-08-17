@@ -193,5 +193,9 @@ export function findHistoricalQuoteRate(
       match = rate;
     }
   }
-  return match?.rate ?? null;
+  if (!match) return null;
+  const requestedAt = Date.parse(`${date}T00:00:00.000Z`);
+  const observedAt = Date.parse(`${match.date}T00:00:00.000Z`);
+  if (!Number.isFinite(requestedAt) || !Number.isFinite(observedAt)) return null;
+  return requestedAt - observedAt <= 7 * 86_400_000 ? match.rate : null;
 }
