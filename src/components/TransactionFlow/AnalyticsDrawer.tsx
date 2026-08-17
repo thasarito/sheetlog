@@ -36,6 +36,7 @@ import {
 
 type AnalyticsDrawerProps = {
   open: boolean;
+  initialSelectedBucket?: string | null;
   onOpenChange: (open: boolean) => void;
   transactions: TransactionRecord[];
   range: AnalyticsRange;
@@ -60,6 +61,7 @@ type AnalyticsDrawerProps = {
 
 export function AnalyticsDrawer({
   open,
+  initialSelectedBucket,
   onOpenChange,
   transactions,
   range,
@@ -146,6 +148,12 @@ export function AnalyticsDrawer({
   useEffect(() => {
     if (!open) clearFilters();
   }, [clearFilters, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedBucket(initialSelectedBucket ?? null);
+    setSelectedCategory(null);
+  }, [initialSelectedBucket, open]);
 
   useEffect(() => {
     if (!open) setCustomRangeOpen(false);

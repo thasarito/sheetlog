@@ -13,6 +13,7 @@ type AnalyticsBarChartProps = {
   currency: string;
   selectedKey?: string | null;
   onSelect?: (key: string | null) => void;
+  onBucketActivate?: (key: string, trigger: HTMLElement) => void;
   className?: string;
 };
 
@@ -38,6 +39,7 @@ export function AnalyticsBarChart({
   currency,
   selectedKey,
   onSelect,
+  onBucketActivate,
   className,
 }: AnalyticsBarChartProps) {
   const seriesByKey = new Map(series.map((item) => [item.key, item]));
@@ -51,9 +53,10 @@ export function AnalyticsBarChart({
   const selectedOptionId = selectedKey
     ? `analytics-option-${selectedKey}`
     : undefined;
+  const interactive = Boolean(onSelect || onBucketActivate);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!onSelect || buckets.length === 0) return;
+    if (!interactive || buckets.length === 0) return;
     const selectedIndex = buckets.findIndex((bucket) => bucket.key === selectedKey);
     let nextIndex: number | null = null;
 
@@ -66,18 +69,22 @@ export function AnalyticsBarChart({
     } else if (event.key === 'End') {
       nextIndex = buckets.length - 1;
     } else if (event.key === 'Escape') {
-      event.preventDefault();
-      onSelect(null);
+      if (onSelect) {
+        event.preventDefault();
+        onSelect(null);
+      }
       return;
     }
 
     if (nextIndex === null) return;
     event.preventDefault();
-    onSelect(buckets[nextIndex].key);
+    const key = buckets[nextIndex].key;
+    onSelect?.(key);
+    onBucketActivate?.(key, event.currentTarget);
   };
 
   const handlePlotClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (!onSelect || buckets.length === 0) return;
+    if (!interactive || buckets.length === 0) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     let index: number;
 
@@ -90,7 +97,9 @@ export function AnalyticsBarChart({
     }
 
     const boundedIndex = Math.max(0, Math.min(buckets.length - 1, index));
-    onSelect(buckets[boundedIndex].key);
+    const key = buckets[boundedIndex].key;
+    onSelect?.(key);
+    onBucketActivate?.(key, event.currentTarget);
   };
 
   const bars = buckets.map((bucket, index) => {
@@ -171,7 +180,7 @@ export function AnalyticsBarChart({
         key={bucket.key}
         className="grid h-full min-w-0 flex-1 grid-rows-[minmax(4px,1fr)_auto] items-center gap-1"
       >
-        {onSelect ? (
+        {interactive ? (
           <div
             id={`analytics-option-${bucket.key}`}
             role="option"
@@ -206,7 +215,7 @@ export function AnalyticsBarChart({
 
   return (
     <figure className={className} aria-label={`Expense trend: ${summary}`}>
-      {onSelect ? (
+      {interactive ? (
         <div
           role="listbox"
           aria-label="Select analytics period"

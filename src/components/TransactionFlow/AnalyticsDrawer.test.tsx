@@ -123,6 +123,15 @@ describe('AnalyticsDrawer', () => {
     expect(buildSummary).toHaveBeenCalledTimes(1);
   });
 
+  it('opens with a requested bucket selected and filters matching transactions', async () => {
+    renderDrawer({ initialSelectedBucket: '2026-08-17' });
+
+    const selectedBar = screen.getByRole('option', { name: /Monday, August 17/ });
+    await waitFor(() => expect(selectedBar).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /expense Coffee/ })).not.toBeInTheDocument();
+  });
+
   it('puts the stacked chart first and reacts across Overview, categories, and Transactions', async () => {
     const user = userEvent.setup();
     renderDrawer();

@@ -17,10 +17,12 @@ const analyticsSlideCalls: Array<{
   periodOptions: AnalyticsPeriodOption[];
   periodOffset: number;
   onPeriodChange: (offset: number) => void;
+  onBucketSelect?: (key: string, trigger: HTMLElement) => void;
   summary?: AnalyticsSummary;
 }> = [];
 const analyticsDrawerCalls: Array<{
   customPeriod: DatePeriod;
+  initialSelectedBucket?: string | null;
   periodOptions: AnalyticsPeriodOption[];
   periodOffset: number;
   onPeriodChange: (offset: number) => void;
@@ -80,6 +82,7 @@ vi.mock("./AnalyticsSlide", () => ({
     periodOffset: number;
     onPeriodChange: (offset: number) => void;
     onCustomRequest: (trigger: HTMLButtonElement) => void;
+    onBucketSelect?: (key: string, trigger: HTMLElement) => void;
     summary?: AnalyticsSummary;
     onViewAll: (event: MouseEvent<HTMLButtonElement>) => void;
   }) => {
@@ -88,6 +91,12 @@ vi.mock("./AnalyticsSlide", () => ({
       <div>
         <button type="button" onClick={props.onViewAll}>
           Analytics content
+        </button>
+        <button
+          type="button"
+          onClick={(event) => props.onBucketSelect?.("2026-07-01", event.currentTarget)}
+        >
+          Analytics bar
         </button>
         <button type="button" onClick={() => props.onRangeChange("month")}>
           Test month range
@@ -120,6 +129,7 @@ vi.mock("./AnalyticsDrawer", () => ({
     open,
     onOpenChange,
     customPeriod,
+    initialSelectedBucket,
     periodOptions,
     periodOffset,
     onPeriodChange,
@@ -127,12 +137,14 @@ vi.mock("./AnalyticsDrawer", () => ({
     open: boolean;
     onOpenChange: (open: boolean) => void;
     customPeriod: DatePeriod;
+    initialSelectedBucket?: string | null;
     periodOptions: AnalyticsPeriodOption[];
     periodOffset: number;
     onPeriodChange: (offset: number) => void;
   }) => {
     analyticsDrawerCalls.push({
       customPeriod,
+      initialSelectedBucket,
       periodOptions,
       periodOffset,
       onPeriodChange,
@@ -266,6 +278,26 @@ describe("HomeDashboardCarousel", () => {
     );
     await user.click(screen.getByText("Transactions content"));
     expect(onViewAllTransactions).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Analytics from a compact bar and keeps View all unfiltered", async () => {
+    const user = userEvent.setup();
+    const { viewport } = renderCarousel();
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Analytics slide" }),
+      ).toHaveAttribute("aria-current", "true"),
+    );
+
+    const bar = screen.getByRole("button", { name: "Analytics bar" });
+    await user.click(bar);
+    expect(analyticsDrawerCalls.at(-1)?.initialSelectedBucket).toBe("2026-07-01");
+    await user.click(screen.getByText("Close analytics drawer"));
+    await waitFor(() => expect(bar).toHaveFocus());
+
+    await user.click(screen.getByRole("button", { name: "Analytics content" }));
+    expect(analyticsDrawerCalls.at(-1)?.initialSelectedBucket).toBeNull();
   });
 
   it("snaps on touch swipes while leaving mouse drags inert", async () => {

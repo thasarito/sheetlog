@@ -67,6 +67,7 @@ const periodProps = {
   periodOptions,
   periodOffset: 0,
   onPeriodChange: vi.fn(),
+  onBucketSelect: vi.fn(),
 };
 
 describe('AnalyticsSlide', () => {
@@ -74,6 +75,7 @@ describe('AnalyticsSlide', () => {
     const user = userEvent.setup();
     const onRangeChange = vi.fn();
     const onCustomRequest = vi.fn();
+    const onBucketSelect = vi.fn();
     const onViewAll = vi.fn();
     render(
       <AnalyticsSlide
@@ -86,6 +88,7 @@ describe('AnalyticsSlide', () => {
         isOffline={false}
         error={null}
         onRetry={vi.fn()}
+        onBucketSelect={onBucketSelect}
         onViewAll={onViewAll}
       />,
     );
@@ -100,6 +103,14 @@ describe('AnalyticsSlide', () => {
     const chart = screen.getByLabelText(/^Expense trend:/);
     expect(chart).toHaveClass('min-h-10', 'flex-1');
     expect(chart).not.toHaveClass('h-10');
+    const firstBar = screen.getByRole('option', {
+      name: 'Day 1, ฿100 · Dining Out ฿100',
+    });
+    await user.click(firstBar);
+    expect(onBucketSelect).toHaveBeenCalledWith(
+      'day-0',
+      screen.getByRole('listbox', { name: 'Select analytics period' }),
+    );
     await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
     await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
     expect(onRangeChange).toHaveBeenNthCalledWith(1, 'month');
@@ -259,6 +270,7 @@ describe('AnalyticsSlide', () => {
         ]}
         periodOffset={-1}
         onPeriodChange={vi.fn()}
+        onBucketSelect={vi.fn()}
         range="month"
         onRangeChange={vi.fn()}
         summary={{
