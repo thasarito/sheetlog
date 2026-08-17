@@ -13,16 +13,19 @@ import { normalizeAccounts, normalizeCategories } from '../settingsSections';
 import { createCachedTransactionRecord } from '../transactionHistory';
 import type {
   AccountItem,
+  AnalyticsBaseCurrencySetting,
   CategoryConfigWithMeta,
   TransactionHistorySnapshot,
   TransactionRecord,
 } from '../types';
 import {
   getMockAccounts,
+  getMockAnalyticsBaseCurrency,
   getMockCategories,
   getMockQuickNotes,
   getMockTransactions,
   setMockAccounts,
+  setMockAnalyticsBaseCurrency,
   setMockCategories,
   setMockQuickNotes,
   setMockTransactions,
@@ -222,21 +225,41 @@ export async function deleteRow(
 /**
  * Read onboarding config from mock storage
  */
+export async function readAnalyticsBaseCurrencySetting(
+  _accessToken: string,
+  _spreadsheetId: string,
+): Promise<AnalyticsBaseCurrencySetting | null> {
+  await delay();
+  return getMockAnalyticsBaseCurrency();
+}
+
+export async function writeAnalyticsBaseCurrencySetting(
+  _accessToken: string,
+  _spreadsheetId: string,
+  setting: AnalyticsBaseCurrencySetting,
+): Promise<void> {
+  await delay();
+  setMockAnalyticsBaseCurrency(setting);
+}
+
 export async function readOnboardingConfig(
   _accessToken: string,
   _spreadsheetId: string,
 ): Promise<{
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
+  analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
 } | null> {
   await delay();
 
   const accounts = getMockAccounts();
   const categories = getMockCategories();
+  const analyticsBaseCurrency = getMockAnalyticsBaseCurrency();
 
   return {
     accounts: accounts.length > 0 ? accounts : undefined,
     categories,
+    ...(analyticsBaseCurrency ? { analyticsBaseCurrency } : {}),
   };
 }
 
@@ -246,7 +269,11 @@ export async function readOnboardingConfig(
 export async function writeOnboardingConfig(
   _accessToken: string,
   _spreadsheetId: string,
-  updates: { accounts?: AccountItem[]; categories?: CategoryConfigWithMeta },
+  updates: {
+    accounts?: AccountItem[];
+    categories?: CategoryConfigWithMeta;
+    analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
+  },
 ): Promise<void> {
   await delay();
 
@@ -256,6 +283,14 @@ export async function writeOnboardingConfig(
 
   if (updates.categories) {
     setMockCategories(normalizeCategories(updates.categories));
+  }
+
+  if (updates.analyticsBaseCurrency) {
+    await writeAnalyticsBaseCurrencySetting(
+      _accessToken,
+      _spreadsheetId,
+      updates.analyticsBaseCurrency,
+    );
   }
 }
 

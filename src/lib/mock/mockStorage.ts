@@ -4,6 +4,7 @@
 
 import type {
   AccountItem,
+  AnalyticsBaseCurrencySetting,
   CategoryConfigWithMeta,
   QuickNotesConfig,
   TransactionRecord,
@@ -14,12 +15,14 @@ const TRANSACTIONS_KEY = `${STORAGE_PREFIX}.transactions`;
 const ACCOUNTS_KEY = `${STORAGE_PREFIX}.accounts`;
 const CATEGORIES_KEY = `${STORAGE_PREFIX}.categories`;
 const QUICK_NOTES_KEY = `${STORAGE_PREFIX}.quickNotes`;
+const ANALYTICS_BASE_CURRENCY_KEY = `${STORAGE_PREFIX}.analyticsBaseCurrency`;
 
 export interface MockSheetData {
   transactions: TransactionRecord[];
   accounts: AccountItem[];
   categories: CategoryConfigWithMeta;
   quickNotes: QuickNotesConfig | null;
+  analyticsBaseCurrency: AnalyticsBaseCurrencySetting | null;
 }
 
 const DEFAULT_ACCOUNTS: AccountItem[] = [
@@ -115,12 +118,21 @@ export function clearMockQuickNotes(): void {
   localStorage.removeItem(QUICK_NOTES_KEY);
 }
 
+export function getMockAnalyticsBaseCurrency(): AnalyticsBaseCurrencySetting | null {
+  return getFromStorage<AnalyticsBaseCurrencySetting | null>(ANALYTICS_BASE_CURRENCY_KEY, null);
+}
+
+export function setMockAnalyticsBaseCurrency(setting: AnalyticsBaseCurrencySetting): void {
+  setToStorage(ANALYTICS_BASE_CURRENCY_KEY, setting);
+}
+
 export function getMockSheetData(): MockSheetData {
   return {
     transactions: getMockTransactions(),
     accounts: getMockAccounts(),
     categories: getMockCategories(),
     quickNotes: getMockQuickNotes(),
+    analyticsBaseCurrency: getMockAnalyticsBaseCurrency(),
   };
 }
 
@@ -141,6 +153,9 @@ export function setMockSheetData(data: Partial<MockSheetData>): void {
       setMockQuickNotes(data.quickNotes);
     }
   }
+  if (data.analyticsBaseCurrency) {
+    setMockAnalyticsBaseCurrency(data.analyticsBaseCurrency);
+  }
 }
 
 export function clearMockData(): void {
@@ -148,6 +163,7 @@ export function clearMockData(): void {
   localStorage.removeItem(ACCOUNTS_KEY);
   localStorage.removeItem(CATEGORIES_KEY);
   localStorage.removeItem(QUICK_NOTES_KEY);
+  localStorage.removeItem(ANALYTICS_BASE_CURRENCY_KEY);
 }
 
 export { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES };

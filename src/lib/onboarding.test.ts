@@ -38,4 +38,18 @@ describe('mergeOnboardingState analytics base currency', () => {
     expect(result.changed).toBe(false);
     expect(result.settingsNeedPush).toBe(true);
   });
+
+  it('schedules a timestamped local value when the remote setting is missing', () => {
+    const current = {
+      ...getDefaultOnboardingState(),
+      analyticsBaseCurrency: 'GBP' as const,
+      analyticsBaseCurrencyUpdatedAt: '2026-08-17T10:00:00.000Z',
+    };
+
+    const result = mergeOnboardingState(current, {});
+
+    expect(result.next.analyticsBaseCurrency).toBe('GBP');
+    expect(result.changed).toBe(false);
+    expect(result.settingsNeedPush).toBe(true);
+  });
 });
