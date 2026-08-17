@@ -4,16 +4,8 @@ import {
   formatAnalyticsAmount,
   type AnalyticsBucket,
   type AnalyticsSeries,
-  type AnalyticsSeriesTone,
 } from './analytics';
-
-export const ANALYTICS_TONE_CLASSES: Record<AnalyticsSeriesTone, string> = {
-  emerald: 'bg-emerald-500 dark:bg-emerald-400',
-  cyan: 'bg-cyan-500 dark:bg-cyan-400',
-  violet: 'bg-violet-500 dark:bg-violet-400',
-  rose: 'bg-rose-500 dark:bg-rose-400',
-  slate: 'bg-slate-400 dark:bg-slate-500',
-};
+import { ANALYTICS_TONE_BACKGROUND_CLASSES } from './analyticsPresentation';
 
 type AnalyticsBarChartProps = {
   buckets: AnalyticsBucket[];
@@ -110,7 +102,7 @@ export function AnalyticsBarChart({
                           data-testid={`segment-${bucket.key}-${segment.seriesKey}`}
                           data-tone={item.tone}
                           data-direction="positive"
-                          className={ANALYTICS_TONE_CLASSES[item.tone]}
+                          className={ANALYTICS_TONE_BACKGROUND_CLASSES[item.tone]}
                           style={{ flexBasis: 0, flexGrow: segment.amount }}
                         />
                       );
@@ -139,7 +131,7 @@ export function AnalyticsBarChart({
                           data-testid={`segment-${bucket.key}-${segment.seriesKey}`}
                           data-tone={item.tone}
                           data-direction="negative"
-                          className={ANALYTICS_TONE_CLASSES[item.tone]}
+                          className={ANALYTICS_TONE_BACKGROUND_CLASSES[item.tone]}
                           style={{ flexBasis: 0, flexGrow: Math.abs(segment.amount) }}
                         />
                       );
