@@ -18,6 +18,7 @@ import { cn } from "../../lib/utils";
 import { useTransactions } from "../../app/providers";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { Skeleton } from "../ui/skeleton";
+import { CarouselActionButton } from "./CarouselActionButton";
 import { useLocalTransactionsQuery } from "./useLocalTransactionsQuery";
 import { useRecentTransactionsQuery } from "./useRecentTransactionsQuery";
 
@@ -235,14 +236,14 @@ export function TopDashboard({
         <div className="flex items-center justify-between px-4 pb-1 pt-2">
           <span className="text-sm font-semibold text-foreground">Recent</span>
           {onViewAll ? (
-            <button
+            <CarouselActionButton
               type="button"
               aria-label="View all transactions"
               onClick={onViewAll}
               className="rounded-lg px-2 py-1 text-xs font-semibold text-primary transition-colors active:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             >
               View all
-            </button>
+            </CarouselActionButton>
           ) : null}
         </div>
         {/* Header Section */}

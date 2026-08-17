@@ -115,6 +115,85 @@ describe('AnalyticsDrawer', () => {
     expect(onSelectTransaction).toHaveBeenCalledWith(transactions[0]);
   });
 
+  it('politely announces the selected period and recomputed expense total', async () => {
+    const user = userEvent.setup();
+    let selectedRange: 'week' | 'month' | 'quarter' = 'week';
+    const { rerender } = render(
+      <AnalyticsDrawer
+        open
+        onOpenChange={vi.fn()}
+        transactions={transactions}
+        range={selectedRange}
+        onRangeChange={(range) => {
+          selectedRange = range;
+          rerender(
+            <AnalyticsDrawer
+              open
+              onOpenChange={vi.fn()}
+              transactions={transactions}
+              range={selectedRange}
+              onRangeChange={vi.fn()}
+              currency="THB"
+              onCurrencyChange={vi.fn()}
+              currencies={['THB']}
+              isLoading={false}
+              hasCompleteHistory
+              isOffline={false}
+              error={null}
+              onRetry={vi.fn()}
+              onSelectTransaction={vi.fn()}
+              now={new Date(2026, 7, 17, 12)}
+            />,
+          );
+        }}
+        currency="THB"
+        onCurrencyChange={vi.fn()}
+        currencies={['THB']}
+        isLoading={false}
+        hasCompleteHistory
+        isOffline={false}
+        error={null}
+        onRetry={vi.fn()}
+        onSelectTransaction={vi.fn()}
+        now={new Date(2026, 7, 17, 12)}
+      />,
+    );
+
+    const status = screen.getByRole('status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).toHaveAttribute('aria-atomic', 'true');
+    expect(status).toHaveTextContent('Week, last 7 days · Expenses ฿200');
+
+    await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
+    expect(status).toHaveTextContent('Month, month to date · Expenses ฿200');
+  });
+
+  it('announces loading without presenting a partial local total as complete', () => {
+    render(
+      <AnalyticsDrawer
+        open
+        onOpenChange={vi.fn()}
+        transactions={transactions}
+        range="week"
+        onRangeChange={vi.fn()}
+        currency="THB"
+        onCurrencyChange={vi.fn()}
+        currencies={['THB']}
+        isLoading
+        hasCompleteHistory={false}
+        isOffline={false}
+        error={null}
+        onRetry={vi.fn()}
+        onSelectTransaction={vi.fn()}
+        now={new Date(2026, 7, 17, 12)}
+      />,
+    );
+
+    const status = screen.getByRole('status', { name: 'Analytics summary update' });
+    expect(status).toHaveTextContent('Loading Week, last 7 days analytics');
+    expect(status).not.toHaveTextContent('Expenses ฿200');
+  });
+
   it('groups categories after the top five into a selectable Other row', async () => {
     const user = userEvent.setup();
     const categories = [

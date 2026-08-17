@@ -81,6 +81,28 @@ describe.each<[AnalyticsRange, number]>([
   });
 });
 
+describe('analytics bucket accessibility', () => {
+  it('gives every compact weekly bucket a unique full-day accessible label', () => {
+    const summary = buildAnalyticsSummary({
+      transactions: [],
+      range: 'week',
+      currency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    expect(new Set(summary.buckets.map((bucket) => bucket.accessibleLabel)).size).toBe(7);
+    expect(summary.buckets.map((bucket) => bucket.accessibleLabel)).toEqual([
+      'Tuesday, August 11',
+      'Wednesday, August 12',
+      'Thursday, August 13',
+      'Friday, August 14',
+      'Saturday, August 15',
+      'Sunday, August 16',
+      'Monday, August 17',
+    ]);
+  });
+});
+
 describe('buildAnalyticsSummary totals', () => {
   const rows = [
     transaction({ id: 'expense-1', date: '2026-08-17T10:00:00', amount: 100 }),

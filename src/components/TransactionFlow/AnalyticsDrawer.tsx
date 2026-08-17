@@ -125,6 +125,19 @@ export function AnalyticsDrawer({
     onOpenChange(false);
     onSelectTransaction(transaction);
   };
+  const rangeAnnouncement =
+    range === 'week'
+      ? 'Week, last 7 days'
+      : range === 'month'
+        ? 'Month, month to date'
+        : 'Quarter, quarter to date';
+  const analyticsAnnouncement = hasCompleteHistory
+    ? `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, currency)}`
+    : isOffline
+      ? 'Full range unavailable offline'
+      : isLoading
+        ? `Loading ${rangeAnnouncement} analytics`
+        : 'Analytics unavailable';
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -172,6 +185,14 @@ export function AnalyticsDrawer({
             <span className="ml-auto text-xs font-semibold text-muted-foreground">{currency}</span>
           )}
         </div>
+        <output
+          aria-label="Analytics summary update"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        >
+          {analyticsAnnouncement}
+        </output>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-safe" data-vaul-no-drag>
           {!hasCompleteHistory && isOffline ? (

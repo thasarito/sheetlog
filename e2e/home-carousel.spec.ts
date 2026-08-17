@@ -108,6 +108,11 @@ test.describe('Home Transactions and Analytics carousel', () => {
     expect(geometry.borderRadius).toBe('0px');
     expect(geometry.boxShadow).toBe('none');
 
+    const transactionsViewAll = page.getByRole('button', { name: 'View all transactions' });
+    await touchSwipe(page, transactionsViewAll, -geometry.viewportWidth * 0.7, 4);
+    await expect(transactionsDot).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
     await touchSwipe(page, viewport, -geometry.viewportWidth * 0.7, 4);
     await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -150,6 +155,9 @@ test.describe('Home Transactions and Analytics carousel', () => {
     );
 
     const analyticsViewAll = page.getByRole('button', { name: 'View all analytics' });
+    await touchSwipe(page, analyticsViewAll, geometry.viewportWidth * 0.7, 4);
+    await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await analyticsViewAll.click();
     const analyticsDialog = page.getByRole('dialog');
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeVisible();
@@ -167,7 +175,6 @@ test.describe('Home Transactions and Analytics carousel', () => {
       .poll(() => transactionScroll.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(scrollTopBefore);
     await expect(transactionsDot).toHaveAttribute('aria-current', 'true');
-    const transactionsViewAll = page.getByRole('button', { name: 'View all transactions' });
     await transactionsViewAll.click();
     const transactionsDialog = page.getByRole('dialog');
     await expect(transactionsDialog.getByRole('heading', { name: 'Transactions' })).toBeVisible();

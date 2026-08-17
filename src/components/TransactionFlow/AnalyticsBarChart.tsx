@@ -19,7 +19,10 @@ export function AnalyticsBarChart({
   const maximum = Math.max(1, ...buckets.map((bucket) => Math.abs(bucket.amount)));
   const hasNegative = buckets.some((bucket) => bucket.amount < 0);
   const summary = buckets
-    .map((bucket) => `${bucket.label} ${formatAnalyticsAmount(bucket.amount, currency)}`)
+    .map(
+      (bucket) =>
+        `${bucket.accessibleLabel} ${formatAnalyticsAmount(bucket.amount, currency)}`,
+    )
     .join(', ');
 
   return (
@@ -53,7 +56,7 @@ export function AnalyticsBarChart({
               {onSelect ? (
                 <button
                   type="button"
-                  aria-label={`Filter by ${bucket.label}, ${formatAnalyticsAmount(bucket.amount, currency)}`}
+                  aria-label={`Filter by ${bucket.accessibleLabel}, ${formatAnalyticsAmount(bucket.amount, currency)}`}
                   aria-pressed={selectedKey === bucket.key}
                   onClick={() => onSelect(bucket.key)}
                   className={cn(

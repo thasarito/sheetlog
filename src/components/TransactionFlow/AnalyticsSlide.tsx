@@ -10,6 +10,7 @@ import {
 } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
+import { CarouselActionButton } from './CarouselActionButton';
 
 type AnalyticsSlideProps = {
   range: AnalyticsRange;
@@ -142,14 +143,14 @@ export function AnalyticsSlide({
             ? `Top · ${summary.categories[0].category} · ${formatAnalyticsAmount(summary.categories[0].amount, summary.currency)}`
             : 'Detailed insights'}
         </span>
-        <button
+        <CarouselActionButton
           type="button"
           aria-label="View all analytics"
           onClick={onViewAll}
           className="flex min-h-11 shrink-0 items-end px-1 font-semibold text-primary"
         >
           View all
-        </button>
+        </CarouselActionButton>
       </div>
     </div>
   );

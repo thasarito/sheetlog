@@ -33,6 +33,7 @@ export type AnalyticsComparison = {
 export type AnalyticsBucket = {
   key: string;
   label: string;
+  accessibleLabel: string;
   amount: number;
   transactionIds: string[];
 };
@@ -166,6 +167,7 @@ function buildComparison(current: number, previous: number): AnalyticsComparison
 function makeBucket(
   key: string,
   label: string,
+  accessibleLabel: string,
   period: DatePeriod,
   rows: TransactionRecord[],
 ): AnalyticsBucket {
@@ -177,6 +179,7 @@ function makeBucket(
   return {
     key,
     label,
+    accessibleLabel,
     amount: sumType(expenses, 'expense'),
     transactionIds: expenses.map((row) => row.id),
   };
@@ -193,6 +196,7 @@ function buildBuckets(
       return makeBucket(
         format(start, 'yyyy-MM-dd'),
         format(start, 'EEEEE'),
+        format(start, 'EEEE, MMMM d'),
         { start, end: endOfDay(start) },
         rows,
       );
@@ -207,6 +211,7 @@ function buildBuckets(
       return makeBucket(
         `${format(start, 'yyyy-MM-dd')}-week`,
         `${format(start, 'd')}–${format(end, 'd')}`,
+        `${format(start, 'MMMM d')} through ${format(end, 'MMMM d')}`,
         { start, end },
         rows,
       );
@@ -216,7 +221,13 @@ function buildBuckets(
   return Array.from({ length: 3 }, (_, index) => {
     const start = startOfMonth(addMonths(current.start, index));
     const end = minDate(current.end, endOfMonth(start));
-    return makeBucket(format(start, 'yyyy-MM'), format(start, 'MMM'), { start, end }, rows);
+    return makeBucket(
+      format(start, 'yyyy-MM'),
+      format(start, 'MMM'),
+      format(start, 'MMMM yyyy'),
+      { start, end },
+      rows,
+    );
   });
 }
 

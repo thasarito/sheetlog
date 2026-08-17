@@ -25,6 +25,7 @@ const summary: AnalyticsSummary = {
   buckets: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, index) => ({
     key: `day-${index}`,
     label,
+    accessibleLabel: `Day ${index + 1}`,
     amount: 100 + index * 25,
     transactionIds: [],
   })),
