@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type {
   CachedTransactionRecord,
+  ExchangeRateRecord,
   SettingRecord,
   TransactionHistoryMeta,
   TransactionRecord,
@@ -11,12 +12,13 @@ export class SheetLogDB extends Dexie {
   settings!: Table<SettingRecord, string>;
   transactionHistory!: Table<CachedTransactionRecord, [string, string]>;
   transactionHistoryMeta!: Table<TransactionHistoryMeta, string>;
+  exchangeRates!: Table<ExchangeRateRecord, string>;
 
   constructor(name = 'SheetLogDB') {
     super(name);
     this.version(1).stores({
       transactions: 'id, status, createdAt',
-      settings: 'key'
+      settings: 'key',
     });
     this.version(2)
       .stores({
@@ -43,6 +45,15 @@ export class SheetLogDB extends Dexie {
       transactionHistory:
         '[sheetId+id], sheetId, sheetRow, cachedAt, [sheetId+date]',
       transactionHistoryMeta: 'sheetId',
+    });
+    this.version(4).stores({
+      transactions:
+        'id, status, createdAt, sheetId, targetSheetId, targetUserId, [targetSheetId+targetUserId+status]',
+      settings: 'key',
+      transactionHistory:
+        '[sheetId+id], sheetId, sheetRow, cachedAt, [sheetId+date]',
+      transactionHistoryMeta: 'sheetId',
+      exchangeRates: 'id, [base+quote+date], date, fetchedAt',
     });
   }
 }

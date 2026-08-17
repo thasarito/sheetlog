@@ -73,6 +73,15 @@ export interface SettingRecord {
   updatedAt: string;
 }
 
+export interface ExchangeRateRecord {
+  id: string;
+  base: string;
+  quote: string;
+  date: string;
+  rate: number;
+  fetchedAt: string;
+}
+
 export interface RecentCategories {
   expense: string[];
   income: string[];
