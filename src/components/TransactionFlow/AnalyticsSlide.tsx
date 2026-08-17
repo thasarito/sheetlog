@@ -29,6 +29,7 @@ type AnalyticsSlideProps = {
   updatedAt?: number;
   error: Error | null;
   onRetry: () => void;
+  onBucketSelect: (key: string, trigger: HTMLElement) => void;
   onViewAll: (event: MouseEvent<HTMLButtonElement>) => void;
 };
 
@@ -66,6 +67,7 @@ export function AnalyticsSlide({
   updatedAt,
   error,
   onRetry,
+  onBucketSelect,
   onViewAll,
 }: AnalyticsSlideProps) {
   const selectedPeriod = periodOptions.find((option) => option.offset === periodOffset);
@@ -177,6 +179,7 @@ export function AnalyticsSlide({
             buckets={summary.buckets}
             series={summary.series}
             currency={summary.currency}
+            onBucketActivate={onBucketSelect}
             className="mt-1 min-h-10 flex-1"
           />
           {error ? (

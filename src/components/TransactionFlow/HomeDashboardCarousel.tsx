@@ -54,6 +54,7 @@ export function HomeDashboardCarousel({
   const [range, setRange] = useState<AnalyticsRange>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [initialAnalyticsBucket, setInitialAnalyticsBucket] = useState<string | null>(null);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [drawerCurrency, setDrawerCurrency] = useState(currency);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
@@ -63,7 +64,7 @@ export function HomeDashboardCarousel({
   }));
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
-  const analyticsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const analyticsTriggerRef = useRef<HTMLElement | null>(null);
   const customRangeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const pointerStart = useRef<{
     startX: number;
@@ -357,8 +358,15 @@ export function HomeDashboardCarousel({
               onRetry={() => {
                 void history.refresh();
               }}
+              onBucketSelect={(key, trigger) => {
+                analyticsTriggerRef.current = trigger;
+                setInitialAnalyticsBucket(key);
+                setHistoryActivated(true);
+                setAnalyticsOpen(true);
+              }}
               onViewAll={(event) => {
                 analyticsTriggerRef.current = event.currentTarget;
+                setInitialAnalyticsBucket(null);
                 setHistoryActivated(true);
                 setAnalyticsOpen(true);
               }}
@@ -409,6 +417,7 @@ export function HomeDashboardCarousel({
 
       <AnalyticsDrawer
         open={analyticsOpen}
+        initialSelectedBucket={initialAnalyticsBucket}
         onOpenChange={handleAnalyticsOpenChange}
         transactions={transactions}
         range={range}
