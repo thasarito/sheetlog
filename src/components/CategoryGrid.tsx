@@ -70,6 +70,7 @@ function CategoryButton({
 }: CategoryButtonProps) {
   const icon = resolveCategoryIcon(category, transactionType);
   const color = resolveCategoryColor(category, transactionType);
+  const displayColor = `color-mix(in srgb, ${color} 70%, hsl(var(--foreground)))`;
 
   const [isHovered, setIsHovered] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,7 +162,7 @@ function CategoryButton({
   return (
     <button
       type="button"
-      className="flex aspect-square min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-transparent bg-surface-2 p-2 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className="flex aspect-square min-w-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-1.5 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-[360px]:gap-1.5"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -175,23 +176,19 @@ function CategoryButton({
       onContextMenu={(event) => event.preventDefault()}
     >
       <motion.span
-        className="flex h-6 w-6 items-center justify-center"
+        className="flex h-5 w-5 items-center justify-center min-[360px]:h-6 min-[360px]:w-6"
         animate={{ scale: isHovered ? 1.08 : 1 }}
         transition={springTransition}
       >
-        <DynamicIcon name={icon} className="h-5 w-5" style={{ color }} />
+        <DynamicIcon
+          name={icon}
+          className="h-4 w-4 min-[360px]:h-5 min-[360px]:w-5"
+          style={{ color: displayColor }}
+        />
       </motion.span>
-      <motion.span
-        className="text-[10px] font-semibold leading-[1.15] text-muted-foreground"
-        animate={{
-          color: isHovered
-            ? "hsl(var(--foreground))"
-            : "hsl(var(--muted-foreground))",
-        }}
-        transition={springTransition}
-      >
+      <span className="w-[calc(100%+0.75rem)] min-w-0 break-words text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
         {category.name}
-      </motion.span>
+      </span>
     </button>
   );
 }

@@ -67,6 +67,7 @@ export function StepCategory({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
+  const navigationTargetRef = useRef(selectedIndex);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
@@ -126,6 +127,7 @@ export function StepCategory({
       const viewport = viewportRef.current;
       if (!viewport) return;
       const boundedIndex = Math.max(0, Math.min(TYPE_OPTIONS.length - 1, index));
+      navigationTargetRef.current = boundedIndex;
       const reducedMotion = prefersReducedMotion();
       viewport.scrollTo({
         left: boundedIndex * viewport.clientWidth,
@@ -180,6 +182,7 @@ export function StepCategory({
 
   useEffect(() => {
     const viewport = viewportRef.current;
+    navigationTargetRef.current = selectedIndex;
     if (!viewport || viewport.clientWidth === 0) return;
     const targetLeft = selectedIndex * viewport.clientWidth;
     if (Math.abs(viewport.scrollLeft - targetLeft) > 1) {
@@ -225,11 +228,11 @@ export function StepCategory({
         if (!isNavigationTarget) return;
         if (event.key === 'ArrowRight') {
           event.preventDefault();
-          scrollToType(selectedIndex + 1);
+          scrollToType(navigationTargetRef.current + 1);
         }
         if (event.key === 'ArrowLeft') {
           event.preventDefault();
-          scrollToType(selectedIndex - 1);
+          scrollToType(navigationTargetRef.current - 1);
         }
       }}
     >
