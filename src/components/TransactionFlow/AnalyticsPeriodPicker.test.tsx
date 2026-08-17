@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnalyticsPeriodOption } from './analytics';
 import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
@@ -22,6 +22,20 @@ const replacementOptions: AnalyticsPeriodOption[] = options.map((option) => ({
   accessibleLabel: option.accessibleLabel.replace('2026', 'quarter'),
 }));
 
+const longOptions: AnalyticsPeriodOption[] = Array.from({ length: 12 }, (_, index) => {
+  const offset = index - 11;
+  return {
+    key: `week-${offset}`,
+    offset,
+    label: `Week ${index + 1}`,
+    accessibleLabel: `Week ${index + 1}`,
+    period: {
+      start: new Date(2026, 4, 1 + index * 7),
+      end: new Date(2026, 4, 7 + index * 7, 23, 59, 59, 999),
+    },
+  };
+});
+
 function useMotionClock() {
   vi.useFakeTimers({
     toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'],
@@ -38,6 +52,62 @@ function advanceMotion(milliseconds: number) {
   act(() => {
     vi.advanceTimersByTime(milliseconds);
   });
+}
+
+type TestTouch = {
+  identifier: number;
+  pageX: number;
+  pageY: number;
+  clientX: number;
+  clientY: number;
+};
+
+function testTouch(identifier: number, x: number, y: number): TestTouch {
+  return { identifier, pageX: x, pageY: y, clientX: x, clientY: y };
+}
+
+function startTouch(element: Element, point: TestTouch, extraTouches: TestTouch[] = []) {
+  const touches = [point, ...extraTouches];
+  fireEvent.touchStart(element, {
+    touches,
+    targetTouches: touches,
+    changedTouches: touches,
+  });
+}
+
+function moveTouch(element: Element, point: TestTouch, extraTouches: TestTouch[] = []) {
+  const touches = [point, ...extraTouches];
+  const event = createEvent.touchMove(element, {
+    bubbles: true,
+    cancelable: true,
+    touches,
+    targetTouches: touches,
+    changedTouches: [point],
+  });
+  fireEvent(element, event);
+  return event;
+}
+
+function endTouch(element: Element, point: TestTouch) {
+  fireEvent.touchEnd(element, {
+    touches: [],
+    targetTouches: [],
+    changedTouches: [point],
+  });
+}
+
+function cancelTouch(element: Element, point: TestTouch) {
+  fireEvent.touchCancel(element, {
+    touches: [],
+    targetTouches: [],
+    changedTouches: [point],
+  });
+}
+
+function transformX(element: HTMLElement): number {
+  const match = element.style.transform.match(/translate3d\(([-\d.]+)px/);
+  if (!match) throw new Error(`Missing horizontal transform: ${element.style.transform}`);
+  return Number(match[1]);
 }
 
 function setPickerGeometry() {
@@ -77,12 +147,29 @@ describe('AnalyticsPeriodPicker', () => {
       'data-home-carousel-swipe-lock',
       'true',
     );
-    expect(screen.getByTestId('analytics-period-picker')).toHaveClass('[touch-action:pan-y]');
+    expect(screen.getByTestId('analytics-period-picker')).not.toHaveClass('[touch-action:pan-y]');
     expect(screen.getByTestId('analytics-period-picker')).toHaveClass('overflow-hidden');
     expect(screen.getByTestId('analytics-period-picker')).not.toHaveClass('snap-mandatory');
     expect(screen.getByTestId('analytics-period-track')).toHaveClass('will-change-transform');
     expect(screen.getByRole('option', { name: 'July 2026' })).toHaveClass('font-semibold');
     expect(screen.getByRole('option', { name: 'June 2026' })).toHaveClass('font-medium');
+  });
+
+  it('tracks an in-bounds horizontal Touch Event one-to-one without committing', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+    const initialX = transformX(track);
+
+    startTouch(picker, testTouch(11, 100, 20));
+    advanceMotion(16);
+    const move = moveTouch(picker, testTouch(11, 180, 22));
+    advanceMotion(17);
+
+    expect(move.defaultPrevented).toBe(true);
+    expect(transformX(track) - initialX).toBe(80);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('tracks a touch drag visually and commits only after the nearest period centers', () => {
@@ -92,50 +179,47 @@ describe('AnalyticsPeriodPicker', () => {
     const { picker, track } = setPickerGeometry();
     const initialTransform = track.style.transform;
 
-    fireEvent.pointerDown(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 20,
-    });
+    startTouch(picker, testTouch(2, 100, 20));
     advanceMotion(100);
-    fireEvent.pointerMove(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 140,
-      clientY: 21,
-    });
+    moveTouch(picker, testTouch(2, 140, 21));
     advanceMotion(50);
-    fireEvent.pointerMove(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 180,
-      clientY: 21,
-    });
+    moveTouch(picker, testTouch(2, 180, 21));
     advanceMotion(400);
-    fireEvent.pointerMove(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 180,
-      clientY: 21,
-    });
+    moveTouch(picker, testTouch(2, 180, 21));
     advanceMotion(17);
 
     expect(track.style.transform).not.toBe(initialTransform);
     expect(onChange).not.toHaveBeenCalled();
 
-    fireEvent.pointerUp(picker, {
-      pointerId: 2,
-      pointerType: 'touch',
-      clientX: 180,
-      clientY: 21,
-    });
+    endTouch(picker, testTouch(2, 180, 21));
     advanceMotion(200);
     expect(onChange).not.toHaveBeenCalled();
     advanceMotion(900);
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(-1);
+  });
+
+  it('keeps a fast multi-period fling moving beyond the old duration cutoff', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={longOptions} value={0} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+
+    startTouch(picker, testTouch(21, 100, 20));
+    advanceMotion(16);
+    moveTouch(picker, testTouch(21, 180, 21));
+    advanceMotion(17);
+    endTouch(picker, testTouch(21, 180, 21));
+    const releaseX = transformX(track);
+
+    advanceMotion(800);
+    expect(transformX(track)).toBeGreaterThan(releaseX);
+    expect(onChange).not.toHaveBeenCalled();
+
+    advanceMotion(2_000);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0]).toBeLessThanOrEqual(-2);
   });
 
   it('leaves vertical gestures and mouse dragging inert', () => {
@@ -145,24 +229,9 @@ describe('AnalyticsPeriodPicker', () => {
     const { picker, track } = setPickerGeometry();
     const initialTransform = track.style.transform;
 
-    fireEvent.pointerDown(picker, {
-      pointerId: 3,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 20,
-    });
-    fireEvent.pointerMove(picker, {
-      pointerId: 3,
-      pointerType: 'touch',
-      clientX: 102,
-      clientY: 100,
-    });
-    fireEvent.pointerUp(picker, {
-      pointerId: 3,
-      pointerType: 'touch',
-      clientX: 102,
-      clientY: 100,
-    });
+    startTouch(picker, testTouch(3, 100, 20));
+    moveTouch(picker, testTouch(3, 102, 100));
+    endTouch(picker, testTouch(3, 102, 100));
 
     fireEvent.pointerDown(picker, {
       pointerId: 4,
@@ -188,35 +257,122 @@ describe('AnalyticsPeriodPicker', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('returns to the controlled period without committing after pointer cancellation', () => {
+  it('leaves vertical Touch Events available to the drawer scroller', () => {
     useMotionClock();
     const onChange = vi.fn();
     render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
     const { picker, track } = setPickerGeometry();
     const initialTransform = track.style.transform;
 
-    fireEvent.pointerDown(picker, {
-      pointerId: 5,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 20,
-    });
-    fireEvent.pointerMove(picker, {
-      pointerId: 5,
-      pointerType: 'touch',
-      clientX: 190,
-      clientY: 22,
-    });
+    startTouch(picker, testTouch(12, 100, 20));
+    const move = moveTouch(picker, testTouch(12, 103, 80));
+    endTouch(picker, testTouch(12, 103, 80));
+    advanceMotion(400);
+
+    expect(move.defaultPrevented).toBe(false);
+    expect(track.style.transform).toBe(initialTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('returns to the controlled period without committing after touch cancellation', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+    const initialTransform = track.style.transform;
+
+    startTouch(picker, testTouch(5, 100, 20));
+    moveTouch(picker, testTouch(5, 190, 22));
     advanceMotion(17);
     expect(track.style.transform).not.toBe(initialTransform);
 
-    fireEvent.pointerCancel(picker, {
-      pointerId: 5,
-      pointerType: 'touch',
-    });
+    cancelTouch(picker, testTouch(5, 190, 22));
     advanceMotion(400);
 
     expect(track.style.transform).toBe(initialTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('cancels an active period gesture when a second touch appears', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+    const controlledTransform = track.style.transform;
+
+    startTouch(picker, testTouch(31, 100, 20));
+    moveTouch(picker, testTouch(31, 150, 21));
+    advanceMotion(17);
+    moveTouch(picker, testTouch(31, 170, 21), [testTouch(32, 200, 24)]);
+    advanceMotion(400);
+    endTouch(picker, testTouch(31, 170, 21));
+    advanceMotion(400);
+
+    expect(track.style.transform).toBe(controlledTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('cancels when a second option receives a touch while the first remains active', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { track } = setPickerGeometry();
+    const controlledTransform = track.style.transform;
+    const firstOption = screen.getByRole('option', { name: 'July 2026' });
+    const secondOption = screen.getByRole('option', { name: 'August 2026' });
+    const firstStart = testTouch(51, 100, 20);
+    const firstMoved = testTouch(51, 150, 21);
+    const secondStart = testTouch(52, 200, 24);
+    const secondMoved = testTouch(52, 40, 24);
+
+    startTouch(firstOption, firstStart);
+    moveTouch(firstOption, firstMoved);
+    advanceMotion(17);
+    expect(track.style.transform).not.toBe(controlledTransform);
+
+    fireEvent.touchStart(secondOption, {
+      touches: [firstMoved, secondStart],
+      targetTouches: [secondStart],
+      changedTouches: [secondStart],
+    });
+    const secondMove = createEvent.touchMove(secondOption, {
+      bubbles: true,
+      cancelable: true,
+      touches: [firstMoved, secondMoved],
+      targetTouches: [secondMoved],
+      changedTouches: [secondMoved],
+    });
+    fireEvent(secondOption, secondMove);
+    advanceMotion(17);
+    fireEvent.touchEnd(secondOption, {
+      touches: [firstMoved],
+      targetTouches: [],
+      changedTouches: [secondMoved],
+    });
+    fireEvent.touchEnd(firstOption, {
+      touches: [],
+      targetTouches: [],
+      changedTouches: [firstMoved],
+    });
+    advanceMotion(1_000);
+
+    expect(track.style.transform).toBe(controlledTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('suppresses the click synthesized by a horizontal touch gesture', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker } = setPickerGeometry();
+
+    startTouch(picker, testTouch(41, 100, 20));
+    moveTouch(picker, testTouch(41, 120, 21));
+    advanceMotion(217);
+    endTouch(picker, testTouch(41, 120, 21));
+    fireEvent.click(screen.getByRole('option', { name: 'May 2026' }));
+    advanceMotion(500);
+
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -293,39 +449,44 @@ describe('AnalyticsPeriodPicker', () => {
     );
     const { picker, track } = setPickerGeometry();
 
-    fireEvent.pointerDown(picker, {
-      pointerId: 6,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 20,
-    });
+    startTouch(picker, testTouch(6, 100, 20));
     advanceMotion(16);
-    fireEvent.pointerMove(picker, {
-      pointerId: 6,
-      pointerType: 'touch',
-      clientX: 150,
-      clientY: 21,
-    });
+    moveTouch(picker, testTouch(6, 150, 21));
     advanceMotion(17);
 
     rerender(<AnalyticsPeriodPicker options={options} value={-2} onChange={onChange} />);
     const controlledTransform = track.style.transform;
-    fireEvent.pointerMove(picker, {
-      pointerId: 6,
-      pointerType: 'touch',
-      clientX: 230,
-      clientY: 21,
-    });
+    moveTouch(picker, testTouch(6, 230, 21));
     advanceMotion(17);
-    fireEvent.pointerUp(picker, {
-      pointerId: 6,
-      pointerType: 'touch',
-      clientX: 230,
-      clientY: 21,
-    });
+    endTouch(picker, testTouch(6, 230, 21));
     advanceMotion(1_000);
 
     expect(track.style.transform).toBe(controlledTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('cancels an active touch when resize changes the picker geometry', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+
+    startTouch(picker, testTouch(61, 100, 20));
+    moveTouch(picker, testTouch(61, 150, 21));
+    advanceMotion(17);
+    expect(transformX(track)).not.toBe(-160);
+
+    Object.defineProperty(picker, 'clientWidth', {
+      configurable: true,
+      value: 320,
+    });
+    fireEvent(window, new Event('resize'));
+    moveTouch(picker, testTouch(61, 300, 21));
+    advanceMotion(17);
+    endTouch(picker, testTouch(61, 300, 21));
+    advanceMotion(1_000);
+
+    expect(transformX(track)).toBe(-160);
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -335,26 +496,11 @@ describe('AnalyticsPeriodPicker', () => {
     render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
     const { picker } = setPickerGeometry();
 
-    fireEvent.pointerDown(picker, {
-      pointerId: 7,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 20,
-    });
+    startTouch(picker, testTouch(7, 100, 20));
     advanceMotion(16);
-    fireEvent.pointerMove(picker, {
-      pointerId: 7,
-      pointerType: 'touch',
-      clientX: 130,
-      clientY: 21,
-    });
+    moveTouch(picker, testTouch(7, 130, 21));
     advanceMotion(317);
-    fireEvent.pointerUp(picker, {
-      pointerId: 7,
-      pointerType: 'touch',
-      clientX: 130,
-      clientY: 21,
-    });
+    endTouch(picker, testTouch(7, 130, 21));
     advanceMotion(1_000);
 
     expect(onChange).not.toHaveBeenCalled();
@@ -371,24 +517,9 @@ describe('AnalyticsPeriodPicker', () => {
     advanceMotion(80);
     expect(track.style.transform).not.toBe(controlledTransform);
 
-    fireEvent.pointerDown(picker, {
-      pointerId: 8,
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 20,
-    });
-    fireEvent.pointerMove(picker, {
-      pointerId: 8,
-      pointerType: 'touch',
-      clientX: 102,
-      clientY: 60,
-    });
-    fireEvent.pointerUp(picker, {
-      pointerId: 8,
-      pointerType: 'touch',
-      clientX: 102,
-      clientY: 60,
-    });
+    startTouch(picker, testTouch(8, 100, 20));
+    moveTouch(picker, testTouch(8, 102, 60));
+    endTouch(picker, testTouch(8, 102, 60));
     advanceMotion(400);
 
     expect(track.style.transform).toBe(controlledTransform);
@@ -448,5 +579,33 @@ describe('AnalyticsPeriodPicker', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(-2);
+  });
+
+  it('settles a touch immediately when reduced motion is requested', () => {
+    useMotionClock();
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: query === '(prefers-reduced-motion: reduce)',
+          media: query,
+          onchange: null,
+          addListener: () => undefined,
+          removeListener: () => undefined,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker } = setPickerGeometry();
+
+    startTouch(picker, testTouch(42, 180, 20));
+    moveTouch(picker, testTouch(42, 80, 21));
+    advanceMotion(17);
+    endTouch(picker, testTouch(42, 80, 21));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(0);
   });
 });
