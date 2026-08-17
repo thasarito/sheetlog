@@ -177,4 +177,37 @@ test.describe("Transaction type and category carousel", () => {
     expect((await slot.boundingBox())?.height).toBeGreaterThanOrEqual(42);
     await expect(slot.getByRole("button")).toHaveCount(0);
   });
+
+  test("uses the Graphite Indigo semantic palette in dark mode", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.reload();
+
+    const tokens = await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      const read = (name: string) => style.getPropertyValue(name).trim();
+      return {
+        background: read("--background"),
+        foreground: read("--foreground"),
+        surface: read("--surface"),
+        surface2: read("--surface-2"),
+        surface3: read("--surface-3"),
+        primary: read("--primary"),
+        mutedForeground: read("--muted-foreground"),
+        border: read("--border"),
+      };
+    });
+
+    expect(tokens).toEqual({
+      background: "230 16% 7%",
+      foreground: "240 33% 98%",
+      surface: "229 19% 12%",
+      surface2: "229 19% 17%",
+      surface3: "228 21% 24%",
+      primary: "229 100% 78%",
+      mutedForeground: "230 17% 74%",
+      border: "228 18% 27%",
+    });
+  });
 });

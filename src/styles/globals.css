@@ -41,28 +41,28 @@ input[type="date"] {
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --surface: 222 47% 15%;
-    --surface-2: 223 37% 20%;
-    --surface-3: 223 32% 24%;
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
-    --muted: 223 32% 20%;
-    --muted-foreground: 215 20% 65%;
-    --primary: 160 84% 45%;
-    --primary-foreground: 222 47% 11%;
-    --accent: 164 60% 28%;
-    --accent-foreground: 210 40% 98%;
+    --background: 230 16% 7%;
+    --foreground: 240 33% 98%;
+    --surface: 229 19% 12%;
+    --surface-2: 229 19% 17%;
+    --surface-3: 228 21% 24%;
+    --card: 229 19% 12%;
+    --card-foreground: 240 33% 98%;
+    --muted: 229 19% 17%;
+    --muted-foreground: 230 17% 74%;
+    --primary: 229 100% 78%;
+    --primary-foreground: 230 16% 7%;
+    --accent: 228 21% 24%;
+    --accent-foreground: 240 33% 98%;
     --success: 160 84% 45%;
-    --success-foreground: 222 47% 11%;
+    --success-foreground: 230 16% 7%;
     --warning: 45 93% 55%;
-    --warning-foreground: 222 47% 11%;
+    --warning-foreground: 230 16% 7%;
     --danger: 0 84% 60%;
-    --danger-foreground: 210 40% 98%;
-    --overlay: 220 40% 2%;
-    --border: 215 27% 30%;
-    --ring: 160 84% 45%;
+    --danger-foreground: 240 33% 98%;
+    --overlay: 230 25% 2%;
+    --border: 228 18% 27%;
+    --ring: 229 100% 78%;
   }
 
   input[type="date"] {
