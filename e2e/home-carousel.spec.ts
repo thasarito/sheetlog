@@ -77,36 +77,103 @@ async function touchSwipeWithMotionTrace(
 ) {
   const box = await target.boundingBox();
   if (!box) throw new Error('Swipe target is not visible');
-  const tracePromise = target.evaluate(async (element) => {
+  await target.evaluate((element) => {
     const track = element.querySelector<HTMLElement>('[data-testid="analytics-period-track"]');
     if (!track) throw new Error('Analytics period motion track is missing');
-    const transforms: string[] = [];
-    const selectedOffsets: Array<string | null> = [];
+    const motionElement = element as HTMLElement & {
+      __analyticsPeriodMotionTrace?: {
+        transforms: string[];
+        selectedOffsets: Array<string | null>;
+        touchEvents: { start: number; move: number; end: number; cancel: number };
+        done: boolean;
+      };
+    };
+    const trace = {
+      transforms: [] as string[],
+      selectedOffsets: [] as Array<string | null>,
+      touchEvents: { start: 0, move: 0, end: 0, cancel: 0 },
+      done: false,
+    };
+    motionElement.__analyticsPeriodMotionTrace = trace;
+    element.addEventListener('touchstart', () => {
+      trace.touchEvents.start += 1;
+    });
+    element.addEventListener('touchmove', () => {
+      trace.touchEvents.move += 1;
+    });
+    element.addEventListener('touchend', () => {
+      trace.touchEvents.end += 1;
+    });
+    element.addEventListener('touchcancel', () => {
+      trace.touchEvents.cancel += 1;
+    });
 
-    for (let frame = 0; frame < 75; frame += 1) {
-      transforms.push(track.style.transform);
-      selectedOffsets.push(
+    const sampleFrame = () => {
+      trace.transforms.push(track.style.transform);
+      trace.selectedOffsets.push(
         element
           .querySelector('[role="option"][aria-selected="true"]')
           ?.getAttribute('data-period-offset') ?? null,
       );
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-
-    return { transforms, selectedOffsets };
+      if (trace.transforms.length >= 150) {
+        trace.done = true;
+        return;
+      }
+      requestAnimationFrame(sampleFrame);
+    };
+    requestAnimationFrame(sampleFrame);
   });
   const client = await page.context().newCDPSession(page);
   const horizontal = Math.abs(deltaX) > Math.abs(deltaY);
-  await client.send('Input.synthesizeScrollGesture', {
-    x: box.x + box.width * (deltaX < 0 ? 0.85 : deltaX > 0 ? 0.15 : 0.5),
-    y: box.y + box.height * (horizontal ? 0.65 : deltaY < 0 ? 0.8 : 0.2),
-    xDistance: deltaX,
-    yDistance: deltaY,
-    gestureSourceType: 'touch',
-    speed: 600,
+  const startX = box.x + box.width * (deltaX < 0 ? 0.85 : deltaX > 0 ? 0.15 : 0.5);
+  const startY = box.y + box.height * (horizontal ? 0.65 : deltaY < 0 ? 0.8 : 0.2);
+  const touchPoint = (x: number, y: number) => ({
+    x,
+    y,
+    id: 0,
+    radiusX: 1,
+    radiusY: 1,
+    force: 1,
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [touchPoint(startX, startY)],
+  });
+  for (let step = 1; step <= 16; step += 1) {
+    await page.waitForTimeout(16);
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        touchPoint(startX + (deltaX * step) / 16, startY + (deltaY * step) / 16),
+      ],
+    });
+  }
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
   });
   await client.detach();
-  return tracePromise;
+  return target.evaluate(async (element) => {
+    const motionElement = element as HTMLElement & {
+      __analyticsPeriodMotionTrace?: {
+        transforms: string[];
+        selectedOffsets: Array<string | null>;
+        touchEvents: { start: number; move: number; end: number; cancel: number };
+        done: boolean;
+      };
+    };
+    const trace = motionElement.__analyticsPeriodMotionTrace;
+    if (!trace) throw new Error('Analytics period motion trace was not initialized');
+    while (!trace.done) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    delete motionElement.__analyticsPeriodMotionTrace;
+    return {
+      transforms: trace.transforms,
+      selectedOffsets: trace.selectedOffsets,
+      touchEvents: trace.touchEvents,
+    };
+  });
 }
 
 test.describe('Home Transactions and Analytics carousel', () => {
@@ -179,6 +246,10 @@ test.describe('Home Transactions and Analytics carousel', () => {
       .textContent();
     const motionTrace = await touchSwipeWithMotionTrace(page, compactPeriodPicker, 180, 2);
     await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
+    expect(motionTrace.touchEvents.start).toBe(1);
+    expect(motionTrace.touchEvents.move).toBeGreaterThan(3);
+    expect(motionTrace.touchEvents.end).toBe(1);
+    expect(motionTrace.touchEvents.cancel).toBe(0);
     const changedSelectionFrame = motionTrace.selectedOffsets.findIndex(
       (offset) => offset !== '0',
     );
