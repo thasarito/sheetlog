@@ -41,7 +41,7 @@ export function AnalyticsSlide({
   onViewAll,
 }: AnalyticsSlideProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col px-5 py-1">
+    <div className="flex h-full min-h-0 flex-col px-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-foreground">Analytics</h2>
         <AnalyticsRangeToggle value={range} onChange={onRangeChange} />
@@ -101,7 +101,7 @@ export function AnalyticsSlide({
         </div>
       ) : (
         <>
-          <div className="pt-1" aria-live="polite" aria-atomic="true">
+          <div aria-live="polite" aria-atomic="true">
             <div className="flex items-baseline gap-2">
               <p className="text-[28px] font-semibold leading-none tabular-nums tracking-tight">
                 {formatAnalyticsAmount(summary.expenseTotal, summary.currency)}
@@ -136,7 +136,7 @@ export function AnalyticsSlide({
         </>
       )}
 
-      <div className="mt-auto flex h-6 items-center justify-between gap-2 text-xs">
+      <div className="mt-auto flex h-6 items-end justify-between gap-2 text-xs">
         <span className="truncate text-muted-foreground">
           {summary?.categories[0]
             ? `Top · ${summary.categories[0].category} · ${formatAnalyticsAmount(summary.categories[0].amount, summary.currency)}`
@@ -146,7 +146,7 @@ export function AnalyticsSlide({
           type="button"
           aria-label="View all analytics"
           onClick={onViewAll}
-          className="min-h-11 shrink-0 px-1 font-semibold text-primary"
+          className="flex min-h-11 shrink-0 items-end px-1 font-semibold text-primary"
         >
           View all
         </button>

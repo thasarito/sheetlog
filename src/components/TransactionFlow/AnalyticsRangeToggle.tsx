@@ -14,8 +14,10 @@ const OPTIONS: Array<{ value: AnalyticsRange; short: string; label: string }> = 
 
 export function AnalyticsRangeToggle({ value, onChange }: AnalyticsRangeToggleProps) {
   return (
-    <fieldset className="grid h-11 w-32 grid-cols-3 rounded-xl bg-surface-2 p-1">
-      <legend className="sr-only">Analytics range</legend>
+    <fieldset
+      className="grid h-11 w-32 grid-cols-3 rounded-xl bg-surface-2 p-1"
+      aria-label="Analytics range"
+    >
       {OPTIONS.map((option) => (
         <button
           key={option.value}

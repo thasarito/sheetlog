@@ -46,7 +46,10 @@ export function AnalyticsBarChart({
           );
 
           return (
-            <div key={bucket.key} className="flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+            <div
+              key={bucket.key}
+              className="grid h-full min-w-0 flex-1 grid-rows-[minmax(4px,1fr)_auto] items-center gap-0.5"
+            >
               {onSelect ? (
                 <button
                   type="button"
@@ -71,12 +74,11 @@ export function AnalyticsBarChart({
                   {bar}
                 </div>
               )}
-              <span className="text-[10px] text-muted-foreground">{bucket.label}</span>
+              <span className="text-[9px] leading-none text-muted-foreground">{bucket.label}</span>
             </div>
           );
         })}
       </div>
-      <figcaption className="sr-only">{summary}</figcaption>
     </figure>
   );
 }
