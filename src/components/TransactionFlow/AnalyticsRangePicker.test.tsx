@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AnalyticsRangePicker } from './AnalyticsRangePicker';
 
@@ -52,5 +53,23 @@ describe('AnalyticsRangePicker', () => {
     expect(onOpenChange).toHaveBeenLastCalledWith(true);
     await user.keyboard('{Escape}');
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('opens a requested calendar under Strict Mode', async () => {
+    render(
+      <StrictMode>
+        <AnalyticsRangePicker
+          value={{ start: new Date(2026, 7, 1), end: new Date(2026, 7, 17) }}
+          minDate={new Date(2026, 6, 1)}
+          maxDate={new Date(2026, 7, 17)}
+          openRequest={1}
+          onChange={vi.fn()}
+        />
+      </StrictMode>,
+    );
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Choose custom date range' }),
+    ).toBeVisible();
   });
 });

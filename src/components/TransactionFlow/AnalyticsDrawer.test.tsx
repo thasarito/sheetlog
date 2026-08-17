@@ -111,7 +111,9 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Coffee/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Clear selected period filter' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toHaveTextContent(
+      'Monday, August 17 · ฿120',
+    );
   });
 
   it('intersects category and bucket filters while clearing each independently', async () => {
@@ -125,7 +127,7 @@ describe('AnalyticsDrawer', () => {
     expect(selectedBar).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('No matching transactions')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Clear selected period filter' }));
+    await user.click(screen.getByRole('button', { name: /Clear selected period filter/ }));
     expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Dining Out/ })).not.toBeInTheDocument();
 
@@ -134,26 +136,28 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
   });
 
-  it('keeps W M Q C on the right and reveals the controlled custom range picker', () => {
+  it('keeps W M Q C on the right and opens the controlled custom range picker', async () => {
     renderDrawer({ range: 'custom' });
 
     const controls = screen.getByTestId('analytics-range-controls');
     expect(within(controls).getByRole('group', { name: 'Analytics range' })).toBeInTheDocument();
     expect(within(controls).getAllByRole('button')).toHaveLength(4);
-    expect(screen.getByRole('button', { name: /Custom date range, Aug 1 – Aug 17/ })).toBeInTheDocument();
+    const picker = screen.getByRole('button', { name: /Custom date range, Aug 1 – Aug 17/ });
+    expect(picker).toBeInTheDocument();
+    await waitFor(() => expect(picker).toHaveAttribute('aria-expanded', 'true'));
   });
 
   it('resets drill-down when the analytics scope changes', async () => {
     const user = userEvent.setup();
     const { rerender } = renderDrawer();
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
-    expect(screen.getByRole('button', { name: 'Clear selected period filter' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
 
     rerender(<AnalyticsDrawer {...baseProps} range="month" />);
 
     await waitFor(() =>
       expect(
-        screen.queryByRole('button', { name: 'Clear selected period filter' }),
+        screen.queryByRole('button', { name: /Clear selected period filter/ }),
       ).not.toBeInTheDocument(),
     );
     expect(screen.getAllByRole('option').every((option) => option.getAttribute('aria-selected') === 'false')).toBe(
@@ -206,6 +210,11 @@ describe('AnalyticsDrawer', () => {
 
     await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
     expect(status).toHaveTextContent('Month, month to date · Expenses ฿200');
+
+    await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
+    expect(status).toHaveTextContent(
+      'Monday, August 17, ฿120 · Dining Out ฿120 · Income ฿0 · Net -฿120',
+    );
   });
 
   it('announces loading without presenting a partial local total as complete', () => {

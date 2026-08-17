@@ -15,6 +15,7 @@ import { CarouselActionButton } from './CarouselActionButton';
 type AnalyticsSlideProps = {
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
+  onCustomRequest?: (trigger: HTMLButtonElement) => void;
   summary?: AnalyticsSummary;
   isLoading: boolean;
   isOffline: boolean;
@@ -34,6 +35,7 @@ function rangeLabel(range: AnalyticsRange): string {
 export function AnalyticsSlide({
   range,
   onRangeChange,
+  onCustomRequest,
   summary,
   isLoading,
   isOffline,
@@ -46,7 +48,13 @@ export function AnalyticsSlide({
     <div className="flex h-full min-h-0 flex-col px-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-foreground">Analytics</h2>
-        <AnalyticsRangeToggle value={range} onChange={onRangeChange} />
+        <AnalyticsRangeToggle
+          value={range}
+          onChange={(nextRange, trigger) => {
+            onRangeChange(nextRange);
+            if (nextRange === 'custom' && trigger) onCustomRequest?.(trigger);
+          }}
+        />
       </div>
 
       {isOffline && !summary ? (

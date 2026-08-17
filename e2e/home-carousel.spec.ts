@@ -178,7 +178,6 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(
       page.getByRole('button', { name: /Custom date range, / }),
     ).toBeVisible();
-    await page.getByRole('button', { name: /Custom date range, / }).click();
     await expect(page.getByRole('dialog', { name: 'Choose custom date range' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Choose custom date range' })).toHaveCount(0);

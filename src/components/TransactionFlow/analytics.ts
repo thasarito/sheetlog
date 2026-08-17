@@ -341,15 +341,18 @@ function buildBuckets(
 }
 
 function buildCategories(rows: TransactionRecord[]): AnalyticsCategory[] {
-  const positiveCategories = sortCategoryEntries(
-    [...categoryTotals(rows).entries()].filter(([, amount]) => amount > 0),
+  const categories = sortCategoryEntries(
+    [...categoryTotals(rows).entries()].filter(([, amount]) => amount !== 0),
   );
-  const positiveTotal = positiveCategories.reduce((total, [, amount]) => total + amount, 0);
+  const positiveTotal = categories.reduce(
+    (total, [, amount]) => total + Math.max(0, amount),
+    0,
+  );
 
-  return positiveCategories.map(([category, amount]) => ({
+  return categories.map(([category, amount]) => ({
     category,
     amount,
-    share: Math.round((amount / positiveTotal) * 100),
+    share: amount > 0 && positiveTotal > 0 ? Math.round((amount / positiveTotal) * 100) : 0,
   }));
 }
 
@@ -413,6 +416,26 @@ export function formatAnalyticsAmount(amount: number, currency: string): string 
   return `${sign}${prefix}${Math.abs(amount).toLocaleString(undefined, {
     maximumFractionDigits: 2,
   })}`;
+}
+
+export function getAnalyticsBucketDescription(
+  bucket: AnalyticsBucket,
+  series: AnalyticsSeries[],
+  currency: string,
+): string {
+  const seriesByKey = new Map(series.map((item) => [item.key, item]));
+  const breakdown = bucket.segments
+    .filter((segment) => segment.amount !== 0)
+    .map((segment) => {
+      const item = seriesByKey.get(segment.seriesKey);
+      return item
+        ? `${item.label} ${formatAnalyticsAmount(segment.amount, currency)}`
+        : null;
+    })
+    .filter((item): item is string => item !== null)
+    .join(', ');
+
+  return `${bucket.accessibleLabel}, ${formatAnalyticsAmount(bucket.amount, currency)}${breakdown ? ` · ${breakdown}` : ''}`;
 }
 
 export function getComparisonText(

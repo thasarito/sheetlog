@@ -3,7 +3,7 @@ import type { AnalyticsRange } from './analytics';
 
 type AnalyticsRangeToggleProps = {
   value: AnalyticsRange;
-  onChange: (range: AnalyticsRange) => void;
+  onChange: (range: AnalyticsRange, trigger?: HTMLButtonElement) => void;
 };
 
 const OPTIONS: Array<{ value: AnalyticsRange; short: string; label: string }> = [
@@ -25,7 +25,7 @@ export function AnalyticsRangeToggle({ value, onChange }: AnalyticsRangeTogglePr
           type="button"
           aria-label={option.label}
           aria-pressed={value === option.value}
-          onClick={() => onChange(option.value)}
+          onClick={(event) => onChange(option.value, event.currentTarget)}
           className={cn(
             'rounded-lg text-xs font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
             value === option.value

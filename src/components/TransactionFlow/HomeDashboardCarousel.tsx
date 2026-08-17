@@ -225,6 +225,12 @@ export function HomeDashboardCarousel({
     }
   };
 
+  const handleCustomRangeRequest = (trigger: HTMLButtonElement) => {
+    analyticsTriggerRef.current = trigger;
+    setHistoryActivated(true);
+    setAnalyticsOpen(true);
+  };
+
   return (
     <>
       <section
@@ -286,6 +292,7 @@ export function HomeDashboardCarousel({
             <AnalyticsSlide
               range={range}
               onRangeChange={setRange}
+              onCustomRequest={handleCustomRangeRequest}
               summary={summary}
               isLoading={history.isLoading || history.isDownloading}
               isOffline={!history.isOnline}
