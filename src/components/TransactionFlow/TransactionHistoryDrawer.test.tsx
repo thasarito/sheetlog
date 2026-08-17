@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type React from "react";
+import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "../../lib/types";
 import { TransactionHistoryDrawer } from "./TransactionHistoryDrawer";
@@ -47,9 +47,10 @@ vi.mock("../ui/drawer", () => ({
   DrawerHeader: ({ children }: { children: React.ReactNode }) => (
     <header>{children}</header>
   ),
-  DrawerTitle: ({ children }: { children: React.ReactNode }) => (
-    <h2>{children}</h2>
-  ),
+  DrawerTitle: React.forwardRef<
+    HTMLHeadingElement,
+    { children: React.ReactNode }
+  >(({ children }, ref) => <h2 ref={ref}>{children}</h2>),
   DrawerDescription: ({ children }: { children: React.ReactNode }) => (
     <p>{children}</p>
   ),

@@ -70,6 +70,7 @@ async function touchSwipe(page: Page, target: Locator, deltaX: number, deltaY: n
 
 test.describe('Home Transactions and Analytics carousel', () => {
   test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript((transactions: TransactionRecord[]) => {
       window.localStorage.setItem('sheetlog.mock.transactions', JSON.stringify(transactions));
     }, seededTransactions);
@@ -179,10 +180,14 @@ test.describe('Home Transactions and Analytics carousel', () => {
     const transactionsDialog = page.getByRole('dialog');
     await expect(transactionsDialog.getByRole('heading', { name: 'Transactions' })).toBeVisible();
     await expect(transactionsDialog.getByRole('heading', { name: 'Transactions' })).toBeFocused();
-    await transactionsDialog.getByRole('searchbox', { name: 'Search transactions' }).fill('lunch');
+    await transactionsDialog
+      .getByRole('searchbox', { name: 'Search transaction history' })
+      .fill('lunch');
     await expect(transactionsDialog.getByText('Food Delivery')).toBeVisible();
     await expect(transactionsDialog.getByText('Salary')).toHaveCount(0);
-    await transactionsDialog.getByRole('button', { name: 'Close transactions' }).click();
+    await transactionsDialog
+      .getByRole('button', { name: 'Close transaction history' })
+      .click();
     await expect(transactionsViewAll).toBeFocused();
 
     await analyticsDot.click();

@@ -306,6 +306,7 @@ export function TopDashboard({
         {/* Timeline List */}
         <div
           ref={scrollContainerRef}
+          data-testid="transaction-scroll"
           className={cn(
             "flex-1 flex flex-col px-2 py-2 overflow-y-auto",
             displayList.length === 0 && !isLoading && "justify-center"
