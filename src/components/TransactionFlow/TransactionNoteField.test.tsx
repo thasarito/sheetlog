@@ -218,6 +218,21 @@ describe("TransactionNoteField", () => {
     expect(screen.queryByText("private provider text")).not.toBeInTheDocument();
   });
 
+  it("anchors place results to the note row instead of the reserved nearby slot", async () => {
+    const user = userEvent.setup();
+    renderField({ activeResults: [centralCafe] });
+    const input = screen.getByRole("combobox", { name: "Transaction note" });
+
+    await user.type(input, "central");
+
+    const listbox = screen.getByRole("listbox");
+    const noteRow = input.parentElement;
+    expect(noteRow).toHaveClass("relative");
+    expect(listbox).toHaveClass("absolute", "top-full");
+    expect(noteRow).toContainElement(listbox);
+    expect(noteRow).not.toContainElement(screen.getByTestId("nearby-place-slot"));
+  });
+
   it("shows nearby choices only for an empty note, caps five, and blurs after selection", async () => {
     const user = userEvent.setup();
     const onPlaceSelect = vi.fn();

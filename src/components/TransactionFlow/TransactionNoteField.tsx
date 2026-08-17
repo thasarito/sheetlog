@@ -357,16 +357,16 @@ export function TransactionNoteField({
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         ) : null}
+        {popupOpen ? (
+          <div
+            id={listboxId}
+            role="listbox"
+            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-border bg-surface"
+          >
+            {renderedPopupState}
+          </div>
+        ) : null}
       </div>
-      {popupOpen ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-border bg-surface"
-        >
-          {renderedPopupState}
-        </div>
-      ) : null}
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {liveStatus}
       </span>
