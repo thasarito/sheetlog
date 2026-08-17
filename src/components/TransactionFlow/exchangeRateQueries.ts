@@ -7,7 +7,7 @@ import {
 
 export const exchangeRateKeys = {
   all: ['exchangeRates'] as const,
-  historical: (request: HistoricalRateRequest | null) =>
+  cached: (request: HistoricalRateRequest | null) =>
     request
       ? ([
           ...exchangeRateKeys.all,
@@ -17,6 +17,16 @@ export const exchangeRateKeys = {
           request.to,
         ] as const)
       : ([...exchangeRateKeys.all, 'idle'] as const),
+  backfill: (sheetId: string | null, base: string, chunkKeys: string[]) =>
+    [
+      ...exchangeRateKeys.all,
+      'backfill',
+      sheetId,
+      base,
+      [...chunkKeys].sort(),
+    ] as const,
+  historical: (request: HistoricalRateRequest | null) =>
+    exchangeRateKeys.cached(request),
 };
 
 export function useHistoricalRatesQuery(

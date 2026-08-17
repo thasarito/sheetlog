@@ -43,7 +43,7 @@ type RateResponse = {
   json: () => Promise<unknown>;
 };
 
-type RateFetcher = (input: string) => Promise<RateResponse>;
+export type RateFetcher = (input: string) => Promise<RateResponse>;
 
 function normalizedQuotes(request: HistoricalRateRequest): string[] {
   return [...new Set(request.quotes.map((quote) => quote.trim()).filter(Boolean))]
@@ -148,6 +148,78 @@ export const exchangeRateStore: ExchangeRateStore = {
   },
 };
 
+export async function readHistoricalRates(
+  request: HistoricalRateRequest,
+  store: ExchangeRateStore = exchangeRateStore,
+): Promise<HistoricalRateData> {
+  if (normalizedQuotes(request).length === 0) {
+    return { rates: [], refreshFailed: false };
+  }
+  return withFreshness(await store.read(request), false);
+}
+
+export type HistoricalRateChunkResult = {
+  completed: HistoricalRateRequest[];
+  failed: Array<{ request: HistoricalRateRequest; error: Error }>;
+};
+
+export async function backfillHistoricalRateChunks(
+  requests: HistoricalRateRequest[],
+  options: {
+    concurrency?: number;
+    isOnline?: boolean;
+    store?: ExchangeRateStore;
+    fetcher?: RateFetcher;
+    now?: Date;
+    onChunkStored?: (request: HistoricalRateRequest) => void | Promise<void>;
+  } = {},
+): Promise<HistoricalRateChunkResult> {
+  if (options.isOnline === false || requests.length === 0) {
+    return { completed: [], failed: [] };
+  }
+
+  const store = options.store ?? exchangeRateStore;
+  const concurrency = Math.max(
+    1,
+    Math.min(requests.length, Math.floor(options.concurrency ?? 3)),
+  );
+  const completed = new Array<boolean>(requests.length).fill(false);
+  const failures = new Map<number, Error>();
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < requests.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const request = requests[index];
+      try {
+        const fresh = await fetchHistoricalRates(
+          request,
+          options.fetcher,
+          options.now,
+        );
+        await store.write(fresh);
+        await options.onChunkStored?.(request);
+        completed[index] = true;
+      } catch (cause) {
+        failures.set(
+          index,
+          cause instanceof Error ? cause : new Error('Historical rate backfill failed'),
+        );
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return {
+    completed: requests.filter((_, index) => completed[index]),
+    failed: requests.flatMap((request, index) => {
+      const error = failures.get(index);
+      return error ? [{ request, error }] : [];
+    }),
+  };
+}
+
 export async function loadHistoricalRates(
   request: HistoricalRateRequest,
   options: {
@@ -162,7 +234,7 @@ export async function loadHistoricalRates(
   }
 
   const store = options.store ?? exchangeRateStore;
-  const cached = await store.read(request);
+  const cached = (await readHistoricalRates(request, store)).rates;
   if (!options.isOnline) {
     return withFreshness(cached, false);
   }
