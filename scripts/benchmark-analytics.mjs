@@ -1,12 +1,11 @@
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import process from 'node:process';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 const ROOT = new URL('../', import.meta.url).pathname;
 const VITE_BIN = new URL('../node_modules/vite/bin/vite.js', import.meta.url).pathname;
-const PORT = 53741;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
 const NOW = new Date('2026-08-17T12:00:00.000Z');
 const CPU_BASELINES_MS = { W: 119.8, M: 131.3, Q: 145.5, Y: 239.7, C: 208.8 };
 
@@ -86,14 +85,31 @@ function makeBrowserTransactions() {
   return rows;
 }
 
-async function waitForServer(child) {
+async function findAvailablePort() {
+  const listener = createServer();
+  await new Promise((resolve, reject) => {
+    listener.once('error', reject);
+    listener.listen(0, '127.0.0.1', resolve);
+  });
+  const address = listener.address();
+  if (!address || typeof address === 'string') {
+    listener.close();
+    throw new Error('Could not allocate an analytics benchmark port');
+  }
+  await new Promise((resolve, reject) =>
+    listener.close((error) => (error ? reject(error) : resolve())),
+  );
+  return address.port;
+}
+
+async function waitForServer(child, baseUrl) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`Vite exited before benchmark startup (${child.exitCode})`);
     }
     try {
-      const response = await fetch(BASE_URL);
+      const response = await fetch(baseUrl);
       if (response.ok) return;
     } catch {
       // The server is still starting.
@@ -103,10 +119,27 @@ async function waitForServer(child) {
   throw new Error('Timed out waiting for the analytics benchmark server');
 }
 
+function waitForExit(child, timeoutMs) {
+  if (child.exitCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      child.off('exit', onExit);
+      resolve(false);
+    }, timeoutMs);
+    child.once('exit', onExit);
+  });
+}
+
 async function runBrowserBenchmark() {
+  const port = await findAvailablePort();
+  const baseUrl = `http://127.0.0.1:${port}`;
   const server = spawn(
     process.execPath,
-    [VITE_BIN, 'dev', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'],
+    [VITE_BIN, 'dev', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
     {
       cwd: ROOT,
       env: { ...process.env, VITE_DEV_MODE: 'true' },
@@ -120,7 +153,7 @@ async function runBrowserBenchmark() {
 
   let browser;
   try {
-    await waitForServer(server);
+    await waitForServer(server, baseUrl);
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await context.newPage();
@@ -178,7 +211,7 @@ async function runBrowserBenchmark() {
       });
     });
 
-    await page.goto(`${BASE_URL}/app`);
+    await page.goto(`${baseUrl}/app`);
     await page.getByRole('region', { name: 'Home activity' }).waitFor();
     await page.getByRole('button', { name: 'Open settings' }).click();
     await page.getByText(/^Synced · /).waitFor({ timeout: 60_000 });
@@ -273,12 +306,11 @@ async function runBrowserBenchmark() {
     };
   } finally {
     await browser?.close();
-    server.kill('SIGTERM');
-    await new Promise((resolve) => {
-      if (server.exitCode !== null) resolve();
-      else server.once('exit', resolve);
-      setTimeout(resolve, 2_000);
-    });
+    if (server.exitCode === null) server.kill('SIGTERM');
+    if (!(await waitForExit(server, 2_000))) {
+      server.kill('SIGKILL');
+      await waitForExit(server, 2_000);
+    }
     if (server.exitCode && server.exitCode !== 143) {
       process.stderr.write(serverError);
     }

@@ -16,11 +16,11 @@ The baseline measured cold click-to-ready with range-specific Frankfurter loadin
 
 | Range | Before median | After median | Change |
 | --- | ---: | ---: | ---: |
-| Week | 1,613.2 ms | 109.8 ms | -93.2% |
-| Month | 1,592.0 ms | 133.2 ms | -91.6% |
-| Quarter | 1,221.1 ms | 116.4 ms | -90.5% |
-| Year | 4,759.7 ms | 133.5 ms | -97.2% |
-| Custom | 9,570.5 ms | 56.4 ms | -99.4% |
+| Week | 1,613.2 ms | 112.0 ms | -93.1% |
+| Month | 1,592.0 ms | 133.1 ms | -91.6% |
+| Quarter | 1,221.1 ms | 116.8 ms | -90.4% |
+| Year | 4,759.7 ms | 133.1 ms | -97.2% |
+| Custom | 9,570.5 ms | 61.9 ms | -99.4% |
 
 The initial full-history fill made 20 month-scoped Frankfurter requests, capped at three concurrent requests. W/M/Q/Y/C selection after that fill made **zero** Frankfurter requests.
 
@@ -30,11 +30,11 @@ This measures period-option construction plus the production summary builder. Th
 
 | Range | Before median | After median | Change |
 | --- | ---: | ---: | ---: |
-| Week | 119.8 ms | 76.2 ms | -36.4% |
-| Month | 131.3 ms | 72.0 ms | -45.2% |
-| Quarter | 145.5 ms | 79.7 ms | -45.2% |
-| Year | 239.7 ms | 149.1 ms | -37.8% |
-| Custom | 208.8 ms | 107.5 ms | -48.5% |
+| Week | 119.8 ms | 70.8 ms | -40.9% |
+| Month | 131.3 ms | 72.1 ms | -45.1% |
+| Quarter | 145.5 ms | 79.4 ms | -45.4% |
+| Year | 239.7 ms | 121.0 ms | -49.5% |
+| Custom | 208.8 ms | 109.2 ms | -47.7% |
 
 ## Acceptance results
 
