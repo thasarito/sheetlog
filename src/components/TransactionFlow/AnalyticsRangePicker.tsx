@@ -10,6 +10,7 @@ type AnalyticsRangePickerProps = {
   minDate: Date;
   maxDate: Date;
   onChange: (period: DatePeriod) => void;
+  onOpenChange?: (open: boolean) => void;
 };
 
 function rangeLabel(period: DatePeriod): string {
@@ -21,12 +22,14 @@ export function AnalyticsRangePicker({
   minDate,
   maxDate,
   onChange,
+  onOpenChange,
 }: AnalyticsRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange>({ from: value.start, to: value.end });
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
     if (nextOpen) setDraft({ from: value.start, to: value.end });
   };
 
@@ -34,7 +37,7 @@ export function AnalyticsRangePicker({
     setDraft(nextRange ?? { from: undefined });
     if (!nextRange?.from || !nextRange.to) return;
     onChange({ start: startOfDay(nextRange.from), end: startOfDay(nextRange.to) });
-    setOpen(false);
+    handleOpenChange(false);
   };
 
   return (
@@ -56,6 +59,10 @@ export function AnalyticsRangePicker({
           align="end"
           sideOffset={8}
           collisionPadding={16}
+          onEscapeKeyDown={(event) => {
+            event.preventDefault();
+            handleOpenChange(false);
+          }}
           className="z-60 w-[calc(100vw-2rem)] max-w-84 rounded-2xl border border-border bg-background p-3 text-foreground focus:outline-none"
         >
           <DayPicker

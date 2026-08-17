@@ -34,4 +34,23 @@ describe('AnalyticsRangePicker', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(screen.queryByRole('dialog', { name: 'Choose custom date range' })).not.toBeInTheDocument();
   });
+
+  it('reports its open state when Escape closes the calendar', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <AnalyticsRangePicker
+        value={{ start: new Date(2026, 7, 1), end: new Date(2026, 7, 17) }}
+        minDate={new Date(2026, 6, 1)}
+        maxDate={new Date(2026, 7, 17)}
+        onChange={vi.fn()}
+        onOpenChange={onOpenChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Custom date range/ }));
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
 });

@@ -308,7 +308,7 @@ export function TopDashboard({
           ref={scrollContainerRef}
           data-testid="transaction-scroll"
           className={cn(
-            "flex-1 flex flex-col px-2 py-2 overflow-y-auto",
+            "min-h-0 flex-1 flex flex-col overflow-y-auto px-2 py-2",
             displayList.length === 0 && !isLoading && "justify-center"
           )}
         >

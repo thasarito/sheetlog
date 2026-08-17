@@ -50,7 +50,13 @@ export function HomeDashboardCarousel({
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
   const analyticsTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+  const pointerStart = useRef<{
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    pointerType: string;
+  } | null>(null);
   const suppressClick = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
   const history = useTransactionHistoryQuery(historyActivated || analyticsOpen);
@@ -157,22 +163,51 @@ export function HomeDashboardCarousel({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    pointerStart.current = { x: event.clientX, y: event.clientY };
+    pointerStart.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      pointerType: event.pointerType,
+    };
     suppressClick.current = false;
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!pointerStart.current) return;
-    const x = Math.abs(event.clientX - pointerStart.current.x);
-    const y = Math.abs(event.clientY - pointerStart.current.y);
+    const gesture = pointerStart.current;
+    if (!gesture) return;
+    gesture.lastX = event.clientX;
+    gesture.lastY = event.clientY;
+    const x = Math.abs(event.clientX - gesture.startX);
+    const y = Math.abs(event.clientY - gesture.startY);
     if (x > 8 && x > y) suppressClick.current = true;
   };
 
-  const handlePointerUp = () => {
+  const finishPointerGesture = (end?: { x: number; y: number }) => {
+    const gesture = pointerStart.current;
+    if (gesture && end) {
+      gesture.lastX = end.x;
+      gesture.lastY = end.y;
+    }
+    if (gesture?.pointerType === "touch") {
+      const deltaX = gesture.lastX - gesture.startX;
+      const deltaY = gesture.lastY - gesture.startY;
+      if (Math.abs(deltaX) >= 40 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        const nextIndex = Math.max(
+          0,
+          Math.min(SLIDES.length - 1, activeIndex + (deltaX < 0 ? 1 : -1)),
+        );
+        scrollToSlide(nextIndex);
+      }
+    }
     pointerStart.current = null;
     window.setTimeout(() => {
       suppressClick.current = false;
     }, 0);
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    finishPointerGesture({ x: event.clientX, y: event.clientY });
   };
 
   const handleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -223,9 +258,9 @@ export function HomeDashboardCarousel({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
+          onPointerCancel={() => finishPointerGesture()}
           onClickCapture={handleClickCapture}
-          className="flex min-h-0 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-h-0 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <section
             ref={(node) => {
