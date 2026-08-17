@@ -166,6 +166,19 @@ describe('AnalyticsDrawer', () => {
     expect(axis).toHaveTextContent('Jun');
   });
 
+  it('renders the shared dense axis for a complete month', () => {
+    renderDrawer({
+      range: 'month',
+      transactions: [],
+      now: new Date(2026, 5, 15, 12),
+    });
+
+    const labels = within(screen.getByTestId('analytics-month-axis'))
+      .getAllByTestId('analytics-month-axis-label')
+      .map((label) => label.textContent);
+    expect(labels.slice(0, 8)).toEqual(['1', 'T', 'W', 'T', 'F', 'S', 'S', '8']);
+  });
+
   it('opens with a requested bucket selected and filters matching transactions', async () => {
     renderDrawer({ initialSelectedBucket: '2026-08-17' });
 

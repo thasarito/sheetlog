@@ -1,9 +1,11 @@
+import { format, parseISO } from 'date-fns';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { cn } from '../../lib/utils';
 import {
   getAnalyticsBucketDescription,
   type AnalyticsAxisGroup,
   type AnalyticsBucket,
+  type AnalyticsRange,
   type AnalyticsSeries,
 } from './analytics';
 import { ANALYTICS_TONE_BACKGROUND_CLASSES } from './analyticsPresentation';
@@ -13,6 +15,7 @@ type AnalyticsBarChartProps = {
   axisGroups?: AnalyticsAxisGroup[];
   series: AnalyticsSeries[];
   currency: string;
+  range: AnalyticsRange;
   selectedKey?: string | null;
   onSelect?: (key: string | null) => void;
   onBucketActivate?: (key: string, trigger: HTMLElement) => void;
@@ -35,11 +38,17 @@ function showLabel(index: number, buckets: AnalyticsBucket[]): boolean {
   return index === 0 || index === buckets.length - 1 || index % interval === 0;
 }
 
+function getMonthAxisLabel(bucket: AnalyticsBucket, index: number): string {
+  if (index % 7 === 0) return bucket.label;
+  return format(parseISO(bucket.key), 'EEEEE');
+}
+
 export function AnalyticsBarChart({
   buckets,
   axisGroups = [],
   series,
   currency,
+  range,
   selectedKey,
   onSelect,
   onBucketActivate,
@@ -58,6 +67,7 @@ export function AnalyticsBarChart({
     : undefined;
   const interactive = Boolean(onSelect || onBucketActivate);
   const hasGroupedAxis = axisGroups.length > 0;
+  const isDenseMonth = range === 'month';
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!interactive || buckets.length === 0) return;
@@ -115,7 +125,8 @@ export function AnalyticsBarChart({
               {positiveTotal > 0 ? (
                 <span
                   className={cn(
-                    'absolute inset-x-1 flex flex-col-reverse overflow-hidden rounded-t-[3px] transition-[filter,opacity] motion-reduce:transition-none',
+                    'absolute flex flex-col-reverse overflow-hidden rounded-t-[3px] transition-[filter,opacity] motion-reduce:transition-none',
+                    isDenseMonth ? 'inset-x-0' : 'inset-x-1',
                     muted && 'grayscale opacity-25',
                   )}
                   style={{
@@ -144,7 +155,8 @@ export function AnalyticsBarChart({
               {negativeTotal > 0 ? (
                 <span
                   className={cn(
-                    'absolute inset-x-1 flex flex-col overflow-hidden rounded-b-[3px] transition-[filter,opacity] motion-reduce:transition-none',
+                    'absolute flex flex-col overflow-hidden rounded-b-[3px] transition-[filter,opacity] motion-reduce:transition-none',
+                    isDenseMonth ? 'inset-x-0' : 'inset-x-1',
                     muted && 'grayscale opacity-25',
                   )}
                   style={{
@@ -184,7 +196,7 @@ export function AnalyticsBarChart({
         key={bucket.key}
         className={cn(
           'grid h-full min-w-0 flex-1 items-center',
-          hasGroupedAxis
+          hasGroupedAxis || isDenseMonth
             ? 'grid-rows-[minmax(4px,1fr)]'
             : 'grid-rows-[minmax(4px,1fr)_auto] gap-1',
         )}
@@ -212,7 +224,7 @@ export function AnalyticsBarChart({
             {stack}
           </div>
         )}
-        {hasGroupedAxis ? null : (
+        {hasGroupedAxis || isDenseMonth ? null : (
           <span
             data-testid={`analytics-label-${bucket.key}`}
             className="min-h-2.5 truncate text-center text-[9px] leading-none text-muted-foreground"
@@ -234,16 +246,43 @@ export function AnalyticsBarChart({
           tabIndex={0}
           onKeyDown={handleKeyDown}
           onClick={handlePlotClick}
-          className="flex min-h-0 flex-1 items-stretch gap-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          data-testid="analytics-chart-plot"
+          className={cn(
+            'flex min-h-0 flex-1 items-stretch rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+            isDenseMonth ? 'gap-px' : 'gap-1',
+          )}
         >
           {bars}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 items-stretch gap-1" aria-hidden="true">
+        <div
+          data-testid="analytics-chart-plot"
+          className={cn(
+            'flex min-h-0 flex-1 items-stretch',
+            isDenseMonth ? 'gap-px' : 'gap-1',
+          )}
+          aria-hidden="true"
+        >
           {bars}
         </div>
       )}
-      {hasGroupedAxis ? (
+      {isDenseMonth ? (
+        <div
+          data-testid="analytics-month-axis"
+          aria-hidden="true"
+          className="mt-1 flex shrink-0 gap-px text-[9px] leading-none text-muted-foreground"
+        >
+          {buckets.map((bucket, index) => (
+            <span
+              key={bucket.key}
+              data-testid="analytics-month-axis-label"
+              className="min-w-0 flex-1 text-center"
+            >
+              {getMonthAxisLabel(bucket, index)}
+            </span>
+          ))}
+        </div>
+      ) : hasGroupedAxis ? (
         <div
           data-testid="analytics-grouped-axis"
           aria-hidden="true"

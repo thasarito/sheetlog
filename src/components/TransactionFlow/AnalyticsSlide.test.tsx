@@ -73,6 +73,23 @@ const periodProps = {
   onBucketSelect: vi.fn(),
 };
 
+function makeDailyBuckets(year: number, month: number, dayCount: number) {
+  return Array.from({ length: dayCount }, (_, index) => {
+    const day = index + 1;
+    return {
+      key: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      label: String(day),
+      accessibleLabel: `Day ${day}`,
+      amount: 0,
+      segments: [{ seriesKey: 'category-0', amount: 0 }],
+      transactionIds: [],
+    };
+  });
+}
+
+const juneBuckets = makeDailyBuckets(2026, 6, 30);
+const julyBuckets = makeDailyBuckets(2026, 7, 31);
+
 describe('AnalyticsSlide', () => {
   it('routes W M Q Y immediately and requests Custom without committing it', async () => {
     const user = userEvent.setup();
@@ -155,6 +172,32 @@ describe('AnalyticsSlide', () => {
     const axis = screen.getByTestId('analytics-grouped-axis');
     expect(axis).toBeInTheDocument();
     expect(axis).toHaveTextContent('Apr');
+  });
+
+  it('renders the shared dense axis for a complete month', () => {
+    render(
+      <AnalyticsSlide
+        {...periodProps}
+        range="month"
+        onRangeChange={vi.fn()}
+        summary={{
+          ...summary,
+          range: 'month',
+          buckets: juneBuckets,
+          axisGroups: [],
+        }}
+        isLoading={false}
+        isOffline={false}
+        error={null}
+        onRetry={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    const labels = screen
+      .getAllByTestId('analytics-month-axis-label')
+      .map((label) => label.textContent);
+    expect(labels.slice(0, 8)).toEqual(['1', 'T', 'W', 'T', 'F', 'S', 'S', '8']);
   });
 
   it('names the complete current year', () => {
@@ -321,6 +364,7 @@ describe('AnalyticsSlide', () => {
         summary={{
           ...summary,
           range: 'month',
+          buckets: julyBuckets,
           periods: {
             ...summary.periods,
             current: {

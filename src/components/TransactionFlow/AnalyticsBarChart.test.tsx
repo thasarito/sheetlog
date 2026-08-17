@@ -50,9 +50,21 @@ const axisGroups: AnalyticsAxisGroup[] = [
   { key: '2026-06', label: 'Jun', bucketCount: 4 },
 ];
 
+const juneBuckets: AnalyticsBucket[] = Array.from({ length: 30 }, (_, index) => {
+  const day = index + 1;
+  return {
+    key: `2026-06-${String(day).padStart(2, '0')}`,
+    label: String(day),
+    accessibleLabel: `June ${day}`,
+    amount: day === 1 ? 100 : 1,
+    segments: [{ seriesKey: 'category-0', amount: day === 1 ? 100 : 1 }],
+    transactionIds: [],
+  };
+});
+
 describe('AnalyticsBarChart', () => {
   it('renders signed category segments and an accessible bucket summary', () => {
-    render(<AnalyticsBarChart buckets={buckets} series={series} currency="THB" />);
+    render(<AnalyticsBarChart range="week" buckets={buckets} series={series} currency="THB" />);
 
     expect(
       screen.getByLabelText(
@@ -73,6 +85,7 @@ describe('AnalyticsBarChart', () => {
   it('keeps the selected stack colored and de-emphasizes every other bar without a border', () => {
     render(
       <AnalyticsBarChart
+        range="week"
         buckets={buckets}
         series={series}
         currency="THB"
@@ -93,6 +106,7 @@ describe('AnalyticsBarChart', () => {
     const onSelect = vi.fn();
     const { rerender } = render(
       <AnalyticsBarChart
+        range="week"
         buckets={buckets}
         series={series}
         currency="THB"
@@ -105,6 +119,7 @@ describe('AnalyticsBarChart', () => {
 
     rerender(
       <AnalyticsBarChart
+        range="week"
         buckets={buckets}
         series={series}
         currency="THB"
@@ -127,6 +142,7 @@ describe('AnalyticsBarChart', () => {
     const onSelect = vi.fn();
     const { rerender } = render(
       <AnalyticsBarChart
+        range="week"
         buckets={buckets}
         series={series}
         currency="THB"
@@ -151,6 +167,7 @@ describe('AnalyticsBarChart', () => {
 
     rerender(
       <AnalyticsBarChart
+        range="week"
         buckets={buckets}
         series={series}
         currency="THB"
@@ -177,7 +194,12 @@ describe('AnalyticsBarChart', () => {
       transactionIds: [],
     }));
     render(
-      <AnalyticsBarChart buckets={denseBuckets} series={series} currency="THB" />,
+      <AnalyticsBarChart
+        range="custom"
+        buckets={denseBuckets}
+        series={series}
+        currency="THB"
+      />,
     );
 
     const tinySegment = screen.getByTestId('segment-aug-2-category-0').parentElement;
@@ -188,6 +210,61 @@ describe('AnalyticsBarChart', () => {
         .map((label) => label.textContent)
         .filter(Boolean),
     ).toEqual(['1', '8', '15', '17']);
+  });
+
+  it('uses full-width daily bars and weekday labels for a dense month', () => {
+    render(
+      <AnalyticsBarChart
+        range="month"
+        buckets={juneBuckets}
+        series={series}
+        currency="THB"
+      />,
+    );
+
+    const axis = screen.getByTestId('analytics-month-axis');
+    expect(axis).toHaveAttribute('aria-hidden', 'true');
+    expect(
+      within(axis)
+        .getAllByTestId('analytics-month-axis-label')
+        .map((label) => label.textContent),
+    ).toEqual([
+      '1',
+      'T',
+      'W',
+      'T',
+      'F',
+      'S',
+      'S',
+      '8',
+      'T',
+      'W',
+      'T',
+      'F',
+      'S',
+      'S',
+      '15',
+      'T',
+      'W',
+      'T',
+      'F',
+      'S',
+      'S',
+      '22',
+      'T',
+      'W',
+      'T',
+      'F',
+      'S',
+      'S',
+      '29',
+      'T',
+    ]);
+    expect(screen.getByTestId('analytics-chart-plot')).toHaveClass('gap-px');
+    expect(screen.getByTestId('segment-2026-06-01-category-0').parentElement).toHaveClass(
+      'inset-x-0',
+    );
+    expect(screen.queryAllByTestId(/^analytics-label-/)).toHaveLength(0);
   });
 
   it('keeps every calendar-month label visible for year-to-date charts', () => {
@@ -214,7 +291,14 @@ describe('AnalyticsBarChart', () => {
       transactionIds: [],
     }));
 
-    render(<AnalyticsBarChart buckets={monthlyBuckets} series={series} currency="THB" />);
+    render(
+      <AnalyticsBarChart
+        range="year"
+        buckets={monthlyBuckets}
+        series={series}
+        currency="THB"
+      />,
+    );
 
     expect(
       screen
@@ -227,6 +311,7 @@ describe('AnalyticsBarChart', () => {
   it('renders decorative line-month-line groups beneath quarter bars', () => {
     render(
       <AnalyticsBarChart
+        range="quarter"
         buckets={buckets}
         axisGroups={axisGroups}
         series={series}
@@ -244,14 +329,14 @@ describe('AnalyticsBarChart', () => {
   });
 
   it('keeps ordinary bucket labels when no grouped axis is provided', () => {
-    render(<AnalyticsBarChart buckets={buckets} series={series} currency="THB" />);
+    render(<AnalyticsBarChart range="week" buckets={buckets} series={series} currency="THB" />);
 
     expect(screen.queryByTestId('analytics-grouped-axis')).not.toBeInTheDocument();
     expect(screen.getByTestId('analytics-label-aug-16')).toHaveTextContent('16');
   });
 
   it('keeps the compact chart read-only', () => {
-    render(<AnalyticsBarChart buckets={buckets} series={series} currency="THB" />);
+    render(<AnalyticsBarChart range="week" buckets={buckets} series={series} currency="THB" />);
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('option')).not.toBeInTheDocument();

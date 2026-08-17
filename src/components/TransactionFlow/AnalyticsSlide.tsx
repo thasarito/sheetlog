@@ -195,6 +195,7 @@ export function AnalyticsSlide({
             axisGroups={summary.axisGroups}
             series={summary.series}
             currency={summary.currency}
+            range={summary.range}
             onBucketActivate={onBucketSelect}
             className="mt-1 min-h-10 flex-1"
           />

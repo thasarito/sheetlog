@@ -347,6 +347,7 @@ export function AnalyticsDrawer({
                     axisGroups={summary.axisGroups}
                     series={summary.series}
                     currency={summary.currency}
+                    range={summary.range}
                     selectedKey={selectedBucket}
                     onSelect={(key) =>
                       setSelectedBucket((current) =>
