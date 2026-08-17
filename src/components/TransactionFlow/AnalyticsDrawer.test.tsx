@@ -123,6 +123,13 @@ describe('AnalyticsDrawer', () => {
         'Spending by category: Dining Out 60%, Coffee 40%. Expenses ฿200',
       ),
     ).toBeInTheDocument();
+    const transactionSection = screen.getByRole('region', { name: 'Transactions' });
+    expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
+    expect(
+      within(transactionSection).getByRole('button', { name: /expense Dining Out/ }),
+    ).toHaveTextContent('−฿120.00');
 
     await user.click(screen.getByRole('option', { name: /Monday, August 17, ฿120/ }));
 
@@ -137,9 +144,16 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Coffee/ })).not.toBeInTheDocument();
+    expect(within(transactionSection).getAllByText('Today')).toHaveLength(1);
+    expect(within(transactionSection).queryByText('Yesterday')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toHaveTextContent(
       'Monday, August 17 · ฿120',
     );
+
+    await user.click(screen.getByRole('button', { name: /Clear selected period filter/ }));
+    expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
   });
 
   it('intersects category and bucket filters while clearing each independently', async () => {

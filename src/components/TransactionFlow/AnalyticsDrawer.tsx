@@ -28,7 +28,11 @@ import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
 import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
 import { AnalyticsRangePicker } from './AnalyticsRangePicker';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
-import { TransactionRow } from './TransactionRow';
+import {
+  flattenTransactionHistory,
+  TransactionHistoryDateHeader,
+  TransactionHistoryRow,
+} from './TransactionHistoryItems';
 
 type AnalyticsDrawerProps = {
   open: boolean;
@@ -144,6 +148,10 @@ export function AnalyticsDrawer({
       (row) => row.type === 'expense' && categoryNames.has(row.category.trim() || 'Uncategorized'),
     );
   }, [scope.transactions, selectedSeries]);
+  const transactionItems = useMemo(
+    () => flattenTransactionHistory(filteredTransactions),
+    [filteredTransactions],
+  );
 
   const selectTransaction = (transaction: TransactionRecord) => {
     clearFilters();
@@ -403,14 +411,22 @@ export function AnalyticsDrawer({
                     </button>
                   ) : null}
                 </div>
-                {filteredTransactions.length > 0 ? (
-                  filteredTransactions.map((transaction) => (
-                    <TransactionRow
-                      key={transaction.id}
-                      transaction={transaction}
-                      onSelect={selectTransaction}
-                    />
-                  ))
+                {transactionItems.length > 0 ? (
+                  transactionItems.map((item) =>
+                    item.kind === 'date' ? (
+                      <TransactionHistoryDateHeader
+                        key={item.key}
+                        dateKey={item.dateKey}
+                        today={now}
+                      />
+                    ) : (
+                      <TransactionHistoryRow
+                        key={item.key}
+                        transaction={item.transaction}
+                        onSelect={selectTransaction}
+                      />
+                    ),
+                  )
                 ) : (
                   <p className="py-6 text-center text-sm text-muted-foreground">
                     No matching transactions
