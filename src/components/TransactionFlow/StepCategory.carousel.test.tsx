@@ -103,6 +103,18 @@ describe("StepCategory carousel", () => {
     );
   });
 
+  it("advances through rapid sequential arrow navigation", async () => {
+    const viewport = renderCarousel();
+
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("form-type")).toHaveTextContent("transfer"),
+    );
+    expect(viewport.scrollLeft).toBe(600);
+  });
+
   it("suppresses category selection after a horizontal drag but preserves a tap", () => {
     renderCarousel();
     const category = screen.getByRole("button", { name: "Food Delivery" });

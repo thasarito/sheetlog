@@ -68,6 +68,50 @@ async function seedQuickNote(page: Page) {
   });
 }
 
+async function readCategoryContrast(page: Page) {
+  return page
+    .getByLabel("Expense categories, slide 1 of 3")
+    .getByTestId("category-grid")
+    .evaluate((grid) => {
+      const channels = (color: string) => {
+        const values = color.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
+        return color.startsWith("color(srgb")
+          ? values
+          : values.map((value) => value / 255);
+      };
+      const channel = (normalized: number) => {
+        return normalized <= 0.04045
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4;
+      };
+      const luminance = (color: string) => {
+        const [red = 0, green = 0, blue = 0] = channels(color);
+        return (
+          0.2126 * channel(red) +
+          0.7152 * channel(green) +
+          0.0722 * channel(blue)
+        );
+      };
+      const contrast = (first: string, second: string) => {
+        const lighter = Math.max(luminance(first), luminance(second));
+        const darker = Math.min(luminance(first), luminance(second));
+        return (lighter + 0.05) / (darker + 0.05);
+      };
+
+      return [...grid.querySelectorAll("button")].map((tile) => {
+        const label = tile.querySelector("span:last-child");
+        const icon = tile.querySelector("svg");
+        if (!label || !icon) throw new Error("Category tile content missing");
+        const background = getComputedStyle(tile).backgroundColor;
+        return {
+          name: tile.textContent?.trim(),
+          label: contrast(getComputedStyle(label).color, background),
+          icon: contrast(getComputedStyle(icon).color, background),
+        };
+      });
+    });
+}
+
 test.describe("Transaction type and category carousel", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/app");
@@ -161,12 +205,23 @@ test.describe("Transaction type and category carousel", () => {
     const tile = page.getByRole("button", { name: "Food Delivery" });
     const box = await tile.boundingBox();
     if (!box) throw new Error("Food Delivery tile missing");
+    const client = await page.context().newCDPSession(page);
+    const touchPoint = {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    };
 
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [touchPoint],
+    });
     await page.waitForTimeout(450);
     await expect(page.getByText("Breakfast", { exact: true })).toBeVisible();
-    await page.mouse.up();
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await client.detach();
   });
 
   test("keeps an empty nearby-place slot in the amount step", async ({ page }) => {
@@ -209,5 +264,77 @@ test.describe("Transaction type and category carousel", () => {
       mutedForeground: "230 17% 74%",
       border: "228 18% 27%",
     });
+  });
+
+  test("keeps every category tile square at 320px", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    const sizes = await page
+      .getByLabel("Expense categories, slide 1 of 3")
+      .getByTestId("category-grid")
+      .getByRole("button")
+      .evaluateAll((tiles) =>
+        tiles.map((tile) => {
+          const rect = tile.getBoundingClientRect();
+          const label = tile.querySelector("span:last-child");
+          if (!label) throw new Error("Category label missing");
+          const labelRect = label.getBoundingClientRect();
+          return {
+            name: tile.textContent?.trim(),
+            width: rect.width,
+            height: rect.height,
+            labelClientWidth: label.clientWidth,
+            labelScrollWidth: label.scrollWidth,
+            labelClientHeight: label.clientHeight,
+            labelScrollHeight: label.scrollHeight,
+            labelLeft: labelRect.left,
+            labelRight: labelRect.right,
+            tileLeft: rect.left,
+            tileRight: rect.right,
+          };
+        }),
+      );
+
+    expect(sizes.length).toBeGreaterThan(0);
+    for (const size of sizes) {
+      expect(
+        Math.abs(size.width - size.height),
+        `${size.name} measured ${size.width}×${size.height}`,
+      ).toBeLessThan(1);
+      expect(
+        size.labelScrollWidth,
+        `${size.name} label overflowed horizontally`,
+      ).toBeLessThanOrEqual(size.labelClientWidth + 1);
+      expect(
+        size.labelScrollHeight,
+        `${size.name} label overflowed vertically`,
+      ).toBeLessThanOrEqual(size.labelClientHeight + 1);
+      expect(size.labelLeft, `${size.name} label escaped the tile left edge`).toBeGreaterThanOrEqual(
+        size.tileLeft - 1,
+      );
+      expect(size.labelRight, `${size.name} label escaped the tile right edge`).toBeLessThanOrEqual(
+        size.tileRight + 1,
+      );
+    }
+  });
+
+  test("keeps category labels and icons contrast-safe in both themes", async ({
+    page,
+  }) => {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.reload();
+      const samples = await readCategoryContrast(page);
+
+      for (const sample of samples) {
+        expect(
+          sample.label,
+          `${sample.name} label contrast in ${colorScheme} mode`,
+        ).toBeGreaterThanOrEqual(4.5);
+        expect(
+          sample.icon,
+          `${sample.name} icon contrast in ${colorScheme} mode`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
   });
 });
