@@ -162,7 +162,7 @@ function CategoryButton({
   return (
     <button
       type="button"
-      className="flex aspect-square min-w-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-1.5 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-[360px]:gap-1.5"
+      className="grid aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -176,7 +176,7 @@ function CategoryButton({
       onContextMenu={(event) => event.preventDefault()}
     >
       <motion.span
-        className="flex h-5 w-5 items-center justify-center min-[360px]:h-6 min-[360px]:w-6"
+        className="flex h-full w-full items-center justify-center"
         animate={{ scale: isHovered ? 1.08 : 1 }}
         transition={springTransition}
       >
@@ -186,7 +186,7 @@ function CategoryButton({
           style={{ color: displayColor }}
         />
       </motion.span>
-      <span className="w-[calc(100%+0.75rem)] min-w-0 break-words text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
+      <span className="flex h-full w-full min-w-0 items-center justify-center break-words px-1.5 text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
         {category.name}
       </span>
     </button>

@@ -4,7 +4,7 @@
 
 **Goal:** Reserve four stable category rows, hide their scrollbar, and give all remaining dashboard height to Transactions/Analytics without changing category gestures.
 
-**Architecture:** Replace the fixed one-quarter/three-quarter dashboard split with a remaining-space row plus an intrinsic category row. Make the four-column category carousel viewport square, so four rows of square tiles and their existing equal gaps occupy exactly the viewport width; each slide keeps vertical overflow enabled while hiding scrollbar chrome.
+**Architecture:** Replace the fixed one-quarter/three-quarter dashboard split with a remaining-space row plus an intrinsic category row. Make the four-column category carousel viewport square, capped at the actual app's 390 px scale on wider host surfaces, so four rows of square tiles and their existing equal gaps occupy exactly the viewport width; each slide keeps vertical overflow enabled while hiding scrollbar chrome.
 
 **Tech Stack:** React 18, TypeScript, Tailwind CSS 4, Vitest, Testing Library, Playwright
 
@@ -14,6 +14,8 @@
 
 - `src/components/TransactionFlow/index.tsx`: assign remaining dashboard height to `HomeDashboardCarousel` and make the category row intrinsic.
 - `src/components/TransactionFlow/StepCategory.tsx`: reserve the responsive four-row viewport and hide each slide's vertical scrollbar.
+- `src/components/CategoryGrid.tsx`: split each square tile into equal icon and label regions.
+- `src/components/CategoryGrid.test.tsx`: guard the tile's equal-half content alignment and existing interactions.
 - `src/components/TransactionFlow/TransactionFlow.test.tsx`: guard the dashboard track allocation.
 - `src/components/TransactionFlow/StepCategory.carousel.test.tsx`: guard square sizing and hidden-but-enabled vertical overflow.
 - `e2e/transaction-entry-carousel.spec.ts`: verify real browser geometry at the 390×844 app viewport.
@@ -181,7 +183,7 @@ Use these classes in `StepCategory`:
 <section
   aria-roledescription="carousel"
   aria-label="Transaction type and categories"
-  className="flex min-h-0 flex-col select-none"
+  className="mx-auto flex w-full max-w-[390px] min-h-0 flex-col select-none"
 >
 ```
 
@@ -201,6 +203,10 @@ Use these classes in `StepCategory`:
 ```
 
 Retain every existing event handler, ref, ARIA attribute, and `CategoryGrid` prop. Remove only the old `h-full` on the outer section, `flex-1` on the carousel viewport, and `pb-2` on each slide.
+
+- [ ] **Step 2a: Split category tile content into equal halves**
+
+In `CategoryGrid`, use a two-row grid with no outer padding. Make the icon wrapper fill and center within row one; make the wrapping label fill and center within row two with horizontal padding. Retain all pointer, click, hover, focus, and context-menu handlers unchanged.
 
 - [ ] **Step 3: Re-run the focused unit tests and verify GREEN**
 

@@ -117,7 +117,11 @@ describe("StepCategory carousel", () => {
 
   it("reserves a square four-row viewport with hidden vertical scrollbars", () => {
     const viewport = renderCarousel();
+    const categorySection = screen.getByRole("region", {
+      name: "Transaction type and categories",
+    });
 
+    expect(categorySection).toHaveClass("mx-auto", "w-full", "max-w-[390px]");
     expect(viewport).toHaveClass("aspect-square", "w-full", "flex-none");
     expect(viewport).not.toHaveClass("flex-1");
 
