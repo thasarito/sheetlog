@@ -2,10 +2,10 @@ import "fake-indexeddb/auto";
 import "@testing-library/jest-dom/vitest";
 
 Object.defineProperties(HTMLElement.prototype, {
-  hasPointerCapture: { value: () => false },
-  setPointerCapture: { value: () => undefined },
-  releasePointerCapture: { value: () => undefined },
-  scrollIntoView: { value: () => undefined },
+  hasPointerCapture: { configurable: true, value: () => false },
+  setPointerCapture: { configurable: true, value: () => undefined },
+  releasePointerCapture: { configurable: true, value: () => undefined },
+  scrollIntoView: { configurable: true, value: () => undefined },
 });
 
 Object.defineProperty(window, "matchMedia", {

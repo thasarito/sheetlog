@@ -563,7 +563,10 @@ describe("TransactionFlow reimbursement entry", () => {
     expect(transactionCanvas).toHaveClass("shrink-0");
     expect(transactionCanvas).not.toHaveClass("h-dvh");
 
-    const dashboardCell = screen.getByTestId("top-dashboard").parentElement;
+    const dashboardCarousel = screen.getByRole("region", {
+      name: "Home activity",
+    });
+    const dashboardCell = dashboardCarousel.parentElement;
     const dashboardActionGrid = dashboardCell?.parentElement;
 
     expect(dashboardActionGrid).toHaveClass(
