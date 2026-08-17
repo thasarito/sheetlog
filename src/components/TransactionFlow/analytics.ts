@@ -1,21 +1,26 @@
 import {
   addDays,
+  addMonths,
   differenceInCalendarDays,
+  differenceInCalendarMonths,
   endOfDay,
   endOfMonth,
   endOfQuarter,
+  endOfYear,
   format,
   startOfDay,
   startOfMonth,
   startOfQuarter,
+  startOfYear,
   subDays,
   subMonths,
   subQuarters,
+  subYears,
 } from 'date-fns';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord, TransactionType } from '../../lib/types';
 
-export type AnalyticsRange = 'week' | 'month' | 'quarter' | 'custom';
+export type AnalyticsRange = 'week' | 'month' | 'quarter' | 'year' | 'custom';
 
 export type DatePeriod = { start: Date; end: Date };
 
@@ -145,6 +150,22 @@ export function getAnalyticsPeriods(
       comparison: {
         start: comparisonStart,
         end: minDate(endOfMonth(comparisonStart), endOfDay(addDays(comparisonStart, elapsedDays))),
+      },
+    };
+  }
+
+  if (range === 'year') {
+    const currentStart = startOfYear(now);
+    const comparisonStart = startOfYear(subYears(now, 1));
+    const elapsedDays = differenceInCalendarDays(currentEnd, currentStart);
+    return {
+      current: { start: currentStart, end: currentEnd },
+      comparison: {
+        start: comparisonStart,
+        end: minDate(
+          endOfYear(comparisonStart),
+          endOfDay(addDays(comparisonStart, elapsedDays)),
+        ),
       },
     };
   }
@@ -326,6 +347,22 @@ function buildBuckets(
     );
   }
 
+  if (range === 'year') {
+    const elapsedMonths = differenceInCalendarMonths(current.end, current.start) + 1;
+    return Array.from({ length: elapsedMonths }, (_, index) => {
+      const start = startOfMonth(addMonths(current.start, index));
+      const end = minDate(current.end, endOfMonth(start));
+      return makeBucket(
+        `${format(start, 'yyyy-MM')}-month`,
+        format(start, 'MMM'),
+        `${format(start, 'MMMM d')} through ${format(end, 'MMMM d')}`,
+        { start, end },
+        rows,
+        series,
+      );
+    });
+  }
+
   return Array.from({ length: Math.ceil(elapsedDays / 7) }, (_, index) => {
     const start = startOfDay(addDays(current.start, index * 7));
     const end = minDate(current.end, endOfDay(addDays(start, 6)));
@@ -452,7 +489,9 @@ export function getComparisonText(
         ? 'the same days last month'
         : range === 'quarter'
           ? 'the same elapsed days last quarter'
-          : 'the previous period';
+          : range === 'year'
+            ? 'the same elapsed days last year'
+            : 'the previous period';
   return `${comparison.percentage}% ${comparison.direction} ${period}`;
 }
 
