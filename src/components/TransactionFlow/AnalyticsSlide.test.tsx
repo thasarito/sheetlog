@@ -9,12 +9,12 @@ const summary: AnalyticsSummary = {
   currency: 'THB',
   periods: {
     current: {
-      start: new Date(2026, 7, 11),
-      end: new Date(2026, 7, 17, 23, 59, 59, 999),
+      start: new Date(2026, 7, 17),
+      end: new Date(2026, 7, 23, 23, 59, 59, 999),
     },
     comparison: {
-      start: new Date(2026, 7, 4),
-      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+      start: new Date(2026, 7, 10),
+      end: new Date(2026, 7, 16, 23, 59, 59, 999),
     },
   },
   expenseTotal: 3240,
@@ -38,6 +38,7 @@ const summary: AnalyticsSummary = {
     segments: [{ seriesKey: 'category-0', amount: 100 + index * 25 }],
     transactionIds: [],
   })),
+  axisGroups: [],
   categories: [{ category: 'Dining Out', amount: 920, share: 28 }],
   transactions: [],
   hasExpenseRows: true,
@@ -47,18 +48,18 @@ const periodOptions: AnalyticsPeriodOption[] = [
   {
     key: 'week-previous',
     offset: -1,
-    label: 'Aug 4–10',
-    accessibleLabel: 'August 4, 2026 through August 10, 2026',
+    label: 'Aug 10–16',
+    accessibleLabel: 'August 10, 2026 through August 16, 2026',
     period: {
-      start: new Date(2026, 7, 4),
-      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+      start: new Date(2026, 7, 10),
+      end: new Date(2026, 7, 16, 23, 59, 59, 999),
     },
   },
   {
     key: 'week-current',
     offset: 0,
-    label: 'Aug 11–17',
-    accessibleLabel: 'August 11, 2026 through August 17, 2026',
+    label: 'Aug 17–23',
+    accessibleLabel: 'August 17, 2026 through August 23, 2026',
     period: summary.periods.current,
   },
 ];
@@ -94,7 +95,7 @@ describe('AnalyticsSlide', () => {
     );
 
     expect(screen.getByText('฿3,240')).toBeInTheDocument();
-    expect(screen.getByText('12% below previous 7 days')).toBeInTheDocument();
+    expect(screen.getByText('12% below previous week')).toBeInTheDocument();
     expect(screen.getByTestId('segment-day-0-category-0')).toHaveAttribute(
       'data-tone',
       'emerald',
@@ -124,6 +125,34 @@ describe('AnalyticsSlide', () => {
     expect(onViewAll).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the shared grouped axis for a quarter summary', () => {
+    render(
+      <AnalyticsSlide
+        {...periodProps}
+        range="quarter"
+        onRangeChange={vi.fn()}
+        summary={{
+          ...summary,
+          range: 'quarter',
+          axisGroups: [
+            { key: '2026-04', label: 'Apr', bucketCount: 5 },
+            { key: '2026-05', label: 'May', bucketCount: 4 },
+            { key: '2026-06', label: 'Jun', bucketCount: 4 },
+          ],
+        }}
+        isLoading={false}
+        isOffline={false}
+        error={null}
+        onRetry={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    const axis = screen.getByTestId('analytics-grouped-axis');
+    expect(axis).toBeInTheDocument();
+    expect(axis).toHaveTextContent('Apr');
+  });
+
   it('uses year-to-date copy for a year summary', () => {
     render(
       <AnalyticsSlide
@@ -140,7 +169,7 @@ describe('AnalyticsSlide', () => {
     );
 
     expect(screen.getByText('spent · year to date')).toBeInTheDocument();
-    expect(screen.getByText('12% below the same elapsed days last year')).toBeInTheDocument();
+    expect(screen.getByText('12% below previous year')).toBeInTheDocument();
   });
 
   it('uses custom range copy for a custom summary', () => {

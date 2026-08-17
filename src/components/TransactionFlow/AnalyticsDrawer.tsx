@@ -332,6 +332,7 @@ export function AnalyticsDrawer({
                 <section aria-label="Spending trend">
                   <AnalyticsBarChart
                     buckets={summary.buckets}
+                    axisGroups={summary.axisGroups}
                     series={summary.series}
                     currency={currency}
                     selectedKey={selectedBucket}

@@ -2,6 +2,7 @@ import type { KeyboardEvent, MouseEvent } from 'react';
 import { cn } from '../../lib/utils';
 import {
   getAnalyticsBucketDescription,
+  type AnalyticsAxisGroup,
   type AnalyticsBucket,
   type AnalyticsSeries,
 } from './analytics';
@@ -9,6 +10,7 @@ import { ANALYTICS_TONE_BACKGROUND_CLASSES } from './analyticsPresentation';
 
 type AnalyticsBarChartProps = {
   buckets: AnalyticsBucket[];
+  axisGroups?: AnalyticsAxisGroup[];
   series: AnalyticsSeries[];
   currency: string;
   selectedKey?: string | null;
@@ -35,6 +37,7 @@ function showLabel(index: number, buckets: AnalyticsBucket[]): boolean {
 
 export function AnalyticsBarChart({
   buckets,
+  axisGroups = [],
   series,
   currency,
   selectedKey,
@@ -54,6 +57,7 @@ export function AnalyticsBarChart({
     ? `analytics-option-${selectedKey}`
     : undefined;
   const interactive = Boolean(onSelect || onBucketActivate);
+  const hasGroupedAxis = axisGroups.length > 0;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!interactive || buckets.length === 0) return;
@@ -178,7 +182,12 @@ export function AnalyticsBarChart({
     return (
       <div
         key={bucket.key}
-        className="grid h-full min-w-0 flex-1 grid-rows-[minmax(4px,1fr)_auto] items-center gap-1"
+        className={cn(
+          'grid h-full min-w-0 flex-1 items-center',
+          hasGroupedAxis
+            ? 'grid-rows-[minmax(4px,1fr)]'
+            : 'grid-rows-[minmax(4px,1fr)_auto] gap-1',
+        )}
       >
         {interactive ? (
           <div
@@ -203,18 +212,20 @@ export function AnalyticsBarChart({
             {stack}
           </div>
         )}
-        <span
-          data-testid={`analytics-label-${bucket.key}`}
-          className="min-h-2.5 truncate text-center text-[9px] leading-none text-muted-foreground"
-        >
-          {showLabel(index, buckets) ? bucket.label : null}
-        </span>
+        {hasGroupedAxis ? null : (
+          <span
+            data-testid={`analytics-label-${bucket.key}`}
+            className="min-h-2.5 truncate text-center text-[9px] leading-none text-muted-foreground"
+          >
+            {showLabel(index, buckets) ? bucket.label : null}
+          </span>
+        )}
       </div>
     );
   });
 
   return (
-    <figure className={className} aria-label={`Expense trend: ${summary}`}>
+    <figure className={cn('flex flex-col', className)} aria-label={`Expense trend: ${summary}`}>
       {interactive ? (
         <div
           role="listbox"
@@ -223,15 +234,40 @@ export function AnalyticsBarChart({
           tabIndex={0}
           onKeyDown={handleKeyDown}
           onClick={handlePlotClick}
-          className="flex h-full items-stretch gap-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="flex min-h-0 flex-1 items-stretch gap-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
         >
           {bars}
         </div>
       ) : (
-        <div className="flex h-full items-stretch gap-1" aria-hidden="true">
+        <div className="flex min-h-0 flex-1 items-stretch gap-1" aria-hidden="true">
           {bars}
         </div>
       )}
+      {hasGroupedAxis ? (
+        <div
+          data-testid="analytics-grouped-axis"
+          aria-hidden="true"
+          className="mt-1 flex shrink-0 gap-1 text-[9px] leading-none text-muted-foreground"
+        >
+          {axisGroups.map((group) => (
+            <span
+              key={group.key}
+              className="flex min-w-0 items-center gap-1"
+              style={{ flexBasis: 0, flexGrow: group.bucketCount }}
+            >
+              <span
+                data-testid="analytics-axis-rule"
+                className="h-px min-w-0 flex-1 bg-border/70"
+              />
+              <span>{group.label}</span>
+              <span
+                data-testid="analytics-axis-rule"
+                className="h-px min-w-0 flex-1 bg-border/70"
+              />
+            </span>
+          ))}
+        </div>
+      ) : null}
     </figure>
   );
 }

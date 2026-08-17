@@ -9,7 +9,7 @@ import { AnalyticsDrawer } from './AnalyticsDrawer';
 
 const customPeriod: DatePeriod = {
   start: new Date(2026, 7, 1),
-  end: new Date(2026, 7, 17),
+  end: new Date(2026, 7, 19),
 };
 
 const transactions: TransactionRecord[] = [
@@ -35,11 +35,11 @@ const transactions: TransactionRecord[] = [
     account: 'Cash',
     for: 'Me',
     category: 'Coffee',
-    date: '2026-08-16T12:00:00',
+    date: '2026-08-18T12:00:00',
     status: 'synced',
     sheetRowValid: true,
-    createdAt: '2026-08-16T12:00:00',
-    updatedAt: '2026-08-16T12:00:00',
+    createdAt: '2026-08-18T12:00:00',
+    updatedAt: '2026-08-18T12:00:00',
   },
   {
     id: 'income',
@@ -49,11 +49,11 @@ const transactions: TransactionRecord[] = [
     account: 'Bank',
     for: 'Me',
     category: 'Salary',
-    date: '2026-08-15T12:00:00',
+    date: '2026-08-19T12:00:00',
     status: 'synced',
     sheetRowValid: true,
-    createdAt: '2026-08-15T12:00:00',
-    updatedAt: '2026-08-15T12:00:00',
+    createdAt: '2026-08-19T12:00:00',
+    updatedAt: '2026-08-19T12:00:00',
   },
 ];
 
@@ -61,21 +61,21 @@ const periodOptions: AnalyticsPeriodOption[] = [
   {
     key: 'week-previous',
     offset: -1,
-    label: 'Aug 4–10',
-    accessibleLabel: 'August 4, 2026 through August 10, 2026',
+    label: 'Aug 10–16',
+    accessibleLabel: 'August 10, 2026 through August 16, 2026',
     period: {
-      start: new Date(2026, 7, 4),
-      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+      start: new Date(2026, 7, 10),
+      end: new Date(2026, 7, 16, 23, 59, 59, 999),
     },
   },
   {
     key: 'week-current',
     offset: 0,
-    label: 'Aug 11–17',
-    accessibleLabel: 'August 11, 2026 through August 17, 2026',
+    label: 'Aug 17–23',
+    accessibleLabel: 'August 17, 2026 through August 23, 2026',
     period: {
-      start: new Date(2026, 7, 11),
-      end: new Date(2026, 7, 17, 23, 59, 59, 999),
+      start: new Date(2026, 7, 17),
+      end: new Date(2026, 7, 23, 23, 59, 59, 999),
     },
   },
 ];
@@ -100,7 +100,7 @@ const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
   error: null,
   onRetry: vi.fn(),
   onSelectTransaction: vi.fn(),
-  now: new Date(2026, 7, 17, 12),
+  now: new Date(2026, 7, 19, 12),
 };
 
 function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>> = {}) {
@@ -121,6 +121,19 @@ describe('AnalyticsDrawer', () => {
 
     rerender(<AnalyticsDrawer {...baseProps} open />);
     expect(buildSummary).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the shared grouped axis for a complete quarter', () => {
+    renderDrawer({
+      range: 'quarter',
+      transactions: [],
+      now: new Date(2026, 4, 15, 12),
+    });
+
+    const axis = screen.getByTestId('analytics-grouped-axis');
+    expect(axis).toHaveTextContent('Apr');
+    expect(axis).toHaveTextContent('May');
+    expect(axis).toHaveTextContent('Jun');
   });
 
   it('opens with a requested bucket selected and filters matching transactions', async () => {
@@ -151,7 +164,7 @@ describe('AnalyticsDrawer', () => {
     const transactionSection = screen.getByRole('region', { name: 'Transactions' });
     expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
     expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
-    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Monday, Aug 17')).toBeInTheDocument();
     expect(
       within(transactionSection).getByRole('button', { name: /expense Dining Out/ }),
     ).toHaveTextContent('−฿120.00');
@@ -169,7 +182,7 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Coffee/ })).not.toBeInTheDocument();
-    expect(within(transactionSection).getAllByText('Today')).toHaveLength(1);
+    expect(within(transactionSection).getAllByText('Monday, Aug 17')).toHaveLength(1);
     expect(within(transactionSection).queryByText('Yesterday')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toHaveTextContent(
       'Monday, August 17 · ฿120',
@@ -178,7 +191,7 @@ describe('AnalyticsDrawer', () => {
     await user.click(screen.getByRole('button', { name: /Clear selected period filter/ }));
     expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
     expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
-    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Monday, Aug 17')).toBeInTheDocument();
   });
 
   it('intersects category and bucket filters while clearing each independently', async () => {
@@ -246,8 +259,8 @@ describe('AnalyticsDrawer', () => {
     const customTrigger = screen.getByRole('button', { name: 'Custom date range' });
     await user.click(customTrigger);
     const customDialog = screen.getByRole('dialog', { name: 'Custom date range' });
-    await user.click(screen.getByRole('button', { name: /August 15th, 2026/ }));
-    await user.click(screen.getByRole('button', { name: /August 16th, 2026/ }));
+    await user.click(screen.getByRole('button', { name: /August 18th, 2026/ }));
+    await user.click(screen.getByRole('button', { name: /August 19th, 2026/ }));
     await user.click(screen.getByRole('button', { name: 'Apply custom range' }));
 
     expect(customDialog).toHaveAttribute('data-state', 'closed');
@@ -255,7 +268,7 @@ describe('AnalyticsDrawer', () => {
     expect(
       screen.getByRole('status', { name: 'Analytics summary update' }),
     ).toHaveTextContent(
-      'Custom, Aug 15 through Aug 16 · Expenses ฿80',
+      'Custom, Aug 18 through Aug 19 · Expenses ฿80',
     );
     expect(customTrigger).toHaveAttribute('aria-pressed', 'true');
   });
@@ -290,7 +303,7 @@ describe('AnalyticsDrawer', () => {
 
     await user.click(
       screen.getByRole('option', {
-        name: 'August 4, 2026 through August 10, 2026',
+        name: 'August 10, 2026 through August 16, 2026',
       }),
     );
     expect(onPeriodChange).toHaveBeenCalledWith(-1);
@@ -326,7 +339,7 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
     expect(
-      screen.getByRole('option', { name: 'August 11, 2026 through August 17, 2026' }),
+      screen.getByRole('option', { name: 'August 17, 2026 through August 23, 2026' }),
     ).toHaveAttribute('aria-selected', 'true');
   });
 

@@ -177,6 +177,7 @@ export function AnalyticsSlide({
           {periodControl}
           <AnalyticsBarChart
             buckets={summary.buckets}
+            axisGroups={summary.axisGroups}
             series={summary.series}
             currency={summary.currency}
             onBucketActivate={onBucketSelect}

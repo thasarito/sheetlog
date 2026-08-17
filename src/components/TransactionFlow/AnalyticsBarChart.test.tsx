@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { AnalyticsBucket, AnalyticsSeries } from './analytics';
+import type { AnalyticsAxisGroup, AnalyticsBucket, AnalyticsSeries } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 
 const series: AnalyticsSeries[] = [
@@ -42,6 +42,12 @@ const buckets: AnalyticsBucket[] = [
     ],
     transactionIds: ['two'],
   },
+];
+
+const axisGroups: AnalyticsAxisGroup[] = [
+  { key: '2026-04', label: 'Apr', bucketCount: 5 },
+  { key: '2026-05', label: 'May', bucketCount: 4 },
+  { key: '2026-06', label: 'Jun', bucketCount: 4 },
 ];
 
 describe('AnalyticsBarChart', () => {
@@ -216,6 +222,32 @@ describe('AnalyticsBarChart', () => {
         .map((label) => label.textContent)
         .filter(Boolean),
     ).toEqual(monthLabels);
+  });
+
+  it('renders decorative line-month-line groups beneath quarter bars', () => {
+    render(
+      <AnalyticsBarChart
+        buckets={buckets}
+        axisGroups={axisGroups}
+        series={series}
+        currency="THB"
+      />,
+    );
+
+    const axis = screen.getByTestId('analytics-grouped-axis');
+    expect(axis).toHaveAttribute('aria-hidden', 'true');
+    expect(within(axis).getByText('Apr').parentElement).toHaveStyle({ flexGrow: '5' });
+    expect(within(axis).getByText('May').parentElement).toHaveStyle({ flexGrow: '4' });
+    expect(within(axis).getByText('Jun').parentElement).toHaveStyle({ flexGrow: '4' });
+    expect(within(axis).getAllByTestId('analytics-axis-rule')).toHaveLength(6);
+    expect(screen.queryAllByTestId(/^analytics-label-/)).toHaveLength(0);
+  });
+
+  it('keeps ordinary bucket labels when no grouped axis is provided', () => {
+    render(<AnalyticsBarChart buckets={buckets} series={series} currency="THB" />);
+
+    expect(screen.queryByTestId('analytics-grouped-axis')).not.toBeInTheDocument();
+    expect(screen.getByTestId('analytics-label-aug-16')).toHaveTextContent('16');
   });
 
   it('keeps the compact chart read-only', () => {
