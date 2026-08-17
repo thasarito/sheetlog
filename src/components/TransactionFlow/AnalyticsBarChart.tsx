@@ -50,9 +50,13 @@ export function AnalyticsBarChart({
               {onSelect ? (
                 <button
                   type="button"
-                  tabIndex={-1}
+                  aria-label={`Filter by ${bucket.label}, ${formatAnalyticsAmount(bucket.amount, currency)}`}
+                  aria-pressed={selectedKey === bucket.key}
                   onClick={() => onSelect(bucket.key)}
-                  className="relative h-full w-full"
+                  className={cn(
+                    'relative h-full min-h-11 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                    selectedKey === bucket.key && 'ring-2 ring-primary/30',
+                  )}
                 >
                   {hasNegative ? (
                     <span className="absolute inset-x-0 top-1/2 border-t border-border/70" />
