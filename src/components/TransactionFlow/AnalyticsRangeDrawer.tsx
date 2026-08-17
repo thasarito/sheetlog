@@ -87,7 +87,7 @@ export function AnalyticsRangeDrawer({
           returnFocusRef.current.focus();
         }}
       >
-        <DrawerHeader className="text-left">
+        <DrawerHeader className="text-center!">
           <DrawerTitle ref={titleRef} tabIndex={-1}>
             Custom date range
           </DrawerTitle>
