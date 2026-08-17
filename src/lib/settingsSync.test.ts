@@ -391,6 +391,40 @@ describe('portable settings sync state', () => {
     expect(await db.settings.get('quickNotes')).toEqual(legacyRecord);
   });
 
+  it('reads inherited Quick Notes whose IDs are reused across distinct targets', async () => {
+    const inheritedId = 'qn_1770112708664_b2oowhp';
+    const legacy: QuickNotesConfig = {
+      'default:expense': [
+        { id: inheritedId, icon: 'Coffee', label: 'Coffee' },
+      ],
+      'expense:Food': [
+        { id: inheritedId, icon: 'Coffee', label: 'Coffee' },
+      ],
+    };
+    await db.settings.put({
+      key: 'quickNotes',
+      value: JSON.stringify(legacy),
+      updatedAt: '2026-08-17T01:02:03.000Z',
+    });
+
+    await expect(readLegacyQuickNotesConfig()).resolves.toEqual(legacy);
+  });
+
+  it('rejects duplicate Quick Note IDs within one target', async () => {
+    const storageKey = getQuickNotesStorageKey('sheet-a');
+    const duplicateWithinTarget: QuickNotesConfig = {
+      'default:expense': [
+        { id: 'duplicate', icon: 'Coffee', label: 'Coffee' },
+        { id: 'duplicate', icon: 'Receipt', label: 'Receipt' },
+      ],
+    };
+
+    await expectStorageCorruption(
+      () => writeQuickNotesConfig('sheet-a', duplicateWithinTarget),
+      storageKey,
+    );
+  });
+
   it('conditionally deletes legacy Quick Notes only when the source is unchanged', async () => {
     const expected: QuickNotesConfig = {
       'default:expense': [{ id: 'legacy', icon: 'Coffee', label: 'Coffee' }],

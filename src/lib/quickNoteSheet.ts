@@ -40,6 +40,7 @@ interface ParsedNote {
 
 interface ParsedTarget extends QuickNoteTarget {
   emptyRowNumber?: number;
+  noteIds: Set<string>;
   notes: ParsedNote[];
   positions: Set<number>;
 }
@@ -203,7 +204,6 @@ export function serializeQuickNoteRows(config: QuickNotesConfig): string[][] {
 
 export function parseQuickNoteRows(rows: readonly (readonly unknown[])[]): QuickNotesConfig {
   const targets = new Map<string, ParsedTarget>();
-  const noteIds = new Set<string>();
 
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index];
@@ -217,6 +217,7 @@ export function parseQuickNoteRows(rows: readonly (readonly unknown[])[]): Quick
     const existing = targets.get(target.configKey);
     const parsedTarget: ParsedTarget = existing ?? {
       ...target,
+      noteIds: new Set<string>(),
       notes: [],
       positions: new Set<number>(),
     };
@@ -251,7 +252,7 @@ export function parseQuickNoteRows(rows: readonly (readonly unknown[])[]): Quick
     const id = requiredCell(row[5], 'Id', rowNumber);
     const icon = requiredCell(row[6], 'Icon', rowNumber);
     const label = requiredCell(row[7], 'Label', rowNumber);
-    if (noteIds.has(id)) {
+    if (parsedTarget.noteIds.has(id)) {
       rowError(rowNumber, `Duplicate note ID "${id}".`);
     }
 
@@ -262,7 +263,7 @@ export function parseQuickNoteRows(rows: readonly (readonly unknown[])[]): Quick
     addOptionalField(note, 'account', row[11]);
     addOptionalField(note, 'forValue', row[12]);
 
-    noteIds.add(id);
+    parsedTarget.noteIds.add(id);
     parsedTarget.positions.add(position);
     parsedTarget.notes.push({ position, note });
     targets.set(target.configKey, parsedTarget);

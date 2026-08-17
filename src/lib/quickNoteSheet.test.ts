@@ -256,16 +256,24 @@ describe('Quick Note Sheet validation', () => {
     );
   });
 
-  it('rejects duplicate note IDs across targets', () => {
+  it('round-trips inherited note IDs reused across distinct targets', () => {
+    const config: QuickNotesConfig = {
+      'default:expense': [
+        { id: 'inherited', icon: 'Coffee', label: 'Coffee' },
+      ],
+      'expense:Food': [
+        { id: 'inherited', icon: 'Coffee', label: 'Coffee' },
+      ],
+    };
+
+    expect(parseQuickNoteRows(serializeQuickNoteRows(config))).toEqual(config);
+  });
+
+  it('rejects duplicate note IDs within one target', () => {
     expectValidationError(
       [
         noteRow({ id: 'duplicate' }),
-        noteRow({
-          scope: 'category',
-          type: 'income',
-          category: 'Salary',
-          id: 'duplicate',
-        }),
+        noteRow({ id: 'duplicate', position: '2' }),
       ],
       3,
       /duplicate note ID/i,

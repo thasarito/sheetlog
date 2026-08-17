@@ -154,7 +154,6 @@ export function validateQuickNotesConfig(value: unknown, storageKey: string): Qu
   if (!isRecord(value)) {
     return corrupt(storageKey, 'Quick Notes must be an object.');
   }
-  const noteIds = new Set<string>();
   for (const [target, notes] of Object.entries(value)) {
     if (!isQuickNotesTargetKey(target)) {
       return corrupt(storageKey, `Quick Notes target "${target}" is invalid.`);
@@ -165,6 +164,7 @@ export function validateQuickNotesConfig(value: unknown, storageKey: string): Qu
     if (notes.length > 5) {
       return corrupt(storageKey, `Quick Notes target "${target}" contains more than five notes.`);
     }
+    const noteIds = new Set<string>();
     for (const note of notes) {
       if (!isRecord(note)) {
         return corrupt(storageKey, `Quick Notes target "${target}" contains a malformed note.`);
