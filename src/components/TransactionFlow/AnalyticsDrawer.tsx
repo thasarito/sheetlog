@@ -1,5 +1,7 @@
+import { format } from 'date-fns';
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
 import {
   Drawer,
@@ -11,12 +13,17 @@ import {
 } from '../ui/drawer';
 import { Skeleton } from '../ui/skeleton';
 import {
+  buildAnalyticsScope,
   buildAnalyticsSummary,
   formatAnalyticsAmount,
   getOfflineFreshness,
   type AnalyticsRange,
+  type DatePeriod,
 } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
+import { AnalyticsCategories } from './AnalyticsCategories';
+import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
+import { AnalyticsRangePicker } from './AnalyticsRangePicker';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
 import { TransactionRow } from './TransactionRow';
 
@@ -26,6 +33,8 @@ type AnalyticsDrawerProps = {
   transactions: TransactionRecord[];
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
+  customPeriod: DatePeriod;
+  onCustomPeriodChange: (period: DatePeriod) => void;
   currency: string;
   onCurrencyChange: (currency: string) => void;
   currencies: string[];
@@ -45,6 +54,8 @@ export function AnalyticsDrawer({
   transactions,
   range,
   onRangeChange,
+  customPeriod,
+  onCustomPeriodChange,
   currency,
   onCurrencyChange,
   currencies,
@@ -60,63 +71,43 @@ export function AnalyticsDrawer({
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const customStart = customPeriod.start.getTime();
+  const customEnd = customPeriod.end.getTime();
   const summary = useMemo(
-    () => buildAnalyticsSummary({ transactions, range, currency, now }),
-    [currency, now, range, transactions],
+    () => buildAnalyticsSummary({ transactions, range, currency, now, customPeriod }),
+    [currency, customPeriod, now, range, transactions],
   );
+  const scope = useMemo(
+    () => buildAnalyticsScope(summary, selectedBucket),
+    [selectedBucket, summary],
+  );
+  const selectedBucketDetails = summary.buckets.find(
+    (bucket) => bucket.key === selectedBucket,
+  );
+  const selectedSeries = summary.series.find((item) => item.key === selectedCategory);
+  const earliestDate = useMemo(() => {
+    const dates = transactions
+      .map((transaction) => tryParseDate(transaction.date))
+      .filter((date): date is Date => date !== null);
+    if (dates.length === 0) return customPeriod.start;
+    return new Date(Math.min(...dates.map((date) => date.getTime())));
+  }, [customPeriod.start, transactions]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: changing either analytics scope invalidates its drill-down filter
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scalar custom endpoints intentionally define the controlled date scope
   useEffect(() => {
     setSelectedBucket(null);
     setSelectedCategory(null);
-  }, [currency, range]);
-
-  const otherCategoryNames = useMemo(
-    () => new Set(summary.categories.slice(5).map((category) => category.category)),
-    [summary.categories],
-  );
-  const displayedCategories = useMemo(() => {
-    const top = summary.categories.slice(0, 5);
-    const other = summary.categories.slice(5);
-    if (other.length === 0) return top;
-    const otherAmount = other.reduce((total, category) => total + category.amount, 0);
-    const positiveCategoryTotal = summary.categories.reduce(
-      (total, category) => total + category.amount,
-      0,
-    );
-
-    return [
-      ...top,
-      {
-        category: 'Other',
-        amount: otherAmount,
-        share:
-          positiveCategoryTotal > 0 ? Math.round((otherAmount / positiveCategoryTotal) * 100) : 0,
-      },
-    ];
-  }, [summary.categories]);
+  }, [currency, customEnd, customStart, range]);
 
   const filteredTransactions = useMemo(() => {
-    let rows = summary.transactions;
-    if (selectedBucket) {
-      const ids = new Set(
-        summary.buckets.find((bucket) => bucket.key === selectedBucket)?.transactionIds ?? [],
-      );
-      rows = rows.filter((row) => ids.has(row.id));
-    }
-    if (selectedCategory) {
-      rows = rows.filter(
-        (row) =>
-          row.type === 'expense' &&
-          (selectedCategory === 'Other'
-            ? otherCategoryNames.has(row.category)
-            : row.category === selectedCategory),
-      );
-    }
-    return rows;
-  }, [otherCategoryNames, selectedBucket, selectedCategory, summary]);
+    if (!selectedSeries) return scope.transactions;
+    const categoryNames = new Set(selectedSeries.categoryNames);
+    return scope.transactions.filter(
+      (row) => row.type === 'expense' && categoryNames.has(row.category.trim() || 'Uncategorized'),
+    );
+  }, [scope.transactions, selectedSeries]);
 
-  const clearFilter = () => {
+  const clearFilters = () => {
     setSelectedBucket(null);
     setSelectedCategory(null);
   };
@@ -130,7 +121,9 @@ export function AnalyticsDrawer({
       ? 'Week, last 7 days'
       : range === 'month'
         ? 'Month, month to date'
-        : 'Quarter, quarter to date';
+        : range === 'quarter'
+          ? 'Quarter, quarter to date'
+          : `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`;
   const analyticsAnnouncement = hasCompleteHistory
     ? `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, currency)}`
     : isOffline
@@ -166,25 +159,6 @@ export function AnalyticsDrawer({
           </DrawerClose>
         </DrawerHeader>
 
-        <div className="flex items-center gap-3 px-4 py-3" data-vaul-no-drag>
-          <AnalyticsRangeToggle value={range} onChange={onRangeChange} />
-          {currencies.length > 1 ? (
-            <select
-              aria-label="Analytics currency"
-              value={currency}
-              onChange={(event) => onCurrencyChange(event.target.value)}
-              className="h-11 min-w-20 rounded-xl border border-border bg-background px-2 text-sm font-semibold"
-            >
-              {currencies.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="ml-auto text-xs font-semibold text-muted-foreground">{currency}</span>
-          )}
-        </div>
         <output
           aria-label="Analytics summary update"
           aria-live="polite"
@@ -200,10 +174,10 @@ export function AnalyticsDrawer({
               Full range unavailable offline
             </div>
           ) : !hasCompleteHistory && isLoading ? (
-            <output aria-label="Loading detailed analytics" className="block space-y-4">
-              <Skeleton className="h-20 w-full" />
+            <output aria-label="Loading detailed analytics" className="block space-y-4 pt-4">
               <Skeleton className="h-40 w-full" />
               <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-40 w-full" />
             </output>
           ) : !hasCompleteHistory ? (
             <div className="flex min-h-48 items-center justify-between">
@@ -217,7 +191,69 @@ export function AnalyticsDrawer({
               </button>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-7 pb-8">
+              <div
+                data-testid="analytics-range-controls"
+                className="flex items-center justify-between gap-3 pt-3"
+              >
+                {currencies.length > 1 ? (
+                  <select
+                    aria-label="Analytics currency"
+                    value={currency}
+                    onChange={(event) => onCurrencyChange(event.target.value)}
+                    className="h-11 min-w-20 rounded-xl border border-border bg-background px-2 text-sm font-semibold"
+                  >
+                    {currencies.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-xs font-semibold text-muted-foreground">{currency}</span>
+                )}
+                <AnalyticsRangeToggle value={range} onChange={onRangeChange} />
+              </div>
+
+              {range === 'custom' ? (
+                <div className="flex justify-end">
+                  <AnalyticsRangePicker
+                    value={customPeriod}
+                    minDate={earliestDate}
+                    maxDate={now}
+                    onChange={onCustomPeriodChange}
+                  />
+                </div>
+              ) : null}
+
+              <section aria-label="Spending trend">
+                <AnalyticsBarChart
+                  buckets={summary.buckets}
+                  series={summary.series}
+                  currency={currency}
+                  selectedKey={selectedBucket}
+                  onSelect={(key) =>
+                    setSelectedBucket((current) =>
+                      key === null || current === key ? null : key,
+                    )
+                  }
+                  className="h-44"
+                />
+                {selectedBucketDetails ? (
+                  <div className="mt-2 flex justify-center">
+                    <button
+                      type="button"
+                      aria-label="Clear selected period filter"
+                      onClick={() => setSelectedBucket(null)}
+                      className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    >
+                      {selectedBucketDetails.accessibleLabel}
+                      <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+
               <section aria-labelledby="analytics-overview">
                 <h3
                   id="analytics-overview"
@@ -225,48 +261,35 @@ export function AnalyticsDrawer({
                 >
                   Overview
                 </h3>
-                <div className="mt-2 grid grid-cols-3 gap-2">
+                <AnalyticsHalfDonut
+                  series={summary.series}
+                  categories={scope.categories}
+                  expenseTotal={scope.expenseTotal}
+                  currency={currency}
+                />
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <p className="text-[10px] text-muted-foreground">Expenses</p>
                     <p className="text-base font-semibold tabular-nums">
-                      {formatAnalyticsAmount(summary.expenseTotal, currency)}
+                      {formatAnalyticsAmount(scope.expenseTotal, currency)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground">Income</p>
                     <p className="text-base font-semibold tabular-nums text-primary">
-                      {formatAnalyticsAmount(summary.incomeTotal, currency)}
+                      {formatAnalyticsAmount(scope.incomeTotal, currency)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground">Net</p>
                     <p className="text-base font-semibold tabular-nums">
-                      {formatAnalyticsAmount(summary.netTotal, currency)}
+                      {formatAnalyticsAmount(scope.netTotal, currency)}
                     </p>
                   </div>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   Transfers are excluded from totals.
                 </p>
-              </section>
-
-              <section aria-labelledby="analytics-trend">
-                <h3
-                  id="analytics-trend"
-                  className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                  Trend
-                </h3>
-                <AnalyticsBarChart
-                  buckets={summary.buckets}
-                  currency={currency}
-                  selectedKey={selectedBucket}
-                  onSelect={(key) => {
-                    setSelectedBucket((current) => (current === key ? null : key));
-                    setSelectedCategory(null);
-                  }}
-                  className="mt-2 h-36"
-                />
               </section>
 
               <section aria-labelledby="analytics-categories">
@@ -276,36 +299,15 @@ export function AnalyticsDrawer({
                 >
                   Top categories
                 </h3>
-                <div className="mt-2 space-y-1">
-                  {displayedCategories.map((category) => (
-                    <button
-                      key={category.category}
-                      type="button"
-                      aria-label={`Filter by ${category.category}`}
-                      aria-pressed={selectedCategory === category.category}
-                      onClick={() => {
-                        setSelectedCategory((current) =>
-                          current === category.category ? null : category.category,
-                        );
-                        setSelectedBucket(null);
-                      }}
-                      className="grid min-h-11 w-full grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-2 text-left aria-pressed:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    >
-                      <span>
-                        <span className="block text-sm font-medium">{category.category}</span>
-                        <span className="mt-1 block h-1 rounded-full bg-surface-2">
-                          <span
-                            className="block h-full rounded-full bg-primary"
-                            style={{ width: `${Math.min(100, category.share)}%` }}
-                          />
-                        </span>
-                      </span>
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {formatAnalyticsAmount(category.amount, currency)} · {category.share}%
-                      </span>
-                    </button>
-                  ))}
-                  {summary.categories.length === 0 ? (
+                <div className="mt-2">
+                  <AnalyticsCategories
+                    series={summary.series}
+                    categories={scope.categories}
+                    currency={currency}
+                    selectedKey={selectedCategory}
+                    onSelect={setSelectedCategory}
+                  />
+                  {summary.series.length === 0 ? (
                     <p className="py-3 text-sm text-muted-foreground">
                       No positive category spend
                     </p>
@@ -324,8 +326,8 @@ export function AnalyticsDrawer({
                   {selectedBucket || selectedCategory ? (
                     <button
                       type="button"
-                      aria-label="Clear analytics filter"
-                      onClick={clearFilter}
+                      aria-label="Clear analytics filters"
+                      onClick={clearFilters}
                       className="min-h-11 text-xs font-semibold text-primary"
                     >
                       Clear filter
