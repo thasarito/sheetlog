@@ -39,6 +39,7 @@ describe('analytics sync metadata', () => {
       sheetId: 'sheet-a',
       baseCurrency: 'THB',
       historyCapturedAt: '2026-08-17T10:00:00.000Z',
+      requirementsFingerprint: '2:0123456789abcdef',
       completedAt: '2026-08-17T10:01:00.000Z',
     };
 
@@ -64,11 +65,24 @@ describe('analytics sync metadata', () => {
         sheetId: 'sheet-b',
         baseCurrency: 'THB',
         historyCapturedAt: '2026-08-17T10:00:00.000Z',
+        requirementsFingerprint: '2:0123456789abcdef',
         completedAt: '2026-08-17T10:01:00.000Z',
       }),
       updatedAt: '2026-08-17T10:01:00.000Z',
     });
     await expect(readAnalyticsSyncMetadata('sheet-a', 'THB', mismatched)).resolves.toBeNull();
+
+    const staleShape = memoryStore({
+      key: analyticsSyncMetadataKey('sheet-a', 'THB'),
+      value: JSON.stringify({
+        sheetId: 'sheet-a',
+        baseCurrency: 'THB',
+        historyCapturedAt: '2026-08-17T10:00:00.000Z',
+        completedAt: '2026-08-17T10:01:00.000Z',
+      }),
+      updatedAt: '2026-08-17T10:01:00.000Z',
+    });
+    await expect(readAnalyticsSyncMetadata('sheet-a', 'THB', staleShape)).resolves.toBeNull();
   });
 
   it('clears stale completion before a manual resync', async () => {
@@ -78,6 +92,7 @@ describe('analytics sync metadata', () => {
         sheetId: 'sheet-a',
         baseCurrency: 'THB',
         historyCapturedAt: '2026-08-17T10:00:00.000Z',
+        requirementsFingerprint: '2:0123456789abcdef',
         completedAt: '2026-08-17T10:01:00.000Z',
       },
       store,

@@ -1,10 +1,8 @@
 import { format, parseISO, subDays } from 'date-fns';
 import { tryParseDate } from '../../lib/date-utils';
 import type { ExchangeRateRecord, TransactionRecord } from '../../lib/types';
-import {
-  findHistoricalQuoteRate,
-  type HistoricalRateRequest,
-} from './exchangeRates';
+import { buildHistoricalRateResolver } from './analyticsSync';
+import type { HistoricalRateRequest } from './exchangeRates';
 
 export type TransactionBaseAmountState =
   | { status: 'loading'; currency: string }
@@ -61,9 +59,10 @@ export function buildTransactionBaseAmounts(
   transactions: readonly TransactionRecord[],
   baseCurrency: string,
   rates: readonly ExchangeRateRecord[],
+  rateResolver?: (quote: string, date: string) => number | null,
 ): Record<string, number> {
   const base = normalizedCurrency(baseCurrency);
-  const scopedRates = rates.filter((rate) => rate.base === base);
+  const resolveRate = rateResolver ?? buildHistoricalRateResolver(rates, base);
   const amounts: Record<string, number> = {};
 
   for (const transaction of transactions) {
@@ -76,7 +75,7 @@ export function buildTransactionBaseAmounts(
     }
     const date = transactionDateKey(transaction);
     if (!date) continue;
-    const rate = findHistoricalQuoteRate(scopedRates, quote, date);
+    const rate = resolveRate(quote, date);
     if (rate !== null) amounts[transaction.id] = amount / rate;
   }
 

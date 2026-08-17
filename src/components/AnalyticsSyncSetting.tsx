@@ -45,7 +45,7 @@ export function AnalyticsSyncSetting({
       <button
         type="button"
         onClick={onResync}
-        disabled={isResyncing}
+        disabled={isResyncing || status === 'syncing' || status === 'offline'}
         aria-label="Resync analytics"
         aria-busy={isResyncing}
         className="min-h-11 rounded-[10px] border border-border bg-surface px-3 text-[13px] font-semibold text-primary active:bg-surface-2 disabled:opacity-50"

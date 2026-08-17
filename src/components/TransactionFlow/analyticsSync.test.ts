@@ -4,6 +4,7 @@ import {
   buildAnalyticsRateChunks,
   buildAnalyticsRateReadRequest,
   buildAnalyticsRateRequirements,
+  buildAnalyticsRateRequirementsFingerprint,
   buildHistoricalRateResolver,
   unresolvedAnalyticsRateRequirements,
 } from './analyticsSync';
@@ -53,7 +54,7 @@ function rate(
 }
 
 describe('buildAnalyticsRateRequirements', () => {
-  it('discovers unique foreign expense and income dates but ignores transfers and base rows', () => {
+  it('discovers unique foreign transaction dates, including transfers, but ignores base rows', () => {
     const records = [
       transaction({ id: 'base', date: '2026-08-17T10:00:00', currency: 'THB' }),
       transaction({ id: 'usd', date: '2026-08-17T11:00:00', currency: 'USD' }),
@@ -76,6 +77,7 @@ describe('buildAnalyticsRateRequirements', () => {
       buildAnalyticsRateRequirements(records, 'THB', new Date(2026, 7, 17, 23, 59)),
     ).toEqual([
       { base: 'THB', quote: 'EUR', date: '2026-07-01' },
+      { base: 'THB', quote: 'GBP', date: '2026-08-17' },
       { base: 'THB', quote: 'USD', date: '2026-08-17' },
     ]);
   });
@@ -93,6 +95,23 @@ describe('buildAnalyticsRateRequirements', () => {
         new Date(2026, 7, 17, 23, 59),
       ),
     ).toEqual([]);
+  });
+
+  it('fingerprints the full requirement set independent of input order', () => {
+    const requirements = [
+      { base: 'THB', quote: 'USD', date: '2026-08-17' },
+      { base: 'THB', quote: 'EUR', date: '2026-07-01' },
+    ];
+
+    expect(buildAnalyticsRateRequirementsFingerprint(requirements)).toBe(
+      buildAnalyticsRateRequirementsFingerprint([...requirements].reverse()),
+    );
+    expect(
+      buildAnalyticsRateRequirementsFingerprint([
+        ...requirements,
+        { base: 'THB', quote: 'GBP', date: '2026-08-17' },
+      ]),
+    ).not.toBe(buildAnalyticsRateRequirementsFingerprint(requirements));
   });
 });
 

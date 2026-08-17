@@ -108,8 +108,9 @@ A requirement is the tuple:
 base currency + transaction currency + local transaction date
 ```
 
-Only valid expense and income rows whose currency differs from the analytics base currency create
-requirements. Transfers do not contribute to analytics and create no FX work.
+Every valid transaction whose currency differs from the analytics base currency creates a
+requirement. Transfers still contribute nothing to analytics totals, but they need FX data for the
+base-amount subline shown with transaction rows.
 
 Requirements come from two sources:
 
@@ -145,8 +146,9 @@ history and then force-refreshes all currently required chunks, still with bound
 network query. They synchronously select rows from the locally reconciled history and convert them
 using the current local-rate snapshot.
 
-Summary construction will partition relevant rows into resolvable and unresolved rows. Unresolved
-foreign rows are omitted before computing:
+Summary construction will partition relevant rows into resolvable and unresolved rows. Every
+unresolved foreign row, including a transfer that needs a base-amount subline, is omitted before
+computing:
 
 - current and comparison totals;
 - percentage comparisons;
@@ -229,7 +231,7 @@ The PR will report the original browser table, the post-change browser table, re
 
 ### Unit tests
 
-- Derive and deduplicate FX requirements from expense/income history while excluding transfers and
+- Derive and deduplicate FX requirements from all transaction history while excluding
   base-currency rows.
 - Mark exact-date and preceding-seven-day cached observations as resolved.
 - Group unresolved requirements into bounded monthly chunks with the expected quotes and ranges.

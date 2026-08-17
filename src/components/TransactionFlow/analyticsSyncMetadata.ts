@@ -5,6 +5,7 @@ export type AnalyticsSyncMetadata = {
   sheetId: string;
   baseCurrency: string;
   historyCapturedAt: string;
+  requirementsFingerprint: string;
   completedAt: string;
 };
 
@@ -46,6 +47,8 @@ export async function readAnalyticsSyncMetadata(
       value.sheetId !== sheetId ||
       value.baseCurrency !== normalizedBase ||
       !isIsoTimestamp(value.historyCapturedAt) ||
+      typeof value.requirementsFingerprint !== 'string' ||
+      value.requirementsFingerprint.length === 0 ||
       !isIsoTimestamp(value.completedAt)
     ) {
       return null;
@@ -54,6 +57,7 @@ export async function readAnalyticsSyncMetadata(
       sheetId,
       baseCurrency: normalizedBase,
       historyCapturedAt: value.historyCapturedAt,
+      requirementsFingerprint: value.requirementsFingerprint,
       completedAt: value.completedAt,
     };
   } catch {

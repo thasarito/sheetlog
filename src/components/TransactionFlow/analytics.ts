@@ -582,20 +582,23 @@ export function buildAnalyticsSummary({
   const currentRows = rowsInPeriod(transactions, periods.current);
   const comparisonRows = rowsInPeriod(transactions, periods.comparison);
   const resolveRate = buildHistoricalRateResolver(rates, baseCurrency);
-  const resolvedRates = new Map<string, number>();
+  const resolvedRates = new Map<string, number | null>();
+  const normalizedBaseCurrency = baseCurrency.trim().toUpperCase();
+  const resolveMemoizedRate = (quoteValue: string, dateKey: string) => {
+    const quote = quoteValue.trim().toUpperCase();
+    const rowKey = `${quote}:${dateKey}`;
+    if (resolvedRates.has(rowKey)) return resolvedRates.get(rowKey) ?? null;
+    const rate = resolveRate(quote, dateKey);
+    resolvedRates.set(rowKey, rate);
+    return rate;
+  };
 
   const hasUsableRate = (row: TransactionRecord) => {
-    if (row.currency === baseCurrency) return true;
+    if (row.currency.trim().toUpperCase() === normalizedBaseCurrency) return true;
     const date = analyticsDate(row);
     if (!date) return false;
     const dateKey = format(date, 'yyyy-MM-dd');
-    const rowKey = `${row.currency}:${dateKey}`;
-    const existing = resolvedRates.get(rowKey);
-    if (existing !== undefined) return true;
-    const rate = resolveRate(row.currency, dateKey);
-    if (rate === null) return false;
-    resolvedRates.set(rowKey, rate);
-    return true;
+    return resolveMemoizedRate(row.currency, dateKey) !== null;
   };
   const rateScopedCurrentRows = currentRows.filter(hasUsableRate);
   const rateScopedComparisonRows = comparisonRows.filter(hasUsableRate);
@@ -607,6 +610,7 @@ export function buildAnalyticsSummary({
     ],
     baseCurrency,
     rates,
+    resolveMemoizedRate,
   );
   const convertedAmount: ConvertedAmount = (row) =>
     allConvertedAmounts[row.id] ?? 0;

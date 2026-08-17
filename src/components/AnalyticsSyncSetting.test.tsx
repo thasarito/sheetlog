@@ -49,4 +49,32 @@ describe('AnalyticsSyncSetting', () => {
     expect(button).toHaveAttribute('aria-busy', 'true');
     expect(rendered.container.innerHTML).not.toContain('shadow');
   });
+
+  it('disables resync while offline', () => {
+    render(
+      <AnalyticsSyncSetting
+        status="offline"
+        isResyncing={false}
+        onResync={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Resync analytics' }),
+    ).toBeDisabled();
+  });
+
+  it('prevents a second sync while automatic work is active', () => {
+    render(
+      <AnalyticsSyncSetting
+        status="syncing"
+        isResyncing={false}
+        onResync={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Resync analytics' }),
+    ).toBeDisabled();
+  });
 });

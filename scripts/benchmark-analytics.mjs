@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 const ROOT = new URL('../', import.meta.url).pathname;
+const VITE_BIN = new URL('../node_modules/vite/bin/vite.js', import.meta.url).pathname;
 const PORT = 53741;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const NOW = new Date('2026-08-17T12:00:00.000Z');
@@ -63,15 +64,15 @@ async function waitForServer(child) {
 }
 
 async function runBrowserBenchmark() {
-  const server = spawn(process.execPath, ['scripts/vite.js', 'dev', '--host', '127.0.0.1'], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      SHEETLOG_DEV_PORT: String(PORT),
-      VITE_DEV_MODE: 'true',
+  const server = spawn(
+    process.execPath,
+    [VITE_BIN, 'dev', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'],
+    {
+      cwd: ROOT,
+      env: { ...process.env, VITE_DEV_MODE: 'true' },
+      stdio: ['ignore', 'pipe', 'pipe'],
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  );
   let serverError = '';
   server.stderr.on('data', (chunk) => {
     serverError += String(chunk);

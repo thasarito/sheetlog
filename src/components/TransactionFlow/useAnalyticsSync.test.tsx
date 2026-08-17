@@ -3,7 +3,11 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../lib/db';
-import type { ExchangeRateRecord, TransactionRecord } from '../../lib/types';
+import type {
+  ExchangeRateRecord,
+  TransactionRecord,
+  TransactionType,
+} from '../../lib/types';
 import { useAnalyticsSync } from './useAnalyticsSync';
 
 const state = vi.hoisted(() => ({
@@ -52,10 +56,13 @@ vi.mock('./exchangeRates', async (importOriginal) => ({
   backfillHistoricalRateChunks: state.backfill,
 }));
 
-function transaction(currency = 'USD'): TransactionRecord {
+function transaction(
+  currency = 'USD',
+  type: TransactionType = 'expense',
+): TransactionRecord {
   return {
     id: `transaction-${currency}`,
-    type: 'expense',
+    type,
     amount: 3,
     currency,
     account: 'Cash',
@@ -75,6 +82,17 @@ function usdRate(): ExchangeRateRecord {
     quote: 'USD',
     date: '2026-08-17',
     rate: 0.03,
+    fetchedAt: '2026-08-17T10:00:00.000Z',
+  };
+}
+
+function eurRate(): ExchangeRateRecord {
+  return {
+    id: 'THB:EUR:2026-08-17',
+    base: 'THB',
+    quote: 'EUR',
+    date: '2026-08-17',
+    rate: 0.025,
     fetchedAt: '2026-08-17T10:00:00.000Z',
   };
 }
@@ -173,7 +191,7 @@ describe('useAnalyticsSync', () => {
     expect(state.backfill).not.toHaveBeenCalled();
   });
 
-  it('immediately schedules a newly observed foreign transaction', async () => {
+  it('immediately schedules a newly observed foreign transaction, including a transfer', async () => {
     state.history.records = [transaction('THB')];
     state.history.isDownloading = false;
     state.history.remoteStatus = 'success';
@@ -184,7 +202,10 @@ describe('useAnalyticsSync', () => {
     expect(state.backfill).not.toHaveBeenCalled();
 
     act(() => {
-      state.history.records = [transaction('THB'), transaction('EUR')];
+      state.history.records = [
+        transaction('THB'),
+        transaction('EUR', 'transfer'),
+      ];
       rerender();
     });
 
@@ -206,6 +227,40 @@ describe('useAnalyticsSync', () => {
     );
     await waitFor(() => expect(result.current.status).toBe('synced'));
     expect(result.current.lastSyncedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const stored = await db.settings.get('analytics-sync:sheet-a:THB');
+    expect(JSON.parse(stored?.value ?? '{}').requirementsFingerprint).toMatch(
+      /^1:[0-9a-f]{16}$/,
+    );
+  });
+
+  it('replaces a stale completion marker when local FX requirements change', async () => {
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    const { wrapper } = createHarness();
+    const rendered = renderHook(() => useAnalyticsSync('THB'), { wrapper });
+
+    await waitFor(() => expect(rendered.result.current.status).toBe('synced'));
+    const firstRecord = await db.settings.get('analytics-sync:sheet-a:THB');
+    const firstFingerprint = JSON.parse(
+      firstRecord?.value ?? '{}',
+    ).requirementsFingerprint;
+
+    state.readRates.mockResolvedValue({
+      rates: [usdRate(), eurRate()],
+      refreshFailed: false,
+    });
+    act(() => {
+      state.history.records = [transaction(), transaction('EUR', 'transfer')];
+      rendered.rerender();
+    });
+
+    await waitFor(async () => {
+      const nextRecord = await db.settings.get('analytics-sync:sheet-a:THB');
+      expect(JSON.parse(nextRecord?.value ?? '{}').requirementsFingerprint).not.toBe(
+        firstFingerprint,
+      );
+    });
+    expect(rendered.result.current.status).toBe('synced');
   });
 
   it('force-refreshes history and all discovered chunks on manual resync', async () => {
@@ -258,7 +313,7 @@ describe('useAnalyticsSync', () => {
     act(() => result.current.resync());
 
     await waitFor(() => expect(result.current.isResyncing).toBe(false));
-    expect(result.current.status).toBe('incomplete');
+    await waitFor(() => expect(result.current.status).toBe('incomplete'));
     expect(await db.settings.get('analytics-sync:sheet-a:THB')).toBeUndefined();
   });
 });

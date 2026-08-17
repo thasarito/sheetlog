@@ -6,6 +6,7 @@ import {
   buildAnalyticsRateChunks,
   buildAnalyticsRateReadRequest,
   buildAnalyticsRateRequirements,
+  buildAnalyticsRateRequirementsFingerprint,
   buildHistoricalRateResolver,
   unresolvedAnalyticsRateRequirements,
 } from './analyticsSync';
@@ -63,6 +64,10 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     () => buildAnalyticsRateRequirements(history.records, baseCurrency),
     [baseCurrency, history.records],
   );
+  const requirementsFingerprint = useMemo(
+    () => buildAnalyticsRateRequirementsFingerprint(requirements),
+    [requirements],
+  );
   const readRequest = useMemo(
     () => buildAnalyticsRateReadRequest(requirements),
     [requirements],
@@ -91,10 +96,8 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
   const chunks = useMemo(() => buildAnalyticsRateChunks(unresolved), [unresolved]);
 
   const invalidateRateCache = async () => {
-    if (!readRequest) return;
     await queryClient.invalidateQueries({
-      queryKey: exchangeRateKeys.cached(readRequest),
-      exact: true,
+      queryKey: exchangeRateKeys.all,
     });
   };
 
@@ -107,7 +110,7 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
       }),
     retry: false,
   });
-  const attemptScope = `${sheetId ?? ''}:${baseCurrency}:${history.meta?.capturedAt ?? ''}:${isOnline}`;
+  const attemptScope = `${sheetId ?? ''}:${baseCurrency}:${history.meta?.capturedAt ?? ''}:${requirementsFingerprint}:${isOnline}`;
   const attemptedRef = useRef<{ scope: string; keys: Set<string> }>({
     scope: attemptScope,
     keys: new Set(),
@@ -202,7 +205,8 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
   const hasCurrentCompletion =
     metadataQuery.data?.sheetId === sheetId &&
     metadataQuery.data?.baseCurrency === baseCurrency &&
-    metadataQuery.data?.historyCapturedAt === history.meta?.capturedAt;
+    metadataQuery.data?.historyCapturedAt === history.meta?.capturedAt &&
+    metadataQuery.data?.requirementsFingerprint === requirementsFingerprint;
 
   useEffect(() => {
     if (
@@ -227,6 +231,7 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
       sheetId,
       baseCurrency,
       historyCapturedAt: history.meta.capturedAt,
+      requirementsFingerprint,
       completedAt: new Date().toISOString(),
     });
   }, [
@@ -242,6 +247,7 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     history.remoteStatus,
     metadataQuery.isSuccess,
     readRequest,
+    requirementsFingerprint,
     resyncFailed,
     resyncMutation.isPending,
     sheetId,
@@ -273,7 +279,15 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     lastSyncedAt: metadataQuery.data?.completedAt,
     isResyncing: resyncMutation.isPending,
     resync: () => {
-      if (isOnline && !resyncMutation.isPending) resyncMutation.mutate();
+      if (
+        isOnline &&
+        !autoBackfill.isPending &&
+        !history.isRefreshing &&
+        !history.isDownloading &&
+        !resyncMutation.isPending
+      ) {
+        resyncMutation.mutate();
+      }
     },
   };
 }

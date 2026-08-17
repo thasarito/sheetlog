@@ -24,9 +24,10 @@
 Cover these contracts in `analyticsSync.test.ts`:
 
 ```ts
-it('discovers unique foreign expense and income dates but ignores transfers and base rows', () => {
+it('discovers unique foreign transaction dates, including transfers, but ignores base rows', () => {
   expect(buildAnalyticsRateRequirements(records, 'THB')).toEqual([
     { base: 'THB', quote: 'EUR', date: '2026-07-01' },
+    { base: 'THB', quote: 'GBP', date: '2026-08-17' },
     { base: 'THB', quote: 'USD', date: '2026-08-17' },
   ]);
 });
@@ -40,8 +41,8 @@ it('resolves the closest observation within seven calendar days only', () => {
 it('groups unresolved requirements by transaction month with stable quote ordering', () => {
   expect(buildAnalyticsRateChunks(requirements)).toEqual([
     {
-      key: 'THB:2026-08:EUR,USD:2026-08-03:2026-08-17',
-      request: { base: 'THB', quotes: ['EUR', 'USD'], from: '2026-08-03', to: '2026-08-17' },
+      key: 'THB:2026-08:EUR,GBP,USD:2026-08-03:2026-08-17',
+      request: { base: 'THB', quotes: ['EUR', 'GBP', 'USD'], from: '2026-08-03', to: '2026-08-17' },
     },
   ]);
 });
@@ -338,7 +339,7 @@ Expected: FAIL because the current builder returns `missing-rates`.
 
 - [ ] **Step 3: Filter unresolved rows before every summary calculation**
 
-Use `buildHistoricalRateResolver` once per build. Define `hasUsableRate(row)` and filter both current and comparison rows before thresholds, totals, series, buckets, categories, `convertedAmounts`, and `transactions`. Base-currency rows and transfers retain existing behavior. Keep the `{ status: 'ready', summary }` shape for compatibility, but remove `MissingAnalyticsRate`, the `missing-rates` variant, `getAnalyticsRateRequest`, and its tests.
+Use `buildHistoricalRateResolver` once per build. Define `hasUsableRate(row)` and filter both current and comparison rows before thresholds, totals, series, buckets, categories, `convertedAmounts`, and `transactions`. Base-currency rows remain immediately usable; foreign transfers follow the same availability rule because their transaction subline needs a converted amount. Keep the `{ status: 'ready', summary }` shape for compatibility, but remove `MissingAnalyticsRate`, the `missing-rates` variant, `getAnalyticsRateRequest`, and its tests.
 
 - [ ] **Step 4: Refactor Home to consume controller snapshots only**
 

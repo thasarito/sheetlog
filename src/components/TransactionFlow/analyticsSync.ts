@@ -38,6 +38,28 @@ function requirementSort(
   );
 }
 
+function hashRequirementParts(
+  requirements: readonly AnalyticsRateRequirement[],
+  seed: number,
+): string {
+  let hash = seed;
+  for (const requirement of [...requirements].sort(requirementSort)) {
+    const value = `${requirement.base}\0${requirement.quote}\0${requirement.date}\n`;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = Math.imul(hash ^ value.charCodeAt(index), 16_777_619);
+    }
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export function buildAnalyticsRateRequirementsFingerprint(
+  requirements: readonly AnalyticsRateRequirement[],
+): string {
+  const left = hashRequirementParts(requirements, 2_166_136_261);
+  const right = hashRequirementParts(requirements, 2_654_435_769);
+  return `${requirements.length}:${left}${right}`;
+}
+
 export function buildAnalyticsRateRequirements(
   transactions: TransactionRecord[],
   baseCurrency: string,
@@ -48,12 +70,7 @@ export function buildAnalyticsRateRequirements(
   const unique = new Map<string, AnalyticsRateRequirement>();
 
   for (const transaction of transactions) {
-    if (
-      (transaction.type !== 'expense' && transaction.type !== 'income') ||
-      !Number.isFinite(transaction.amount)
-    ) {
-      continue;
-    }
+    if (!Number.isFinite(transaction.amount)) continue;
     const quote = normalizeCurrency(transaction.currency);
     if (!base || !quote || quote === base) continue;
     const parsed = tryParseDate(transaction.date);
@@ -68,7 +85,7 @@ export function buildAnalyticsRateRequirements(
 }
 
 export function buildHistoricalRateResolver(
-  rates: ExchangeRateRecord[],
+  rates: readonly ExchangeRateRecord[],
   baseCurrency: string,
 ): (quote: string, date: string) => number | null {
   const base = normalizeCurrency(baseCurrency);
