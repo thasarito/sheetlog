@@ -26,6 +26,7 @@ type TouchDrag = {
   lastTime: number;
   velocity: number;
   axis: 'horizontal' | 'vertical' | null;
+  cancelled: boolean;
 };
 
 const AXIS_LOCK_THRESHOLD_PX = 6;
@@ -33,6 +34,7 @@ const CENTER_DURATION_MS = 240;
 const MOMENTUM_DECAY = 0.95;
 const MOMENTUM_MAX_DURATION_MS = 520;
 const MOMENTUM_MIN_VELOCITY = 0.02;
+const RELEASE_VELOCITY_IDLE_MS = 120;
 const WHEEL_SETTLE_DELAY_MS = 120;
 
 function prefersReducedMotion(): boolean {
@@ -66,6 +68,11 @@ export function AnalyticsPeriodPicker({
   optionsRef.current = options;
   valueRef.current = value;
   onChangeRef.current = onChange;
+
+  const optionSetSignature = useMemo(
+    () => options.map((option) => `${option.key}\u0000${option.offset}`).join('\u0001'),
+    [options],
+  );
 
   const selectedIndex = useMemo(() => {
     const index = options.findIndex((option) => option.offset === value);
@@ -254,6 +261,15 @@ export function AnalyticsPeriodPicker({
   );
 
   const syncToControlled = useCallback(() => {
+    const drag = touchDragRef.current;
+    if (drag) {
+      drag.cancelled = true;
+      suppressClickRef.current = true;
+      if (clickResetTimerRef.current !== null) {
+        window.clearTimeout(clickResetTimerRef.current);
+        clickResetTimerRef.current = null;
+      }
+    }
     cancelMotion();
     clearWheelTimer();
     cancelDragFrame();
@@ -269,10 +285,11 @@ export function AnalyticsPeriodPicker({
     selectedIndex,
   ]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: semantic option-set changes must cancel in-flight motion even when length and selected index stay equal
   useLayoutEffect(() => {
     optionRefs.current.length = options.length;
     syncToControlled();
-  }, [options.length, syncToControlled]);
+  }, [optionSetSignature, options.length, syncToControlled]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -332,6 +349,7 @@ export function AnalyticsPeriodPicker({
         lastTime: performance.now(),
         velocity: 0,
         axis: null,
+        cancelled: false,
       };
     },
     [cancelDragFrame, cancelMotion, clearWheelTimer],
@@ -340,7 +358,7 @@ export function AnalyticsPeriodPicker({
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const drag = touchDragRef.current;
-      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (!drag || drag.pointerId !== event.pointerId || drag.cancelled) return;
       const deltaX = event.clientX - drag.startX;
       const deltaY = event.clientY - drag.startY;
       if (drag.axis === null) {
@@ -376,16 +394,25 @@ export function AnalyticsPeriodPicker({
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
 
-      if (cancelled) {
+      if (cancelled || drag.cancelled) {
         cancelDragFrame();
         centerIndex(controlledIndexRef.current, false);
       } else if (drag.axis === 'horizontal') {
         flushDragTranslate();
+        const releaseElapsed = Math.max(0, performance.now() - drag.lastTime);
+        const idleDecay = Math.max(0, 1 - releaseElapsed / RELEASE_VELOCITY_IDLE_MS);
+        drag.velocity *= idleDecay;
+        if (releaseElapsed > 0 && event.clientX !== drag.lastX) {
+          const releaseVelocity = (event.clientX - drag.lastX) / releaseElapsed;
+          drag.velocity = drag.velocity * 0.75 + releaseVelocity * 0.25;
+        }
         if (Math.abs(drag.velocity) > MOMENTUM_MIN_VELOCITY) {
           startMomentum(drag.velocity);
         } else {
           settleNearest();
         }
+      } else {
+        centerIndex(controlledIndexRef.current, false);
       }
 
       if (clickResetTimerRef.current !== null) {

@@ -15,6 +15,13 @@ const options: AnalyticsPeriodOption[] = [-3, -2, -1, 0].map((offset, index) => 
   },
 }));
 
+const replacementOptions: AnalyticsPeriodOption[] = options.map((option) => ({
+  ...option,
+  key: option.key.replace('month', 'quarter'),
+  label: option.label.replace('2026', 'quarter'),
+  accessibleLabel: option.accessibleLabel.replace('2026', 'quarter'),
+}));
+
 function useMotionClock() {
   vi.useFakeTimers({
     toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'],
@@ -252,6 +259,140 @@ describe('AnalyticsPeriodPicker', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(-3);
+  });
+
+  it('cancels an in-flight commit when a same-length period set replaces the options', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />,
+    );
+    setPickerGeometry();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous period, July 2026' }));
+    advanceMotion(80);
+    expect(onChange).not.toHaveBeenCalled();
+
+    rerender(
+      <AnalyticsPeriodPicker options={replacementOptions} value={0} onChange={onChange} />,
+    );
+    advanceMotion(500);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('option', { name: 'August quarter' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('aborts an active drag when the controlled period changes', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />,
+    );
+    const { picker, track } = setPickerGeometry();
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 6,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 20,
+    });
+    advanceMotion(16);
+    fireEvent.pointerMove(picker, {
+      pointerId: 6,
+      pointerType: 'touch',
+      clientX: 150,
+      clientY: 21,
+    });
+    advanceMotion(17);
+
+    rerender(<AnalyticsPeriodPicker options={options} value={-2} onChange={onChange} />);
+    const controlledTransform = track.style.transform;
+    fireEvent.pointerMove(picker, {
+      pointerId: 6,
+      pointerType: 'touch',
+      clientX: 230,
+      clientY: 21,
+    });
+    advanceMotion(17);
+    fireEvent.pointerUp(picker, {
+      pointerId: 6,
+      pointerType: 'touch',
+      clientX: 230,
+      clientY: 21,
+    });
+    advanceMotion(1_000);
+
+    expect(track.style.transform).toBe(controlledTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not fling after the user pauses before releasing a short swipe', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
+    const { picker } = setPickerGeometry();
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 7,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 20,
+    });
+    advanceMotion(16);
+    fireEvent.pointerMove(picker, {
+      pointerId: 7,
+      pointerType: 'touch',
+      clientX: 130,
+      clientY: 21,
+    });
+    advanceMotion(317);
+    fireEvent.pointerUp(picker, {
+      pointerId: 7,
+      pointerType: 'touch',
+      clientX: 130,
+      clientY: 21,
+    });
+    advanceMotion(1_000);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('recenters after a non-horizontal touch interrupts an animation', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+    const controlledTransform = track.style.transform;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous period, June 2026' }));
+    advanceMotion(80);
+    expect(track.style.transform).not.toBe(controlledTransform);
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 8,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(picker, {
+      pointerId: 8,
+      pointerType: 'touch',
+      clientX: 102,
+      clientY: 60,
+    });
+    fireEvent.pointerUp(picker, {
+      pointerId: 8,
+      pointerType: 'touch',
+      clientX: 102,
+      clientY: 60,
+    });
+    advanceMotion(400);
+
+    expect(track.style.transform).toBe(controlledTransform);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('uses settled motion for option, keyboard, and horizontal wheel navigation', () => {
