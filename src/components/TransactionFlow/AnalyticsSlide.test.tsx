@@ -386,25 +386,4 @@ describe('AnalyticsSlide', () => {
     expect(screen.getByText('12% below previous month')).toBeInTheDocument();
   });
 
-  it('shows the missing historical rate before generic offline errors', async () => {
-    const user = userEvent.setup();
-    const onRetry = vi.fn();
-    render(
-      <AnalyticsSlide
-        {...periodProps}
-        range="week"
-        onRangeChange={vi.fn()}
-        missingRate={{ currency: 'USD', date: '2026-08-16' }}
-        isLoading={false}
-        isOffline
-        error={new Error('network')}
-        onRetry={onRetry}
-        onViewAll={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Rate unavailable for USD on Aug 16')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(onRetry).toHaveBeenCalledTimes(1);
-  });
 });

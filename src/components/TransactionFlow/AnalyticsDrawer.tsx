@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { BadgeDollarSign, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
@@ -22,7 +22,6 @@ import {
   type AnalyticsRange,
   type AnalyticsSummary,
   type DatePeriod,
-  type MissingAnalyticsRate,
 } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsCategories } from './AnalyticsCategories';
@@ -43,7 +42,6 @@ type AnalyticsDrawerProps = {
   onOpenChange: (open: boolean) => void;
   transactions: TransactionRecord[];
   summary?: AnalyticsSummary;
-  missingRate?: MissingAnalyticsRate;
   baseCurrency: string;
   bigSpendingThreshold: number | null;
   noBigSpending: boolean;
@@ -71,7 +69,6 @@ export function AnalyticsDrawer({
   onOpenChange,
   transactions,
   summary: incomingSummary,
-  missingRate,
   baseCurrency,
   bigSpendingThreshold,
   noBigSpending,
@@ -229,9 +226,7 @@ export function AnalyticsDrawer({
       : selectedPeriod?.accessibleLabel ?? range;
   const analyticsAnnouncement = !open
     ? ''
-    : missingRate
-      ? `Analytics unavailable · Rate unavailable for ${missingRate.currency} on ${format(parseISO(missingRate.date), 'MMM d')}`
-      : hasCompleteHistory && summary && scope
+    : hasCompleteHistory && summary && scope
       ? selectedBucketDetails
         ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, summary.currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, summary.currency)} · Net ${formatAnalyticsAmount(scope.netTotal, summary.currency)}`
         : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, summary.currency)}`
@@ -317,21 +312,7 @@ export function AnalyticsDrawer({
               />
             ) : null}
 
-            {missingRate ? (
-              <div className="flex min-h-48 items-center justify-between gap-3">
-                <span className="text-sm text-muted-foreground">
-                  Rate unavailable for {missingRate.currency} on{' '}
-                  {format(parseISO(missingRate.date), 'MMM d')}
-                </span>
-                <button
-                  type="button"
-                  onClick={onRetry}
-                  className="min-h-11 font-semibold text-primary"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : !hasCompleteHistory && isOffline ? (
+            {!hasCompleteHistory && isOffline ? (
               <div className="flex min-h-48 items-center text-sm text-muted-foreground">
                 Full range unavailable offline
               </div>

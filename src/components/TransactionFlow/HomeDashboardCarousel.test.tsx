@@ -8,12 +8,10 @@ import type {
   AnalyticsRange,
   AnalyticsSummary,
   DatePeriod,
-  MissingAnalyticsRate,
 } from "./analytics";
-import type { HistoricalRateData, HistoricalRateRequest } from "./exchangeRates";
 import { HomeDashboardCarousel } from "./HomeDashboardCarousel";
+import type { AnalyticsSyncController } from './useAnalyticsSync';
 
-const historyEnabledCalls: boolean[] = [];
 const analyticsSlideCalls: Array<{
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
@@ -22,7 +20,6 @@ const analyticsSlideCalls: Array<{
   onPeriodChange: (offset: number) => void;
   onBucketSelect?: (key: string, trigger: HTMLElement) => void;
   summary?: AnalyticsSummary;
-  missingRate?: MissingAnalyticsRate;
 }> = [];
 const analyticsDrawerCalls: Array<{
   customPeriod: DatePeriod;
@@ -31,7 +28,6 @@ const analyticsDrawerCalls: Array<{
   periodOffset: number;
   onPeriodChange: (offset: number) => void;
   summary?: AnalyticsSummary;
-  missingRate?: MissingAnalyticsRate;
   noBigSpending: boolean;
   onNoBigSpendingToggle: () => void;
 }> = [];
@@ -39,9 +35,9 @@ const analyticsRangeDrawerCalls: Array<{
   open: boolean;
   value: DatePeriod;
 }> = [];
-const rateQueryCalls: Array<{ request: HistoricalRateRequest | null; enabled: boolean }> = [];
 let historyData: TransactionRecord[] = [];
-let rateData: HistoricalRateData | undefined;
+let rateData: AnalyticsSyncController['rates'] = [];
+const resync = vi.fn();
 
 const historyRecords: TransactionRecord[] = [
   {
@@ -59,36 +55,6 @@ const historyRecords: TransactionRecord[] = [
     updatedAt: "2026-07-01T12:00:00",
   },
 ];
-
-vi.mock("./useTransactionHistoryQuery", () => ({
-  useTransactionHistoryQuery: (enabled: boolean) => {
-    historyEnabledCalls.push(enabled);
-    return {
-      records: historyData,
-      meta: null,
-      error: null,
-      hasCompleteCache: true,
-      isLoading: false,
-      isRefreshing: false,
-      isDownloading: false,
-      isOnline: true,
-      refresh: vi.fn(),
-    };
-  },
-}));
-
-vi.mock("./exchangeRateQueries", () => ({
-  useHistoricalRatesQuery: (request: HistoricalRateRequest | null, enabled: boolean) => {
-    rateQueryCalls.push({ request, enabled });
-    return {
-      data: request ? rateData : undefined,
-      dataUpdatedAt: Date.now(),
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    };
-  },
-}));
 
 vi.mock("./TopDashboard", () => ({
   TopDashboard: ({ onViewAll }: { onViewAll: () => void }) => (
@@ -108,7 +74,6 @@ vi.mock("./AnalyticsSlide", () => ({
     onCustomRequest: (trigger: HTMLButtonElement) => void;
     onBucketSelect?: (key: string, trigger: HTMLElement) => void;
     summary?: AnalyticsSummary;
-    missingRate?: MissingAnalyticsRate;
     onViewAll: (event: MouseEvent<HTMLButtonElement>) => void;
   }) => {
     analyticsSlideCalls.push(props);
@@ -159,7 +124,6 @@ vi.mock("./AnalyticsDrawer", () => ({
     periodOffset,
     onPeriodChange,
     summary,
-    missingRate,
     noBigSpending,
     onNoBigSpendingToggle,
   }: {
@@ -171,7 +135,6 @@ vi.mock("./AnalyticsDrawer", () => ({
     periodOffset: number;
     onPeriodChange: (offset: number) => void;
     summary?: AnalyticsSummary;
-    missingRate?: MissingAnalyticsRate;
     noBigSpending: boolean;
     onNoBigSpendingToggle: () => void;
   }) => {
@@ -182,7 +145,6 @@ vi.mock("./AnalyticsDrawer", () => ({
       periodOffset,
       onPeriodChange,
       summary,
-      missingRate,
       noBigSpending,
       onNoBigSpendingToggle,
     });
@@ -247,6 +209,15 @@ function renderCarousel({
     <HomeDashboardCarousel
       baseCurrency="THB"
       bigSpendingThreshold={bigSpendingThreshold}
+      analyticsSync={{
+        records: historyData,
+        rates: rateData,
+        hasLocalHistory: true,
+        status: 'synced',
+        lastSyncedAt: '2026-08-17T12:00:00.000Z',
+        isResyncing: false,
+        resync,
+      }}
       onToast={onToast}
       onEditTransaction={vi.fn()}
       onViewAllTransactions={onViewAllTransactions}
@@ -269,16 +240,15 @@ function renderCarousel({
 
 describe("HomeDashboardCarousel", () => {
   beforeEach(() => {
-    historyEnabledCalls.splice(0);
     historyData = historyRecords;
-    rateData = undefined;
-    rateQueryCalls.splice(0);
+    rateData = [];
+    resync.mockReset();
     analyticsSlideCalls.splice(0);
     analyticsDrawerCalls.splice(0);
     analyticsRangeDrawerCalls.splice(0);
   });
 
-  it("starts on Transactions and lazily enables history on Analytics", async () => {
+  it("starts on Transactions while analytics stays ready from local snapshots", async () => {
     const user = userEvent.setup();
     renderCarousel();
 
@@ -288,7 +258,7 @@ describe("HomeDashboardCarousel", () => {
     expect(
       screen.getByLabelText("Transactions, slide 1 of 2"),
     ).not.toHaveAttribute("aria-hidden", "true");
-    expect(historyEnabledCalls.at(-1)).toBe(false);
+    expect(analyticsSlideCalls.at(-1)?.summary).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Analytics slide" }));
     await waitFor(() =>
       expect(
@@ -298,7 +268,6 @@ describe("HomeDashboardCarousel", () => {
     expect(
       screen.getByLabelText("Analytics, slide 2 of 2"),
     ).not.toHaveAttribute("aria-hidden", "true");
-    expect(historyEnabledCalls.at(-1)).toBe(true);
     await user.click(
       screen.getByRole("button", { name: "Transactions slide" }),
     );
@@ -307,7 +276,7 @@ describe("HomeDashboardCarousel", () => {
         screen.getByRole("button", { name: "Transactions slide" }),
       ).toHaveAttribute("aria-current", "true"),
     );
-    expect(historyEnabledCalls.at(-1)).toBe(true);
+    expect(resync).not.toHaveBeenCalled();
   });
 
   it("supports arrow keys and opens each dedicated sheet flow", async () => {
@@ -573,8 +542,7 @@ describe("HomeDashboardCarousel", () => {
         updatedAt: date,
       },
     ];
-    rateData = {
-      rates: [
+    rateData = [
         {
           id: `THB:USD:${day}`,
           base: 'THB',
@@ -583,15 +551,12 @@ describe("HomeDashboardCarousel", () => {
           rate: 0.03,
           fetchedAt: date,
         },
-      ],
-      refreshFailed: false,
-    };
+    ];
 
     renderCarousel();
 
     const latestSlide = analyticsSlideCalls.at(-1);
     const latestDrawer = analyticsDrawerCalls.at(-1);
-    expect(rateQueryCalls.at(-1)?.request?.quotes).toEqual(['USD']);
     expect(latestSlide?.summary?.currency).toBe('THB');
     expect(latestSlide?.summary?.expenseTotal).toBe(200);
     expect(latestDrawer?.summary).toBe(latestSlide?.summary);

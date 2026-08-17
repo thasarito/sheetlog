@@ -27,7 +27,7 @@ import {
 } from 'date-fns';
 import { tryParseDate } from '../../lib/date-utils';
 import type { ExchangeRateRecord, TransactionRecord, TransactionType } from '../../lib/types';
-import { findHistoricalQuoteRate, type HistoricalRateRequest } from './exchangeRates';
+import { buildHistoricalRateResolver } from './analyticsSync';
 import { buildTransactionBaseAmounts } from './transactionBaseAmounts';
 
 export type AnalyticsRange = 'week' | 'month' | 'quarter' | 'year' | 'custom';
@@ -109,14 +109,7 @@ export type AnalyticsSummary = AnalyticsScope & {
   excludedBigSpendingCount: number;
 };
 
-export type MissingAnalyticsRate = {
-  currency: string;
-  date: string;
-};
-
-export type AnalyticsBuildResult =
-  | { status: 'ready'; summary: AnalyticsSummary }
-  | { status: 'missing-rates'; missingRates: MissingAnalyticsRate[] };
+export type AnalyticsBuildResult = { status: 'ready'; summary: AnalyticsSummary };
 
 type BuildAnalyticsSummaryInput = {
   transactions: TransactionRecord[];
@@ -131,10 +124,6 @@ type BuildAnalyticsSummaryInput = {
 
 const SERIES_TONES: AnalyticsSeriesTone[] = ['emerald', 'cyan', 'violet', 'rose'];
 const MONDAY_WEEK = { weekStartsOn: 1 as const };
-type AnalyticsRateRequestInput = Omit<
-  BuildAnalyticsSummaryInput,
-  'rates' | 'bigSpendingThreshold'
->;
 
 type ConvertedAmount = (row: TransactionRecord) => number;
 
@@ -592,36 +581,32 @@ export function buildAnalyticsSummary({
   const periods = getAnalyticsPeriods(range, now, customPeriod, periodOffset);
   const currentRows = rowsInPeriod(transactions, periods.current);
   const comparisonRows = rowsInPeriod(transactions, periods.comparison);
-  const contributingRows = [
-    ...currentRows.filter((row) => row.type === 'expense' || row.type === 'income'),
-    ...comparisonRows.filter((row) => row.type === 'expense'),
-  ];
-  const scopedRates = rates.filter((rate) => rate.base === baseCurrency);
-  const missingRates = new Map<string, MissingAnalyticsRate>();
+  const resolveRate = buildHistoricalRateResolver(rates, baseCurrency);
+  const resolvedRates = new Map<string, number>();
 
-  for (const row of contributingRows) {
-    if (row.currency === baseCurrency) continue;
+  const hasUsableRate = (row: TransactionRecord) => {
+    if (row.currency === baseCurrency) return true;
     const date = analyticsDate(row);
-    if (!date) continue;
+    if (!date) return false;
     const dateKey = format(date, 'yyyy-MM-dd');
     const rowKey = `${row.currency}:${dateKey}`;
-    const rate = findHistoricalQuoteRate(scopedRates, row.currency, dateKey);
-    if (rate === null) {
-      missingRates.set(rowKey, { currency: row.currency, date: dateKey });
-    }
-  }
-
-  if (missingRates.size > 0) {
-    return { status: 'missing-rates', missingRates: [...missingRates.values()] };
-  }
+    const existing = resolvedRates.get(rowKey);
+    if (existing !== undefined) return true;
+    const rate = resolveRate(row.currency, dateKey);
+    if (rate === null) return false;
+    resolvedRates.set(rowKey, rate);
+    return true;
+  };
+  const rateScopedCurrentRows = currentRows.filter(hasUsableRate);
+  const rateScopedComparisonRows = comparisonRows.filter(hasUsableRate);
 
   const allConvertedAmounts = buildTransactionBaseAmounts(
     [
-      ...currentRows,
-      ...comparisonRows.filter((row) => row.type === 'expense'),
+      ...rateScopedCurrentRows,
+      ...rateScopedComparisonRows.filter((row) => row.type === 'expense'),
     ],
     baseCurrency,
-    scopedRates,
+    rates,
   );
   const convertedAmount: ConvertedAmount = (row) =>
     allConvertedAmounts[row.id] ?? 0;
@@ -636,9 +621,9 @@ export function buildAnalyticsSummary({
     const amount = convertedAmount(row);
     return amount > 0 && amount >= threshold;
   };
-  const scopedCurrentRows = currentRows.filter((row) => !isBigSpending(row));
-  const scopedComparisonRows = comparisonRows.filter((row) => !isBigSpending(row));
-  const excludedBigSpendingCount = currentRows.length - scopedCurrentRows.length;
+  const scopedCurrentRows = rateScopedCurrentRows.filter((row) => !isBigSpending(row));
+  const scopedComparisonRows = rateScopedComparisonRows.filter((row) => !isBigSpending(row));
+  const excludedBigSpendingCount = rateScopedCurrentRows.length - scopedCurrentRows.length;
   const expenseTotal = sumType(scopedCurrentRows, 'expense', convertedAmount);
   const incomeTotal = sumType(scopedCurrentRows, 'income', convertedAmount);
   const previousExpenseTotal = sumType(scopedComparisonRows, 'expense', convertedAmount);
@@ -681,35 +666,6 @@ export function buildAnalyticsSummary({
       excludedBigSpendingCount,
     },
   };
-}
-
-export function getAnalyticsRateRequest({
-  transactions,
-  range,
-  baseCurrency,
-  now,
-  customPeriod,
-  periodOffset = 0,
-}: AnalyticsRateRequestInput): HistoricalRateRequest | null {
-  const periods = getAnalyticsPeriods(range, now, customPeriod, periodOffset);
-  const currentRows = rowsInPeriod(transactions, periods.current);
-  const comparisonRows = rowsInPeriod(transactions, periods.comparison);
-  const quotes = [
-    ...currentRows,
-    ...comparisonRows.filter((row) => row.type === 'expense'),
-  ]
-    .map((row) => row.currency)
-    .filter((currency) => currency !== baseCurrency);
-  const uniqueQuotes = [...new Set(quotes)].sort();
-
-  return uniqueQuotes.length === 0
-    ? null
-    : {
-        base: baseCurrency,
-        quotes: uniqueQuotes,
-        from: format(subDays(periods.comparison.start, 7), 'yyyy-MM-dd'),
-        to: format(periods.current.end, 'yyyy-MM-dd'),
-      };
 }
 
 export function formatAnalyticsAmount(amount: number, currency: string): string {

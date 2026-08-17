@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import { Skeleton } from '../ui/skeleton';
@@ -10,7 +10,6 @@ import {
   type AnalyticsRange,
   type AnalyticsSummary,
   type DatePeriod,
-  type MissingAnalyticsRate,
 } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
@@ -25,7 +24,6 @@ type AnalyticsSlideProps = {
   onPeriodChange: (offset: number) => void;
   onCustomRequest?: (trigger: HTMLButtonElement) => void;
   summary?: AnalyticsSummary;
-  missingRate?: MissingAnalyticsRate;
   isLoading: boolean;
   isOffline: boolean;
   updatedAt?: number;
@@ -59,7 +57,6 @@ export function AnalyticsSlide({
   onPeriodChange,
   onCustomRequest,
   summary,
-  missingRate,
   isLoading,
   isOffline,
   updatedAt,
@@ -104,24 +101,7 @@ export function AnalyticsSlide({
         />
       </div>
 
-      {missingRate ? (
-        <>
-          {periodControl}
-          <div className="flex flex-1 items-center justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">
-              Rate unavailable for {missingRate.currency} on{' '}
-              {format(parseISO(missingRate.date), 'MMM d')}
-            </span>
-            <button
-              type="button"
-              onClick={onRetry}
-              className="min-h-11 font-semibold text-primary"
-            >
-              Retry
-            </button>
-          </div>
-        </>
-      ) : isOffline && !summary ? (
+      {isOffline && !summary ? (
         <>
           {periodControl}
           <div className="flex flex-1 items-center text-sm text-muted-foreground">

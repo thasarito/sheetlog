@@ -5,7 +5,6 @@ import * as analyticsModule from './analytics';
 import {
   buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
-  getAnalyticsRateRequest,
   getAnalyticsPeriods,
   getComparisonText,
   getOfflineFreshness,
@@ -760,11 +759,29 @@ describe('multi-currency analytics', () => {
     ]);
   });
 
-  it('returns missing-rate metadata instead of a partial total', () => {
+  it('silently excludes unresolved foreign rows from every analytics surface', () => {
     const result = buildAnalyticsSummary({
       transactions: [
         transaction({
+          id: 'thb',
+          date: '2026-08-17T10:00:00',
+          amount: 100,
+        }),
+        transaction({
           id: 'usd',
+          date: '2026-08-17T09:00:00',
+          amount: 3,
+          currency: 'USD',
+        }),
+        transaction({
+          id: 'eur-income',
+          date: '2026-08-17T08:00:00',
+          type: 'income',
+          amount: 2,
+          currency: 'EUR',
+        }),
+        transaction({
+          id: 'usd-previous',
           date: '2026-08-16T10:00:00',
           amount: 3,
           currency: 'USD',
@@ -776,72 +793,22 @@ describe('multi-currency analytics', () => {
       now: new Date(2026, 7, 17, 12),
     });
 
-    expect(result).toEqual({
-      status: 'missing-rates',
-      missingRates: [{ currency: 'USD', date: '2026-08-16' }],
-    });
-  });
-
-  it('batches sorted current-display and contributing quotes with a seven-day lookback', () => {
-    const request = getAnalyticsRateRequest({
-      transactions: [
-        transaction({ id: 'usd', date: '2026-08-16T10:00:00', amount: 3, currency: 'USD' }),
-        transaction({ id: 'usd-2', date: '2026-08-15T10:00:00', amount: 2, currency: 'USD' }),
-        transaction({ id: 'eur-prior', date: '2026-08-10T10:00:00', amount: 2, currency: 'EUR' }),
-        transaction({
-          id: 'gbp-transfer',
-          date: '2026-08-17T10:00:00',
-          type: 'transfer',
-          amount: 2,
-          currency: 'GBP',
-        }),
-        transaction({
-          id: 'jpy-prior-income',
-          date: '2026-08-10T10:00:00',
-          type: 'income',
-          amount: 2,
-          currency: 'JPY',
-        }),
-      ],
-      range: 'week',
-      baseCurrency: 'THB',
-      now: new Date(2026, 7, 17, 12),
-    });
-
-    expect(request).toEqual({
-      base: 'THB',
-      quotes: ['EUR', 'GBP', 'USD'],
-      from: '2026-08-03',
-      to: '2026-08-23',
-    });
-  });
-
-  it('requests display rates for foreign transfers', () => {
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') throw new Error('Expected ready analytics');
+    expect(result.summary.expenseTotal).toBe(100);
+    expect(result.summary.previousExpenseTotal).toBe(0);
+    expect(result.summary.incomeTotal).toBe(0);
+    expect(result.summary.transactions.map(({ id }) => id)).toEqual(['thb']);
+    expect(result.summary.categories).toEqual([
+      { category: 'Dining Out', amount: 100, share: 100 },
+    ]);
     expect(
-      getAnalyticsRateRequest({
-        transactions: [
-          transaction({ id: 'thb', date: '2026-08-17T10:00:00', amount: 100 }),
-          transaction({
-            id: 'transfer',
-            date: '2026-08-17T09:00:00',
-            type: 'transfer',
-            amount: 3,
-            currency: 'USD',
-          }),
-        ],
-        range: 'week',
-        baseCurrency: 'THB',
-        now: new Date(2026, 7, 17, 12),
-      }),
-    ).toEqual({
-      base: 'THB',
-      quotes: ['USD'],
-      from: '2026-08-03',
-      to: '2026-08-23',
-    });
+      result.summary.buckets.flatMap(({ transactionIds }) => transactionIds),
+    ).toEqual(['thb']);
+    expect(result.summary.convertedAmounts).toEqual({ thb: 100 });
   });
 
-  it('converts a foreign transfer for display without making its rate block totals', () => {
+  it('filters a foreign transfer until its cached rate is available', () => {
     const transactions = [
       transaction({
         id: 'foreign-transfer',
@@ -858,14 +825,12 @@ describe('multi-currency analytics', () => {
       now: new Date(2026, 7, 17, 12),
     };
 
-    const withoutTransferRate = buildAnalyticsSummary({
-      ...input,
-      rates: [],
-    });
+    const withoutTransferRate = buildAnalyticsSummary({ ...input, rates: [] });
     expect(withoutTransferRate.status).toBe('ready');
     if (withoutTransferRate.status !== 'ready') {
       throw new Error('Expected ready analytics');
     }
+    expect(withoutTransferRate.summary.transactions).toEqual([]);
     expect(withoutTransferRate.summary.convertedAmounts).not.toHaveProperty(
       'foreign-transfer',
     );
@@ -887,9 +852,10 @@ describe('multi-currency analytics', () => {
     if (withTransferRate.status !== 'ready') {
       throw new Error('Expected ready analytics');
     }
-    expect(withTransferRate.summary.convertedAmounts['foreign-transfer']).toBe(
-      100,
-    );
+    expect(withTransferRate.summary.transactions.map(({ id }) => id)).toEqual([
+      'foreign-transfer',
+    ]);
+    expect(withTransferRate.summary.convertedAmounts['foreign-transfer']).toBe(100);
     expect(withTransferRate.summary.expenseTotal).toBe(0);
   });
 });

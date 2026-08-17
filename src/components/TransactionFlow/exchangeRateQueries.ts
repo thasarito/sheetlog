@@ -1,9 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
-import { useConnectivity } from '../../app/providers';
-import {
-  loadHistoricalRates,
-  type HistoricalRateRequest,
-} from './exchangeRates';
+import type { HistoricalRateRequest } from './exchangeRates';
 
 export const exchangeRateKeys = {
   all: ['exchangeRates'] as const,
@@ -28,22 +23,3 @@ export const exchangeRateKeys = {
   historical: (request: HistoricalRateRequest | null) =>
     exchangeRateKeys.cached(request),
 };
-
-export function useHistoricalRatesQuery(
-  request: HistoricalRateRequest | null,
-  enabled: boolean,
-) {
-  const { isOnline } = useConnectivity();
-  return useQuery({
-    queryKey: exchangeRateKeys.historical(request),
-    queryFn: () => {
-      if (!request) return Promise.resolve({ rates: [], refreshFailed: false });
-      return loadHistoricalRates(request, { isOnline });
-    },
-    enabled: enabled && request !== null,
-    networkMode: 'always',
-    staleTime: 24 * 60 * 60 * 1000,
-    gcTime: Infinity,
-    retry: false,
-  });
-}
