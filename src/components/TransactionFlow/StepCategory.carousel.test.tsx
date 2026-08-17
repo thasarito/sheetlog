@@ -112,6 +112,7 @@ describe("StepCategory carousel", () => {
     vi.useFakeTimers();
     const viewport = renderCarousel();
 
+    fireEvent.touchStart(viewport);
     viewport.scrollLeft = 150;
     fireEvent.scroll(viewport);
 
@@ -124,6 +125,10 @@ describe("StepCategory carousel", () => {
       "true",
     );
 
+    await act(async () => vi.advanceTimersByTimeAsync(160));
+    expect(screen.getByTestId("form-type")).toHaveTextContent("expense");
+
+    fireEvent.touchEnd(viewport);
     await act(async () => vi.advanceTimersByTimeAsync(80));
     expect(screen.getByTestId("form-type")).toHaveTextContent("income");
   });

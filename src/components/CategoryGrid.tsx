@@ -91,7 +91,13 @@ function CategoryButton({
     button.addEventListener("touchmove", preventNativeScroll, {
       passive: false,
     });
-    return () => button.removeEventListener("touchmove", preventNativeScroll);
+    return () => {
+      button.removeEventListener("touchmove", preventNativeScroll);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+      isLongPressRef.current = false;
+      startPosRef.current = null;
+    };
   }, []);
 
   const clearTimer = () => {

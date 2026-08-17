@@ -20,8 +20,8 @@ function renderGrid(
     onRelease: vi.fn(),
     ...overrides,
   };
-  render(<CategoryGrid {...props} />);
-  return props;
+  const result = render(<CategoryGrid {...props} />);
+  return { ...result, props };
 }
 
 afterEach(() => {
@@ -167,5 +167,18 @@ describe("CategoryGrid", () => {
     expect(lockedMove.defaultPrevented).toBe(true);
     expect(onDrag).toHaveBeenCalledWith({ x: 32, y: 36 });
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a pending long press when its tile unmounts", async () => {
+    vi.useFakeTimers();
+    const onLongPress = vi.fn();
+    const { unmount } = renderGrid({ onLongPress });
+    const tile = screen.getByRole("button", { name: "Food Delivery" });
+
+    fireEvent.pointerDown(tile, { pointerId: 11, clientX: 24, clientY: 28 });
+    unmount();
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+
+    expect(onLongPress).not.toHaveBeenCalled();
   });
 });

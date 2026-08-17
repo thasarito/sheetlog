@@ -70,6 +70,8 @@ export function StepCategory({
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
   const navigationTargetRef = useRef(selectedIndex);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const isTouchActiveRef = useRef(false);
+  const pendingTypeIndexRef = useRef(selectedIndex);
   const suppressClickRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
 
@@ -139,6 +141,16 @@ export function StepCategory({
     [commitTypeIndex],
   );
 
+  const scheduleTypeCommit = (index: number) => {
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current);
+    }
+    settleTimerRef.current = window.setTimeout(() => {
+      settleTimerRef.current = null;
+      commitTypeIndex(index);
+    }, 80);
+  };
+
   const handleScroll = () => {
     const viewport = viewportRef.current;
     if (!viewport || viewport.clientWidth === 0) return;
@@ -157,10 +169,25 @@ export function StepCategory({
         Math.round(viewport.scrollLeft / viewport.clientWidth),
       ),
     );
+    pendingTypeIndexRef.current = index;
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
     }
-    settleTimerRef.current = window.setTimeout(() => commitTypeIndex(index), 80);
+    if (!isTouchActiveRef.current) scheduleTypeCommit(index);
+  };
+
+  const handleTouchStart = () => {
+    isTouchActiveRef.current = true;
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isTouchActiveRef.current = false;
+    scheduleTypeCommit(pendingTypeIndexRef.current);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -192,6 +219,7 @@ export function StepCategory({
   useEffect(() => {
     const viewport = viewportRef.current;
     navigationTargetRef.current = selectedIndex;
+    pendingTypeIndexRef.current = selectedIndex;
     setVisualProgress(selectedIndex);
     if (!viewport || viewport.clientWidth === 0) return;
     const targetLeft = selectedIndex * viewport.clientWidth;
@@ -261,6 +289,9 @@ export function StepCategory({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the scroll viewport needs a keyboard target for arrow-key slide navigation
         tabIndex={0}
         onScroll={handleScroll}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

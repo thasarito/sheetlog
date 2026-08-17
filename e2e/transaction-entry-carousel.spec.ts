@@ -290,7 +290,7 @@ test.describe("Transaction type and category carousel", () => {
       type: "touchMove",
       touchPoints: [{ x: start.x - 180, y: start.y + 2 }],
     });
-    await page.waitForTimeout(16);
+    await page.waitForTimeout(120);
 
     const indicatorDuring = await indicator.boundingBox();
     if (!indicatorDuring) throw new Error("Type indicator missing");
