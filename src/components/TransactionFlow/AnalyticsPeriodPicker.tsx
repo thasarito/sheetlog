@@ -32,7 +32,7 @@ type TouchDrag = {
 const AXIS_LOCK_THRESHOLD_PX = 6;
 const CENTER_DURATION_MS = 240;
 const MOMENTUM_DECAY = 0.95;
-const MOMENTUM_MAX_DURATION_MS = 520;
+const MOMENTUM_MAX_VELOCITY = 2.5;
 const MOMENTUM_MIN_VELOCITY = 0.02;
 const RELEASE_VELOCITY_IDLE_MS = 120;
 const WHEEL_SETTLE_DELAY_MS = 120;
@@ -248,9 +248,11 @@ export function AnalyticsPeriodPicker({
         return;
       }
       cancelMotion();
-      let velocity = initialVelocity;
+      let velocity = Math.max(
+        -MOMENTUM_MAX_VELOCITY,
+        Math.min(MOMENTUM_MAX_VELOCITY, initialVelocity),
+      );
       let lastTime = performance.now();
-      const startedAt = lastTime;
 
       const step = (now: number) => {
         const elapsed = Math.max(1, Math.min(32, now - lastTime));
@@ -262,10 +264,7 @@ export function AnalyticsPeriodPicker({
         velocity *= MOMENTUM_DECAY ** (elapsed / 16);
         if (beyondBounds) velocity *= 0.6;
 
-        if (
-          Math.abs(velocity) < MOMENTUM_MIN_VELOCITY ||
-          now - startedAt >= MOMENTUM_MAX_DURATION_MS
-        ) {
+        if (Math.abs(velocity) < MOMENTUM_MIN_VELOCITY) {
           motionFrameRef.current = null;
           settleNearest();
           return;
