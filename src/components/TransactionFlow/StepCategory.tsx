@@ -219,7 +219,7 @@ export function StepCategory({
     <section
       aria-roledescription="carousel"
       aria-label="Transaction type and categories"
-      className="flex h-full min-h-0 flex-col select-none"
+      className="flex min-h-0 flex-col select-none"
       onKeyDown={(event) => {
         const target = event.target as HTMLElement;
         const isNavigationTarget =
@@ -255,7 +255,7 @@ export function StepCategory({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onClickCapture={handleClickCapture}
-        className="mt-3 flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="mt-3 flex aspect-square w-full min-h-0 flex-none snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TYPE_OPTIONS.map((typeOption, index) => (
           <section
@@ -265,7 +265,7 @@ export function StepCategory({
             }}
             aria-label={`${TYPE_META[typeOption].label} categories, slide ${index + 1} of ${TYPE_OPTIONS.length}`}
             aria-hidden={selectedIndex !== index}
-            className="h-full min-w-full snap-center snap-always overflow-y-auto pb-2"
+            className="h-full min-w-full snap-center snap-always overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             <CategoryGrid
               categories={categoryGroups[typeOption] ?? []}

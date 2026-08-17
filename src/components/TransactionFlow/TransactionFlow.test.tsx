@@ -553,7 +553,7 @@ beforeEach(() => {
 });
 
 describe("TransactionFlow reimbursement entry", () => {
-  it("keeps the original one-quarter dashboard and three-quarter action layout", () => {
+  it("gives remaining dashboard space to activity above an intrinsic category row", () => {
     renderFlow();
 
     const transactionCanvas = screen.getByTestId("transaction-canvas");
@@ -570,7 +570,7 @@ describe("TransactionFlow reimbursement entry", () => {
     const dashboardActionGrid = dashboardCell?.parentElement;
 
     expect(dashboardActionGrid).toHaveClass(
-      "grid-rows-[1fr_3fr]",
+      "grid-rows-[minmax(0,1fr)_auto]",
       "gap-4",
     );
   });
