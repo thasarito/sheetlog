@@ -103,26 +103,28 @@ export function AnalyticsRangeDrawer({
           >
             {draftLabel(draft)}
           </p>
-          <DayPicker
-            mode="range"
-            selected={draft}
-            onSelect={(nextRange) =>
-              setDraft(nextRange ?? { from: undefined })
-            }
-            resetOnSelect
-            min={0}
-            numberOfMonths={1}
-            defaultMonth={value.end}
-            startMonth={startOfDay(minDate)}
-            endMonth={startOfDay(maxDate)}
-            disabled={{
-              before: startOfDay(minDate),
-              after: startOfDay(maxDate),
-            }}
-            showOutsideDays
-            navLayout="around"
-            className="analytics-calendar"
-          />
+          <div className="flex justify-center">
+            <DayPicker
+              mode="range"
+              selected={draft}
+              onSelect={(nextRange) =>
+                setDraft(nextRange ?? { from: undefined })
+              }
+              resetOnSelect
+              min={0}
+              numberOfMonths={1}
+              defaultMonth={value.end}
+              startMonth={startOfDay(minDate)}
+              endMonth={startOfDay(maxDate)}
+              disabled={{
+                before: startOfDay(minDate),
+                after: startOfDay(maxDate),
+              }}
+              showOutsideDays
+              navLayout="around"
+              className="analytics-calendar"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 px-4 pb-[max(env(safe-area-inset-bottom),1rem)]">

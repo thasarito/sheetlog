@@ -48,6 +48,17 @@ describe('AnalyticsRangeDrawer', () => {
     expect(header).not.toHaveClass('text-left');
   });
 
+  it('centers the calendar grid within the sheet', async () => {
+    const user = userEvent.setup();
+    render(<RangeDrawerHarness onApply={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Open custom range' }));
+
+    const calendar = screen.getByRole('grid').closest('.analytics-calendar');
+    expect(calendar).toBeInTheDocument();
+    expect(calendar?.parentElement).toHaveClass('flex', 'justify-center');
+  });
+
   it('keeps an incomplete draft local and applies a bounded same-day range', async () => {
     const user = userEvent.setup();
     const onApply = vi.fn();
