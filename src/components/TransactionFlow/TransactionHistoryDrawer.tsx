@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { format, isSameDay, subDays } from "date-fns";
+import { format } from "date-fns";
 import { RefreshCw, Search, X } from "lucide-react";
 import {
   useCallback,
@@ -10,10 +10,7 @@ import {
   useState,
 } from "react";
 import { parseDate } from "../../lib/date-utils";
-import {
-  canEditTransaction,
-  filterTransactionHistory,
-} from "../../lib/transactionHistory";
+import { filterTransactionHistory } from "../../lib/transactionHistory";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import {
@@ -24,6 +21,12 @@ import {
   DrawerTitle,
 } from "../ui/drawer";
 import { Skeleton } from "../ui/skeleton";
+import {
+  flattenTransactionHistory,
+  TransactionHistoryDateHeader,
+  type TransactionHistoryListItem,
+  TransactionHistoryRow,
+} from "./TransactionHistoryItems";
 import { useTransactionHistoryQuery } from "./useTransactionHistoryQuery";
 
 type TransactionHistoryDrawerProps = {
@@ -31,10 +34,6 @@ type TransactionHistoryDrawerProps = {
   onOpenChange: (open: boolean) => void;
   onEditTransaction: (transaction: TransactionRecord) => void;
 };
-
-type HistoryListItem =
-  | { key: string; kind: "date"; dateKey: string }
-  | { key: string; kind: "transaction"; transaction: TransactionRecord };
 
 const HISTORY_SKELETON_KEYS = [
   "history-skeleton-a",
@@ -46,128 +45,11 @@ const HISTORY_SKELETON_KEYS = [
 ];
 const HISTORY_INITIAL_RECT = { width: 390, height: 560 };
 
-function dateLabel(dateKey: string, today: Date): string {
-  const date = new Date(`${dateKey}T00:00:00`);
-  if (isSameDay(date, today)) {
-    return "Today";
-  }
-  if (isSameDay(date, subDays(today, 1))) {
-    return "Yesterday";
-  }
-  return format(date, "EEEE, MMM d");
-}
-
-export function flattenTransactionHistory(
-  transactions: readonly TransactionRecord[],
-): HistoryListItem[] {
-  const items: HistoryListItem[] = [];
-  let previousDate = "";
-  for (const transaction of transactions) {
-    const dateKey = format(parseDate(transaction.date), "yyyy-MM-dd");
-    if (dateKey !== previousDate) {
-      items.push({ key: `date:${dateKey}`, kind: "date", dateKey });
-      previousDate = dateKey;
-    }
-    items.push({
-      key: `transaction:${transaction.id}`,
-      kind: "transaction",
-      transaction,
-    });
-  }
-  return items;
-}
-
-function amountLabel(transaction: TransactionRecord): string {
-  const symbol =
-    transaction.currency === "THB"
-      ? "฿"
-      : transaction.currency === "USD"
-        ? "$"
-        : `${transaction.currency} `;
-  const prefix = transaction.type === "expense" ? "−" : "+";
-  return `${prefix}${symbol}${Number(transaction.amount).toLocaleString(
-    undefined,
-    { minimumFractionDigits: 2 },
-  )}`;
-}
-
-function TransactionHistoryRow({
-  transaction,
-  onEdit,
-}: {
-  transaction: TransactionRecord;
-  onEdit: (transaction: TransactionRecord) => void;
-}) {
-  const canEdit = canEditTransaction(transaction);
-  const statusLabel =
-    !canEdit
-      ? "Read only"
-      : transaction.status === "pending"
-      ? "Pending"
-      : transaction.status === "error"
-        ? transaction.error?.trim() || "Sync failed"
-        : null;
-
-  return (
-    <button
-      type="button"
-      disabled={!canEdit}
-      onClick={() => onEdit(transaction)}
-      className="grid w-full grid-cols-[42px_1fr_auto] items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors active:bg-muted/60 disabled:cursor-default disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-    >
-      <span className="text-xs font-medium tabular-nums text-muted-foreground">
-        {format(parseDate(transaction.date), "HH:mm")}
-      </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium text-foreground">
-          {transaction.category}
-          {transaction.note ? (
-            <span className="ml-1 font-normal text-muted-foreground">
-              · {transaction.note}
-            </span>
-          ) : null}
-        </span>
-        <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-          {transaction.account ? (
-            <span className="truncate">{transaction.account}</span>
-          ) : null}
-          {statusLabel ? (
-            <>
-              {transaction.account ? <span aria-hidden="true">·</span> : null}
-              <span
-                className={cn(
-                  "whitespace-nowrap",
-                  canEdit && transaction.status === "error" && "text-danger",
-                  canEdit && transaction.status === "pending" && "text-warning",
-                )}
-              >
-                {statusLabel}
-              </span>
-            </>
-          ) : null}
-        </span>
-      </span>
-      <span
-        className={cn(
-          "whitespace-nowrap font-semibold tabular-nums",
-          transaction.type === "income"
-            ? "text-emerald-500"
-            : transaction.type === "transfer"
-              ? "text-blue-500"
-              : "text-foreground",
-        )}
-      >
-        {amountLabel(transaction)}
-      </span>
-    </button>
-  );
-}
-
 function TransactionHistoryVirtualList({
   items,
   onEdit,
 }: {
-  items: HistoryListItem[];
+  items: TransactionHistoryListItem[];
   onEdit: (transaction: TransactionRecord) => void;
 }) {
   const scrollRef = useRef<HTMLElement>(null);
@@ -175,7 +57,7 @@ function TransactionHistoryVirtualList({
     key: string | number | bigint;
     offsetWithinItem: number;
   } | null>(null);
-  const previousItemsRef = useRef<HistoryListItem[] | null>(null);
+  const previousItemsRef = useRef<TransactionHistoryListItem[] | null>(null);
   const today = useMemo(() => new Date(), []);
   const getScrollElement = useCallback(() => scrollRef.current, []);
   const estimateSize = useCallback(
@@ -270,13 +152,14 @@ function TransactionHistoryVirtualList({
               style={{ transform: `translateY(${virtualItem.start}px)` }}
             >
               {item.kind === "date" ? (
-                <div className="px-3 pb-1 pt-3 text-xs font-semibold text-muted-foreground">
-                  {dateLabel(item.dateKey, today)}
-                </div>
+                <TransactionHistoryDateHeader
+                  dateKey={item.dateKey}
+                  today={today}
+                />
               ) : (
                 <TransactionHistoryRow
                   transaction={item.transaction}
-                  onEdit={onEdit}
+                  onSelect={onEdit}
                 />
               )}
             </div>
