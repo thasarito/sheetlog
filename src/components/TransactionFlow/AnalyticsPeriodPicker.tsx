@@ -319,7 +319,6 @@ export function AnalyticsPeriodPicker({
   useEffect(() => {
     const viewport = viewportRef.current;
     const handleResize = () => {
-      if (touchDragRef.current) return;
       syncToControlled();
     };
     window.addEventListener('resize', handleResize);
@@ -354,11 +353,11 @@ export function AnalyticsPeriodPicker({
 
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
-      if (event.targetTouches.length !== 1) {
+      if (event.touches.length !== 1) {
         cancelActiveTouch();
         return;
       }
-      const touch = event.targetTouches[0];
+      const touch = event.touches[0];
       cancelMotion();
       clearWheelTimer();
       cancelDragFrame();
@@ -386,11 +385,11 @@ export function AnalyticsPeriodPicker({
     (event: TouchEvent) => {
       const drag = touchDragRef.current;
       if (!drag || drag.cancelled) return;
-      if (event.targetTouches.length !== 1) {
+      if (event.touches.length !== 1) {
         cancelActiveTouch();
         return;
       }
-      const touch = findTouch(event.targetTouches, drag.identifier);
+      const touch = findTouch(event.touches, drag.identifier);
       if (!touch) {
         cancelActiveTouch();
         return;
@@ -458,9 +457,10 @@ export function AnalyticsPeriodPicker({
   const handleTouchEnd = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       const drag = touchDragRef.current;
-      if (!drag || findTouch(event.targetTouches, drag.identifier)) return;
+      if (!drag || findTouch(event.touches, drag.identifier)) return;
       const endedTouch = findTouch(event.changedTouches, drag.identifier);
-      finishTouchGesture(endedTouch?.pageX ?? null, false);
+      if (!endedTouch) return;
+      finishTouchGesture(endedTouch.pageX, false);
     },
     [finishTouchGesture],
   );
@@ -546,7 +546,7 @@ export function AnalyticsPeriodPicker({
           const cancelledTouch = drag
             ? findTouch(event.changedTouches, drag.identifier)
             : null;
-          finishTouchGesture(cancelledTouch?.pageX ?? null, true);
+          if (cancelledTouch) finishTouchGesture(cancelledTouch.pageX, true);
         }}
         onWheel={handleWheel}
         onClickCapture={(event) => {

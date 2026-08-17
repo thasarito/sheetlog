@@ -312,6 +312,54 @@ describe('AnalyticsPeriodPicker', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('cancels when a second option receives a touch while the first remains active', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { track } = setPickerGeometry();
+    const controlledTransform = track.style.transform;
+    const firstOption = screen.getByRole('option', { name: 'July 2026' });
+    const secondOption = screen.getByRole('option', { name: 'August 2026' });
+    const firstStart = testTouch(51, 100, 20);
+    const firstMoved = testTouch(51, 150, 21);
+    const secondStart = testTouch(52, 200, 24);
+    const secondMoved = testTouch(52, 40, 24);
+
+    startTouch(firstOption, firstStart);
+    moveTouch(firstOption, firstMoved);
+    advanceMotion(17);
+    expect(track.style.transform).not.toBe(controlledTransform);
+
+    fireEvent.touchStart(secondOption, {
+      touches: [firstMoved, secondStart],
+      targetTouches: [secondStart],
+      changedTouches: [secondStart],
+    });
+    const secondMove = createEvent.touchMove(secondOption, {
+      bubbles: true,
+      cancelable: true,
+      touches: [firstMoved, secondMoved],
+      targetTouches: [secondMoved],
+      changedTouches: [secondMoved],
+    });
+    fireEvent(secondOption, secondMove);
+    advanceMotion(17);
+    fireEvent.touchEnd(secondOption, {
+      touches: [firstMoved],
+      targetTouches: [],
+      changedTouches: [secondMoved],
+    });
+    fireEvent.touchEnd(firstOption, {
+      touches: [],
+      targetTouches: [],
+      changedTouches: [firstMoved],
+    });
+    advanceMotion(1_000);
+
+    expect(track.style.transform).toBe(controlledTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('suppresses the click synthesized by a horizontal touch gesture', () => {
     useMotionClock();
     const onChange = vi.fn();
@@ -414,6 +462,31 @@ describe('AnalyticsPeriodPicker', () => {
     advanceMotion(1_000);
 
     expect(track.style.transform).toBe(controlledTransform);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('cancels an active touch when resize changes the picker geometry', () => {
+    useMotionClock();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={-1} onChange={onChange} />);
+    const { picker, track } = setPickerGeometry();
+
+    startTouch(picker, testTouch(61, 100, 20));
+    moveTouch(picker, testTouch(61, 150, 21));
+    advanceMotion(17);
+    expect(transformX(track)).not.toBe(-160);
+
+    Object.defineProperty(picker, 'clientWidth', {
+      configurable: true,
+      value: 320,
+    });
+    fireEvent(window, new Event('resize'));
+    moveTouch(picker, testTouch(61, 300, 21));
+    advanceMotion(17);
+    endTouch(picker, testTouch(61, 300, 21));
+    advanceMotion(1_000);
+
+    expect(transformX(track)).toBe(-160);
     expect(onChange).not.toHaveBeenCalled();
   });
 
