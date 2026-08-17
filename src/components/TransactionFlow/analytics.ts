@@ -2,6 +2,7 @@ import {
   addDays,
   addMonths,
   addQuarters,
+  addWeeks,
   addYears,
   differenceInCalendarDays,
   differenceInCalendarMonths,
@@ -10,15 +11,18 @@ import {
   endOfDay,
   endOfMonth,
   endOfQuarter,
+  endOfWeek,
   endOfYear,
   format,
   startOfDay,
   startOfMonth,
   startOfQuarter,
+  startOfWeek,
   startOfYear,
   subDays,
   subMonths,
   subQuarters,
+  subWeeks,
   subYears,
 } from 'date-fns';
 import { tryParseDate } from '../../lib/date-utils';
@@ -69,6 +73,12 @@ export type AnalyticsBucket = {
   transactionIds: string[];
 };
 
+export type AnalyticsAxisGroup = {
+  key: string;
+  label: string;
+  bucketCount: number;
+};
+
 export type AnalyticsCategory = {
   category: string;
   amount: number;
@@ -90,6 +100,7 @@ export type AnalyticsSummary = AnalyticsScope & {
   previousExpenseTotal: number;
   comparison: AnalyticsComparison;
   buckets: AnalyticsBucket[];
+  axisGroups: AnalyticsAxisGroup[];
   series: AnalyticsSeries[];
   hasExpenseRows: boolean;
 };
@@ -104,6 +115,7 @@ type BuildAnalyticsSummaryInput = {
 };
 
 const SERIES_TONES: AnalyticsSeriesTone[] = ['emerald', 'cyan', 'violet', 'rose'];
+const MONDAY_WEEK = { weekStartsOn: 1 as const };
 
 function minDate(left: Date, right: Date): Date {
   return left.getTime() <= right.getTime() ? left : right;
@@ -132,12 +144,11 @@ export function getAnalyticsPeriods(
   customPeriod?: DatePeriod,
   periodOffset = 0,
 ): AnalyticsPeriods {
-  const currentEnd = endOfDay(now);
   const offset = normalizePeriodOffset(periodOffset);
 
   if (range === 'custom') {
     const current = normalizePeriod(
-      customPeriod ?? { start: startOfMonth(now), end: currentEnd },
+      customPeriod ?? { start: startOfMonth(now), end: endOfDay(now) },
     );
     const inclusiveDays = differenceInCalendarDays(current.end, current.start) + 1;
     return {
@@ -150,75 +161,51 @@ export function getAnalyticsPeriods(
   }
 
   if (range === 'week') {
-    const selectedEnd = endOfDay(addDays(now, offset * 7));
-    const currentStart = startOfDay(subDays(selectedEnd, 6));
+    const anchor = addWeeks(now, offset);
+    const comparisonAnchor = subWeeks(anchor, 1);
     return {
-      current: { start: currentStart, end: selectedEnd },
+      current: {
+        start: startOfWeek(anchor, MONDAY_WEEK),
+        end: endOfWeek(anchor, MONDAY_WEEK),
+      },
       comparison: {
-        start: startOfDay(subDays(currentStart, 7)),
-        end: endOfDay(subDays(currentStart, 1)),
+        start: startOfWeek(comparisonAnchor, MONDAY_WEEK),
+        end: endOfWeek(comparisonAnchor, MONDAY_WEEK),
       },
     };
   }
 
   if (range === 'month') {
     const anchor = addMonths(now, offset);
-    const currentStart = startOfMonth(anchor);
-    const selectedEnd = offset === 0 ? currentEnd : endOfMonth(anchor);
-    const comparisonStart = startOfMonth(subMonths(anchor, 1));
-    const elapsedDays = differenceInCalendarDays(selectedEnd, currentStart);
+    const comparisonAnchor = subMonths(anchor, 1);
     return {
-      current: { start: currentStart, end: selectedEnd },
+      current: { start: startOfMonth(anchor), end: endOfMonth(anchor) },
       comparison: {
-        start: comparisonStart,
-        end:
-          offset === 0
-            ? minDate(
-                endOfMonth(comparisonStart),
-                endOfDay(addDays(comparisonStart, elapsedDays)),
-              )
-            : endOfMonth(comparisonStart),
+        start: startOfMonth(comparisonAnchor),
+        end: endOfMonth(comparisonAnchor),
       },
     };
   }
 
   if (range === 'year') {
     const anchor = addYears(now, offset);
-    const currentStart = startOfYear(anchor);
-    const selectedEnd = offset === 0 ? currentEnd : endOfYear(anchor);
-    const comparisonStart = startOfYear(subYears(anchor, 1));
-    const elapsedDays = differenceInCalendarDays(selectedEnd, currentStart);
+    const comparisonAnchor = subYears(anchor, 1);
     return {
-      current: { start: currentStart, end: selectedEnd },
+      current: { start: startOfYear(anchor), end: endOfYear(anchor) },
       comparison: {
-        start: comparisonStart,
-        end:
-          offset === 0
-            ? minDate(
-                endOfYear(comparisonStart),
-                endOfDay(addDays(comparisonStart, elapsedDays)),
-              )
-            : endOfYear(comparisonStart),
+        start: startOfYear(comparisonAnchor),
+        end: endOfYear(comparisonAnchor),
       },
     };
   }
 
   const anchor = addQuarters(now, offset);
-  const currentStart = startOfQuarter(anchor);
-  const selectedEnd = offset === 0 ? currentEnd : endOfQuarter(anchor);
-  const comparisonStart = startOfQuarter(subQuarters(anchor, 1));
-  const elapsedDays = differenceInCalendarDays(selectedEnd, currentStart);
+  const comparisonAnchor = subQuarters(anchor, 1);
   return {
-    current: { start: currentStart, end: selectedEnd },
+    current: { start: startOfQuarter(anchor), end: endOfQuarter(anchor) },
     comparison: {
-      start: comparisonStart,
-      end:
-        offset === 0
-          ? minDate(
-              endOfQuarter(comparisonStart),
-              endOfDay(addDays(comparisonStart, elapsedDays)),
-            )
-          : endOfQuarter(comparisonStart),
+      start: startOfQuarter(comparisonAnchor),
+      end: endOfQuarter(comparisonAnchor),
     },
   };
 }
@@ -285,7 +272,12 @@ export function buildAnalyticsPeriodOptions(
   }, null);
   const distance = earliest
     ? range === 'week'
-      ? Math.floor(differenceInCalendarDays(startOfDay(now), startOfDay(earliest)) / 7)
+      ? Math.floor(
+          differenceInCalendarDays(
+            startOfWeek(now, MONDAY_WEEK),
+            startOfWeek(earliest, MONDAY_WEEK),
+          ) / 7,
+        )
       : range === 'month'
         ? differenceInCalendarMonths(startOfMonth(now), startOfMonth(earliest))
         : range === 'quarter'
@@ -480,6 +472,25 @@ function buildBuckets(
   });
 }
 
+function buildAxisGroups(
+  range: AnalyticsRange,
+  current: DatePeriod,
+  bucketCount: number,
+): AnalyticsAxisGroup[] {
+  if (range !== 'quarter') return [];
+  const groups: AnalyticsAxisGroup[] = [];
+
+  for (let index = 0; index < bucketCount; index += 1) {
+    const bucketStart = addDays(current.start, index * 7);
+    const key = format(bucketStart, 'yyyy-MM');
+    const last = groups.at(-1);
+    if (last?.key === key) last.bucketCount += 1;
+    else groups.push({ key, label: format(bucketStart, 'MMM'), bucketCount: 1 });
+  }
+
+  return groups;
+}
+
 function buildCategories(rows: TransactionRecord[]): AnalyticsCategory[] {
   const categories = sortCategoryEntries(
     [...categoryTotals(rows).entries()].filter(([, amount]) => amount !== 0),
@@ -533,6 +544,7 @@ export function buildAnalyticsSummary({
   const incomeTotal = sumType(currentRows, 'income');
   const previousExpenseTotal = sumType(comparisonRows, 'expense');
   const series = buildSeries(currentRows);
+  const buckets = buildBuckets(range, periods.current, currentRows, series);
 
   return {
     range,
@@ -543,7 +555,8 @@ export function buildAnalyticsSummary({
     incomeTotal,
     netTotal: incomeTotal - expenseTotal,
     comparison: buildComparison(expenseTotal, previousExpenseTotal),
-    buckets: buildBuckets(range, periods.current, currentRows, series),
+    buckets,
+    axisGroups: buildAxisGroups(range, periods.current, buckets.length),
     series,
     categories: buildCategories(currentRows),
     transactions: currentRows,
@@ -582,26 +595,19 @@ export function getAnalyticsBucketDescription(
 export function getComparisonText(
   comparison: AnalyticsComparison,
   range: AnalyticsRange,
-  periodOffset = 0,
 ): string {
   if (comparison.direction === 'refunds') return 'Net refunds exceeded expenses';
   if (comparison.direction === 'none') return 'No prior-period data';
   if (comparison.direction === 'same') return 'Same as previous period';
   const period =
     range === 'week'
-      ? 'previous 7 days'
+      ? 'previous week'
       : range === 'month'
-        ? periodOffset < 0
-          ? 'previous month'
-          : 'the same days last month'
+        ? 'previous month'
         : range === 'quarter'
-          ? periodOffset < 0
-            ? 'previous quarter'
-            : 'the same elapsed days last quarter'
+          ? 'previous quarter'
           : range === 'year'
-            ? periodOffset < 0
-              ? 'previous year'
-              : 'the same elapsed days last year'
+            ? 'previous year'
             : 'the previous period';
   return `${comparison.percentage}% ${comparison.direction} ${period}`;
 }
