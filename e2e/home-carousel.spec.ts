@@ -182,6 +182,34 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await expect(
       analyticsSlide.locator('[data-testid^="analytics-bar-"][data-testid$="-month"]').first(),
     ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Custom date range' }).click();
+    const standaloneRangeDialog = page.getByRole('dialog', { name: 'Custom date range' });
+    await expect(standaloneRangeDialog).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Analytics' })).toHaveCount(0);
+
+    const standaloneStart = subDays(new Date(), 4);
+    const standaloneEnd = subDays(new Date(), 2);
+    await standaloneRangeDialog
+      .getByRole('button', {
+        name: new RegExp(format(standaloneStart, 'MMMM do, yyyy')),
+      })
+      .click();
+    await standaloneRangeDialog
+      .getByRole('button', {
+        name: new RegExp(format(standaloneEnd, 'MMMM do, yyyy')),
+      })
+      .click();
+    await standaloneRangeDialog
+      .getByRole('button', { name: 'Apply custom range' })
+      .click();
+
+    await expect(standaloneRangeDialog).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Custom date range' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByRole('dialog', { name: 'Analytics' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Month, month to date' }).click();
 
     const analyticsViewAll = page.getByRole('button', { name: 'View all analytics' });

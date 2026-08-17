@@ -52,8 +52,11 @@ export function AnalyticsSlide({
         <AnalyticsRangeToggle
           value={range}
           onChange={(nextRange, trigger) => {
+            if (nextRange === 'custom') {
+              if (trigger) onCustomRequest?.(trigger);
+              return;
+            }
             onRangeChange(nextRange);
-            if (nextRange === 'custom' && trigger) onCustomRequest?.(trigger);
           }}
         />
       </div>
