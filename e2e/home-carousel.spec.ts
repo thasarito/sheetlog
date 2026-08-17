@@ -1,10 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   differenceInCalendarDays,
-  differenceInCalendarMonths,
+  endOfQuarter,
   format,
+  getDaysInMonth,
   startOfQuarter,
-  startOfYear,
   subDays,
 } from 'date-fns';
 import type { TransactionRecord, TransactionType } from '../src/lib/types';
@@ -326,12 +326,13 @@ test.describe('Home Transactions and Analytics carousel', () => {
       'aria-pressed',
       'true',
     );
+    const analyticsNow = new Date();
     await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
-      Number(format(new Date(), 'd')),
+      getDaysInMonth(analyticsNow),
     );
     await page.getByRole('button', { name: 'Quarter' }).click();
     const expectedQuarterWeeks = Math.ceil(
-      (differenceInCalendarDays(new Date(), startOfQuarter(new Date())) + 1) / 7,
+      (differenceInCalendarDays(endOfQuarter(analyticsNow), startOfQuarter(analyticsNow)) + 1) / 7,
     );
     await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
       expectedQuarterWeeks,
@@ -344,11 +345,7 @@ test.describe('Home Transactions and Analytics carousel', () => {
       'aria-pressed',
       'true',
     );
-    const expectedYearMonths =
-      differenceInCalendarMonths(new Date(), startOfYear(new Date())) + 1;
-    await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
-      expectedYearMonths,
-    );
+    await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(12);
     await expect(
       analyticsSlide.locator('[data-testid^="analytics-bar-"][data-testid$="-month"]').first(),
     ).toBeVisible();
