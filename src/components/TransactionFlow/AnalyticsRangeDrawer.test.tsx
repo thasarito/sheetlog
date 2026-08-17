@@ -37,6 +37,17 @@ function RangeDrawerHarness({
 }
 
 describe('AnalyticsRangeDrawer', () => {
+  it('centers the custom range heading within the sheet', async () => {
+    const user = userEvent.setup();
+    render(<RangeDrawerHarness onApply={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Open custom range' }));
+
+    const header = screen.getByRole('heading', { name: 'Custom date range' }).parentElement;
+    expect(header).toHaveClass('text-center!');
+    expect(header).not.toHaveClass('text-left');
+  });
+
   it('keeps an incomplete draft local and applies a bounded same-day range', async () => {
     const user = userEvent.setup();
     const onApply = vi.fn();
