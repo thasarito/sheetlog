@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTransactions } from "../../app/providers";
-import { refreshTransactionHistoryInBackground } from "./refreshTransactionHistory";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 
 export function useDeleteTransactionMutation() {
@@ -29,7 +28,6 @@ export function useDeleteTransactionMutation() {
         }),
         queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
       ];
-      refreshTransactionHistoryInBackground(queryClient);
       await Promise.all(invalidations);
     },
   });

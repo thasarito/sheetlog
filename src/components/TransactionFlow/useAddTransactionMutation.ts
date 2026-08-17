@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useTransactions } from "../../app/providers";
 import type { TransactionFormValues } from "./transactionSchema";
-import { refreshTransactionHistoryInBackground } from "./refreshTransactionHistory";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 
 export function useAddTransactionMutation() {
@@ -42,7 +41,6 @@ export function useAddTransactionMutation() {
         }),
         queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
       ];
-      refreshTransactionHistoryInBackground(queryClient);
       await Promise.all(invalidations);
     },
   });

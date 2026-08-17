@@ -3,6 +3,7 @@ import {
   onlineManager,
   QueryClient,
   QueryClientProvider,
+  QueryObserver,
   type QueryKey,
 } from "@tanstack/react-query";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
@@ -13,6 +14,7 @@ import { db } from "../../../lib/db";
 import { GoogleApiError } from "../../../lib/google";
 import { syncPendingTransactions } from "../../../lib/sync";
 import type {
+  TransactionHistorySnapshot,
   TransactionInput,
   TransactionRecord,
 } from "../../../lib/types";
@@ -325,6 +327,77 @@ describe("TransactionsProvider", () => {
       ]),
     );
 
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("supersedes an in-flight history download after queued writes sync", async () => {
+    vi.mocked(syncPendingTransactions).mockResolvedValue(1);
+    const harness = createProviderHarness();
+    let attempts = 0;
+    let initialSignal: AbortSignal | undefined;
+    const observer = new QueryObserver<TransactionHistorySnapshot>(
+      harness.queryClient,
+      {
+        queryKey: transactionQueryKeys.historyRemote("sheet-a", "user-a"),
+        queryFn: ({ signal }) => {
+          attempts += 1;
+          if (attempts === 1) initialSignal = signal;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        },
+        retry: false,
+      },
+    );
+    const unsubscribe = observer.subscribe(() => {});
+    await waitFor(() => expect(attempts).toBe(1));
+
+    let syncPromise!: Promise<void>;
+    act(() => {
+      syncPromise = harness.getContext().syncNow();
+    });
+
+    await waitFor(() => expect(syncPendingTransactions).toHaveBeenCalledTimes(1));
+    await expect(syncPromise).resolves.toBeUndefined();
+    await waitFor(() => expect(attempts).toBe(2));
+    expect(initialSignal?.aborted).toBe(true);
+
+    unsubscribe();
+    harness.rendered.unmount();
+    harness.queryClient.clear();
+  });
+
+  it("does not restart the initial history download when sync has no writes", async () => {
+    const harness = createProviderHarness();
+    let attempts = 0;
+    let initialSignal: AbortSignal | undefined;
+    const observer = new QueryObserver<TransactionHistorySnapshot>(
+      harness.queryClient,
+      {
+        queryKey: transactionQueryKeys.historyRemote("sheet-a", "user-a"),
+        queryFn: ({ signal }) => {
+          attempts += 1;
+          initialSignal = signal;
+          return new Promise(() => {});
+        },
+        retry: false,
+      },
+    );
+    const unsubscribe = observer.subscribe(() => {});
+    await waitFor(() => expect(attempts).toBe(1));
+
+    await act(async () => {
+      await expect(harness.getContext().syncNow()).resolves.toBeUndefined();
+    });
+    expect(attempts).toBe(1);
+    expect(initialSignal?.aborted).toBe(false);
+
+    unsubscribe();
     harness.rendered.unmount();
     harness.queryClient.clear();
   });
@@ -1268,6 +1341,7 @@ describe("TransactionsProvider", () => {
       new Map([["last-synced", 13]]),
     );
     const harness = createProviderHarness();
+    const cancelQueries = vi.spyOn(harness.queryClient, "cancelQueries");
 
     let result!: Awaited<ReturnType<TransactionsContextValue["undoLast"]>>;
     await act(async () => {
@@ -1285,6 +1359,10 @@ describe("TransactionsProvider", () => {
       0,
       13,
     );
+    expect(cancelQueries).toHaveBeenCalledWith({
+      queryKey: transactionQueryKeys.historyRemote("sheet-a", "user-a"),
+      exact: true,
+    });
     expect(await db.transactions.count()).toBe(0);
 
     harness.rendered.unmount();

@@ -1,16 +1,8 @@
-import {
-  QueryClient,
-  QueryClientProvider,
-  QueryObserver,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  TransactionHistorySnapshot,
-  TransactionInput,
-  TransactionRecord,
-} from "../../lib/types";
+import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import type { TransactionFormValues } from "./transactionSchema";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 import { useAddTransactionMutation } from "./useAddTransactionMutation";
@@ -40,7 +32,6 @@ function createHarness() {
       mutations: { retry: false },
     },
   });
-  const realRefetch = queryClient.refetchQueries.bind(queryClient);
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   const refetch = vi.spyOn(queryClient, "refetchQueries");
   function Wrapper({ children }: { children: React.ReactNode }) {
@@ -50,7 +41,7 @@ function createHarness() {
       </QueryClientProvider>
     );
   }
-  return { invalidate, queryClient, realRefetch, refetch, wrapper: Wrapper };
+  return { invalidate, queryClient, refetch, wrapper: Wrapper };
 }
 
 function validValues(
@@ -117,78 +108,12 @@ describe("useAddTransactionMutation", () => {
         queryKey: transactionQueryKeys.history,
         refetchType: "none",
       });
-      expect(refetch).toHaveBeenCalledWith({
-        queryKey: ["transactionHistory", "remote"],
-        type: "active",
-      });
+      expect(
+        refetch.mock.calls.some(
+          ([filters]) => filters?.queryKey?.[1] === "remote",
+        ),
+      ).toBe(false);
     });
-    queryClient.clear();
-  });
-
-  it("does not wait for the background remote history refresh", async () => {
-    const { queryClient, realRefetch, refetch, wrapper } = createHarness();
-    refetch.mockImplementation((filters, options) =>
-      filters?.queryKey?.[1] === "remote"
-        ? new Promise(() => {})
-        : realRefetch(filters, options),
-    );
-    const { result } = renderHook(() => useAddTransactionMutation(), {
-      wrapper,
-    });
-
-    await act(async () => {
-      await expect(result.current.mutateAsync(validValues())).resolves.toMatchObject({
-        id: "transaction-1",
-      });
-    });
-    queryClient.clear();
-  });
-
-  it("supersedes an in-flight history download with a post-mutation refresh", async () => {
-    const { queryClient, wrapper } = createHarness();
-    let attempts = 0;
-    let initialSignal: AbortSignal | undefined;
-    const observer = new QueryObserver<TransactionHistorySnapshot>(queryClient, {
-      queryKey: transactionQueryKeys.historyRemote("sheet-a", "user-a"),
-      queryFn: ({ signal }) => {
-        attempts += 1;
-        if (attempts > 1) {
-          return Promise.resolve({
-            records: [],
-            meta: {
-              sheetId: "sheet-a",
-              capturedAt: "2026-08-17T10:01:00.000Z",
-              sourceLastRow: 1,
-              rowCount: 0,
-            },
-          });
-        }
-        initialSignal = signal;
-        return new Promise((_resolve, reject) => {
-          signal.addEventListener(
-            "abort",
-            () => reject(new DOMException("Aborted", "AbortError")),
-            { once: true },
-          );
-        });
-      },
-      retry: false,
-    });
-    const unsubscribe = observer.subscribe(() => {});
-    await waitFor(() => expect(attempts).toBe(1));
-    const { result } = renderHook(() => useAddTransactionMutation(), {
-      wrapper,
-    });
-
-    await act(async () => {
-      await expect(result.current.mutateAsync(validValues())).resolves.toMatchObject({
-        id: "transaction-1",
-      });
-    });
-
-    await waitFor(() => expect(attempts).toBe(2));
-    expect(initialSignal?.aborted).toBe(true);
-    unsubscribe();
     queryClient.clear();
   });
 });

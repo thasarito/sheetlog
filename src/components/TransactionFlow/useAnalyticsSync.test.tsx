@@ -239,6 +239,35 @@ describe('useAnalyticsSync', () => {
     });
   });
 
+  it('keeps a replacement currency scope syncing while prior work settles', async () => {
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    state.readRates.mockResolvedValue({ rates: [], refreshFailed: false });
+    const backfill = deferred<{
+      completed: Array<{ base: string; quotes: string[]; from: string; to: string }>;
+      failed: [];
+    }>();
+    state.backfill.mockReturnValue(backfill.promise);
+    const { wrapper } = createHarness();
+    const rendered = renderHook(
+      ({ baseCurrency }) => useAnalyticsSync(baseCurrency),
+      { initialProps: { baseCurrency: 'THB' }, wrapper },
+    );
+
+    await waitFor(() => expect(state.backfill).toHaveBeenCalledTimes(1));
+    act(() => rendered.rerender({ baseCurrency: 'USD' }));
+    await waitFor(async () =>
+      expect(await db.settings.get('analytics-sync:sheet-a:USD')).toBeDefined(),
+    );
+    expect(rendered.result.current.status).toBe('syncing');
+
+    backfill.resolve({
+      completed: [state.backfill.mock.calls[0][0][0]],
+      failed: [],
+    });
+    await waitFor(() => expect(rendered.result.current.status).toBe('synced'));
+  });
+
   it('waits offline without starting background requests', async () => {
     state.isOnline = false;
     state.history.isOnline = false;

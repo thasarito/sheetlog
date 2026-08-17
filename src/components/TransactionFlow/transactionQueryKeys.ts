@@ -7,7 +7,6 @@ export const transactionQueryKeys = {
     userId: string | null,
   ) => ["localTransactions", sheetId, userId] as const,
   history: ["transactionHistory"] as const,
-  historyRemoteAll: ["transactionHistory", "remote"] as const,
   historyCache: (
     sheetId: string | null,
     userId: string | null,

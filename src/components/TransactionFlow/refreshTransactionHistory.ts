@@ -3,12 +3,16 @@ import { transactionQueryKeys } from "./transactionQueryKeys";
 
 export function refreshTransactionHistoryInBackground(
   queryClient: QueryClient,
+  sheetId: string | null,
+  userId: string | null,
 ): void {
+  const queryKey = transactionQueryKeys.historyRemote(sheetId, userId);
   void queryClient
-    .cancelQueries({ queryKey: transactionQueryKeys.historyRemoteAll })
+    .cancelQueries({ queryKey, exact: true })
     .then(() =>
       queryClient.refetchQueries({
-        queryKey: transactionQueryKeys.historyRemoteAll,
+        queryKey,
+        exact: true,
         type: "active",
       }),
     );

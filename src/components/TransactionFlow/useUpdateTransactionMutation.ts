@@ -4,7 +4,6 @@ import type {
   TransactionUpdateInput,
 } from "../../lib/types";
 import { useTransactions } from "../../app/providers";
-import { refreshTransactionHistoryInBackground } from "./refreshTransactionHistory";
 import { transactionQueryKeys } from "./transactionQueryKeys";
 
 export class UpdateTransactionRecordError extends Error {
@@ -55,7 +54,6 @@ export function useUpdateTransactionMutation() {
         }),
         queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
       ];
-      refreshTransactionHistoryInBackground(queryClient);
       await Promise.all(invalidations);
     },
   });

@@ -258,10 +258,11 @@ describe("useCreateReimbursementMutation", () => {
           "expense-1",
         ),
       });
-      expect(refetch).toHaveBeenCalledWith({
-        queryKey: transactionQueryKeys.historyRemoteAll,
-        type: "active",
-      });
+      expect(
+        refetch.mock.calls.some(
+          ([filters]) => filters?.queryKey?.[1] === "remote",
+        ),
+      ).toBe(false);
     });
   });
 });

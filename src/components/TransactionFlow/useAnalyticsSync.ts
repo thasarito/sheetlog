@@ -331,8 +331,8 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     history.isDownloading ||
     metadataQuery.isFetching ||
     cachedRatesQuery.isFetching ||
-    autoBackfillIsPending ||
-    resyncIsPending ||
+    autoBackfill.isPending ||
+    resyncMutation.isPending ||
     completionIsPending
   ) {
     status = 'syncing';

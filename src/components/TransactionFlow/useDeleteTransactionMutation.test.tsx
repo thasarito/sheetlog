@@ -26,7 +26,6 @@ function createHarness() {
       mutations: { retry: false },
     },
   });
-  const realRefetch = queryClient.refetchQueries.bind(queryClient);
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   const refetch = vi.spyOn(queryClient, "refetchQueries");
 
@@ -37,7 +36,7 @@ function createHarness() {
       </QueryClientProvider>
     );
   }
-  return { invalidate, queryClient, realRefetch, refetch, wrapper: Wrapper };
+  return { invalidate, queryClient, refetch, wrapper: Wrapper };
 }
 
 describe("useDeleteTransactionMutation", () => {
@@ -77,13 +76,8 @@ describe("useDeleteTransactionMutation", () => {
     });
   });
 
-  it("starts remote history refresh without blocking deletion", async () => {
-    const { invalidate, realRefetch, refetch, wrapper } = createHarness();
-    refetch.mockImplementation((filters, options) =>
-      filters?.queryKey?.[1] === "remote"
-        ? new Promise(() => {})
-        : realRefetch(filters, options),
-    );
+  it("leaves the provider-owned remote refresh untouched", async () => {
+    const { invalidate, refetch, wrapper } = createHarness();
     const { result } = renderHook(() => useDeleteTransactionMutation(), {
       wrapper,
     });
@@ -97,9 +91,10 @@ describe("useDeleteTransactionMutation", () => {
       queryKey: transactionQueryKeys.history,
       refetchType: "none",
     });
-    expect(refetch).toHaveBeenCalledWith({
-      queryKey: ["transactionHistory", "remote"],
-      type: "active",
-    });
+    expect(
+      refetch.mock.calls.some(
+        ([filters]) => filters?.queryKey?.[1] === "remote",
+      ),
+    ).toBe(false);
   });
 });

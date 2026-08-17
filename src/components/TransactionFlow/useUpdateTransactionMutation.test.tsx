@@ -7,7 +7,6 @@ import {
   UpdateTransactionRecordError,
   useUpdateTransactionMutation,
 } from "./useUpdateTransactionMutation";
-import { transactionQueryKeys } from "./transactionQueryKeys";
 
 const mocks = vi.hoisted(() => ({
   updateTransaction: vi.fn(),
@@ -115,9 +114,10 @@ describe("useUpdateTransactionMutation", () => {
       queryKey: ["transactionHistory"],
       refetchType: "none",
     });
-    expect(refetch).toHaveBeenCalledWith({
-      queryKey: transactionQueryKeys.historyRemoteAll,
-      type: "active",
-    });
+    expect(
+      refetch.mock.calls.some(
+        ([filters]) => filters?.queryKey?.[1] === "remote",
+      ),
+    ).toBe(false);
   });
 });
