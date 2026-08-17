@@ -1,3 +1,4 @@
+import { isCurrency } from "./currencies";
 import {
   DEFAULT_ACCOUNT_COLOR,
   DEFAULT_ACCOUNT_ICON,
@@ -16,6 +17,7 @@ import { QUICK_NOTE_HEADERS } from "./quickNoteSheet";
 import { createCachedTransactionRecord } from "./transactionHistory";
 import type {
   AccountItem,
+  AnalyticsBaseCurrencySetting,
   CategoryConfigWithMeta,
   TransactionHistorySnapshot,
   TransactionRecord,
@@ -26,8 +28,11 @@ const TAB_NAME = "Transactions";
 const ACCOUNT_TAB = "Account";
 const CATEGORY_TAB = "Category";
 const QUICK_NOTE_TAB = "Quick Note";
+const SETTINGS_TAB = "Settings";
+const ANALYTICS_BASE_CURRENCY_KEY = "analyticsBaseCurrency";
 const ACCOUNT_HEADER_ROW = ["Account", "Icon", "Color"];
 const CATEGORY_HEADER_ROW = ["Type", "Category", "Icon", "Color"];
+const SETTINGS_HEADER_ROW = ["Key", "Value", "Updated At"];
 
 export class GoogleApiError extends Error {
   status: number;
@@ -186,6 +191,7 @@ export async function createSheet(accessToken: string): Promise<string> {
           { properties: { title: ACCOUNT_TAB } },
           { properties: { title: CATEGORY_TAB } },
           { properties: { title: QUICK_NOTE_TAB } },
+          { properties: { title: SETTINGS_TAB } },
         ],
       }),
     }
@@ -195,6 +201,7 @@ export async function createSheet(accessToken: string): Promise<string> {
   await ensureAccountsHeaders(accessToken, data.spreadsheetId);
   await ensureCategoriesHeaders(accessToken, data.spreadsheetId);
   await ensureQuickNotesHeaders(accessToken, data.spreadsheetId);
+  await ensureSettingsHeaders(accessToken, data.spreadsheetId);
   return data.spreadsheetId;
 }
 
@@ -295,6 +302,17 @@ async function ensureQuickNotesHeaders(
   });
 }
 
+async function ensureSettingsHeaders(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<void> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A1:C1?valueInputOption=RAW`;
+  await fetchWithAuth(url, accessToken, {
+    method: "PUT",
+    body: JSON.stringify({ values: [SETTINGS_HEADER_ROW] }),
+  });
+}
+
 async function ensureAccountsSheet(
   accessToken: string,
   spreadsheetId: string
@@ -333,6 +351,23 @@ async function ensureCategoriesSheet(
   await ensureCategoriesHeaders(accessToken, spreadsheetId);
 }
 
+async function ensureSettingsSheet(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<void> {
+  const existing = await getSheetTabId(accessToken, spreadsheetId, SETTINGS_TAB);
+  if (existing === null) {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+    await fetchWithAuth(url, accessToken, {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [{ addSheet: { properties: { title: SETTINGS_TAB } } }],
+      }),
+    });
+  }
+  await ensureSettingsHeaders(accessToken, spreadsheetId);
+}
+
 export async function ensureSheet(
   accessToken: string,
   folderId?: string | null
@@ -342,6 +377,7 @@ export async function ensureSheet(
     await ensureHeaders(accessToken, existing);
     await ensureAccountsSheet(accessToken, existing);
     await ensureCategoriesSheet(accessToken, existing);
+    await ensureSettingsSheet(accessToken, existing);
     return existing;
   }
   const created = await createSheet(accessToken);
@@ -573,6 +609,73 @@ function parseCategories(rows: string[][]): CategoryConfigWithMeta | null {
   return hasAny ? result : null;
 }
 
+function parseAnalyticsBaseCurrency(rows: string[][]): AnalyticsBaseCurrencySetting | null {
+  for (const row of rows) {
+    if (row[0]?.trim() !== ANALYTICS_BASE_CURRENCY_KEY) {
+      continue;
+    }
+    const currency = row[1]?.trim();
+    const updatedAt = row[2]?.trim();
+    if (
+      isCurrency(currency) &&
+      typeof updatedAt === "string" &&
+      Number.isFinite(Date.parse(updatedAt))
+    ) {
+      return { currency, updatedAt };
+    }
+  }
+  return null;
+}
+
+export async function readAnalyticsBaseCurrencySetting(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<AnalyticsBaseCurrencySetting | null> {
+  if ((await getSheetTabId(accessToken, spreadsheetId, SETTINGS_TAB)) === null) {
+    return null;
+  }
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A2:C`;
+  const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
+  return parseAnalyticsBaseCurrency(data.values ?? []);
+}
+
+export async function writeAnalyticsBaseCurrencySetting(
+  accessToken: string,
+  spreadsheetId: string,
+  setting: AnalyticsBaseCurrencySetting
+): Promise<void> {
+  await ensureSettingsSheet(accessToken, spreadsheetId);
+  const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A2:C`;
+  const data = await fetchWithAuth<{ values?: string[][] }>(readUrl, accessToken);
+  const rows = data.values ?? [];
+  const existingIndex = rows.findIndex(
+    (row) => row[0]?.trim() === ANALYTICS_BASE_CURRENCY_KEY
+  );
+  const values = [
+    [ANALYTICS_BASE_CURRENCY_KEY, setting.currency, setting.updatedAt],
+  ];
+
+  if (existingIndex >= 0) {
+    const rowNumber = existingIndex + 2;
+    const range = `${SETTINGS_TAB}!A${rowNumber}:C${rowNumber}`;
+    await fetchWithAuth(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`,
+      accessToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({ values }),
+      }
+    );
+    return;
+  }
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A:C:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+  await fetchWithAuth(url, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ values }),
+  });
+}
+
 async function clearRange(
   accessToken: string,
   spreadsheetId: string,
@@ -591,9 +694,11 @@ export async function readOnboardingConfig(
 ): Promise<{
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
+  analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
 } | null> {
   let accounts: AccountItem[] | null = null;
   let categories: CategoryConfigWithMeta | null = null;
+  let analyticsBaseCurrency: AnalyticsBaseCurrencySetting | null = null;
 
   try {
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${ACCOUNT_TAB}!A2:C`;
@@ -611,21 +716,36 @@ export async function readOnboardingConfig(
     categories = null;
   }
 
-  if (!accounts && !categories) {
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SETTINGS_TAB}!A2:C`;
+    const data = await fetchWithAuth<{ values?: string[][] }>(url, accessToken);
+    analyticsBaseCurrency = parseAnalyticsBaseCurrency(data.values ?? []);
+  } catch {
+    analyticsBaseCurrency = null;
+  }
+
+  if (!accounts && !categories && !analyticsBaseCurrency) {
     return null;
   }
   return {
     ...(accounts ? { accounts } : {}),
     ...(categories ? { categories } : {}),
+    ...(analyticsBaseCurrency ? { analyticsBaseCurrency } : {}),
   };
 }
+
+type OnboardingConfigUpdates = {
+  accounts?: AccountItem[];
+  categories?: CategoryConfigWithMeta;
+  analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
+};
 
 export async function writeOnboardingConfig(
   accessToken: string,
   spreadsheetId: string,
-  updates: { accounts?: AccountItem[]; categories?: CategoryConfigWithMeta }
+  updates: OnboardingConfigUpdates
 ): Promise<void> {
-  if (!updates.accounts && !updates.categories) {
+  if (!updates.accounts && !updates.categories && !updates.analyticsBaseCurrency) {
     return;
   }
 
@@ -684,6 +804,14 @@ export async function writeOnboardingConfig(
         }
       );
     }
+  }
+
+  if (updates.analyticsBaseCurrency) {
+    await writeAnalyticsBaseCurrencySetting(
+      accessToken,
+      spreadsheetId,
+      updates.analyticsBaseCurrency
+    );
   }
 }
 

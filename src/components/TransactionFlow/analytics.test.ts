@@ -5,11 +5,19 @@ import * as analyticsModule from './analytics';
 import {
   buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
+  getAnalyticsRateRequest,
   getAnalyticsPeriods,
   getComparisonText,
   getOfflineFreshness,
   type AnalyticsRange,
 } from './analytics';
+
+function readySummary(input: Parameters<typeof buildAnalyticsSummary>[0]) {
+  const result = buildAnalyticsSummary(input);
+  expect(result.status).toBe('ready');
+  if (result.status !== 'ready') throw new Error('Expected ready analytics');
+  return result.summary;
+}
 
 function transaction({
   id,
@@ -210,10 +218,11 @@ describe.each<[AnalyticsRange, number]>([
   ['quarter', 7],
 ])('buildAnalyticsSummary(%s)', (range, expectedBuckets) => {
   it('returns range-appropriate buckets', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [],
       range,
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
 
@@ -222,13 +231,14 @@ describe.each<[AnalyticsRange, number]>([
 });
 
 it('builds a summary for the selected historical offset', () => {
-  const summary = buildAnalyticsSummary({
+  const summary = readySummary({
     transactions: [
       transaction({ id: 'july', date: '2026-07-20T10:00:00', amount: 70 }),
       transaction({ id: 'august', date: '2026-08-10T10:00:00', amount: 80 }),
     ],
     range: 'month',
-    currency: 'THB',
+    baseCurrency: 'THB',
+    rates: [],
     now: new Date(2026, 7, 17, 12),
     periodOffset: -1,
   });
@@ -241,10 +251,11 @@ it('builds a summary for the selected historical offset', () => {
 });
 
 it('builds one labeled bucket per elapsed month for year to date', () => {
-  const summary = buildAnalyticsSummary({
+  const summary = readySummary({
     transactions: [],
     range: 'year',
-    currency: 'THB',
+    baseCurrency: 'THB',
+    rates: [],
     now: new Date(2026, 7, 17, 12),
   });
 
@@ -273,14 +284,13 @@ describe('stacked category series', () => {
   ];
 
   it('keeps four ranked category series and groups the remainder as Other', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: categoryRows,
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
-    }) as ReturnType<typeof buildAnalyticsSummary> & {
-      series: Array<{ label: string; tone: string; categoryNames: string[] }>;
-    };
+    });
 
     expect(summary.series).toEqual([
       expect.objectContaining({ label: 'Food', tone: 'emerald', categoryNames: ['Food'] }),
@@ -292,7 +302,7 @@ describe('stacked category series', () => {
   });
 
   it('uses every stable series in every bucket and keeps all transaction types filterable', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [
         ...categoryRows,
         transaction({
@@ -311,16 +321,10 @@ describe('stacked category series', () => {
         }),
       ],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
-    }) as ReturnType<typeof buildAnalyticsSummary> & {
-      buckets: Array<
-        ReturnType<typeof buildAnalyticsSummary>['buckets'][number] & {
-          segments: Array<{ seriesKey: string; amount: number }>;
-        }
-      >;
-      series: Array<{ key: string }>;
-    };
+    });
 
     expect(summary.buckets.every((bucket) => bucket.segments.length === 5)).toBe(true);
     expect(summary.buckets.at(-1)?.segments.map((segment) => segment.seriesKey)).toEqual(
@@ -332,23 +336,21 @@ describe('stacked category series', () => {
   });
 
   it('uses daily custom buckets through 31 days and weekly buckets above 31 days', () => {
-    const daily = buildAnalyticsSummary({
+    const daily = readySummary({
       transactions: [],
       range: 'custom' as AnalyticsRange,
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
       customPeriod: { start: new Date(2026, 7, 1), end: new Date(2026, 7, 12) },
-    } as Parameters<typeof buildAnalyticsSummary>[0] & {
-      customPeriod: { start: Date; end: Date };
     });
-    const weekly = buildAnalyticsSummary({
+    const weekly = readySummary({
       transactions: [],
       range: 'custom' as AnalyticsRange,
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
       customPeriod: { start: new Date(2026, 5, 1), end: new Date(2026, 7, 17) },
-    } as Parameters<typeof buildAnalyticsSummary>[0] & {
-      customPeriod: { start: Date; end: Date };
     });
 
     expect(daily.buckets).toHaveLength(12);
@@ -359,10 +361,11 @@ describe('stacked category series', () => {
 
 describe('analytics bucket accessibility', () => {
   it('gives every compact weekly bucket a unique full-day accessible label', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
 
@@ -415,27 +418,37 @@ describe('buildAnalyticsSummary totals', () => {
     transaction({ id: 'non-finite', date: '2026-08-17T05:00:00', amount: Number.NaN }),
   ];
 
-  it('separates currencies and types while applying signed adjustments', () => {
-    const summary = buildAnalyticsSummary({
+  it('separates types while applying signed adjustments', () => {
+    const summary = readySummary({
       transactions: rows,
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [
+        {
+          id: 'THB:USD:2026-08-17',
+          base: 'THB',
+          quote: 'USD',
+          date: '2026-08-17',
+          rate: 4,
+          fetchedAt: '2026-08-17T12:00:00.000Z',
+        },
+      ],
       now: new Date(2026, 7, 17, 12),
     });
 
-    expect(summary.expenseTotal).toBe(130);
+    expect(summary.expenseTotal).toBe(230);
     expect(summary.incomeTotal).toBe(500);
-    expect(summary.netTotal).toBe(370);
+    expect(summary.netTotal).toBe(270);
     expect(summary.previousExpenseTotal).toBe(200);
-    expect(summary.comparison).toEqual({ direction: 'below', percentage: 35 });
+    expect(summary.comparison).toEqual({ direction: 'above', percentage: 15 });
     expect(summary.categories).toEqual([
-      { category: 'Dining Out', amount: 80, share: 62 },
-      { category: 'Transport', amount: 50, share: 38 },
+      { category: 'Dining Out', amount: 180, share: 78 },
+      { category: 'Transport', amount: 50, share: 22 },
     ]);
     const bucketTransactionIds = summary.buckets.flatMap((bucket) => bucket.transactionIds);
     expect(bucketTransactionIds).toContain('income');
     expect(bucketTransactionIds).toContain('transfer');
-    expect(summary.transactions.map((row) => row.id)).not.toContain('usd');
+    expect(summary.transactions.map((row) => row.id)).toContain('usd');
     expect(summary.transactions.map((row) => row.id)).not.toContain('previous');
     expect(summary.transactions.map((row) => row.id)).not.toContain('zero');
     expect(summary.transactions.map((row) => row.id)).not.toContain('malformed-date');
@@ -483,10 +496,11 @@ describe('buildAnalyticsSummary totals', () => {
       expect(invalidDate.sheetRowValid).toBe(false);
       expect(invalidType.sheetRowValid).toBe(false);
 
-      const summary = buildAnalyticsSummary({
+      const summary = readySummary({
         transactions: [invalidDate, invalidType],
         range: 'week',
-        currency: 'THB',
+        baseCurrency: 'THB',
+        rates: [],
         now: new Date(2026, 7, 17, 12),
       });
 
@@ -498,13 +512,14 @@ describe('buildAnalyticsSummary totals', () => {
   });
 
   it('returns no prior comparison when prior net expense is not positive', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [
         rows[0],
         transaction({ id: 'prior-refund', date: '2026-08-10T10:00:00', amount: -10 }),
       ],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
 
@@ -512,14 +527,15 @@ describe('buildAnalyticsSummary totals', () => {
   });
 
   it('reports a 100% decrease when signed current expenses net to zero', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [
         transaction({ id: 'charge', date: '2026-08-17T10:00:00', amount: 20 }),
         transaction({ id: 'reversal', date: '2026-08-17T11:00:00', amount: -20 }),
         transaction({ id: 'previous', date: '2026-08-10T10:00:00', amount: 40 }),
       ],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
 
@@ -529,13 +545,14 @@ describe('buildAnalyticsSummary totals', () => {
   });
 
   it('uses refund copy when signed adjustments make current expense negative', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [
         transaction({ id: 'refund', date: '2026-08-17T10:00:00', amount: -30 }),
         transaction({ id: 'previous', date: '2026-08-10T10:00:00', amount: 20 }),
       ],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
 
@@ -543,7 +560,7 @@ describe('buildAnalyticsSummary totals', () => {
   });
 
   it('normalizes category shares across positive net categories after adjustments', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [
         transaction({ id: 'dining', date: '2026-08-17T10:00:00', amount: 100 }),
         transaction({
@@ -554,7 +571,8 @@ describe('buildAnalyticsSummary totals', () => {
         }),
       ],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
 
@@ -568,7 +586,7 @@ describe('buildAnalyticsSummary totals', () => {
 
 describe('buildAnalyticsScope', () => {
   it('recomputes all overview values for a selected bucket', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [
         transaction({ id: 'expense', date: '2026-08-17T10:00:00', amount: 100 }),
         transaction({
@@ -581,7 +599,8 @@ describe('buildAnalyticsScope', () => {
         transaction({ id: 'older', date: '2026-08-16T10:00:00', amount: 40 }),
       ],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
     const buildAnalyticsScope = (
@@ -607,7 +626,7 @@ describe('buildAnalyticsScope', () => {
   });
 
   it('preserves a refund-only category in the selected bucket breakdown', () => {
-    const summary = buildAnalyticsSummary({
+    const summary = readySummary({
       transactions: [
         transaction({ id: 'dining', date: '2026-08-16T10:00:00', amount: 100 }),
         transaction({
@@ -618,7 +637,8 @@ describe('buildAnalyticsScope', () => {
         }),
       ],
       range: 'week',
-      currency: 'THB',
+      baseCurrency: 'THB',
+      rates: [],
       now: new Date(2026, 7, 17, 12),
     });
 
@@ -626,6 +646,119 @@ describe('buildAnalyticsScope', () => {
 
     expect(scope.expenseTotal).toBe(-40);
     expect(scope.categories).toEqual([{ category: 'Dining Out', amount: -40, share: 0 }]);
+  });
+});
+
+describe('multi-currency analytics', () => {
+  it('converts every currency into the base using the latest preceding observation', () => {
+    const result = buildAnalyticsSummary({
+      transactions: [
+        transaction({ id: 'thb', date: '2026-08-17T10:00:00', amount: 100 }),
+        transaction({
+          id: 'usd',
+          date: '2026-08-16T10:00:00',
+          amount: 3,
+          currency: 'USD',
+        }),
+      ],
+      range: 'week',
+      baseCurrency: 'THB',
+      rates: [
+        {
+          id: 'THB:USD:2026-08-14',
+          base: 'THB',
+          quote: 'USD',
+          date: '2026-08-14',
+          rate: 0.03,
+          fetchedAt: '2026-08-17T00:00:00.000Z',
+        },
+      ],
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') throw new Error('Expected ready analytics');
+    expect(result.summary.expenseTotal).toBe(200);
+    expect(result.summary.transactions.map((row) => [row.id, row.currency])).toEqual([
+      ['thb', 'THB'],
+      ['usd', 'USD'],
+    ]);
+  });
+
+  it('returns missing-rate metadata instead of a partial total', () => {
+    const result = buildAnalyticsSummary({
+      transactions: [
+        transaction({
+          id: 'usd',
+          date: '2026-08-16T10:00:00',
+          amount: 3,
+          currency: 'USD',
+        }),
+      ],
+      range: 'week',
+      baseCurrency: 'THB',
+      rates: [],
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    expect(result).toEqual({
+      status: 'missing-rates',
+      missingRates: [{ currency: 'USD', date: '2026-08-16' }],
+    });
+  });
+
+  it('batches sorted contributing quotes with a seven-day lookback', () => {
+    const request = getAnalyticsRateRequest({
+      transactions: [
+        transaction({ id: 'usd', date: '2026-08-16T10:00:00', amount: 3, currency: 'USD' }),
+        transaction({ id: 'usd-2', date: '2026-08-15T10:00:00', amount: 2, currency: 'USD' }),
+        transaction({ id: 'eur-prior', date: '2026-08-10T10:00:00', amount: 2, currency: 'EUR' }),
+        transaction({
+          id: 'gbp-transfer',
+          date: '2026-08-17T10:00:00',
+          type: 'transfer',
+          amount: 2,
+          currency: 'GBP',
+        }),
+        transaction({
+          id: 'jpy-prior-income',
+          date: '2026-08-10T10:00:00',
+          type: 'income',
+          amount: 2,
+          currency: 'JPY',
+        }),
+      ],
+      range: 'week',
+      baseCurrency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    expect(request).toEqual({
+      base: 'THB',
+      quotes: ['EUR', 'USD'],
+      from: '2026-07-28',
+      to: '2026-08-17',
+    });
+  });
+
+  it('needs no rate request for base rows or foreign transfers', () => {
+    expect(
+      getAnalyticsRateRequest({
+        transactions: [
+          transaction({ id: 'thb', date: '2026-08-17T10:00:00', amount: 100 }),
+          transaction({
+            id: 'transfer',
+            date: '2026-08-17T09:00:00',
+            type: 'transfer',
+            amount: 3,
+            currency: 'USD',
+          }),
+        ],
+        range: 'week',
+        baseCurrency: 'THB',
+        now: new Date(2026, 7, 17, 12),
+      }),
+    ).toBeNull();
   });
 });
 

@@ -6,13 +6,19 @@ import {
   readOnboardingConfig as mockReadOnboardingConfig,
 } from './mock';
 import { setOnboardingState } from './settings';
-import type { AccountItem, CategoryConfigWithMeta, OnboardingState } from './types';
+import type {
+  AccountItem,
+  AnalyticsBaseCurrencySetting,
+  CategoryConfigWithMeta,
+  OnboardingState,
+} from './types';
 
 const readOnboardingConfig = IS_DEV_MODE ? mockReadOnboardingConfig : realReadOnboardingConfig;
 
-type OnboardingSheetConfig = {
+export type OnboardingSheetConfig = {
   accounts?: AccountItem[];
   categories?: CategoryConfigWithMeta;
+  analyticsBaseCurrency?: AnalyticsBaseCurrencySetting;
 };
 
 function hasAllCategories(categories: CategoryConfigWithMeta): boolean {
@@ -31,13 +37,20 @@ type MergeOptions = {
   force?: boolean;
 };
 
-function mergeOnboardingState(
+export type OnboardingMergeResult = {
+  next: OnboardingState;
+  changed: boolean;
+  settingsNeedPush: boolean;
+};
+
+export function mergeOnboardingState(
   current: OnboardingState,
   config: OnboardingSheetConfig,
   options: MergeOptions = {},
-): { next: OnboardingState; changed: boolean } {
+): OnboardingMergeResult {
   let next = current;
   let changed = false;
+  let settingsNeedPush = false;
   if (
     config.accounts &&
     config.accounts.length > 0 &&
@@ -62,7 +75,31 @@ function mergeOnboardingState(
     };
     changed = true;
   }
-  return { next, changed };
+
+  const remoteSetting = config.analyticsBaseCurrency;
+  const localUpdatedAt = current.analyticsBaseCurrencyUpdatedAt;
+  const localTimestamp = localUpdatedAt ? Date.parse(localUpdatedAt) : Number.NaN;
+  const remoteTimestamp = remoteSetting ? Date.parse(remoteSetting.updatedAt) : Number.NaN;
+
+  if (remoteSetting && Number.isFinite(remoteTimestamp)) {
+    if (!Number.isFinite(localTimestamp) || remoteTimestamp > localTimestamp) {
+      next = {
+        ...next,
+        analyticsBaseCurrency: remoteSetting.currency,
+        analyticsBaseCurrencyUpdatedAt: remoteSetting.updatedAt,
+      };
+      changed = true;
+    } else if (
+      remoteTimestamp < localTimestamp ||
+      (remoteTimestamp === localTimestamp && remoteSetting.currency !== current.analyticsBaseCurrency)
+    ) {
+      settingsNeedPush = true;
+    }
+  } else if (localUpdatedAt) {
+    settingsNeedPush = true;
+  }
+
+  return { next, changed, settingsNeedPush };
 }
 
 export async function hydrateOnboardingFromSheet(
@@ -70,10 +107,14 @@ export async function hydrateOnboardingFromSheet(
   sheetId: string,
   current: OnboardingState,
   options: MergeOptions = {},
-): Promise<{ next: OnboardingState; changed: boolean }> {
+): Promise<OnboardingMergeResult> {
   const sheetConfig = await readOnboardingConfig(accessToken, sheetId);
   if (!sheetConfig) {
-    return { next: current, changed: false };
+    return {
+      next: current,
+      changed: false,
+      settingsNeedPush: Boolean(current.analyticsBaseCurrencyUpdatedAt),
+    };
   }
   const merged = mergeOnboardingState(current, sheetConfig, options);
   if (merged.changed) {

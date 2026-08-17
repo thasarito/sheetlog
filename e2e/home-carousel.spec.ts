@@ -15,13 +15,14 @@ function transaction(
   type: TransactionType,
   amount: number,
   category: string,
+  currency = 'THB',
 ): TransactionRecord {
   const timestamp = format(subDays(new Date(), daysAgo), "yyyy-MM-dd'T'12:00:00");
   return {
     id,
     type,
     amount,
-    currency: 'THB',
+    currency,
     account: type === 'income' ? 'Bank' : 'Cash',
     for: 'Me',
     category,
@@ -37,6 +38,7 @@ const seededTransactions = [
   transaction('food', 0, 'expense', 120, 'Food Delivery'),
   transaction('coffee', 1, 'expense', 80, 'Coffee & Snacks'),
   transaction('transport', 2, 'expense', 260, 'Transport'),
+  transaction('usd-coffee', 0, 'expense', 3, 'Coffee & Snacks', 'USD'),
   transaction('salary', 2, 'income', 2500, 'Salary'),
   transaction('rent', 3, 'expense', 480, 'Rent & Utilities'),
   transaction('health', 4, 'expense', 200, 'Health'),
@@ -182,6 +184,19 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await page.addInitScript((transactions: TransactionRecord[]) => {
       window.localStorage.setItem('sheetlog.mock.transactions', JSON.stringify(transactions));
     }, seededTransactions);
+    await page.route('https://api.frankfurter.dev/v2/rates**', async (route) => {
+      const rows = Array.from({ length: 30 }, (_, index) => ({
+        date: format(subDays(new Date(), index), 'yyyy-MM-dd'),
+        base: 'THB',
+        quote: 'USD',
+        rate: 0.03,
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(rows),
+      });
+    });
     await page.goto('/app');
     await expect(page.getByRole('region', { name: 'Home activity' })).toBeVisible();
   });
@@ -228,11 +243,12 @@ test.describe('Home Transactions and Analytics carousel', () => {
     expect((await incomeEntryTab.boundingBox())?.y).toBe(lowerYBefore);
     await expect(page.getByText('Bonus', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible();
+    const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
+    await expect(analyticsSlide.getByText('฿1,416', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Week, last 7 days' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
     const compactPeriodPicker = analyticsSlide.getByTestId('analytics-period-picker');
     await expect(compactPeriodPicker.getByRole('option')).toHaveCount(3);
     await expect(compactPeriodPicker.getByRole('option', { selected: true })).toHaveAttribute(
@@ -389,6 +405,13 @@ test.describe('Home Transactions and Analytics carousel', () => {
     analyticsDialog = page.getByRole('dialog', { name: 'Analytics' });
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeVisible();
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeFocused();
+    await expect(
+      analyticsDialog.locator('p').filter({ hasText: /^฿1,636$/ }),
+    ).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('combobox', { name: 'Analytics currency' }),
+    ).toHaveCount(0);
+    await expect(analyticsDialog.getByText(/Frankfurter|All currencies/i)).toHaveCount(0);
     await expect(analyticsDialog.getByText('Transfers are excluded from totals.')).toBeVisible();
 
     const firstAnalyticsBar = analyticsDialog
@@ -461,7 +484,16 @@ test.describe('Home Transactions and Analytics carousel', () => {
       analyticsDialog.getByRole('button', { name: /Clear selected period filter/ }),
     ).toHaveCount(0);
     await expect(analyticsDialog.getByRole('button', { name: /expense Food Delivery/ })).toBeVisible();
-    await expect(analyticsDialog.getByRole('button', { name: /expense Coffee & Snacks/ })).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('button', {
+        name: /expense Coffee & Snacks.*\$3\.00/,
+      }),
+    ).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('button', {
+        name: /expense Coffee & Snacks.*฿80\.00/,
+      }),
+    ).toBeVisible();
     await expect(
       analyticsDialog.getByRole('button', { name: 'Month, month to date' }),
     ).toHaveAttribute('aria-pressed', 'true');
@@ -484,6 +516,11 @@ test.describe('Home Transactions and Analytics carousel', () => {
     await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
     await expect(analyticsViewAll).toBeFocused();
 
+    await page.getByRole('button', { name: 'Month, month to date' }).click();
+    await expect(page.getByRole('button', { name: 'Month, month to date' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await transactionsDot.click();
     await expect(transactionsDot).toHaveAttribute('aria-current', 'true');
     const transactionScroll = page.getByTestId('transaction-scroll');

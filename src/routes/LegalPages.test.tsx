@@ -14,7 +14,7 @@ describe("Places legal disclosures", () => {
     render(<PrivacyPolicyPage />);
 
     const copy = document.body.textContent ?? "";
-    expect(copy).toContain("Effective date: 2026-08-15");
+    expect(copy).toContain("Effective date: 2026-08-17");
     expect(copy).toContain("precise location");
     expect(copy).toContain(
       "typing at least two characters in an eligible transaction note",
@@ -36,6 +36,9 @@ describe("Places legal disclosures", () => {
       "does not add a separate in-app location consent flow",
     );
     expect(copy).toContain("stable Google account identifier");
+    expect(copy).toContain("currency codes and bounded date ranges");
+    expect(copy).toContain("sent directly to Frankfurter");
+    expect(copy).toContain("transaction contents are not included");
 
     expect(screen.getByRole("link", { name: "Google Privacy Policy" })).toHaveAttribute(
       "href",

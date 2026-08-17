@@ -8,6 +8,17 @@ import { useEffect } from 'react';
 import { useSession, useWorkspace, useConnectivity } from '../app/providers';
 import { getSessionTokenGeneration } from '../app/providers/session/session.generation';
 import {
+  readAnalyticsBaseCurrencySetting as readRealAnalyticsBaseCurrencySetting,
+  writeAnalyticsBaseCurrencySetting as writeRealAnalyticsBaseCurrencySetting,
+} from '../lib/google';
+import { isGoogleAuthError } from '../lib/googleErrors';
+import {
+  IS_DEV_MODE,
+  readAnalyticsBaseCurrencySetting as readMockAnalyticsBaseCurrencySetting,
+  writeAnalyticsBaseCurrencySetting as writeMockAnalyticsBaseCurrencySetting,
+} from '../lib/mock';
+import { mergeOnboardingState } from '../lib/onboarding';
+import {
   mutateLocalOnboarding,
   mutatePreSheetOnboarding,
   readLocalOnboardingState,
@@ -23,6 +34,13 @@ import {
   readSettingsSyncState,
 } from '../lib/settingsSync';
 import type { OnboardingState } from '../lib/types';
+
+const readAnalyticsBaseCurrencySetting = IS_DEV_MODE
+  ? readMockAnalyticsBaseCurrencySetting
+  : readRealAnalyticsBaseCurrencySetting;
+const writeAnalyticsBaseCurrencySetting = IS_DEV_MODE
+  ? writeMockAnalyticsBaseCurrencySetting
+  : writeRealAnalyticsBaseCurrencySetting;
 
 export const settingsKeys = {
   all: ['settings'] as const,
@@ -147,6 +165,35 @@ async function refreshSettingsCaches(
   );
 }
 
+async function reconcileAnalyticsBaseCurrency(
+  accessToken: string,
+  sheetId: string,
+  userId: string,
+): Promise<void> {
+  const remoteSetting = await readAnalyticsBaseCurrencySetting(
+    accessToken,
+    sheetId,
+  );
+  const remoteConfig = remoteSetting
+    ? { analyticsBaseCurrency: remoteSetting }
+    : {};
+  const current = await readLocalOnboardingState(sheetId);
+  if (mergeOnboardingState(current, remoteConfig).changed) {
+    await mutateLocalOnboarding(sheetId, userId, (latest) =>
+      mergeOnboardingState(latest, remoteConfig).next,
+    );
+  }
+
+  const latest = await readLocalOnboardingState(sheetId);
+  const result = mergeOnboardingState(latest, remoteConfig);
+  if (result.settingsNeedPush && result.next.analyticsBaseCurrencyUpdatedAt) {
+    await writeAnalyticsBaseCurrencySetting(accessToken, sheetId, {
+      currency: result.next.analyticsBaseCurrency,
+      updatedAt: result.next.analyticsBaseCurrencyUpdatedAt,
+    });
+  }
+}
+
 /**
  * Background sync query for Sheets hydration
  * Only runs when authenticated and online
@@ -211,6 +258,7 @@ export function useOnboardingSync() {
           verifiedWorkspaceCount: rememberedWorkspaceCount(sheetId, userId),
           signOut,
         });
+        await reconcileAnalyticsBaseCurrency(accessToken, sheetId, userId);
         await refreshSettingsCaches(
           queryClient,
           sheetId,
@@ -225,6 +273,9 @@ export function useOnboardingSync() {
         }
         return result;
       } catch (error) {
+        if (isGoogleAuthError(error)) {
+          signOut(accessToken);
+        }
         await refreshSettingsCaches(
           queryClient,
           sheetId,
@@ -249,7 +300,6 @@ export function useOnboardingSync() {
       !enabled ||
       syncQuery.isFetching ||
       !state ||
-      state.dirty.length === 0 ||
       mutationRevision <= completedRevisionQuery.data ||
       mutationRevision <= claimedRevisionQuery.data
     ) {

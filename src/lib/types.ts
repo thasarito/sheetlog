@@ -1,3 +1,5 @@
+import type { Currency } from './currencies';
+
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type TransactionStatus = 'pending' | 'synced' | 'error';
 
@@ -71,6 +73,15 @@ export interface SettingRecord {
   updatedAt: string;
 }
 
+export interface ExchangeRateRecord {
+  id: string;
+  base: string;
+  quote: string;
+  date: string;
+  rate: number;
+  fetchedAt: string;
+}
+
 export interface RecentCategories {
   expense: string[];
   income: string[];
@@ -93,12 +104,19 @@ export interface CategoryItem {
 
 export type CategoryConfigWithMeta = Record<TransactionType, CategoryItem[]>;
 
+export type AnalyticsBaseCurrencySetting = {
+  currency: Currency;
+  updatedAt: string;
+};
+
 export interface OnboardingState {
   sheetFolderId: string | null;
   accounts: AccountItem[];
   accountsConfirmed: boolean;
   categories: CategoryConfigWithMeta;
   categoriesConfirmed: boolean;
+  analyticsBaseCurrency: Currency;
+  analyticsBaseCurrencyUpdatedAt: string | null;
 }
 
 export interface QuickNote {
