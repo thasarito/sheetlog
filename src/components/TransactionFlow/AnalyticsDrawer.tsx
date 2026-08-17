@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
 import {
@@ -18,15 +18,21 @@ import {
   formatAnalyticsAmount,
   getAnalyticsBucketDescription,
   getOfflineFreshness,
+  type AnalyticsPeriodOption,
   type AnalyticsRange,
   type DatePeriod,
 } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsCategories } from './AnalyticsCategories';
 import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
+import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
 import { AnalyticsRangeDrawer } from './AnalyticsRangeDrawer';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
-import { TransactionRow } from './TransactionRow';
+import {
+  flattenTransactionHistory,
+  TransactionHistoryDateHeader,
+  TransactionHistoryRow,
+} from './TransactionHistoryItems';
 
 type AnalyticsDrawerProps = {
   open: boolean;
@@ -34,6 +40,9 @@ type AnalyticsDrawerProps = {
   transactions: TransactionRecord[];
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
+  periodOptions: AnalyticsPeriodOption[];
+  periodOffset: number;
+  onPeriodChange: (offset: number) => void;
   customPeriod: DatePeriod;
   onCustomPeriodChange: (period: DatePeriod) => void;
   currency: string;
@@ -55,6 +64,9 @@ export function AnalyticsDrawer({
   transactions,
   range,
   onRangeChange,
+  periodOptions,
+  periodOffset,
+  onPeriodChange,
   customPeriod,
   onCustomPeriodChange,
   currency,
@@ -77,8 +89,16 @@ export function AnalyticsDrawer({
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
   const summary = useMemo(
-    () => buildAnalyticsSummary({ transactions, range, currency, now, customPeriod }),
-    [currency, customPeriod, now, range, transactions],
+    () =>
+      buildAnalyticsSummary({
+        transactions,
+        range,
+        currency,
+        now,
+        customPeriod,
+        periodOffset,
+      }),
+    [currency, customPeriod, now, periodOffset, range, transactions],
   );
   const scope = useMemo(
     () => buildAnalyticsScope(summary, selectedBucket),
@@ -96,11 +116,19 @@ export function AnalyticsDrawer({
     return new Date(Math.min(...dates.map((date) => date.getTime())));
   }, [customPeriod.start, transactions]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scalar custom endpoints intentionally define the controlled date scope
-  useEffect(() => {
+  const clearFilters = useCallback(() => {
     setSelectedBucket(null);
     setSelectedCategory(null);
-  }, [currency, customEnd, customStart, range]);
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scalar custom endpoints intentionally define the controlled date scope
+  useEffect(() => {
+    clearFilters();
+  }, [clearFilters, currency, customEnd, customStart, periodOffset, range]);
+
+  useEffect(() => {
+    if (!open) clearFilters();
+  }, [clearFilters, open]);
 
   useEffect(() => {
     if (!open) setCustomRangeOpen(false);
@@ -113,18 +141,21 @@ export function AnalyticsDrawer({
       (row) => row.type === 'expense' && categoryNames.has(row.category.trim() || 'Uncategorized'),
     );
   }, [scope.transactions, selectedSeries]);
-
-  const clearFilters = () => {
-    setSelectedBucket(null);
-    setSelectedCategory(null);
-  };
+  const transactionItems = useMemo(
+    () => flattenTransactionHistory(filteredTransactions),
+    [filteredTransactions],
+  );
 
   const selectTransaction = (transaction: TransactionRecord) => {
+    clearFilters();
     onOpenChange(false);
     onSelectTransaction(transaction);
   };
   const handleDrawerOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) setCustomRangeOpen(false);
+    if (!nextOpen) {
+      setCustomRangeOpen(false);
+      clearFilters();
+    }
     onOpenChange(nextOpen);
   };
   const handleRangeChange = (
@@ -142,8 +173,15 @@ export function AnalyticsDrawer({
     onCustomPeriodChange(period);
     onRangeChange('custom');
   };
+  const handlePeriodChange = (nextOffset: number) => {
+    clearFilters();
+    onPeriodChange(nextOffset);
+  };
+  const selectedPeriod = periodOptions.find((option) => option.offset === periodOffset);
   const rangeAnnouncement =
-    range === 'week'
+    periodOffset < 0 && selectedPeriod
+      ? selectedPeriod.accessibleLabel
+      : range === 'week'
       ? 'Week, last 7 days'
       : range === 'month'
         ? 'Month, month to date'
@@ -199,80 +237,89 @@ export function AnalyticsDrawer({
         </output>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-safe" data-vaul-no-drag>
-          {!hasCompleteHistory && isOffline ? (
-            <div className="flex min-h-48 items-center text-sm text-muted-foreground">
-              Full range unavailable offline
+          <div className="space-y-7 pb-8">
+            <div
+              data-testid="analytics-range-controls"
+              className="flex items-center justify-between gap-3 pt-3"
+            >
+              {currencies.length > 1 ? (
+                <select
+                  aria-label="Analytics currency"
+                  value={currency}
+                  onChange={(event) => onCurrencyChange(event.target.value)}
+                  className="h-11 min-w-20 rounded-xl border border-border bg-background px-2 text-sm font-semibold"
+                >
+                  {currencies.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs font-semibold text-muted-foreground">{currency}</span>
+              )}
+              <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
             </div>
-          ) : !hasCompleteHistory && isLoading ? (
-            <output aria-label="Loading detailed analytics" className="block space-y-4 pt-4">
-              <Skeleton className="h-40 w-full" />
-              <Skeleton className="h-32 w-full" />
-              <Skeleton className="h-40 w-full" />
-            </output>
-          ) : !hasCompleteHistory ? (
-            <div className="flex min-h-48 items-center justify-between">
-              <span className="text-sm text-muted-foreground">Analytics unavailable</span>
-              <button
-                type="button"
-                onClick={onRetry}
-                className="min-h-11 font-semibold text-primary"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-7 pb-8">
-              <div
-                data-testid="analytics-range-controls"
-                className="flex items-center justify-between gap-3 pt-3"
-              >
-                {currencies.length > 1 ? (
-                  <select
-                    aria-label="Analytics currency"
-                    value={currency}
-                    onChange={(event) => onCurrencyChange(event.target.value)}
-                    className="h-11 min-w-20 rounded-xl border border-border bg-background px-2 text-sm font-semibold"
-                  >
-                    {currencies.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="text-xs font-semibold text-muted-foreground">{currency}</span>
-                )}
-                <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
-              </div>
 
-              <section aria-label="Spending trend">
-                <AnalyticsBarChart
-                  buckets={summary.buckets}
-                  series={summary.series}
-                  currency={currency}
-                  selectedKey={selectedBucket}
-                  onSelect={(key) =>
-                    setSelectedBucket((current) =>
-                      key === null || current === key ? null : key,
-                    )
-                  }
-                  className="h-44"
-                />
-                {selectedBucketDetails ? (
-                  <div className="mt-2 flex justify-center">
-                    <button
-                      type="button"
-                      aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)}`}
-                      onClick={() => setSelectedBucket(null)}
-                      className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    >
-                      {selectedBucketDetails.accessibleLabel} ·{' '}
-                      {formatAnalyticsAmount(selectedBucketDetails.amount, currency)}
-                      <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </div>
-                ) : null}
-              </section>
+            {range !== 'custom' ? (
+              <AnalyticsPeriodPicker
+                options={periodOptions}
+                value={periodOffset}
+                onChange={handlePeriodChange}
+              />
+            ) : null}
+
+            {!hasCompleteHistory && isOffline ? (
+              <div className="flex min-h-48 items-center text-sm text-muted-foreground">
+                Full range unavailable offline
+              </div>
+            ) : !hasCompleteHistory && isLoading ? (
+              <output aria-label="Loading detailed analytics" className="block space-y-4 pt-4">
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-40 w-full" />
+              </output>
+            ) : !hasCompleteHistory ? (
+              <div className="flex min-h-48 items-center justify-between">
+                <span className="text-sm text-muted-foreground">Analytics unavailable</span>
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="min-h-11 font-semibold text-primary"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <>
+                <section aria-label="Spending trend">
+                  <AnalyticsBarChart
+                    buckets={summary.buckets}
+                    series={summary.series}
+                    currency={currency}
+                    selectedKey={selectedBucket}
+                    onSelect={(key) =>
+                      setSelectedBucket((current) =>
+                        key === null || current === key ? null : key,
+                      )
+                    }
+                    className="h-44"
+                  />
+                  {selectedBucketDetails ? (
+                    <div className="mt-2 flex justify-center">
+                      <button
+                        type="button"
+                        aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)}`}
+                        onClick={() => setSelectedBucket(null)}
+                        className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                      >
+                        {selectedBucketDetails.accessibleLabel} ·{' '}
+                        {formatAnalyticsAmount(selectedBucketDetails.amount, currency)}
+                        <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
 
               <section aria-labelledby="analytics-overview">
                 <h3
@@ -354,14 +401,22 @@ export function AnalyticsDrawer({
                     </button>
                   ) : null}
                 </div>
-                {filteredTransactions.length > 0 ? (
-                  filteredTransactions.map((transaction) => (
-                    <TransactionRow
-                      key={transaction.id}
-                      transaction={transaction}
-                      onSelect={selectTransaction}
-                    />
-                  ))
+                {transactionItems.length > 0 ? (
+                  transactionItems.map((item) =>
+                    item.kind === 'date' ? (
+                      <TransactionHistoryDateHeader
+                        key={item.key}
+                        dateKey={item.dateKey}
+                        today={now}
+                      />
+                    ) : (
+                      <TransactionHistoryRow
+                        key={item.key}
+                        transaction={item.transaction}
+                        onSelect={selectTransaction}
+                      />
+                    ),
+                  )
                 ) : (
                   <p className="py-6 text-center text-sm text-muted-foreground">
                     No matching transactions
@@ -379,8 +434,9 @@ export function AnalyticsDrawer({
                   {getOfflineFreshness(updatedAt)}
                 </p>
               ) : null}
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </DrawerContent>
       <AnalyticsRangeDrawer

@@ -1,9 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
-import type { AnalyticsRange, DatePeriod } from './analytics';
+import type { AnalyticsPeriodOption, AnalyticsRange, DatePeriod } from './analytics';
 import { AnalyticsDrawer } from './AnalyticsDrawer';
 
 const customPeriod: DatePeriod = {
@@ -56,12 +56,38 @@ const transactions: TransactionRecord[] = [
   },
 ];
 
+const periodOptions: AnalyticsPeriodOption[] = [
+  {
+    key: 'week-previous',
+    offset: -1,
+    label: 'Aug 4–10',
+    accessibleLabel: 'August 4, 2026 through August 10, 2026',
+    period: {
+      start: new Date(2026, 7, 4),
+      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+    },
+  },
+  {
+    key: 'week-current',
+    offset: 0,
+    label: 'Aug 11–17',
+    accessibleLabel: 'August 11, 2026 through August 17, 2026',
+    period: {
+      start: new Date(2026, 7, 11),
+      end: new Date(2026, 7, 17, 23, 59, 59, 999),
+    },
+  },
+];
+
 const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
   open: true,
   onOpenChange: vi.fn(),
   transactions,
   range: 'week',
   onRangeChange: vi.fn(),
+  periodOptions,
+  periodOffset: 0,
+  onPeriodChange: vi.fn(),
   customPeriod,
   onCustomPeriodChange: vi.fn(),
   currency: 'THB',
@@ -97,6 +123,13 @@ describe('AnalyticsDrawer', () => {
         'Spending by category: Dining Out 60%, Coffee 40%. Expenses ฿200',
       ),
     ).toBeInTheDocument();
+    const transactionSection = screen.getByRole('region', { name: 'Transactions' });
+    expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
+    expect(
+      within(transactionSection).getByRole('button', { name: /expense Dining Out/ }),
+    ).toHaveTextContent('−฿120.00');
 
     await user.click(screen.getByRole('option', { name: /Monday, August 17, ฿120/ }));
 
@@ -111,9 +144,16 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Coffee/ })).not.toBeInTheDocument();
+    expect(within(transactionSection).getAllByText('Today')).toHaveLength(1);
+    expect(within(transactionSection).queryByText('Yesterday')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toHaveTextContent(
       'Monday, August 17 · ฿120',
     );
+
+    await user.click(screen.getByRole('button', { name: /Clear selected period filter/ }));
+    expect(within(transactionSection).getByText('Today')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Yesterday')).toBeInTheDocument();
+    expect(within(transactionSection).getByText('Saturday, Aug 15')).toBeInTheDocument();
   });
 
   it('intersects category and bucket filters while clearing each independently', async () => {
@@ -208,9 +248,61 @@ describe('AnalyticsDrawer', () => {
         screen.queryByRole('button', { name: /Clear selected period filter/ }),
       ).not.toBeInTheDocument(),
     );
-    expect(screen.getAllByRole('option').every((option) => option.getAttribute('aria-selected') === 'false')).toBe(
-      true,
+    expect(
+      within(screen.getByRole('listbox', { name: 'Select analytics period' }))
+        .getAllByRole('option')
+        .every((option) => option.getAttribute('aria-selected') === 'false'),
+    ).toBe(true);
+  });
+
+  it('shares period changes and clears an active drill-down before changing period', async () => {
+    const user = userEvent.setup();
+    const onPeriodChange = vi.fn();
+    renderDrawer({ onPeriodChange });
+
+    await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
+    expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('option', {
+        name: 'August 4, 2026 through August 10, 2026',
+      }),
     );
+    expect(onPeriodChange).toHaveBeenCalledWith(-1);
+    expect(
+      screen.queryByRole('button', { name: /Clear selected period filter/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('clears bucket and category filters whenever the sheet closes', async () => {
+    const user = userEvent.setup();
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen analytics
+          </button>
+          <AnalyticsDrawer {...baseProps} open={open} onOpenChange={setOpen} />
+        </>
+      );
+    }
+    render(<Harness />);
+
+    await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
+    await user.click(screen.getByRole('button', { name: /Dining Out,/ }));
+    expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close analytics' }));
+    fireEvent.click(screen.getByText('Reopen analytics'));
+
+    expect(
+      screen.queryByRole('button', { name: /Clear selected period filter/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'August 11, 2026 through August 17, 2026' }),
+    ).toHaveAttribute('aria-selected', 'true');
   });
 
   it('shares range/currency controls and closes before editing a row', async () => {
@@ -269,12 +361,33 @@ describe('AnalyticsDrawer', () => {
     );
   });
 
-  it('announces loading without presenting a partial local total as complete', () => {
-    renderDrawer({ isLoading: true, hasCompleteHistory: false });
+  it('keeps local periods available while complete analytics are loading or unavailable', () => {
+    const { rerender } = renderDrawer({ isLoading: true, hasCompleteHistory: false });
 
     const status = screen.getByRole('status', { name: 'Analytics summary update' });
     expect(status).toHaveTextContent('Loading Week, last 7 days analytics');
     expect(status).not.toHaveTextContent('Expenses ฿200');
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
+
+    rerender(
+      <AnalyticsDrawer
+        {...baseProps}
+        hasCompleteHistory={false}
+        isOffline
+      />,
+    );
+    expect(status).toHaveTextContent('Full range unavailable offline');
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
+
+    rerender(
+      <AnalyticsDrawer
+        {...baseProps}
+        hasCompleteHistory={false}
+        error={new Error('network')}
+      />,
+    );
+    expect(status).toHaveTextContent('Analytics unavailable');
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
   });
 
   it('groups categories after the top four into a selectable Other row', async () => {

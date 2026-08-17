@@ -1,8 +1,12 @@
 import {
   addDays,
   addMonths,
+  addQuarters,
+  addYears,
   differenceInCalendarDays,
   differenceInCalendarMonths,
+  differenceInCalendarQuarters,
+  differenceInCalendarYears,
   endOfDay,
   endOfMonth,
   endOfQuarter,
@@ -27,6 +31,14 @@ export type DatePeriod = { start: Date; end: Date };
 export type AnalyticsPeriods = {
   current: DatePeriod;
   comparison: DatePeriod;
+};
+
+export type AnalyticsPeriodOption = {
+  key: string;
+  offset: number;
+  label: string;
+  accessibleLabel: string;
+  period: DatePeriod;
 };
 
 export type AnalyticsComparison = {
@@ -88,6 +100,7 @@ type BuildAnalyticsSummaryInput = {
   currency: string;
   now: Date;
   customPeriod?: DatePeriod;
+  periodOffset?: number;
 };
 
 const SERIES_TONES: AnalyticsSeriesTone[] = ['emerald', 'cyan', 'violet', 'rose'];
@@ -109,12 +122,18 @@ function contains(period: DatePeriod, date: Date): boolean {
   return time >= period.start.getTime() && time <= period.end.getTime();
 }
 
+function normalizePeriodOffset(periodOffset: number): number {
+  return Number.isFinite(periodOffset) ? Math.min(0, Math.trunc(periodOffset)) : 0;
+}
+
 export function getAnalyticsPeriods(
   range: AnalyticsRange,
   now: Date,
   customPeriod?: DatePeriod,
+  periodOffset = 0,
 ): AnalyticsPeriods {
   const currentEnd = endOfDay(now);
+  const offset = normalizePeriodOffset(periodOffset);
 
   if (range === 'custom') {
     const current = normalizePeriod(
@@ -131,9 +150,10 @@ export function getAnalyticsPeriods(
   }
 
   if (range === 'week') {
-    const currentStart = startOfDay(subDays(now, 6));
+    const selectedEnd = endOfDay(addDays(now, offset * 7));
+    const currentStart = startOfDay(subDays(selectedEnd, 6));
     return {
-      current: { start: currentStart, end: currentEnd },
+      current: { start: currentStart, end: selectedEnd },
       comparison: {
         start: startOfDay(subDays(currentStart, 7)),
         end: endOfDay(subDays(currentStart, 1)),
@@ -142,42 +162,63 @@ export function getAnalyticsPeriods(
   }
 
   if (range === 'month') {
-    const currentStart = startOfMonth(now);
-    const comparisonStart = startOfMonth(subMonths(now, 1));
-    const elapsedDays = differenceInCalendarDays(currentEnd, currentStart);
+    const anchor = addMonths(now, offset);
+    const currentStart = startOfMonth(anchor);
+    const selectedEnd = offset === 0 ? currentEnd : endOfMonth(anchor);
+    const comparisonStart = startOfMonth(subMonths(anchor, 1));
+    const elapsedDays = differenceInCalendarDays(selectedEnd, currentStart);
     return {
-      current: { start: currentStart, end: currentEnd },
+      current: { start: currentStart, end: selectedEnd },
       comparison: {
         start: comparisonStart,
-        end: minDate(endOfMonth(comparisonStart), endOfDay(addDays(comparisonStart, elapsedDays))),
+        end:
+          offset === 0
+            ? minDate(
+                endOfMonth(comparisonStart),
+                endOfDay(addDays(comparisonStart, elapsedDays)),
+              )
+            : endOfMonth(comparisonStart),
       },
     };
   }
 
   if (range === 'year') {
-    const currentStart = startOfYear(now);
-    const comparisonStart = startOfYear(subYears(now, 1));
-    const elapsedDays = differenceInCalendarDays(currentEnd, currentStart);
+    const anchor = addYears(now, offset);
+    const currentStart = startOfYear(anchor);
+    const selectedEnd = offset === 0 ? currentEnd : endOfYear(anchor);
+    const comparisonStart = startOfYear(subYears(anchor, 1));
+    const elapsedDays = differenceInCalendarDays(selectedEnd, currentStart);
     return {
-      current: { start: currentStart, end: currentEnd },
+      current: { start: currentStart, end: selectedEnd },
       comparison: {
         start: comparisonStart,
-        end: minDate(
-          endOfYear(comparisonStart),
-          endOfDay(addDays(comparisonStart, elapsedDays)),
-        ),
+        end:
+          offset === 0
+            ? minDate(
+                endOfYear(comparisonStart),
+                endOfDay(addDays(comparisonStart, elapsedDays)),
+              )
+            : endOfYear(comparisonStart),
       },
     };
   }
 
-  const currentStart = startOfQuarter(now);
-  const comparisonStart = startOfQuarter(subQuarters(now, 1));
-  const elapsedDays = differenceInCalendarDays(currentEnd, currentStart);
+  const anchor = addQuarters(now, offset);
+  const currentStart = startOfQuarter(anchor);
+  const selectedEnd = offset === 0 ? currentEnd : endOfQuarter(anchor);
+  const comparisonStart = startOfQuarter(subQuarters(anchor, 1));
+  const elapsedDays = differenceInCalendarDays(selectedEnd, currentStart);
   return {
-    current: { start: currentStart, end: currentEnd },
+    current: { start: currentStart, end: selectedEnd },
     comparison: {
       start: comparisonStart,
-      end: minDate(endOfQuarter(comparisonStart), endOfDay(addDays(comparisonStart, elapsedDays))),
+      end:
+        offset === 0
+          ? minDate(
+              endOfQuarter(comparisonStart),
+              endOfDay(addDays(comparisonStart, elapsedDays)),
+            )
+          : endOfQuarter(comparisonStart),
     },
   };
 }
@@ -193,6 +234,68 @@ function categoryName(row: TransactionRecord): string {
 
 function analyticsDate(row: TransactionRecord): Date | null {
   return tryParseDate(row.date);
+}
+
+function formatCompactDateRange(period: DatePeriod): string {
+  const sameYear = period.start.getFullYear() === period.end.getFullYear();
+  const sameMonth = sameYear && period.start.getMonth() === period.end.getMonth();
+  if (sameMonth) return `${format(period.start, 'MMM d')}–${format(period.end, 'd')}`;
+  if (sameYear) return `${format(period.start, 'MMM d')}–${format(period.end, 'MMM d')}`;
+  return `${format(period.start, 'MMM d, yyyy')}–${format(period.end, 'MMM d, yyyy')}`;
+}
+
+function analyticsPeriodOption(
+  range: Exclude<AnalyticsRange, 'custom'>,
+  now: Date,
+  offset: number,
+): AnalyticsPeriodOption {
+  const period = getAnalyticsPeriods(range, now, undefined, offset).current;
+  const quarter = Math.floor(period.start.getMonth() / 3) + 1;
+  const label =
+    range === 'week'
+      ? formatCompactDateRange(period)
+      : range === 'month'
+        ? format(period.start, 'MMMM yyyy')
+        : range === 'quarter'
+          ? `Q${quarter} ${format(period.start, 'yyyy')}`
+          : format(period.start, 'yyyy');
+  const accessibleLabel = `${format(period.start, 'MMMM d, yyyy')} through ${format(period.end, 'MMMM d, yyyy')}`;
+  return {
+    key: `${range}-${format(period.start, 'yyyy-MM-dd')}-${format(period.end, 'yyyy-MM-dd')}`,
+    offset,
+    label,
+    accessibleLabel,
+    period,
+  };
+}
+
+export function buildAnalyticsPeriodOptions(
+  range: AnalyticsRange,
+  transactions: TransactionRecord[],
+  now: Date,
+): AnalyticsPeriodOption[] {
+  if (range === 'custom') return [];
+
+  const todayEnd = endOfDay(now).getTime();
+  const earliest = transactions.reduce<Date | null>((current, transaction) => {
+    if (transaction.sheetRowValid === false) return current;
+    const date = analyticsDate(transaction);
+    if (!date || date.getTime() > todayEnd) return current;
+    return current === null || date.getTime() < current.getTime() ? date : current;
+  }, null);
+  const distance = earliest
+    ? range === 'week'
+      ? Math.floor(differenceInCalendarDays(startOfDay(now), startOfDay(earliest)) / 7)
+      : range === 'month'
+        ? differenceInCalendarMonths(startOfMonth(now), startOfMonth(earliest))
+        : range === 'quarter'
+          ? differenceInCalendarQuarters(startOfQuarter(now), startOfQuarter(earliest))
+          : differenceInCalendarYears(startOfYear(now), startOfYear(earliest))
+    : 0;
+
+  return Array.from({ length: Math.max(0, distance) + 1 }, (_, index) =>
+    analyticsPeriodOption(range, now, index - Math.max(0, distance)),
+  );
 }
 
 function sumType(rows: TransactionRecord[], type: TransactionType): number {
@@ -421,8 +524,9 @@ export function buildAnalyticsSummary({
   currency,
   now,
   customPeriod,
+  periodOffset = 0,
 }: BuildAnalyticsSummaryInput): AnalyticsSummary {
-  const periods = getAnalyticsPeriods(range, now, customPeriod);
+  const periods = getAnalyticsPeriods(range, now, customPeriod, periodOffset);
   const currentRows = rowsInPeriod(transactions, periods.current, currency);
   const comparisonRows = rowsInPeriod(transactions, periods.comparison, currency);
   const expenseTotal = sumType(currentRows, 'expense');
@@ -478,6 +582,7 @@ export function getAnalyticsBucketDescription(
 export function getComparisonText(
   comparison: AnalyticsComparison,
   range: AnalyticsRange,
+  periodOffset = 0,
 ): string {
   if (comparison.direction === 'refunds') return 'Net refunds exceeded expenses';
   if (comparison.direction === 'none') return 'No prior-period data';
@@ -486,11 +591,17 @@ export function getComparisonText(
     range === 'week'
       ? 'previous 7 days'
       : range === 'month'
-        ? 'the same days last month'
+        ? periodOffset < 0
+          ? 'previous month'
+          : 'the same days last month'
         : range === 'quarter'
-          ? 'the same elapsed days last quarter'
+          ? periodOffset < 0
+            ? 'previous quarter'
+            : 'the same elapsed days last quarter'
           : range === 'year'
-            ? 'the same elapsed days last year'
+            ? periodOffset < 0
+              ? 'previous year'
+              : 'the same elapsed days last year'
             : 'the previous period';
   return `${comparison.percentage}% ${comparison.direction} ${period}`;
 }
