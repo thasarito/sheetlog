@@ -96,4 +96,64 @@ describe('TransactionHistoryItems', () => {
     );
     expect(onSelect).toHaveBeenCalledWith(expense);
   });
+
+  it('adds a quiet accessible approximation only to foreign-currency rows', () => {
+    const onSelect = vi.fn();
+    const base = transaction('base');
+    const ready = transaction('ready', { currency: 'USD' });
+    const income = transaction('income', {
+      type: 'income',
+      currency: 'USD',
+    });
+    const loading = transaction('loading', { currency: 'USD' });
+    const unavailable = transaction('unavailable', { currency: 'USD' });
+
+    render(
+      <>
+        <TransactionHistoryRow transaction={base} onSelect={onSelect} />
+        <TransactionHistoryRow
+          transaction={ready}
+          onSelect={onSelect}
+          baseAmount={{ status: 'ready', currency: 'THB', amount: 100 }}
+        />
+        <TransactionHistoryRow
+          transaction={income}
+          onSelect={onSelect}
+          baseAmount={{ status: 'ready', currency: 'THB', amount: 100 }}
+        />
+        <TransactionHistoryRow
+          transaction={loading}
+          onSelect={onSelect}
+          baseAmount={{ status: 'loading', currency: 'THB' }}
+        />
+        <TransactionHistoryRow
+          transaction={unavailable}
+          onSelect={onSelect}
+          baseAmount={{ status: 'unavailable', currency: 'THB' }}
+        />
+      </>,
+    );
+
+    expect(screen.getByText('≈ −฿100.00')).toHaveClass(
+      'text-muted-foreground',
+    );
+    expect(screen.getByText('≈ +฿100.00')).toBeInTheDocument();
+    expect(screen.getByText('≈ ฿—')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('base-currency-amount-loading'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: /Category ready.*approximately minus 100\.00 THB/,
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', {
+        name: /Category unavailable.*base amount unavailable in THB/,
+      }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: /Category base/ }),
+    ).not.toHaveTextContent('≈');
+  });
 });

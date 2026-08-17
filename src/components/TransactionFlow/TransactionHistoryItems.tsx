@@ -3,6 +3,12 @@ import { parseDate } from '../../lib/date-utils';
 import { canEditTransaction } from '../../lib/transactionHistory';
 import type { TransactionRecord } from '../../lib/types';
 import { cn } from '../../lib/utils';
+import { Skeleton } from '../ui/skeleton';
+import {
+  formatTransactionBaseAmount,
+  getTransactionBaseAmountAccessibleText,
+  type TransactionBaseAmountState,
+} from './transactionBaseAmounts';
 
 export type TransactionHistoryListItem =
   | { key: string; kind: 'date'; dateKey: string }
@@ -62,12 +68,50 @@ function amountLabel(transaction: TransactionRecord): string {
   })}`;
 }
 
+export function TransactionBaseAmountLine({
+  transaction,
+  state,
+}: {
+  transaction: TransactionRecord;
+  state?: TransactionBaseAmountState;
+}) {
+  if (!state) return null;
+  if (state.status === 'loading') {
+    return (
+      <Skeleton
+        aria-hidden="true"
+        data-testid="base-currency-amount-loading"
+        className="mt-0.5 h-3 w-14 self-end"
+      />
+    );
+  }
+
+  const accessibleText = getTransactionBaseAmountAccessibleText(
+    transaction,
+    state,
+  );
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        data-testid="base-currency-amount"
+        className="text-[11px] font-normal leading-tight text-muted-foreground"
+      >
+        {formatTransactionBaseAmount(transaction, state)}
+      </span>
+      {accessibleText ? <span className="sr-only">{accessibleText}</span> : null}
+    </>
+  );
+}
+
 export function TransactionHistoryRow({
   transaction,
   onSelect,
+  baseAmount,
 }: {
   transaction: TransactionRecord;
   onSelect: (transaction: TransactionRecord) => void;
+  baseAmount?: TransactionBaseAmountState;
 }) {
   const canEdit = canEditTransaction(transaction);
   const statusLabel = !canEdit
@@ -79,6 +123,9 @@ export function TransactionHistoryRow({
         : null;
   const time = format(parseDate(transaction.date), 'HH:mm');
   const amount = amountLabel(transaction);
+  const baseAmountAccessibleText = baseAmount
+    ? getTransactionBaseAmountAccessibleText(transaction, baseAmount)
+    : null;
   const accessibleLabel = [
     time,
     transaction.type,
@@ -87,6 +134,7 @@ export function TransactionHistoryRow({
     transaction.account?.trim(),
     statusLabel,
     amount,
+    baseAmountAccessibleText,
   ]
     .filter(Boolean)
     .join(' ');
@@ -127,17 +175,23 @@ export function TransactionHistoryRow({
           ) : null}
         </span>
       </span>
-      <span
-        className={cn(
-          'whitespace-nowrap font-semibold tabular-nums',
-          transaction.type === 'income'
-            ? 'text-emerald-500'
-            : transaction.type === 'transfer'
-              ? 'text-blue-500'
-              : 'text-foreground',
-        )}
-      >
-        {amount}
+      <span className="flex flex-col items-end whitespace-nowrap tabular-nums">
+        <span
+          className={cn(
+            'font-semibold',
+            transaction.type === 'income'
+              ? 'text-emerald-500'
+              : transaction.type === 'transfer'
+                ? 'text-blue-500'
+                : 'text-foreground',
+          )}
+        >
+          {amount}
+        </span>
+        <TransactionBaseAmountLine
+          transaction={transaction}
+          state={baseAmount}
+        />
       </span>
     </button>
   );
