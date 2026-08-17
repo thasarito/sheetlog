@@ -128,11 +128,24 @@ test.describe('Home Transactions and Analytics carousel', () => {
     const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
     const compactPeriodPicker = analyticsSlide.getByTestId('analytics-period-picker');
     await expect(compactPeriodPicker.getByRole('option')).toHaveCount(3);
+    await expect(compactPeriodPicker.getByRole('option', { selected: true })).toHaveAttribute(
+      'data-period-offset',
+      '0',
+    );
+    await expect
+      .poll(() => compactPeriodPicker.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0);
+    const currentPeriodScrollLeft = await compactPeriodPicker.evaluate(
+      (element) => element.scrollLeft,
+    );
     const currentWeekLabel = await compactPeriodPicker
       .getByRole('option', { selected: true })
       .textContent();
     await touchSwipe(page, compactPeriodPicker, 180, 2);
     await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
+    await expect
+      .poll(() => compactPeriodPicker.evaluate((element) => element.scrollLeft))
+      .toBeLessThan(currentPeriodScrollLeft);
     await expect(compactPeriodPicker.getByRole('option', { selected: true })).not.toHaveText(
       currentWeekLabel ?? '',
     );

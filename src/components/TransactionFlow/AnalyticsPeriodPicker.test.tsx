@@ -33,7 +33,7 @@ describe('AnalyticsPeriodPicker', () => {
       'data-home-carousel-swipe-lock',
       'true',
     );
-    expect(screen.getByTestId('analytics-period-picker')).toHaveClass('[touch-action:pan-x]');
+    expect(screen.getByTestId('analytics-period-picker')).toHaveClass('[touch-action:pan-y]');
     expect(screen.getByTestId('analytics-period-picker')).not.toHaveClass('scroll-smooth');
     expect(screen.getByRole('option', { name: 'July 2026' })).toHaveClass('font-semibold');
     expect(screen.getByRole('option', { name: 'June 2026' })).toHaveClass('font-medium');
@@ -100,14 +100,20 @@ describe('AnalyticsPeriodPicker', () => {
     expect(onChange).toHaveBeenCalledWith(-1);
   });
 
-  it('does not select an intermediate option during controlled centering', () => {
+  it('does not select an intermediate option when controlled centering emits scroll later', () => {
     vi.useFakeTimers();
     const originalScrollTo = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
       'scrollTo',
     );
-    const scrollTo = vi.fn(function mockScrollTo(this: HTMLElement) {
-      this.dispatchEvent(new Event('scroll', { bubbles: true }));
+    const scrollTo = vi.fn(function mockScrollTo(
+      this: HTMLElement,
+      options?: ScrollToOptions,
+    ) {
+      this.scrollLeft = Number(options?.left ?? 0);
+      window.setTimeout(() => {
+        this.dispatchEvent(new Event('scroll', { bubbles: true }));
+      }, 0);
     });
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
@@ -167,5 +173,68 @@ describe('AnalyticsPeriodPicker', () => {
         Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
       }
     }
+  });
+
+  it('lets touch drag the period strip while leaving mouse dragging inert', () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    render(<AnalyticsPeriodPicker options={options} value={0} onChange={onChange} />);
+
+    const picker = screen.getByTestId('analytics-period-picker');
+    Object.defineProperties(picker, {
+      clientWidth: { configurable: true, value: 200 },
+      scrollWidth: { configurable: true, value: 512 },
+      scrollLeft: { configurable: true, writable: true, value: 256 },
+    });
+    screen.getAllByRole('option').forEach((option, index) => {
+      Object.defineProperties(option, {
+        offsetLeft: { configurable: true, value: index * 128 },
+        offsetWidth: { configurable: true, value: 128 },
+      });
+    });
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 1,
+      pointerType: 'mouse',
+      clientX: 180,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(picker, {
+      pointerId: 1,
+      pointerType: 'mouse',
+      clientX: 80,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(picker, {
+      pointerId: 1,
+      pointerType: 'mouse',
+      clientX: 80,
+      clientY: 20,
+    });
+    expect(picker.scrollLeft).toBe(256);
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 240,
+      clientY: 22,
+    });
+    fireEvent.pointerUp(picker, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 240,
+      clientY: 22,
+    });
+    vi.advanceTimersByTime(100);
+
+    expect(picker.scrollLeft).toBe(116);
+    expect(onChange).toHaveBeenCalledWith(-2);
   });
 });
