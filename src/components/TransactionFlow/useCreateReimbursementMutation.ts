@@ -8,6 +8,7 @@ import {
 } from "../../lib/reimbursements";
 import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { transactionQueryKeys } from "./transactionQueryKeys";
+import { refreshTransactionHistoryInBackground } from "./refreshTransactionHistory";
 
 export type CreateReimbursementVariables = {
   source: TransactionRecord;
@@ -104,10 +105,7 @@ export function useCreateReimbursementMutation() {
           ),
         }),
       ];
-      void queryClient.refetchQueries({
-        queryKey: transactionQueryKeys.historyRemoteAll,
-        type: "active",
-      });
+      refreshTransactionHistoryInBackground(queryClient);
       await Promise.all(invalidations);
     },
   });

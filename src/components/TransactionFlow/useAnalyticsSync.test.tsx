@@ -206,6 +206,39 @@ describe('useAnalyticsSync', () => {
     await waitFor(() => expect(result.current.rates).toEqual([usdRate()]));
   });
 
+  it('stays syncing and avoids duplicate chunks when history updates mid-backfill', async () => {
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    state.readRates.mockResolvedValue({ rates: [], refreshFailed: false });
+    const backfill = deferred<{
+      completed: Array<{ base: string; quotes: string[]; from: string; to: string }>;
+      failed: [];
+    }>();
+    state.backfill.mockReturnValue(backfill.promise);
+    const { wrapper } = createHarness();
+    const rendered = renderHook(() => useAnalyticsSync('THB'), { wrapper });
+
+    await waitFor(() => expect(state.backfill).toHaveBeenCalledTimes(1));
+    expect(rendered.result.current.status).toBe('syncing');
+    act(() => {
+      state.history.meta = {
+        ...state.history.meta,
+        capturedAt: '2026-08-17T10:01:00.000Z',
+      };
+      rendered.rerender();
+    });
+
+    expect(rendered.result.current.status).toBe('syncing');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(state.backfill).toHaveBeenCalledTimes(1);
+    backfill.resolve({
+      completed: [state.backfill.mock.calls[0][0][0]],
+      failed: [],
+    });
+  });
+
   it('waits offline without starting background requests', async () => {
     state.isOnline = false;
     state.history.isOnline = false;

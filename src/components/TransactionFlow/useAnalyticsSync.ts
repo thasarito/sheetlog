@@ -127,7 +127,7 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     attemptedRef.current = { scope: attemptScope, keys: new Set() };
   }
   const autoBackfillIsPending =
-    autoBackfill.isPending && autoBackfill.variables?.scope === attemptScope;
+    autoBackfill.isPending && autoBackfill.variables?.scope === controllerScope;
   const pendingChunks = chunks.filter(
     (chunk) => !attemptedRef.current.keys.has(chunk.key),
   );
@@ -226,16 +226,16 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     }
     for (const chunk of pendingChunks) attemptedRef.current.keys.add(chunk.key);
     autoBackfill.mutate({
-      scope: attemptScope,
+      scope: controllerScope,
       requests: pendingChunks.map(({ request }) => request),
       online: isOnline,
     });
   }, [
     autoBackfill.isPending,
     autoBackfill.mutate,
-    attemptScope,
     baseCurrency,
     cachedRatesQuery.isSuccess,
+    controllerScope,
     history.hasLocalSnapshot,
     isOnline,
     pendingChunks,

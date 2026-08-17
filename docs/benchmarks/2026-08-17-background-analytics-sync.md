@@ -16,11 +16,11 @@ The baseline measured cold click-to-ready with range-specific Frankfurter loadin
 
 | Range | Before median | After median | Change |
 | --- | ---: | ---: | ---: |
-| Week | 1,613.2 ms | 114.3 ms | -92.9% |
-| Month | 1,592.0 ms | 117.4 ms | -92.6% |
-| Quarter | 1,221.1 ms | 120.1 ms | -90.2% |
-| Year | 4,759.7 ms | 132.8 ms | -97.2% |
-| Custom | 9,570.5 ms | 53.7 ms | -99.4% |
+| Week | 1,613.2 ms | 109.8 ms | -93.2% |
+| Month | 1,592.0 ms | 133.2 ms | -91.6% |
+| Quarter | 1,221.1 ms | 116.4 ms | -90.5% |
+| Year | 4,759.7 ms | 133.5 ms | -97.2% |
+| Custom | 9,570.5 ms | 56.4 ms | -99.4% |
 
 The initial full-history fill made 20 month-scoped Frankfurter requests, capped at three concurrent requests. W/M/Q/Y/C selection after that fill made **zero** Frankfurter requests.
 
@@ -30,15 +30,15 @@ This measures period-option construction plus the production summary builder. Th
 
 | Range | Before median | After median | Change |
 | --- | ---: | ---: | ---: |
-| Week | 119.8 ms | 75.2 ms | -37.2% |
-| Month | 131.3 ms | 72.8 ms | -44.6% |
-| Quarter | 145.5 ms | 79.8 ms | -45.2% |
-| Year | 239.7 ms | 124.0 ms | -48.3% |
-| Custom | 208.8 ms | 112.9 ms | -45.9% |
+| Week | 119.8 ms | 76.2 ms | -36.4% |
+| Month | 131.3 ms | 72.0 ms | -45.2% |
+| Quarter | 145.5 ms | 79.7 ms | -45.2% |
+| Year | 239.7 ms | 149.1 ms | -37.8% |
+| Custom | 208.8 ms | 107.5 ms | -48.5% |
 
 ## Acceptance results
 
-- All browser range medians are below the 250 ms budget.
+- All browser range medians and p95 measurements are below the 250 ms budget.
 - Warm range selection performs zero FX network requests.
 - Every 50,000-row CPU median is below its pre-change baseline.
 - The delayed-FX browser test shows the base-currency partial result immediately, then automatically includes the foreign row when its rate is stored.

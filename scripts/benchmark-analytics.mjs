@@ -183,7 +183,23 @@ async function runBrowserBenchmark() {
     await page.getByRole('button', { name: 'Open settings' }).click();
     await page.getByText(/^Synced · /).waitFor({ timeout: 60_000 });
     await page.getByRole('button', { name: 'Done' }).click();
-    await page.getByRole('button', { name: 'Analytics slide' }).click();
+    const analyticsSlideButton = page.getByRole('button', {
+      name: 'Analytics slide',
+    });
+    await analyticsSlideButton.click();
+    await analyticsSlideButton.evaluate(
+      (element) =>
+        new Promise((resolve) => {
+          const waitForSettledSlide = () => {
+            if (element.getAttribute('aria-current') === 'true') {
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+              return;
+            }
+            requestAnimationFrame(waitForSettledSlide);
+          };
+          waitForSettledSlide();
+        }),
+    );
     const requestsAfterSync = frankfurterRequests;
     const samples = { W: [], M: [], Q: [], Y: [], C: [] };
 
@@ -339,6 +355,7 @@ process.stdout.write(`${JSON.stringify({ browser: browserResult, cpu: cpuResult 
 const failures = [];
 for (const [range, result] of Object.entries(browserResult.ranges)) {
   if (result.medianMs > 250) failures.push(`${range} browser median ${result.medianMs.toFixed(1)}ms`);
+  if (result.p95Ms > 250) failures.push(`${range} browser p95 ${result.p95Ms.toFixed(1)}ms`);
 }
 if (browserResult.warmFrankfurterRequests !== 0) {
   failures.push(`${browserResult.warmFrankfurterRequests} FX requests during warm range selection`);
