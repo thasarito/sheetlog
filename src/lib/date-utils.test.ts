@@ -1,6 +1,6 @@
 import { isValid } from 'date-fns';
 import { describe, expect, it } from 'vitest';
-import { parseDate, serialNumberToDate } from './date-utils';
+import { parseDate, serialNumberToDate, tryParseDate } from './date-utils';
 
 const MILLISECONDS_PER_DAY = 86_400_000;
 
@@ -119,5 +119,13 @@ describe('parseDate', () => {
     expect(result.getDate()).toBe(1);
     expect(result.getHours()).toBe(19);
     expect(result.getMinutes()).toBe(56);
+  });
+});
+
+describe('tryParseDate', () => {
+  it('returns supported legacy dates without applying the current-date fallback', () => {
+    expect(tryParseDate('17/8/2026')).toEqual(new Date(2026, 7, 17));
+    expect(tryParseDate('invalid-date')).toBeNull();
+    expect(tryParseDate(Number.NaN)).toBeNull();
   });
 });
