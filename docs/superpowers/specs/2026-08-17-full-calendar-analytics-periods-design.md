@@ -106,8 +106,9 @@ descriptions.
 ## Loading, Empty, and Error States
 
 Existing loading, offline, stale-cache, unavailable, and no-expense states remain unchanged. Empty
-future portions of a full period render zero-value bars. The month-group axis still renders for an
-empty Quarter so users can understand the complete selected span.
+future portions of a full period render zero-value bars wherever the chart is shown. The detail
+sheet still renders the month-group axis for an empty Quarter; the compact carousel keeps its
+existing no-expense message instead of rendering a chart.
 
 ## Testing
 
