@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { format, subDays } from 'date-fns';
+import { differenceInCalendarDays, format, startOfQuarter, subDays } from 'date-fns';
 import type { TransactionRecord, TransactionType } from '../src/lib/types';
 
 function transaction(
@@ -29,7 +29,12 @@ function transaction(
 const seededTransactions = [
   transaction('food', 0, 'expense', 120, 'Food Delivery'),
   transaction('coffee', 1, 'expense', 80, 'Coffee & Snacks'),
+  transaction('transport', 2, 'expense', 260, 'Transport'),
   transaction('salary', 2, 'income', 2500, 'Salary'),
+  transaction('rent', 3, 'expense', 480, 'Rent & Utilities'),
+  transaction('health', 4, 'expense', 200, 'Health'),
+  transaction('books', 5, 'expense', 90, 'Books'),
+  transaction('savings', 0, 'transfer', 300, 'Savings'),
   ...Array.from({ length: 12 }, (_, index) =>
     transaction(
       `history-${index}`,
@@ -45,26 +50,15 @@ async function touchSwipe(page: Page, target: Locator, deltaX: number, deltaY: n
   const box = await target.boundingBox();
   if (!box) throw new Error('Swipe target is not visible');
   const client = await page.context().newCDPSession(page);
-  const start = {
+  const horizontal = Math.abs(deltaX) > Math.abs(deltaY);
+  await client.send('Input.synthesizeScrollGesture', {
     x: box.x + box.width * (deltaX < 0 ? 0.85 : deltaX > 0 ? 0.15 : 0.5),
-    y: box.y + box.height * (deltaY < 0 ? 0.8 : deltaY > 0 ? 0.2 : 0.5),
-  };
-  await client.send('Input.dispatchTouchEvent', {
-    type: 'touchStart',
-    touchPoints: [start],
+    y: box.y + box.height * (horizontal ? 0.65 : deltaY < 0 ? 0.8 : 0.2),
+    xDistance: deltaX,
+    yDistance: deltaY,
+    gestureSourceType: 'touch',
+    speed: 900,
   });
-  for (let step = 1; step <= 6; step += 1) {
-    await client.send('Input.dispatchTouchEvent', {
-      type: 'touchMove',
-      touchPoints: [
-        {
-          x: start.x + (deltaX * step) / 6,
-          y: start.y + (deltaY * step) / 6,
-        },
-      ],
-    });
-  }
-  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await client.detach();
 }
 
@@ -154,30 +148,88 @@ test.describe('Home Transactions and Analytics carousel', () => {
       'aria-pressed',
       'true',
     );
+    const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
+    await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
+      Number(format(new Date(), 'd')),
+    );
+    await page.getByRole('button', { name: 'Quarter, quarter to date' }).click();
+    const expectedQuarterWeeks = Math.ceil(
+      (differenceInCalendarDays(new Date(), startOfQuarter(new Date())) + 1) / 7,
+    );
+    await expect(analyticsSlide.locator('[data-testid^="analytics-bar-"]')).toHaveCount(
+      expectedQuarterWeeks,
+    );
+    await expect(
+      analyticsSlide.locator('[data-testid^="analytics-bar-"][data-testid$="-week"]').first(),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Month, month to date' }).click();
 
     const analyticsViewAll = page.getByRole('button', { name: 'View all analytics' });
     await touchSwipe(page, analyticsViewAll, geometry.viewportWidth * 0.7, 4);
     await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await analyticsViewAll.click();
-    const analyticsDialog = page.getByRole('dialog');
+    const analyticsDialog = page.getByRole('dialog', { name: 'Analytics' });
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeVisible();
     await expect(analyticsDialog.getByRole('heading', { name: 'Analytics' })).toBeFocused();
     await expect(analyticsDialog.getByText('Transfers are excluded from totals.')).toBeVisible();
+
+    await analyticsDialog.getByRole('button', { name: 'Custom date range' }).click();
+    await expect(
+      page.getByRole('button', { name: /Custom date range, / }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: /Custom date range, / }).click();
+    await expect(page.getByRole('dialog', { name: 'Choose custom date range' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Choose custom date range' })).toHaveCount(0);
+    await expect(analyticsDialog).toBeVisible();
+
+    await analyticsDialog.getByRole('button', { name: 'Month, month to date' }).click();
+    const selectedDay = format(subDays(new Date(), 2), 'EEEE, MMMM d');
+    const selectedBar = analyticsDialog.getByRole('option', {
+      name: new RegExp(`${selectedDay}, ฿260`),
+    });
+    await selectedBar.click();
+    await expect(selectedBar).toHaveAttribute('aria-selected', 'true');
+    await expect(selectedBar).not.toHaveClass(/ring|border|outline/);
+    await expect(
+      analyticsDialog.locator('[data-testid^="analytics-bar-"][data-muted="true"]').first(),
+    ).toBeVisible();
+
+    const overview = analyticsDialog.getByRole('region', { name: 'Overview' });
+    await expect(overview.getByText('฿2,500')).toBeVisible();
+    await expect(overview.getByText('฿2,240')).toBeVisible();
+    await expect(
+      overview.getByLabel(/Spending by category: .*Transport 100%.*Expenses ฿260/),
+    ).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('button', { name: 'Transport, ฿260, 100%' }),
+    ).toBeVisible();
+    await expect(analyticsDialog.getByRole('button', { name: /expense Transport/ })).toBeVisible();
+    await expect(analyticsDialog.getByRole('button', { name: /income Salary/ })).toBeVisible();
+    await page.screenshot({ path: 'test-results/stacked-analytics-selected-mobile.png', fullPage: true });
+
     await analyticsDialog.getByRole('button', { name: 'Close analytics' }).click();
     await expect(analyticsViewAll).toBeFocused();
 
     await transactionsDot.click();
     await expect(transactionsDot).toHaveAttribute('aria-current', 'true');
     const transactionScroll = page.getByTestId('transaction-scroll');
+    const transactionScrollGeometry = await transactionScroll.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(transactionScrollGeometry.scrollHeight).toBeGreaterThan(
+      transactionScrollGeometry.clientHeight,
+    );
     const scrollTopBefore = await transactionScroll.evaluate((element) => element.scrollTop);
-    await touchSwipe(page, transactionScroll, 3, -120);
+    await transactionScroll.evaluate((element) => element.scrollBy({ top: 120 }));
     await expect
       .poll(() => transactionScroll.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(scrollTopBefore);
     await expect(transactionsDot).toHaveAttribute('aria-current', 'true');
     await transactionsViewAll.click();
-    const transactionsDialog = page.getByRole('dialog');
+    const transactionsDialog = page.getByRole('dialog', { name: 'Transactions' });
     await expect(transactionsDialog.getByRole('heading', { name: 'Transactions' })).toBeVisible();
     await expect(transactionsDialog.getByRole('heading', { name: 'Transactions' })).toBeFocused();
     await transactionsDialog
