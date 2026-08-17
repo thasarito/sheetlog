@@ -1,7 +1,7 @@
 import * as Popover from '@radix-ui/react-popover';
 import { format, startOfDay } from 'date-fns';
 import { CalendarDays } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DayPicker, type DateRange } from 'react-day-picker';
 import type { DatePeriod } from './analytics';
 
@@ -9,6 +9,7 @@ type AnalyticsRangePickerProps = {
   value: DatePeriod;
   minDate: Date;
   maxDate: Date;
+  openRequest?: number;
   onChange: (period: DatePeriod) => void;
   onOpenChange?: (open: boolean) => void;
 };
@@ -21,17 +22,33 @@ export function AnalyticsRangePicker({
   value,
   minDate,
   maxDate,
+  openRequest = 0,
   onChange,
   onOpenChange,
 }: AnalyticsRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange>({ from: value.start, to: value.end });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const lastOpenRequest = useRef(0);
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    setOpen(nextOpen);
-    onOpenChange?.(nextOpen);
-    if (nextOpen) setDraft({ from: value.start, to: value.end });
-  };
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+      if (nextOpen) setDraft({ from: value.start, to: value.end });
+    },
+    [onOpenChange, value.end, value.start],
+  );
+
+  useEffect(() => {
+    if (openRequest <= lastOpenRequest.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      lastOpenRequest.current = openRequest;
+      triggerRef.current?.focus();
+      triggerRef.current?.click();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [openRequest]);
 
   const handleSelect = (nextRange: DateRange | undefined) => {
     setDraft(nextRange ?? { from: undefined });
@@ -44,6 +61,7 @@ export function AnalyticsRangePicker({
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           aria-label={`Custom date range, ${rangeLabel(value)}`}
           className="flex min-h-11 items-center gap-2 rounded-xl bg-surface-2 px-3 text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"

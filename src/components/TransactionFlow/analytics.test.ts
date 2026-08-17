@@ -403,7 +403,10 @@ describe('buildAnalyticsSummary totals', () => {
     });
 
     expect(summary.expenseTotal).toBe(10);
-    expect(summary.categories).toEqual([{ category: 'Dining Out', amount: 100, share: 100 }]);
+    expect(summary.categories).toEqual([
+      { category: 'Dining Out', amount: 100, share: 100 },
+      { category: 'Transport', amount: -90, share: 0 },
+    ]);
   });
 });
 
@@ -445,6 +448,28 @@ describe('buildAnalyticsScope', () => {
     expect(scope.incomeTotal).toBe(250);
     expect(scope.netTotal).toBe(150);
     expect(scope.transactions.map((row) => row.id)).toEqual(['expense', 'income']);
+  });
+
+  it('preserves a refund-only category in the selected bucket breakdown', () => {
+    const summary = buildAnalyticsSummary({
+      transactions: [
+        transaction({ id: 'dining', date: '2026-08-16T10:00:00', amount: 100 }),
+        transaction({
+          id: 'refund',
+          date: '2026-08-17T10:00:00',
+          amount: -40,
+          category: 'Dining Out',
+        }),
+      ],
+      range: 'week',
+      currency: 'THB',
+      now: new Date(2026, 7, 17, 12),
+    });
+
+    const scope = analyticsModule.buildAnalyticsScope(summary, summary.buckets.at(-1)?.key);
+
+    expect(scope.expenseTotal).toBe(-40);
+    expect(scope.categories).toEqual([{ category: 'Dining Out', amount: -40, share: 0 }]);
   });
 });
 

@@ -41,8 +41,9 @@ export function AnalyticsCategories({
             aria-pressed={selected}
             data-series-key={item.key}
             data-zero={String(item.amount === 0)}
+            data-nonpositive={String(item.amount <= 0)}
             onClick={() => onSelect(selected ? null : item.key)}
-            className="w-full rounded-xl px-2 py-2 text-left transition-colors aria-pressed:bg-surface-2 data-[zero=true]:opacity-55 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="w-full rounded-xl px-2 py-2 text-left transition-colors aria-pressed:bg-surface-2 data-[nonpositive=true]:opacity-55 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <span className="flex items-center gap-2">
               <span

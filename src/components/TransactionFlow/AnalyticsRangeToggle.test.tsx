@@ -12,6 +12,6 @@ describe('AnalyticsRangeToggle', () => {
     expect(screen.getByRole('group', { name: 'Analytics range' })).toHaveClass('grid-cols-4');
     expect(screen.getAllByRole('button')).toHaveLength(4);
     await user.click(screen.getByRole('button', { name: 'Custom date range' }));
-    expect(onChange).toHaveBeenCalledWith('custom');
+    expect(onChange).toHaveBeenCalledWith('custom', expect.any(HTMLButtonElement));
   });
 });

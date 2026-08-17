@@ -66,4 +66,18 @@ describe('AnalyticsCategories', () => {
     await user.click(screen.getByRole('button', { name: /Food/ }));
     expect(onSelect).toHaveBeenLastCalledWith('food');
   });
+
+  it('keeps refund-only series signed and subdued in the scoped breakdown', () => {
+    render(
+      <AnalyticsCategories
+        series={series}
+        categories={[...categories, { category: 'Travel', amount: -25, share: 0 }]}
+        currency="THB"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const refund = screen.getByRole('button', { name: 'Travel, -฿25, 0%' });
+    expect(refund).toHaveAttribute('data-nonpositive', 'true');
+  });
 });

@@ -48,6 +48,7 @@ vi.mock("./AnalyticsSlide", () => ({
   AnalyticsSlide: (props: {
     range: AnalyticsRange;
     onRangeChange: (range: AnalyticsRange) => void;
+    onCustomRequest: (trigger: HTMLButtonElement) => void;
     summary?: AnalyticsSummary;
     onViewAll: (event: MouseEvent<HTMLButtonElement>) => void;
   }) => {
@@ -63,7 +64,13 @@ vi.mock("./AnalyticsSlide", () => ({
         <button type="button" onClick={() => props.onRangeChange("quarter")}>
           Test quarter range
         </button>
-        <button type="button" onClick={() => props.onRangeChange("custom")}>
+        <button
+          type="button"
+          onClick={(event) => {
+            props.onRangeChange("custom");
+            props.onCustomRequest(event.currentTarget);
+          }}
+        >
           Test custom range
         </button>
       </div>
@@ -265,6 +272,7 @@ describe("HomeDashboardCarousel", () => {
     expect(customSummary?.periods.current.start.getDate()).toBe(1);
     expect(customSummary?.buckets.every((bucket) => !bucket.key.endsWith("-week"))).toBe(true);
     expect(customDrawer?.customPeriod).toEqual(customSummary?.periods.current);
+    expect(screen.getByRole("button", { name: "Close analytics drawer" })).toBeInTheDocument();
   });
 
   it("suppresses an accidental action click after a horizontal touch drag", () => {

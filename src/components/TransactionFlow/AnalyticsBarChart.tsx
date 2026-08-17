@@ -1,7 +1,7 @@
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { cn } from '../../lib/utils';
 import {
-  formatAnalyticsAmount,
+  getAnalyticsBucketDescription,
   type AnalyticsBucket,
   type AnalyticsSeries,
 } from './analytics';
@@ -24,10 +24,11 @@ function stackTotal(bucket: AnalyticsBucket, direction: 'positive' | 'negative')
   }, 0);
 }
 
-function showLabel(index: number, count: number): boolean {
-  if (count <= 8) return true;
-  const interval = Math.ceil((count - 1) / 4);
-  return index === 0 || index === count - 1 || index % interval === 0;
+function showLabel(index: number, buckets: AnalyticsBucket[]): boolean {
+  if (buckets.length <= 8) return true;
+  const weekly = buckets.every((bucket) => bucket.key.endsWith('-week'));
+  const interval = weekly ? 4 : 7;
+  return index === 0 || index === buckets.length - 1 || index % interval === 0;
 }
 
 export function AnalyticsBarChart({
@@ -44,11 +45,11 @@ export function AnalyticsBarChart({
   const negativeArea = maximumNegative > 0 ? 28 : 0;
   const positiveArea = 100 - negativeArea;
   const summary = buckets
-    .map(
-      (bucket) =>
-        `${bucket.accessibleLabel} ${formatAnalyticsAmount(bucket.amount, currency)}`,
-    )
+    .map((bucket) => getAnalyticsBucketDescription(bucket, series, currency))
     .join(', ');
+  const selectedOptionId = selectedKey
+    ? `analytics-option-${selectedKey}`
+    : undefined;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!onSelect || buckets.length === 0) return;
@@ -74,6 +75,23 @@ export function AnalyticsBarChart({
     onSelect(buckets[nextIndex].key);
   };
 
+  const handlePlotClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!onSelect || buckets.length === 0) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    let index: number;
+
+    if (bounds.width > 0) {
+      const position = (event.clientX - bounds.left) / bounds.width;
+      index = Math.floor(position * buckets.length);
+    } else {
+      const target = (event.target as HTMLElement).closest<HTMLElement>('[data-bucket-index]');
+      index = Number(target?.dataset.bucketIndex ?? 0);
+    }
+
+    const boundedIndex = Math.max(0, Math.min(buckets.length - 1, index));
+    onSelect(buckets[boundedIndex].key);
+  };
+
   const bars = buckets.map((bucket, index) => {
           const positiveTotal = stackTotal(bucket, 'positive');
           const negativeTotal = stackTotal(bucket, 'negative');
@@ -88,7 +106,7 @@ export function AnalyticsBarChart({
                   )}
                   style={{
                     bottom: `${negativeArea}%`,
-                    height: `${Math.max(3, (positiveTotal / maximumPositive) * positiveArea)}%`,
+                    height: `${(positiveTotal / maximumPositive) * positiveArea}%`,
                   }}
                 >
                   {bucket.segments
@@ -117,7 +135,7 @@ export function AnalyticsBarChart({
                   )}
                   style={{
                     top: `${positiveArea}%`,
-                    height: `${Math.max(3, (negativeTotal / maximumNegative) * negativeArea)}%`,
+                    height: `${(negativeTotal / maximumNegative) * negativeArea}%`,
                   }}
                 >
                   {bucket.segments
@@ -153,19 +171,19 @@ export function AnalyticsBarChart({
         className="grid h-full min-w-0 flex-1 grid-rows-[minmax(4px,1fr)_auto] items-center gap-1"
       >
         {onSelect ? (
-          <button
-            type="button"
+          <div
+            id={`analytics-option-${bucket.key}`}
             role="option"
-            aria-label={`${bucket.accessibleLabel}, ${formatAnalyticsAmount(bucket.amount, currency)}`}
-            aria-selected={selectedKey === bucket.key}
             tabIndex={-1}
+            aria-label={getAnalyticsBucketDescription(bucket, series, currency)}
+            aria-selected={selectedKey === bucket.key}
+            data-bucket-index={index}
             data-testid={`analytics-bar-${bucket.key}`}
             data-muted={String(muted)}
-            onClick={() => onSelect(bucket.key)}
-            className="relative h-full min-h-11 w-full"
+            className="relative h-full min-h-11 w-full cursor-pointer"
           >
             {stack}
-          </button>
+          </div>
         ) : (
           <div
             data-testid={`analytics-bar-${bucket.key}`}
@@ -175,8 +193,11 @@ export function AnalyticsBarChart({
             {stack}
           </div>
         )}
-        <span className="min-h-2.5 truncate text-center text-[9px] leading-none text-muted-foreground">
-          {showLabel(index, buckets.length) ? bucket.label : null}
+        <span
+          data-testid={`analytics-label-${bucket.key}`}
+          className="min-h-2.5 truncate text-center text-[9px] leading-none text-muted-foreground"
+        >
+          {showLabel(index, buckets) ? bucket.label : null}
         </span>
       </div>
     );
@@ -188,8 +209,10 @@ export function AnalyticsBarChart({
         <div
           role="listbox"
           aria-label="Select analytics period"
+          aria-activedescendant={selectedOptionId}
           tabIndex={0}
           onKeyDown={handleKeyDown}
+          onClick={handlePlotClick}
           className="flex h-full items-stretch gap-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
         >
           {bars}

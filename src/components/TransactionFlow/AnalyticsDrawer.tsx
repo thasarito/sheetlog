@@ -16,6 +16,7 @@ import {
   buildAnalyticsScope,
   buildAnalyticsSummary,
   formatAnalyticsAmount,
+  getAnalyticsBucketDescription,
   getOfflineFreshness,
   type AnalyticsRange,
   type DatePeriod,
@@ -69,9 +70,11 @@ export function AnalyticsDrawer({
   now = new Date(),
 }: AnalyticsDrawerProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const previousDrawerOpen = useRef(false);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [customPickerOpen, setCustomPickerOpen] = useState(false);
+  const [customPickerRequest, setCustomPickerRequest] = useState(0);
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
   const summary = useMemo(
@@ -98,8 +101,17 @@ export function AnalyticsDrawer({
   useEffect(() => {
     setSelectedBucket(null);
     setSelectedCategory(null);
-    setCustomPickerOpen(false);
   }, [currency, customEnd, customStart, range]);
+
+  useEffect(() => {
+    const justOpened = open && !previousDrawerOpen.current;
+    if (!open || range !== 'custom') {
+      setCustomPickerOpen(false);
+    } else if (justOpened) {
+      setCustomPickerRequest((request) => request + 1);
+    }
+    previousDrawerOpen.current = open;
+  }, [open, range]);
 
   const filteredTransactions = useMemo(() => {
     if (!selectedSeries) return scope.transactions;
@@ -123,6 +135,13 @@ export function AnalyticsDrawer({
     if (!nextOpen) setCustomPickerOpen(false);
     onOpenChange(nextOpen);
   };
+  const handleRangeChange = (nextRange: AnalyticsRange) => {
+    setCustomPickerOpen(false);
+    if (nextRange === 'custom') {
+      setCustomPickerRequest((request) => request + 1);
+    }
+    onRangeChange(nextRange);
+  };
   const rangeAnnouncement =
     range === 'week'
       ? 'Week, last 7 days'
@@ -132,7 +151,9 @@ export function AnalyticsDrawer({
           ? 'Quarter, quarter to date'
           : `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`;
   const analyticsAnnouncement = hasCompleteHistory
-    ? `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, currency)}`
+    ? selectedBucketDetails
+      ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, currency)} · Net ${formatAnalyticsAmount(scope.netTotal, currency)}`
+      : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, currency)}`
     : isOffline
       ? 'Full range unavailable offline'
       : isLoading
@@ -219,7 +240,7 @@ export function AnalyticsDrawer({
                 ) : (
                   <span className="text-xs font-semibold text-muted-foreground">{currency}</span>
                 )}
-                <AnalyticsRangeToggle value={range} onChange={onRangeChange} />
+                <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
               </div>
 
               {range === 'custom' ? (
@@ -228,6 +249,7 @@ export function AnalyticsDrawer({
                     value={customPeriod}
                     minDate={earliestDate}
                     maxDate={now}
+                    openRequest={customPickerRequest}
                     onChange={onCustomPeriodChange}
                     onOpenChange={setCustomPickerOpen}
                   />
@@ -251,11 +273,12 @@ export function AnalyticsDrawer({
                   <div className="mt-2 flex justify-center">
                     <button
                       type="button"
-                      aria-label="Clear selected period filter"
+                      aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)}`}
                       onClick={() => setSelectedBucket(null)}
                       className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     >
-                      {selectedBucketDetails.accessibleLabel}
+                      {selectedBucketDetails.accessibleLabel} ·{' '}
+                      {formatAnalyticsAmount(selectedBucketDetails.amount, currency)}
                       <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
                     </button>
                   </div>
