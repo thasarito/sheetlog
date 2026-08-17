@@ -21,7 +21,16 @@ export function AnalyticsPeriodPicker({
   const viewportRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isProgrammaticScrollRef = useRef(false);
+  const clickResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticTargetRef = useRef<number | null>(null);
+  const touchDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    axis: 'horizontal' | 'vertical' | null;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
   const selectedIndex = useMemo(() => {
     const index = options.findIndex((option) => option.offset === value);
     return index >= 0 ? index : Math.max(0, options.length - 1);
@@ -50,23 +59,19 @@ export function AnalyticsPeriodPicker({
       ),
     );
     if (scrollTimerRef.current !== null) clearTimeout(scrollTimerRef.current);
-    isProgrammaticScrollRef.current = true;
-    try {
-      viewport.scrollTo({ left: targetLeft, behavior: 'auto' });
-    } finally {
-      isProgrammaticScrollRef.current = false;
-    }
+    programmaticTargetRef.current = targetLeft;
+    viewport.scrollTo({ left: targetLeft, behavior: 'auto' });
   }, [selectedIndex]);
 
   useEffect(
     () => () => {
       if (scrollTimerRef.current !== null) clearTimeout(scrollTimerRef.current);
+      if (clickResetTimerRef.current !== null) clearTimeout(clickResetTimerRef.current);
     },
     [],
   );
 
-  const handleScroll = useCallback(() => {
-    if (isProgrammaticScrollRef.current) return;
+  const scheduleNearestSelection = useCallback(() => {
     if (scrollTimerRef.current !== null) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
       const viewport = viewportRef.current;
@@ -87,6 +92,65 @@ export function AnalyticsPeriodPicker({
       selectIndex(nearestIndex);
     }, SCROLL_SETTLE_DELAY_MS);
   }, [selectIndex, selectedIndex]);
+
+  const handleScroll = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const programmaticTarget = programmaticTargetRef.current;
+    if (programmaticTarget !== null) {
+      programmaticTargetRef.current = null;
+      if (Math.abs(viewport.scrollLeft - programmaticTarget) <= 1) return;
+    }
+    if (touchDragRef.current?.axis === 'horizontal') return;
+    scheduleNearestSelection();
+  }, [scheduleNearestSelection]);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    if (clickResetTimerRef.current !== null) clearTimeout(clickResetTimerRef.current);
+    programmaticTargetRef.current = null;
+    suppressClickRef.current = false;
+    if (typeof event.currentTarget.setPointerCapture === 'function') {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    touchDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: viewport.scrollLeft,
+      axis: null,
+    };
+  }, []);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = touchDragRef.current;
+    const viewport = viewportRef.current;
+    if (!drag || !viewport || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (drag.axis === null) {
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 6) return;
+      drag.axis = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
+    }
+    if (drag.axis !== 'horizontal') return;
+
+    event.preventDefault();
+    suppressClickRef.current = true;
+    const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+    viewport.scrollLeft = Math.max(0, Math.min(maxScrollLeft, drag.startScrollLeft - deltaX));
+  }, []);
+
+  const finishPointerGesture = useCallback(() => {
+    const drag = touchDragRef.current;
+    touchDragRef.current = null;
+    if (drag?.axis === 'horizontal') scheduleNearestSelection();
+    if (clickResetTimerRef.current !== null) clearTimeout(clickResetTimerRef.current);
+    clickResetTimerRef.current = setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  }, [scheduleNearestSelection]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -132,7 +196,17 @@ export function AnalyticsPeriodPicker({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onScroll={handleScroll}
-        className="min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [touch-action:pan-x] [&::-webkit-scrollbar]:hidden"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerGesture}
+        onPointerCancel={finishPointerGesture}
+        onClickCapture={(event) => {
+          if (!suppressClickRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          suppressClickRef.current = false;
+        }}
+        className="min-w-0 flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [touch-action:pan-y] [&::-webkit-scrollbar]:hidden"
         style={{
           maskImage:
             'linear-gradient(to right, transparent, black 18%, black 82%, transparent)',
@@ -151,6 +225,7 @@ export function AnalyticsPeriodPicker({
                 }}
                 type="button"
                 role="option"
+                data-period-offset={option.offset}
                 aria-selected={selected}
                 aria-label={option.accessibleLabel}
                 onClick={() => selectIndex(index)}
