@@ -71,6 +71,7 @@ export function AnalyticsDrawer({
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [customPickerOpen, setCustomPickerOpen] = useState(false);
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
   const summary = useMemo(
@@ -97,6 +98,7 @@ export function AnalyticsDrawer({
   useEffect(() => {
     setSelectedBucket(null);
     setSelectedCategory(null);
+    setCustomPickerOpen(false);
   }, [currency, customEnd, customStart, range]);
 
   const filteredTransactions = useMemo(() => {
@@ -116,6 +118,11 @@ export function AnalyticsDrawer({
     onOpenChange(false);
     onSelectTransaction(transaction);
   };
+  const handleDrawerOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && customPickerOpen) return;
+    if (!nextOpen) setCustomPickerOpen(false);
+    onOpenChange(nextOpen);
+  };
   const rangeAnnouncement =
     range === 'week'
       ? 'Week, last 7 days'
@@ -133,7 +140,7 @@ export function AnalyticsDrawer({
         : 'Analytics unavailable';
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={handleDrawerOpenChange}>
       <DrawerContent
         className="h-[92dvh]! sm:mx-auto sm:max-w-md"
         onOpenAutoFocus={(event) => {
@@ -222,6 +229,7 @@ export function AnalyticsDrawer({
                     minDate={earliestDate}
                     maxDate={now}
                     onChange={onCustomPeriodChange}
+                    onOpenChange={setCustomPickerOpen}
                   />
                 </div>
               ) : null}

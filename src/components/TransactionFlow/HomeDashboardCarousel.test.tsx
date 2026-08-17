@@ -176,6 +176,68 @@ describe("HomeDashboardCarousel", () => {
     expect(onViewAllTransactions).toHaveBeenCalledTimes(1);
   });
 
+  it("snaps on touch swipes while leaving mouse drags inert", async () => {
+    const { viewport } = renderCarousel();
+    expect(viewport.className).toContain("[touch-action:pan-y]");
+    expect(viewport.className).not.toContain("[touch-action:pan-x_pan-y]");
+
+    fireEvent.pointerDown(viewport, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 260,
+      clientY: 90,
+    });
+    fireEvent.pointerMove(viewport, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 100,
+      clientY: 94,
+    });
+    fireEvent.pointerUp(viewport, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 100,
+      clientY: 94,
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Analytics slide" }),
+      ).toHaveAttribute("aria-current", "true"),
+    );
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Transactions slide" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Transactions slide" }),
+      ).toHaveAttribute("aria-current", "true"),
+    );
+
+    fireEvent.pointerDown(viewport, {
+      pointerId: 2,
+      pointerType: "mouse",
+      clientX: 260,
+      clientY: 90,
+    });
+    fireEvent.pointerMove(viewport, {
+      pointerId: 2,
+      pointerType: "mouse",
+      clientX: 100,
+      clientY: 94,
+    });
+    fireEvent.pointerUp(viewport, {
+      pointerId: 2,
+      pointerType: "mouse",
+      clientX: 100,
+      clientY: 94,
+    });
+    expect(screen.getByRole("button", { name: "Transactions slide" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  });
+
   it("builds daily month, weekly quarter, and shared month-to-date custom state", async () => {
     const user = userEvent.setup();
     renderCarousel();

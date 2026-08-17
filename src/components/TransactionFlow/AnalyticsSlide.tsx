@@ -124,7 +124,7 @@ export function AnalyticsSlide({
             buckets={summary.buckets}
             series={summary.series}
             currency={summary.currency}
-            className="mt-1 h-12"
+            className="mt-1 h-10"
           />
           {error ? (
             <p className="text-[10px] text-muted-foreground">
@@ -139,7 +139,7 @@ export function AnalyticsSlide({
         </>
       )}
 
-      <div className="mt-auto flex h-6 items-end justify-between gap-2 text-xs">
+      <div className="mt-auto flex h-5 items-end justify-between gap-2 text-xs">
         <span className="truncate text-muted-foreground">
           {summary?.categories[0]
             ? `Top · ${summary.categories[0].category} · ${formatAnalyticsAmount(summary.categories[0].amount, summary.currency)}`
