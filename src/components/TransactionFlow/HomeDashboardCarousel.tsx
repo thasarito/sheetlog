@@ -11,7 +11,11 @@ import { tryParseDate } from "../../lib/date-utils";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import { AnalyticsDrawer } from "./AnalyticsDrawer";
-import { buildAnalyticsSummary, type AnalyticsRange } from "./analytics";
+import {
+  buildAnalyticsPeriodOptions,
+  buildAnalyticsSummary,
+  type AnalyticsRange,
+} from "./analytics";
 import { AnalyticsSlide } from "./AnalyticsSlide";
 import { TopDashboard } from "./TopDashboard";
 import { useTransactionHistoryQuery } from "./useTransactionHistoryQuery";
@@ -32,6 +36,13 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+function ownsNestedHorizontalGesture(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('[data-home-carousel-swipe-lock="true"]') !== null
+  );
+}
+
 export function HomeDashboardCarousel({
   currency,
   onEditTransaction,
@@ -40,6 +51,7 @@ export function HomeDashboardCarousel({
   const [activeIndex, setActiveIndex] = useState(0);
   const [historyActivated, setHistoryActivated] = useState(false);
   const [range, setRange] = useState<AnalyticsRange>("week");
+  const [periodOffset, setPeriodOffset] = useState(0);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [drawerCurrency, setDrawerCurrency] = useState(currency);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
@@ -61,6 +73,10 @@ export function HomeDashboardCarousel({
   const settleTimerRef = useRef<number | null>(null);
   const history = useTransactionHistoryQuery(historyActivated || analyticsOpen);
   const transactions = history.records;
+  const periodOptions = useMemo(
+    () => buildAnalyticsPeriodOptions(range, transactions, analyticsNow),
+    [analyticsNow, range, transactions],
+  );
   const summary = useMemo(
     () =>
       history.hasCompleteCache
@@ -70,6 +86,7 @@ export function HomeDashboardCarousel({
             currency,
             now: analyticsNow,
             customPeriod,
+            periodOffset,
           })
         : undefined,
     [
@@ -77,6 +94,7 @@ export function HomeDashboardCarousel({
       currency,
       customPeriod,
       history.hasCompleteCache,
+      periodOffset,
       range,
       transactions,
     ],
@@ -101,6 +119,19 @@ export function HomeDashboardCarousel({
   useEffect(() => {
     if (analyticsOpen) setDrawerCurrency(currency);
   }, [analyticsOpen, currency]);
+
+  useEffect(() => {
+    if (range === "custom") {
+      if (periodOffset !== 0) setPeriodOffset(0);
+      return;
+    }
+    if (periodOptions.some((option) => option.offset === periodOffset)) return;
+    const earliestOffset = periodOptions[0]?.offset ?? 0;
+    const latestOffset = periodOptions.at(-1)?.offset ?? 0;
+    setPeriodOffset(
+      Math.max(earliestOffset, Math.min(latestOffset, periodOffset)),
+    );
+  }, [periodOffset, periodOptions, range]);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -163,6 +194,11 @@ export function HomeDashboardCarousel({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (ownsNestedHorizontalGesture(event.target)) {
+      pointerStart.current = null;
+      suppressClick.current = false;
+      return;
+    }
     pointerStart.current = {
       startX: event.clientX,
       startY: event.clientY,
@@ -231,6 +267,11 @@ export function HomeDashboardCarousel({
     setAnalyticsOpen(true);
   };
 
+  const handleRangeChange = (nextRange: AnalyticsRange) => {
+    setRange(nextRange);
+    setPeriodOffset(0);
+  };
+
   return (
     <>
       <section
@@ -291,7 +332,10 @@ export function HomeDashboardCarousel({
           >
             <AnalyticsSlide
               range={range}
-              onRangeChange={setRange}
+              onRangeChange={handleRangeChange}
+              periodOptions={periodOptions}
+              periodOffset={periodOffset}
+              onPeriodChange={setPeriodOffset}
               onCustomRequest={handleCustomRangeRequest}
               summary={summary}
               isLoading={history.isLoading || history.isDownloading}
@@ -343,7 +387,10 @@ export function HomeDashboardCarousel({
         onOpenChange={handleAnalyticsOpenChange}
         transactions={transactions}
         range={range}
-        onRangeChange={setRange}
+        onRangeChange={handleRangeChange}
+        periodOptions={periodOptions}
+        periodOffset={periodOffset}
+        onPeriodChange={setPeriodOffset}
         customPeriod={customPeriod}
         onCustomPeriodChange={setCustomPeriod}
         currency={drawerCurrency}

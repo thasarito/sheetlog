@@ -12,6 +12,14 @@ type AnalyticsPeriodPickerProps = {
 
 const SCROLL_SETTLE_DELAY_MS = 80;
 
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
 export function AnalyticsPeriodPicker({
   options,
   value,
@@ -43,7 +51,7 @@ export function AnalyticsPeriodPicker({
 
     viewport.scrollTo({
       left: option.offsetLeft - (viewport.clientWidth - option.offsetWidth) / 2,
-      behavior: 'smooth',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
     });
   }, [selectedIndex]);
 
@@ -145,7 +153,7 @@ export function AnalyticsPeriodPicker({
                 className={cn(
                   'h-11 w-32 shrink-0 snap-center rounded-lg px-2 text-center text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
                   selected
-                    ? 'text-foreground'
+                    ? 'text-primary'
                     : 'text-muted-foreground/45 hover:text-muted-foreground',
                 )}
               >

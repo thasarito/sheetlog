@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
 import {
@@ -18,12 +18,14 @@ import {
   formatAnalyticsAmount,
   getAnalyticsBucketDescription,
   getOfflineFreshness,
+  type AnalyticsPeriodOption,
   type AnalyticsRange,
   type DatePeriod,
 } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsCategories } from './AnalyticsCategories';
 import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
+import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
 import { AnalyticsRangePicker } from './AnalyticsRangePicker';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
 import { TransactionRow } from './TransactionRow';
@@ -34,6 +36,9 @@ type AnalyticsDrawerProps = {
   transactions: TransactionRecord[];
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
+  periodOptions: AnalyticsPeriodOption[];
+  periodOffset: number;
+  onPeriodChange: (offset: number) => void;
   customPeriod: DatePeriod;
   onCustomPeriodChange: (period: DatePeriod) => void;
   currency: string;
@@ -55,6 +60,9 @@ export function AnalyticsDrawer({
   transactions,
   range,
   onRangeChange,
+  periodOptions,
+  periodOffset,
+  onPeriodChange,
   customPeriod,
   onCustomPeriodChange,
   currency,
@@ -78,8 +86,16 @@ export function AnalyticsDrawer({
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
   const summary = useMemo(
-    () => buildAnalyticsSummary({ transactions, range, currency, now, customPeriod }),
-    [currency, customPeriod, now, range, transactions],
+    () =>
+      buildAnalyticsSummary({
+        transactions,
+        range,
+        currency,
+        now,
+        customPeriod,
+        periodOffset,
+      }),
+    [currency, customPeriod, now, periodOffset, range, transactions],
   );
   const scope = useMemo(
     () => buildAnalyticsScope(summary, selectedBucket),
@@ -97,11 +113,19 @@ export function AnalyticsDrawer({
     return new Date(Math.min(...dates.map((date) => date.getTime())));
   }, [customPeriod.start, transactions]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scalar custom endpoints intentionally define the controlled date scope
-  useEffect(() => {
+  const clearFilters = useCallback(() => {
     setSelectedBucket(null);
     setSelectedCategory(null);
-  }, [currency, customEnd, customStart, range]);
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scalar custom endpoints intentionally define the controlled date scope
+  useEffect(() => {
+    clearFilters();
+  }, [clearFilters, currency, customEnd, customStart, periodOffset, range]);
+
+  useEffect(() => {
+    if (!open) clearFilters();
+  }, [clearFilters, open]);
 
   useEffect(() => {
     const justOpened = open && !previousDrawerOpen.current;
@@ -121,18 +145,17 @@ export function AnalyticsDrawer({
     );
   }, [scope.transactions, selectedSeries]);
 
-  const clearFilters = () => {
-    setSelectedBucket(null);
-    setSelectedCategory(null);
-  };
-
   const selectTransaction = (transaction: TransactionRecord) => {
+    clearFilters();
     onOpenChange(false);
     onSelectTransaction(transaction);
   };
   const handleDrawerOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && customPickerOpen) return;
-    if (!nextOpen) setCustomPickerOpen(false);
+    if (!nextOpen) {
+      setCustomPickerOpen(false);
+      clearFilters();
+    }
     onOpenChange(nextOpen);
   };
   const handleRangeChange = (nextRange: AnalyticsRange) => {
@@ -142,8 +165,15 @@ export function AnalyticsDrawer({
     }
     onRangeChange(nextRange);
   };
+  const handlePeriodChange = (nextOffset: number) => {
+    clearFilters();
+    onPeriodChange(nextOffset);
+  };
+  const selectedPeriod = periodOptions.find((option) => option.offset === periodOffset);
   const rangeAnnouncement =
-    range === 'week'
+    periodOffset < 0 && selectedPeriod
+      ? selectedPeriod.accessibleLabel
+      : range === 'week'
       ? 'Week, last 7 days'
       : range === 'month'
         ? 'Month, month to date'
@@ -256,7 +286,13 @@ export function AnalyticsDrawer({
                     onOpenChange={setCustomPickerOpen}
                   />
                 </div>
-              ) : null}
+              ) : (
+                <AnalyticsPeriodPicker
+                  options={periodOptions}
+                  value={periodOffset}
+                  onChange={handlePeriodChange}
+                />
+              )}
 
               <section aria-label="Spending trend">
                 <AnalyticsBarChart

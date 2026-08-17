@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { AnalyticsSummary } from './analytics';
+import type { AnalyticsPeriodOption, AnalyticsSummary } from './analytics';
 import { AnalyticsSlide } from './AnalyticsSlide';
 
 const summary: AnalyticsSummary = {
@@ -43,6 +43,32 @@ const summary: AnalyticsSummary = {
   hasExpenseRows: true,
 };
 
+const periodOptions: AnalyticsPeriodOption[] = [
+  {
+    key: 'week-previous',
+    offset: -1,
+    label: 'Aug 4–10',
+    accessibleLabel: 'August 4, 2026 through August 10, 2026',
+    period: {
+      start: new Date(2026, 7, 4),
+      end: new Date(2026, 7, 10, 23, 59, 59, 999),
+    },
+  },
+  {
+    key: 'week-current',
+    offset: 0,
+    label: 'Aug 11–17',
+    accessibleLabel: 'August 11, 2026 through August 17, 2026',
+    period: summary.periods.current,
+  },
+];
+
+const periodProps = {
+  periodOptions,
+  periodOffset: 0,
+  onPeriodChange: vi.fn(),
+};
+
 describe('AnalyticsSlide', () => {
   it('renders the approved W/M/Q/Y/C stacked summary and actions', async () => {
     const user = userEvent.setup();
@@ -50,6 +76,7 @@ describe('AnalyticsSlide', () => {
     const onViewAll = vi.fn();
     render(
       <AnalyticsSlide
+        {...periodProps}
         range="week"
         onRangeChange={onRangeChange}
         summary={summary}
@@ -68,6 +95,10 @@ describe('AnalyticsSlide', () => {
       'data-tone',
       'emerald',
     );
+    expect(screen.getAllByRole('option', { name: /August/ })).toHaveLength(2);
+    const chart = screen.getByLabelText(/^Expense trend:/);
+    expect(chart).toHaveClass('min-h-10', 'flex-1');
+    expect(chart).not.toHaveClass('h-10');
     await user.click(screen.getByRole('button', { name: 'Month, month to date' }));
     expect(onRangeChange).toHaveBeenCalledWith('month');
     await user.click(screen.getByRole('button', { name: 'Year, year to date' }));
@@ -81,6 +112,7 @@ describe('AnalyticsSlide', () => {
   it('uses year-to-date copy for a year summary', () => {
     render(
       <AnalyticsSlide
+        {...periodProps}
         range="year"
         onRangeChange={vi.fn()}
         summary={{ ...summary, range: 'year' }}
@@ -99,6 +131,7 @@ describe('AnalyticsSlide', () => {
   it('uses custom range copy for a custom summary', () => {
     render(
       <AnalyticsSlide
+        {...periodProps}
         range="custom"
         onRangeChange={vi.fn()}
         summary={{
@@ -121,6 +154,7 @@ describe('AnalyticsSlide', () => {
   it('renders fixed in-slide loading, empty, and uncached-error states', () => {
     const { rerender } = render(
       <AnalyticsSlide
+        {...periodProps}
         range="week"
         onRangeChange={vi.fn()}
         isLoading
@@ -134,6 +168,7 @@ describe('AnalyticsSlide', () => {
 
     rerender(
       <AnalyticsSlide
+        {...periodProps}
         range="week"
         onRangeChange={vi.fn()}
         summary={{ ...summary, hasExpenseRows: false }}
@@ -145,10 +180,12 @@ describe('AnalyticsSlide', () => {
       />,
     );
     expect(screen.getByText('No expenses in this period')).toBeInTheDocument();
+    expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View all analytics' })).toBeInTheDocument();
 
     rerender(
       <AnalyticsSlide
+        {...periodProps}
         range="week"
         onRangeChange={vi.fn()}
         isLoading={false}
@@ -162,6 +199,7 @@ describe('AnalyticsSlide', () => {
 
     rerender(
       <AnalyticsSlide
+        {...periodProps}
         range="week"
         onRangeChange={vi.fn()}
         isLoading={false}
@@ -175,6 +213,7 @@ describe('AnalyticsSlide', () => {
 
     rerender(
       <AnalyticsSlide
+        {...periodProps}
         range="week"
         onRangeChange={vi.fn()}
         summary={summary}
@@ -187,5 +226,55 @@ describe('AnalyticsSlide', () => {
       />,
     );
     expect(screen.getByText('Offline · saved 09:30')).toBeInTheDocument();
+  });
+
+  it('names a complete historical month instead of calling it month to date', () => {
+    render(
+      <AnalyticsSlide
+        periodOptions={[
+          {
+            key: 'month-july',
+            offset: -1,
+            label: 'July 2026',
+            accessibleLabel: 'July 2026',
+            period: {
+              start: new Date(2026, 6, 1),
+              end: new Date(2026, 6, 31, 23, 59, 59, 999),
+            },
+          },
+          {
+            key: 'month-august',
+            offset: 0,
+            label: 'August 2026',
+            accessibleLabel: 'August 2026',
+            period: summary.periods.current,
+          },
+        ]}
+        periodOffset={-1}
+        onPeriodChange={vi.fn()}
+        range="month"
+        onRangeChange={vi.fn()}
+        summary={{
+          ...summary,
+          range: 'month',
+          periods: {
+            ...summary.periods,
+            current: {
+              start: new Date(2026, 6, 1),
+              end: new Date(2026, 6, 31, 23, 59, 59, 999),
+            },
+          },
+        }}
+        isLoading={false}
+        isOffline={false}
+        error={null}
+        onRetry={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('spent · July 2026')).toBeInTheDocument();
+    expect(screen.queryByText(/month to date/)).not.toBeInTheDocument();
+    expect(screen.getByText('12% below previous month')).toBeInTheDocument();
   });
 });
