@@ -62,15 +62,6 @@ export function useTransactionHistoryQuery(enabled: boolean) {
   const cacheKey = transactionQueryKeys.historyCache(sheetId, userId);
   const localKey = transactionQueryKeys.historyLocal(sheetId, userId);
 
-  useEffect(() => {
-    if (!enabled) {
-      void queryClient.cancelQueries({
-        queryKey: transactionQueryKeys.historyRemote(sheetId, userId),
-        exact: true,
-      });
-    }
-  }, [enabled, queryClient, sheetId, userId]);
-
   const cacheQuery = useQuery<TransactionHistorySnapshot | null>({
     queryKey: cacheKey,
     queryFn: () =>
