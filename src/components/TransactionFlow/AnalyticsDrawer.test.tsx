@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
+import * as analytics from './analytics';
 import type { AnalyticsPeriodOption, AnalyticsRange, DatePeriod } from './analytics';
 import { AnalyticsDrawer } from './AnalyticsDrawer';
 
@@ -106,7 +107,22 @@ function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>>
   return render(<AnalyticsDrawer {...baseProps} {...overrides} />);
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('AnalyticsDrawer', () => {
+  it('does not aggregate analytics while the drawer is closed', () => {
+    const buildSummary = vi.spyOn(analytics, 'buildAnalyticsSummary');
+    buildSummary.mockClear();
+
+    const { rerender } = renderDrawer({ open: false });
+    expect(buildSummary).not.toHaveBeenCalled();
+
+    rerender(<AnalyticsDrawer {...baseProps} open />);
+    expect(buildSummary).toHaveBeenCalledTimes(1);
+  });
+
   it('puts the stacked chart first and reacts across Overview, categories, and Transactions', async () => {
     const user = userEvent.setup();
     renderDrawer();

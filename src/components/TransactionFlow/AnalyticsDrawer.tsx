@@ -88,26 +88,43 @@ export function AnalyticsDrawer({
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
-  const summary = useMemo(
+  const activeSummary = useMemo(
     () =>
-      buildAnalyticsSummary({
-        transactions,
-        range,
-        currency,
-        now,
-        customPeriod,
-        periodOffset,
-      }),
-    [currency, customPeriod, now, periodOffset, range, transactions],
+      open && hasCompleteHistory
+        ? buildAnalyticsSummary({
+            transactions,
+            range,
+            currency,
+            now,
+            customPeriod,
+            periodOffset,
+          })
+        : null,
+    [
+      currency,
+      customPeriod,
+      hasCompleteHistory,
+      now,
+      open,
+      periodOffset,
+      range,
+      transactions,
+    ],
   );
-  const scope = useMemo(
-    () => buildAnalyticsScope(summary, selectedBucket),
-    [selectedBucket, summary],
+  const retainedSummary = useRef(activeSummary);
+  if (activeSummary) retainedSummary.current = activeSummary;
+  const summary = activeSummary ?? retainedSummary.current;
+  const activeScope = useMemo(
+    () => (open && activeSummary ? buildAnalyticsScope(activeSummary, selectedBucket) : null),
+    [activeSummary, open, selectedBucket],
   );
-  const selectedBucketDetails = summary.buckets.find(
+  const retainedScope = useRef(activeScope);
+  if (activeScope) retainedScope.current = activeScope;
+  const scope = activeScope ?? retainedScope.current;
+  const selectedBucketDetails = summary?.buckets.find(
     (bucket) => bucket.key === selectedBucket,
   );
-  const selectedSeries = summary.series.find((item) => item.key === selectedCategory);
+  const selectedSeries = summary?.series.find((item) => item.key === selectedCategory);
   const earliestDate = useMemo(() => {
     const dates = transactions
       .map((transaction) => tryParseDate(transaction.date))
@@ -134,17 +151,27 @@ export function AnalyticsDrawer({
     if (!open) setCustomRangeOpen(false);
   }, [open]);
 
-  const filteredTransactions = useMemo(() => {
-    if (!selectedSeries) return scope.transactions;
+  const activeFilteredTransactions = useMemo(() => {
+    if (!open || !activeScope) return null;
+    if (!selectedSeries) return activeScope.transactions;
     const categoryNames = new Set(selectedSeries.categoryNames);
-    return scope.transactions.filter(
+    return activeScope.transactions.filter(
       (row) => row.type === 'expense' && categoryNames.has(row.category.trim() || 'Uncategorized'),
     );
-  }, [scope.transactions, selectedSeries]);
-  const transactionItems = useMemo(
-    () => flattenTransactionHistory(filteredTransactions),
-    [filteredTransactions],
+  }, [activeScope, open, selectedSeries]);
+  const retainedFilteredTransactions = useRef(activeFilteredTransactions);
+  if (activeFilteredTransactions) {
+    retainedFilteredTransactions.current = activeFilteredTransactions;
+  }
+  const filteredTransactions =
+    activeFilteredTransactions ?? retainedFilteredTransactions.current ?? [];
+  const activeTransactionItems = useMemo(
+    () => (open ? flattenTransactionHistory(filteredTransactions) : null),
+    [filteredTransactions, open],
   );
+  const retainedTransactionItems = useRef(activeTransactionItems);
+  if (activeTransactionItems) retainedTransactionItems.current = activeTransactionItems;
+  const transactionItems = activeTransactionItems ?? retainedTransactionItems.current ?? [];
 
   const selectTransaction = (transaction: TransactionRecord) => {
     clearFilters();
@@ -190,10 +217,12 @@ export function AnalyticsDrawer({
           : range === 'year'
             ? 'Year, year to date'
             : `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`;
-  const analyticsAnnouncement = hasCompleteHistory
-    ? selectedBucketDetails
-      ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, currency)} · Net ${formatAnalyticsAmount(scope.netTotal, currency)}`
-      : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, currency)}`
+  const analyticsAnnouncement = !open
+    ? ''
+    : hasCompleteHistory && summary && scope
+      ? selectedBucketDetails
+        ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, currency)} · Net ${formatAnalyticsAmount(scope.netTotal, currency)}`
+        : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, currency)}`
     : isOffline
       ? 'Full range unavailable offline'
       : isLoading
@@ -290,7 +319,7 @@ export function AnalyticsDrawer({
                   Retry
                 </button>
               </div>
-            ) : (
+            ) : !summary || !scope ? null : (
               <>
                 <section aria-label="Spending trend">
                   <AnalyticsBarChart
