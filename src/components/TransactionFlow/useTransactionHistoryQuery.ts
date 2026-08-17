@@ -62,15 +62,6 @@ export function useTransactionHistoryQuery(enabled: boolean) {
   const cacheKey = transactionQueryKeys.historyCache(sheetId, userId);
   const localKey = transactionQueryKeys.historyLocal(sheetId, userId);
 
-  useEffect(() => {
-    if (!enabled) {
-      void queryClient.cancelQueries({
-        queryKey: transactionQueryKeys.historyRemote(sheetId, userId),
-        exact: true,
-      });
-    }
-  }, [enabled, queryClient, sheetId, userId]);
-
   const cacheQuery = useQuery<TransactionHistorySnapshot | null>({
     queryKey: cacheKey,
     queryFn: () =>
@@ -163,6 +154,7 @@ export function useTransactionHistoryQuery(enabled: boolean) {
     meta: snapshot?.meta ?? null,
     error,
     hasCompleteCache,
+    hasLocalSnapshot: cacheQuery.isSuccess || localQuery.isSuccess,
     isLoading:
       enabled &&
       !hasCompleteCache &&
@@ -170,6 +162,10 @@ export function useTransactionHistoryQuery(enabled: boolean) {
     isRefreshing: hasCompleteCache && remoteQuery.isFetching,
     isDownloading: !hasCompleteCache && remoteQuery.isFetching,
     isOnline,
+    remoteStatus: remoteQuery.status,
+    remoteFetchedAt: remoteQuery.dataUpdatedAt || undefined,
+    remoteError:
+      remoteQuery.error instanceof Error ? remoteQuery.error : null,
     refresh: remoteQuery.refetch,
   };
 }

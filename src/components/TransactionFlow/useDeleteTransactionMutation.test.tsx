@@ -6,6 +6,7 @@ import {
 import { act, renderHook } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { transactionQueryKeys } from "./transactionQueryKeys";
 import { useDeleteTransactionMutation } from "./useDeleteTransactionMutation";
 
 const providerMocks = vi.hoisted(() => ({
@@ -18,21 +19,24 @@ vi.mock("../../app/providers", () => ({
   }),
 }));
 
-function createWrapper() {
+function createHarness() {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   });
+  const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+  const refetch = vi.spyOn(queryClient, "refetchQueries");
 
-  return function Wrapper({ children }: { children: React.ReactNode }) {
+  function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
         {children}
       </QueryClientProvider>
     );
-  };
+  }
+  return { invalidate, queryClient, refetch, wrapper: Wrapper };
 }
 
 describe("useDeleteTransactionMutation", () => {
@@ -52,8 +56,9 @@ describe("useDeleteTransactionMutation", () => {
 
   it("settles immediately offline so exact Undo can delete a local child", async () => {
     onlineManager.setOnline(false);
+    const { wrapper } = createHarness();
     const { result } = renderHook(() => useDeleteTransactionMutation(), {
-      wrapper: createWrapper(),
+      wrapper,
     });
 
     let record: unknown;
@@ -69,5 +74,27 @@ describe("useDeleteTransactionMutation", () => {
       outcome: "pending",
       message: "Reimbursement removal queued",
     });
+  });
+
+  it("leaves the provider-owned remote refresh untouched", async () => {
+    const { invalidate, refetch, wrapper } = createHarness();
+    const { result } = renderHook(() => useDeleteTransactionMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync("transaction-1")).resolves.toMatchObject({
+        ok: true,
+      });
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: transactionQueryKeys.history,
+      refetchType: "none",
+    });
+    expect(
+      refetch.mock.calls.some(
+        ([filters]) => filters?.queryKey?.[1] === "remote",
+      ),
+    ).toBe(false);
   });
 });

@@ -1,0 +1,90 @@
+import { db } from '../../lib/db';
+import type { SettingRecord } from '../../lib/types';
+
+export type AnalyticsSyncMetadata = {
+  sheetId: string;
+  baseCurrency: string;
+  historyCapturedAt: string;
+  requirementsFingerprint: string;
+  completedAt: string;
+};
+
+export type AnalyticsSyncMetadataStore = {
+  get: (key: string) => Promise<SettingRecord | undefined>;
+  put: (record: SettingRecord) => Promise<unknown>;
+  delete: (key: string) => Promise<unknown>;
+};
+
+const defaultStore: AnalyticsSyncMetadataStore = {
+  get: (key) => db.settings.get(key),
+  put: (record) => db.settings.put(record),
+  delete: (key) => db.settings.delete(key),
+};
+
+function isIsoTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+export function analyticsSyncMetadataKey(
+  sheetId: string,
+  baseCurrency: string,
+): string {
+  return `analytics-sync:${sheetId}:${baseCurrency.trim().toUpperCase()}`;
+}
+
+export async function readAnalyticsSyncMetadata(
+  sheetId: string,
+  baseCurrency: string,
+  store: AnalyticsSyncMetadataStore = defaultStore,
+): Promise<AnalyticsSyncMetadata | null> {
+  const normalizedBase = baseCurrency.trim().toUpperCase();
+  const record = await store.get(analyticsSyncMetadataKey(sheetId, normalizedBase));
+  if (!record) return null;
+
+  try {
+    const value = JSON.parse(record.value) as Partial<AnalyticsSyncMetadata>;
+    if (
+      value.sheetId !== sheetId ||
+      value.baseCurrency !== normalizedBase ||
+      !isIsoTimestamp(value.historyCapturedAt) ||
+      typeof value.requirementsFingerprint !== 'string' ||
+      value.requirementsFingerprint.length === 0 ||
+      !isIsoTimestamp(value.completedAt)
+    ) {
+      return null;
+    }
+    return {
+      sheetId,
+      baseCurrency: normalizedBase,
+      historyCapturedAt: value.historyCapturedAt,
+      requirementsFingerprint: value.requirementsFingerprint,
+      completedAt: value.completedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function writeAnalyticsSyncMetadata(
+  metadata: AnalyticsSyncMetadata,
+  store: AnalyticsSyncMetadataStore = defaultStore,
+): Promise<AnalyticsSyncMetadata> {
+  const normalized = {
+    ...metadata,
+    baseCurrency: metadata.baseCurrency.trim().toUpperCase(),
+  };
+  await store.put({
+    key: analyticsSyncMetadataKey(normalized.sheetId, normalized.baseCurrency),
+    value: JSON.stringify(normalized),
+    updatedAt: normalized.completedAt,
+  });
+  return normalized;
+}
+
+export async function clearAnalyticsSyncMetadata(
+  sheetId: string,
+  baseCurrency: string,
+  store: AnalyticsSyncMetadataStore = defaultStore,
+): Promise<void> {
+  await store.delete(analyticsSyncMetadataKey(sheetId, baseCurrency));
+}

@@ -57,6 +57,9 @@ const seededTransactions = [
   ),
 ];
 
+let frankfurterRequestCount = 0;
+let releaseBackgroundRates: (() => void) | null = null;
+
 async function touchSwipe(page: Page, target: Locator, deltaX: number, deltaY: number) {
   const box = await target.boundingBox();
   if (!box) throw new Error('Swipe target is not visible');
@@ -181,12 +184,25 @@ async function touchSwipeWithMotionTrace(
 }
 
 test.describe('Home Transactions and Analytics carousel', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    frankfurterRequestCount = 0;
+    releaseBackgroundRates = null;
+    const delayBackgroundRates = testInfo.title.includes(
+      'keeps analytics usable while rates fill in the background',
+    );
+    let releaseRatesPromise: Promise<void> | null = null;
+    if (delayBackgroundRates) {
+      releaseRatesPromise = new Promise<void>((resolve) => {
+        releaseBackgroundRates = resolve;
+      });
+    }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript((transactions: TransactionRecord[]) => {
       window.localStorage.setItem('sheetlog.mock.transactions', JSON.stringify(transactions));
     }, seededTransactions);
     await page.route('https://api.frankfurter.dev/v2/rates**', async (route) => {
+      frankfurterRequestCount += 1;
+      if (releaseRatesPromise) await releaseRatesPromise;
       const rows = Array.from({ length: 30 }, (_, index) => ({
         date: format(subDays(new Date(), index), 'yyyy-MM-dd'),
         base: 'THB',
@@ -201,6 +217,37 @@ test.describe('Home Transactions and Analytics carousel', () => {
     });
     await page.goto('/app');
     await expect(page.getByRole('region', { name: 'Home activity' })).toBeVisible();
+  });
+
+  test('keeps analytics usable while rates fill in the background', async ({ page }) => {
+    const analyticsDot = page.getByRole('button', { name: 'Analytics slide' });
+    await analyticsDot.click();
+    await expect(analyticsDot).toHaveAttribute('aria-current', 'true');
+    const analyticsSlide = page.getByLabel('Analytics, slide 2 of 2');
+
+    await expect.poll(() => frankfurterRequestCount).toBe(1);
+    await expect(analyticsSlide.getByText('฿120', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Month' }).click();
+    await page.getByRole('button', { name: 'Quarter' }).click();
+    await page.getByRole('button', { name: 'Year' }).click();
+    await page.getByRole('button', { name: 'Week' }).click();
+    expect(frankfurterRequestCount).toBe(1);
+
+    await page.getByRole('button', { name: 'Open settings' }).click();
+    await expect(page.getByText('Syncing…', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    releaseBackgroundRates?.();
+    releaseBackgroundRates = null;
+    await expect(analyticsSlide.getByText('฿220', { exact: true })).toBeVisible();
+    expect(frankfurterRequestCount).toBe(1);
+
+    await page.getByRole('button', { name: 'Open settings' }).click();
+    await expect(page.getByText(/^Synced · /)).toBeVisible();
+    const requestsBeforeResync = frankfurterRequestCount;
+    await page.getByRole('button', { name: 'Resync analytics' }).click();
+    await expect.poll(() => frankfurterRequestCount).toBeGreaterThan(requestsBeforeResync);
+    await expect(page.getByText(/^Synced · /)).toBeVisible();
   });
 
   test('keeps Transactions full-width, swipes to Analytics, and opens both sheets', async ({

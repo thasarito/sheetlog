@@ -16,17 +16,19 @@ export function useDeleteTransactionMutation() {
       return result;
     },
     onSettled: async () => {
-      await Promise.all([
+      const invalidations = [
         queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
         queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.history,
+          refetchType: "none",
         }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.reimbursements,
         }),
         queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
-      ]);
+      ];
+      await Promise.all(invalidations);
     },
   });
 }

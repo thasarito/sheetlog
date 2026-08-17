@@ -33,6 +33,7 @@ function createHarness() {
     },
   });
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+  const refetch = vi.spyOn(queryClient, "refetchQueries");
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -40,7 +41,7 @@ function createHarness() {
       </QueryClientProvider>
     );
   }
-  return { invalidate, queryClient, wrapper: Wrapper };
+  return { invalidate, queryClient, refetch, wrapper: Wrapper };
 }
 
 function validValues(
@@ -91,7 +92,7 @@ describe("useAddTransactionMutation", () => {
   });
 
   it("omits the place property for ordinary free-text transactions", async () => {
-    const { invalidate, queryClient, wrapper } = createHarness();
+    const { invalidate, queryClient, refetch, wrapper } = createHarness();
     const { result } = renderHook(() => useAddTransactionMutation(), {
       wrapper,
     });
@@ -105,7 +106,13 @@ describe("useAddTransactionMutation", () => {
     await waitFor(() => {
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: transactionQueryKeys.history,
+        refetchType: "none",
       });
+      expect(
+        refetch.mock.calls.some(
+          ([filters]) => filters?.queryKey?.[1] === "remote",
+        ),
+      ).toBe(false);
     });
     queryClient.clear();
   });

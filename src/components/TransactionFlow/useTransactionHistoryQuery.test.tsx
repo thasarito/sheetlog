@@ -183,6 +183,8 @@ describe("useTransactionHistoryQuery", () => {
     });
     expect(result.current.records[0].status).toBe("pending");
     expect(result.current.hasCompleteCache).toBe(true);
+    expect(result.current.hasLocalSnapshot).toBe(true);
+    expect(result.current.remoteStatus).toBe("pending");
     expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
   });
 
@@ -263,6 +265,9 @@ describe("useTransactionHistoryQuery", () => {
     await waitFor(() => {
       expect(result.current.records.map(({ id }) => id)).toEqual(["fresh"]);
     });
+    expect(result.current.remoteStatus).toBe("success");
+    expect(result.current.remoteFetchedAt).toEqual(expect.any(Number));
+    expect(result.current.remoteError).toBeNull();
     expect(
       (await readTransactionHistorySnapshot("sheet-a"))?.records.map(
         ({ id }) => id,
@@ -360,7 +365,7 @@ describe("useTransactionHistoryQuery", () => {
     ).toEqual(["cross-tab-winner"]);
   });
 
-  it("does not persist a snapshot that finishes after the drawer closes", async () => {
+  it("does not let a closing drawer cancel the always-on history observer", async () => {
     const pendingSnapshot = deferred<TransactionHistorySnapshot>();
     let requestSignal: AbortSignal | undefined;
     mocks.fetchSnapshot.mockImplementation(
@@ -374,21 +379,29 @@ describe("useTransactionHistoryQuery", () => {
       },
     );
     const { wrapper } = createHarness();
-    const { rerender } = renderHook(
-      ({ enabled }) => useTransactionHistoryQuery(enabled),
-      { initialProps: { enabled: true }, wrapper },
+    const { result, rerender } = renderHook(
+      ({ drawerOpen }) => ({
+        background: useTransactionHistoryQuery(true),
+        drawer: useTransactionHistoryQuery(drawerOpen),
+      }),
+      { initialProps: { drawerOpen: true }, wrapper },
     );
     await waitFor(() => expect(mocks.fetchSnapshot).toHaveBeenCalledTimes(1));
 
     act(() => {
-      rerender({ enabled: false });
+      rerender({ drawerOpen: false });
     });
-    await waitFor(() => expect(requestSignal?.aborted).toBe(true));
+    expect(requestSignal?.aborted).toBe(false);
 
     await act(async () => {
-      pendingSnapshot.resolve(snapshot(cached("too-late")));
+      pendingSnapshot.resolve(snapshot(cached("background-complete")));
     });
 
-    expect(await readTransactionHistorySnapshot("sheet-a")).toBeNull();
+    await waitFor(() => expect(result.current.background.remoteStatus).toBe("success"));
+    expect(
+      (await readTransactionHistorySnapshot("sheet-a"))?.records.map(
+        ({ id }) => id,
+      ),
+    ).toEqual(["background-complete"]);
   });
 });

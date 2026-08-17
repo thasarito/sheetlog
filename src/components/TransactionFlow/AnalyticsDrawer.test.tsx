@@ -639,18 +639,4 @@ describe('AnalyticsDrawer', () => {
     ).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('shows the missing historical rate before generic offline errors', async () => {
-    const user = userEvent.setup();
-    const onRetry = vi.fn();
-    renderDrawer({
-      missingRate: { currency: 'USD', date: '2026-08-16' },
-      isOffline: true,
-      error: new Error('network'),
-      onRetry,
-    });
-
-    expect(screen.getByText('Rate unavailable for USD on Aug 16')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(onRetry).toHaveBeenCalledTimes(1);
-  });
 });

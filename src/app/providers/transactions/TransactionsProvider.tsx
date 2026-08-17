@@ -1,6 +1,7 @@
 import type React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { refreshTransactionHistoryInBackground } from "../../../components/TransactionFlow/refreshTransactionHistory";
 import { transactionQueryKeys } from "../../../components/TransactionFlow/transactionQueryKeys";
 import { db } from "../../../lib/db";
 import {
@@ -338,23 +339,37 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
   }, [accessToken, sheetId, userId]);
 
-  const invalidateTransactions = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
-      queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
-      queryClient.invalidateQueries({
-        queryKey: transactionQueryKeys.history,
-      }),
-      queryClient.invalidateQueries({
-        queryKey: transactionQueryKeys.reimbursements,
-      }),
-      queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
-    ]);
-  }, [queryClient]);
+  const invalidateTransactions = useCallback(
+    async (refreshRemoteHistory = false) => {
+      const invalidations = [
+        queryClient.invalidateQueries({ queryKey: transactionQueryKeys.local }),
+        queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
+        queryClient.invalidateQueries({
+          queryKey: transactionQueryKeys.history,
+          refetchType: "none",
+        }),
+        queryClient.invalidateQueries({
+          queryKey: transactionQueryKeys.reimbursements,
+        }),
+        queryClient.invalidateQueries({ queryKey: ["transactionById"] }),
+      ];
+      if (refreshRemoteHistory) {
+        refreshTransactionHistoryInBackground(queryClient, sheetId, userId);
+      }
+      await Promise.all(invalidations);
+    },
+    [queryClient, sheetId, userId],
+  );
 
-  const refreshMutationState = useCallback(async () => {
-    await Promise.allSettled([invalidateTransactions(), refreshStats()]);
-  }, [invalidateTransactions, refreshStats]);
+  const refreshMutationState = useCallback(
+    async (refreshRemoteHistory = false) => {
+      await Promise.allSettled([
+        invalidateTransactions(refreshRemoteHistory),
+        refreshStats(),
+      ]);
+    },
+    [invalidateTransactions, refreshStats],
+  );
 
   const runExclusive = useCallback(
     <Result,>(operation: () => Promise<Result>): Promise<Result> => {
@@ -393,14 +408,21 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     const requestedScope = { accessToken, sheetId, userId };
     const requestIsCurrent = () =>
       isSameActiveScope(activeScopeRef.current, requestedScope);
+    let refreshRemoteHistory = false;
     syncingRef.current = true;
     dispatch({ type: "sync_start" });
     try {
-      await syncPendingTransactions(accessToken, sheetId, userId);
+      const syncedCount = await syncPendingTransactions(
+        accessToken,
+        sheetId,
+        userId,
+      );
+      refreshRemoteHistory = syncedCount > 0;
       if (requestIsCurrent()) {
         dispatch({ type: "sync_success", at: new Date().toISOString() });
       }
     } catch (error) {
+      refreshRemoteHistory = true;
       const info = mapGoogleSyncError(error);
       if (info.shouldClearAuth) {
         signOut(accessToken);
@@ -418,7 +440,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         await refreshStats();
       } finally {
         try {
-          await invalidateTransactions();
+          await invalidateTransactions(refreshRemoteHistory);
         } finally {
           dispatch({ type: "sync_end" });
           syncingRef.current = false;
@@ -795,7 +817,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
             directResult.kind === "synced" ||
             directResult.kind === "preserved"
           ) {
-            await refreshMutationState();
+            await refreshMutationState(true);
             if (input.type || input.category) {
               await Promise.allSettled([
                 markRecentCategory(
@@ -977,7 +999,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
 
     if (directDeleteMessage) {
-      await refreshMutationState();
+      await refreshMutationState(true);
       return {
         ok: true,
         outcome: "deleted",
@@ -1129,7 +1151,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       }
 
       if (directDeleteMessage) {
-        await refreshMutationState();
+        await refreshMutationState(true);
         return {
           ok: true,
           outcome: "deleted",

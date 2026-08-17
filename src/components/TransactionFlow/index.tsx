@@ -63,6 +63,7 @@ import {
 import { createFlowGeneration } from "./flowGeneration";
 import { useTransactionByIdQuery } from "./useTransactionByIdQuery";
 import { createPlaceSessionId } from "./placeSessionId";
+import { useAnalyticsSync } from "./useAnalyticsSync";
 import {
   buildPlaceUpdatePatch,
   replaceTransactionNote,
@@ -138,6 +139,7 @@ export function TransactionFlow() {
   const { userProfile } = useSession();
   const { sheetId } = useWorkspace();
   const { onboarding } = useOnboarding();
+  const analyticsSync = useAnalyticsSync(onboarding.analyticsBaseCurrency);
   const { isOnline } = useConnectivity();
   const [step, setStep] = useState(0);
   const [placeSuggestionSessionId, setPlaceSuggestionSessionId] = useState(
@@ -1350,6 +1352,7 @@ export function TransactionFlow() {
         <Header
           showSettings
           onToast={handleToast}
+          analyticsSync={analyticsSync}
         />
 
         {/* Main content - full height */}
@@ -1360,6 +1363,7 @@ export function TransactionFlow() {
                 <HomeDashboardCarousel
                   baseCurrency={onboarding.analyticsBaseCurrency}
                   bigSpendingThreshold={bigSpendingThreshold}
+                  analyticsSync={analyticsSync}
                   onToast={handleToast}
                   onEditTransaction={handleEditTransaction}
                   onViewAllTransactions={() => setHistoryDrawerOpen(true)}

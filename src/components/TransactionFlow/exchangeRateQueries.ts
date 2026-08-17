@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { useConnectivity } from '../../app/providers';
 import {
-  loadHistoricalRates,
+  readHistoricalRates,
   type HistoricalRateRequest,
 } from './exchangeRates';
 
 export const exchangeRateKeys = {
   all: ['exchangeRates'] as const,
-  historical: (request: HistoricalRateRequest | null) =>
+  cached: (request: HistoricalRateRequest | null) =>
     request
       ? ([
           ...exchangeRateKeys.all,
@@ -17,23 +16,32 @@ export const exchangeRateKeys = {
           request.to,
         ] as const)
       : ([...exchangeRateKeys.all, 'idle'] as const),
+  backfill: (sheetId: string | null, base: string, chunkKeys: string[]) =>
+    [
+      ...exchangeRateKeys.all,
+      'backfill',
+      sheetId,
+      base,
+      [...chunkKeys].sort(),
+    ] as const,
+  historical: (request: HistoricalRateRequest | null) =>
+    exchangeRateKeys.cached(request),
 };
 
 export function useHistoricalRatesQuery(
   request: HistoricalRateRequest | null,
   enabled: boolean,
 ) {
-  const { isOnline } = useConnectivity();
   return useQuery({
-    queryKey: exchangeRateKeys.historical(request),
-    queryFn: () => {
-      if (!request) return Promise.resolve({ rates: [], refreshFailed: false });
-      return loadHistoricalRates(request, { isOnline });
-    },
+    queryKey: exchangeRateKeys.cached(request),
+    queryFn: () =>
+      request
+        ? readHistoricalRates(request)
+        : Promise.resolve({ rates: [], refreshFailed: false }),
     enabled: enabled && request !== null,
     networkMode: 'always',
-    staleTime: 24 * 60 * 60 * 1000,
-    gcTime: Infinity,
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
 }

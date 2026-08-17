@@ -87,13 +87,14 @@ export function useCreateReimbursementMutation() {
       return record;
     },
     onSettled: async (_record, _error, variables) => {
-      await Promise.all([
+      const invalidations = [
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.local,
         }),
         queryClient.invalidateQueries({ queryKey: ["recentTransactions"] }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.history,
+          refetchType: "none",
         }),
         queryClient.invalidateQueries({
           queryKey: transactionQueryKeys.reimbursement(
@@ -102,7 +103,8 @@ export function useCreateReimbursementMutation() {
             variables.source.id,
           ),
         }),
-      ]);
+      ];
+      await Promise.all(invalidations);
     },
   });
 }

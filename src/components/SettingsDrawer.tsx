@@ -34,6 +34,8 @@ import type { CategoryItem, QuickNote, TransactionType } from '../lib/types';
 import { AppearancePicker } from './AppearancePicker';
 import { AnalyticsBaseCurrencySetting } from './AnalyticsBaseCurrencySetting';
 import { AnalyticsBigSpendingThresholdSetting } from './AnalyticsBigSpendingThresholdSetting';
+import { AnalyticsSyncSetting } from './AnalyticsSyncSetting';
+import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 import { DynamicIcon } from './DynamicIcon';
 import { QuickNoteFlow } from './QuickNotes/QuickNoteFlow';
 import { persistQuickNotesOptimistically } from './QuickNotes/quickNotesPersistence';
@@ -43,6 +45,10 @@ type SettingsDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onToast: (message: string) => void;
+  analyticsSync: Pick<
+    AnalyticsSyncController,
+    'status' | 'lastSyncedAt' | 'isResyncing' | 'resync'
+  >;
 };
 
 type SettingsScreen =
@@ -368,6 +374,7 @@ export function SettingsDrawer({
   open,
   onOpenChange,
   onToast,
+  analyticsSync,
 }: SettingsDrawerProps) {
   const { isOnline } = useConnectivity();
   const {
@@ -1080,6 +1087,13 @@ export function SettingsDrawer({
                                     onToast('Base currency saved locally; sync pending'),
                                   );
                                 }}
+                              />
+                              <div className="ml-[56px] h-px bg-border/70" />
+                              <AnalyticsSyncSetting
+                                status={analyticsSync.status}
+                                lastSyncedAt={analyticsSync.lastSyncedAt}
+                                isResyncing={analyticsSync.isResyncing}
+                                onResync={analyticsSync.resync}
                               />
                               <div className="ml-[56px] h-px bg-border/70" />
                               <AnalyticsBigSpendingThresholdSetting
