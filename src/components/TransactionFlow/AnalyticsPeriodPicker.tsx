@@ -18,7 +18,7 @@ type AnalyticsPeriodPickerProps = {
 };
 
 type TouchDrag = {
-  pointerId: number;
+  identifier: number;
   startX: number;
   startY: number;
   startTranslate: number;
@@ -36,6 +36,14 @@ const MOMENTUM_MAX_DURATION_MS = 520;
 const MOMENTUM_MIN_VELOCITY = 0.02;
 const RELEASE_VELOCITY_IDLE_MS = 120;
 const WHEEL_SETTLE_DELAY_MS = 120;
+
+function findTouch(touches: ArrayLike<Touch>, identifier: number): Touch | null {
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier === identifier) return touch;
+  }
+  return null;
+}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -207,6 +215,15 @@ export function AnalyticsPeriodPicker({
     [applyTranslate, cancelMotion, centeredTranslate, clearWheelTimer, commitIndex],
   );
 
+  const cancelActiveTouch = useCallback(() => {
+    const drag = touchDragRef.current;
+    if (!drag || drag.cancelled) return;
+    drag.cancelled = true;
+    if (drag.axis === 'horizontal') suppressClickRef.current = true;
+    cancelDragFrame();
+    centerIndex(controlledIndexRef.current, false);
+  }, [cancelDragFrame, centerIndex]);
+
   const nearestIndex = useCallback(() => {
     let nearest = controlledIndexRef.current;
     let nearestDistance = Number.POSITIVE_INFINITY;
@@ -327,72 +344,77 @@ export function AnalyticsPeriodPicker({
     [cancelDragFrame, centerIndex],
   );
 
-  const handlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType !== 'touch') return;
+  const handleTouchStart = useCallback(
+    (event: React.TouchEvent<HTMLDivElement>) => {
+      if (event.targetTouches.length !== 1) {
+        cancelActiveTouch();
+        return;
+      }
+      const touch = event.targetTouches[0];
       cancelMotion();
       clearWheelTimer();
       cancelDragFrame();
       if (clickResetTimerRef.current !== null) {
         window.clearTimeout(clickResetTimerRef.current);
+        clickResetTimerRef.current = null;
       }
       suppressClickRef.current = false;
-      if (typeof event.currentTarget.setPointerCapture === 'function') {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }
       touchDragRef.current = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
+        identifier: touch.identifier,
+        startX: touch.pageX,
+        startY: touch.pageY,
         startTranslate: translateRef.current,
-        lastX: event.clientX,
+        lastX: touch.pageX,
         lastTime: performance.now(),
         velocity: 0,
         axis: null,
         cancelled: false,
       };
     },
-    [cancelDragFrame, cancelMotion, clearWheelTimer],
+    [cancelActiveTouch, cancelDragFrame, cancelMotion, clearWheelTimer],
   );
 
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+  const handleTouchMove = useCallback(
+    (event: TouchEvent) => {
       const drag = touchDragRef.current;
-      if (!drag || drag.pointerId !== event.pointerId || drag.cancelled) return;
-      const deltaX = event.clientX - drag.startX;
-      const deltaY = event.clientY - drag.startY;
+      if (!drag || drag.cancelled) return;
+      if (event.targetTouches.length !== 1) {
+        cancelActiveTouch();
+        return;
+      }
+      const touch = findTouch(event.targetTouches, drag.identifier);
+      if (!touch) {
+        cancelActiveTouch();
+        return;
+      }
+      const deltaX = touch.pageX - drag.startX;
+      const deltaY = touch.pageY - drag.startY;
       if (drag.axis === null) {
         if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < AXIS_LOCK_THRESHOLD_PX) return;
         drag.axis = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
       }
       if (drag.axis !== 'horizontal') return;
 
-      event.preventDefault();
+      if (event.cancelable) event.preventDefault();
       suppressClickRef.current = true;
       const now = performance.now();
       const elapsed = now - drag.lastTime;
       if (elapsed > 0) {
-        const instantVelocity = (event.clientX - drag.lastX) / elapsed;
+        const instantVelocity = (touch.pageX - drag.lastX) / elapsed;
         drag.velocity = drag.velocity * 0.75 + instantVelocity * 0.25;
-        drag.lastX = event.clientX;
+        drag.lastX = touch.pageX;
         drag.lastTime = now;
       }
       scheduleDragTranslate(applyEdgeResistance(drag.startTranslate + deltaX));
     },
-    [applyEdgeResistance, scheduleDragTranslate],
+    [applyEdgeResistance, cancelActiveTouch, scheduleDragTranslate],
   );
 
-  const finishPointerGesture = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>, cancelled: boolean) => {
+  const finishTouchGesture = useCallback(
+    (endX: number | null, cancelled: boolean) => {
       const drag = touchDragRef.current;
-      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (!drag) return;
       touchDragRef.current = null;
-      if (
-        typeof event.currentTarget.hasPointerCapture === 'function' &&
-        event.currentTarget.hasPointerCapture(event.pointerId)
-      ) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
 
       if (cancelled || drag.cancelled) {
         cancelDragFrame();
@@ -402,8 +424,8 @@ export function AnalyticsPeriodPicker({
         const releaseElapsed = Math.max(0, performance.now() - drag.lastTime);
         const idleDecay = Math.max(0, 1 - releaseElapsed / RELEASE_VELOCITY_IDLE_MS);
         drag.velocity *= idleDecay;
-        if (releaseElapsed > 0 && event.clientX !== drag.lastX) {
-          const releaseVelocity = (event.clientX - drag.lastX) / releaseElapsed;
+        if (endX !== null && releaseElapsed > 0 && endX !== drag.lastX) {
+          const releaseVelocity = (endX - drag.lastX) / releaseElapsed;
           drag.velocity = drag.velocity * 0.75 + releaseVelocity * 0.25;
         }
         if (Math.abs(drag.velocity) > MOMENTUM_MIN_VELOCITY) {
@@ -424,6 +446,23 @@ export function AnalyticsPeriodPicker({
     },
     [cancelDragFrame, centerIndex, flushDragTranslate, settleNearest, startMomentum],
   );
+
+  const handleTouchEnd = useCallback(
+    (event: React.TouchEvent<HTMLDivElement>) => {
+      const drag = touchDragRef.current;
+      if (!drag || findTouch(event.targetTouches, drag.identifier)) return;
+      const endedTouch = findTouch(event.changedTouches, drag.identifier);
+      finishTouchGesture(endedTouch?.pageX ?? null, false);
+    },
+    [finishTouchGesture],
+  );
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => viewport.removeEventListener('touchmove', handleTouchMove);
+  }, [handleTouchMove]);
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
@@ -492,10 +531,15 @@ export function AnalyticsPeriodPicker({
         aria-label="Analytics period"
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={(event) => finishPointerGesture(event, false)}
-        onPointerCancel={(event) => finishPointerGesture(event, true)}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={(event) => {
+          const drag = touchDragRef.current;
+          const cancelledTouch = drag
+            ? findTouch(event.changedTouches, drag.identifier)
+            : null;
+          finishTouchGesture(cancelledTouch?.pageX ?? null, true);
+        }}
         onWheel={handleWheel}
         onClickCapture={(event) => {
           if (!suppressClickRef.current) return;
@@ -503,7 +547,7 @@ export function AnalyticsPeriodPicker({
           event.stopPropagation();
           suppressClickRef.current = false;
         }}
-        className="min-w-0 flex-1 overflow-hidden overscroll-x-contain [touch-action:pan-y]"
+        className="min-w-0 flex-1 overflow-hidden overscroll-x-contain"
         style={{
           maskImage:
             'linear-gradient(to right, transparent, black 18%, black 82%, transparent)',
