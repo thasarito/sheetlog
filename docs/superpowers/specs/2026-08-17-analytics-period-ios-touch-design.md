@@ -7,9 +7,9 @@ multi-period fling after release. The visual design, locally bounded period list
 settle-before-compute boundary, vertical sheet scrolling, and lack of mouse-button dragging must
 remain unchanged.
 
-Success means a horizontal finger movement visibly moves the row by the same distance, a quick
-release can travel across several locally available periods, and Analytics receives exactly one
-period change after the row locks to its final centered option.
+Success means a horizontal finger movement within the available history visibly moves the row by
+the same distance, a quick release can travel across several locally available periods, and
+Analytics receives exactly one period change after the row locks to its final centered option.
 
 ## Verified Context and Diagnostic Conclusion
 
@@ -82,8 +82,9 @@ The gesture has four phases:
    resistance and stronger out-of-range decay. The nearest valid option then centers and emits one
    `onChange`.
 
-Release velocity still expires after a short stationary pause so an old sample cannot cause a
-surprise fling. Initial velocity is clamped to a safe maximum, which permits multi-period travel
+Release velocity still expires after the existing 120ms stationary pause so an old sample cannot
+cause a surprise fling. Keep the existing 0.95-per-16ms decay and 0.02px/ms settle threshold, but
+remove the duration cutoff and clamp initial velocity to 2.5px/ms. This permits multi-period travel
 without allowing a single event spike to traverse the entire history. Reduced-motion mode skips
 momentum and centering animation, resolves the nearest option immediately, and emits once.
 
@@ -122,7 +123,7 @@ selected or announced; only the settled period is announced.
 
 Component tests will use Touch Events and verify:
 
-- a horizontal touch delta produces the same transform delta before release;
+- a horizontal touch delta within valid bounds produces the same transform delta before release;
 - many touch moves do not call `onChange`;
 - a fast release continues beyond 520ms, can cross multiple periods, and emits only the final one;
 - a stationary pause before release does not reuse stale velocity;
