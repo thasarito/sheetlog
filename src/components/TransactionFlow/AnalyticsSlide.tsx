@@ -69,14 +69,16 @@ export function AnalyticsSlide({
   onViewAll,
 }: AnalyticsSlideProps) {
   const selectedPeriod = periodOptions.find((option) => option.offset === periodOffset);
-  const periodControl = summary ? (
+  const periodControl =
     range === 'custom' ? (
-      <p
-        data-testid="analytics-custom-period"
-        className="flex min-h-11 items-center justify-center text-xs font-semibold text-foreground"
-      >
-        {customPeriodLabel(summary.periods.current)}
-      </p>
+      summary ? (
+        <p
+          data-testid="analytics-custom-period"
+          className="flex min-h-11 items-center justify-center text-xs font-semibold text-foreground"
+        >
+          {customPeriodLabel(summary.periods.current)}
+        </p>
+      ) : null
     ) : (
       <AnalyticsPeriodPicker
         options={periodOptions}
@@ -84,8 +86,7 @@ export function AnalyticsSlide({
         onChange={onPeriodChange}
         className="-mx-2"
       />
-    )
-  ) : null;
+    );
 
   return (
     <div className="flex h-full min-h-0 flex-col px-5">
@@ -101,40 +102,52 @@ export function AnalyticsSlide({
       </div>
 
       {isOffline && !summary ? (
-        <div className="flex flex-1 items-center text-sm text-muted-foreground">
-          Full range unavailable offline
-        </div>
+        <>
+          {periodControl}
+          <div className="flex flex-1 items-center text-sm text-muted-foreground">
+            Full range unavailable offline
+          </div>
+        </>
       ) : isLoading && !summary ? (
-        <output
-          className="flex flex-1 flex-col gap-2 pt-2"
-          aria-label="Loading analytics"
-        >
-          <Skeleton className="h-8 w-32" />
-          <Skeleton className="h-3 w-44" />
-          <Skeleton className="mt-auto h-14 w-full" />
-        </output>
+        <>
+          {periodControl}
+          <output
+            className="flex flex-1 flex-col gap-2 pt-2"
+            aria-label="Loading analytics"
+          >
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-3 w-44" />
+            <Skeleton className="mt-auto h-14 w-full" />
+          </output>
+        </>
       ) : error && !summary ? (
-        <div className="flex flex-1 items-center justify-between gap-3 text-sm">
-          <span className="text-muted-foreground">Analytics unavailable</span>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="min-h-11 font-semibold text-primary"
-          >
-            Retry
-          </button>
-        </div>
+        <>
+          {periodControl}
+          <div className="flex flex-1 items-center justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">Analytics unavailable</span>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="min-h-11 font-semibold text-primary"
+            >
+              Retry
+            </button>
+          </div>
+        </>
       ) : !summary ? (
-        <div className="flex flex-1 items-center justify-between gap-3 text-sm">
-          <span className="text-muted-foreground">Analytics unavailable</span>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="min-h-11 font-semibold text-primary"
-          >
-            Retry
-          </button>
-        </div>
+        <>
+          {periodControl}
+          <div className="flex flex-1 items-center justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">Analytics unavailable</span>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="min-h-11 font-semibold text-primary"
+            >
+              Retry
+            </button>
+          </div>
+        </>
       ) : summary.hasExpenseRows ? (
         <>
           <div aria-live="polite" aria-atomic="true">

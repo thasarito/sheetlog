@@ -259,12 +259,7 @@ function analyticsPeriodOption(
         : range === 'quarter'
           ? `Q${quarter} ${format(period.start, 'yyyy')}`
           : format(period.start, 'yyyy');
-  const accessibleLabel =
-    range === 'week'
-      ? `${format(period.start, 'MMMM d, yyyy')} through ${format(period.end, 'MMMM d, yyyy')}`
-      : range === 'quarter'
-        ? `Quarter ${quarter}, ${format(period.start, 'yyyy')}`
-        : label;
+  const accessibleLabel = `${format(period.start, 'MMMM d, yyyy')} through ${format(period.end, 'MMMM d, yyyy')}`;
   return {
     key: `${range}-${format(period.start, 'yyyy-MM-dd')}-${format(period.end, 'yyyy-MM-dd')}`,
     offset,

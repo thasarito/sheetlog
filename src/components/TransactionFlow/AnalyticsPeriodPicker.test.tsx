@@ -34,6 +34,9 @@ describe('AnalyticsPeriodPicker', () => {
       'true',
     );
     expect(screen.getByTestId('analytics-period-picker')).toHaveClass('[touch-action:pan-x]');
+    expect(screen.getByTestId('analytics-period-picker')).not.toHaveClass('scroll-smooth');
+    expect(screen.getByRole('option', { name: 'July 2026' })).toHaveClass('font-semibold');
+    expect(screen.getByRole('option', { name: 'June 2026' })).toHaveClass('font-medium');
   });
 
   it('moves exactly one period with arrows and disables both boundaries', async () => {

@@ -151,6 +151,9 @@ describe('buildAnalyticsPeriodOptions', () => {
       { offset: -1, label: 'July 2026' },
       { offset: 0, label: 'August 2026' },
     ]);
+    expect(options.at(-1)?.accessibleLabel).toBe(
+      'August 1, 2026 through August 17, 2026',
+    );
   });
 
   it('keeps only current when local history is empty or unavailable', () => {
@@ -169,6 +172,9 @@ describe('buildAnalyticsPeriodOptions', () => {
     expect(options.map(({ offset, label }) => ({ offset, label }))).toEqual([
       { offset: 0, label: '2026' },
     ]);
+    expect(options[0]?.accessibleLabel).toBe(
+      'January 1, 2026 through August 17, 2026',
+    );
   });
 
   it('uses every valid local transaction regardless of type or currency as its bound', () => {
@@ -192,6 +198,9 @@ describe('buildAnalyticsPeriodOptions', () => {
       { offset: -1, label: 'Q2 2026' },
       { offset: 0, label: 'Q3 2026' },
     ]);
+    expect(options.at(-1)?.accessibleLabel).toBe(
+      'July 1, 2026 through August 17, 2026',
+    );
   });
 });
 
