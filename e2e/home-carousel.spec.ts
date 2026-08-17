@@ -213,6 +213,7 @@ test.describe('Home Transactions and Analytics carousel', () => {
 
     await expect(transactionsDot).toHaveAttribute('aria-current', 'true');
     await expect(transactionsSlide.getByRole('button', { name: /Food Delivery/ })).toBeVisible();
+    await expect(transactionsSlide.getByText('≈ −฿100.00')).toBeVisible();
     await expect(page.getByText('Budget', { exact: true })).toHaveCount(0);
     const incomeEntryTab = page.getByRole('button', { name: 'Income', exact: true });
     const lowerYBefore = (await incomeEntryTab.boundingBox())?.y;
@@ -516,6 +517,11 @@ test.describe('Home Transactions and Analytics carousel', () => {
     ).toBeVisible();
     await expect(
       analyticsDialog.getByRole('button', {
+        name: /Coffee & Snacks.*approximately minus 100\.00 THB/,
+      }),
+    ).toBeVisible();
+    await expect(
+      analyticsDialog.getByRole('button', {
         name: /expense Coffee & Snacks.*฿80\.00/,
       }),
     ).toBeVisible();
@@ -571,6 +577,22 @@ test.describe('Home Transactions and Analytics carousel', () => {
       .fill('lunch');
     await expect(transactionsDialog.getByText('Food Delivery')).toBeVisible();
     await expect(transactionsDialog.getByText('Salary')).toHaveCount(0);
+    await transactionsDialog
+      .getByRole('searchbox', { name: 'Search transaction history' })
+      .fill('');
+    await expect(transactionsDialog.getByText('≈ −฿100.00')).toBeVisible();
+    const fullHistoryRows = transactionsDialog.getByTestId('history-transaction-row');
+    const foreignIndex = await fullHistoryRows.evaluateAll((rows) =>
+      rows.findIndex((row) => row.textContent?.includes('$3.00')),
+    );
+    expect(foreignIndex).toBeGreaterThanOrEqual(0);
+    const foreignBox = await fullHistoryRows.nth(foreignIndex).boundingBox();
+    const followingBox = await fullHistoryRows.nth(foreignIndex + 1).boundingBox();
+    expect(foreignBox).not.toBeNull();
+    expect(followingBox).not.toBeNull();
+    expect((foreignBox?.y ?? 0) + (foreignBox?.height ?? 0)).toBeLessThanOrEqual(
+      followingBox?.y ?? 0,
+    );
     await transactionsDialog
       .getByRole('button', { name: 'Close transaction history' })
       .click();

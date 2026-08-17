@@ -876,7 +876,7 @@ expect((foreignBox?.y ?? 0) + (foreignBox?.height ?? 0)).toBeLessThanOrEqual(fol
 Run:
 
 ```bash
-npx playwright test e2e/home-carousel.spec.ts --project="Mobile Chrome"
+CI=1 VITE_DEV_MODE=true npx playwright test e2e/home-carousel.spec.ts --project="Mobile Chrome" --retries=0
 ```
 
 Expected: PASS.
@@ -897,7 +897,7 @@ npm run lint
 npx tsc --noEmit
 npm test
 npm run build
-npx playwright test e2e/home-carousel.spec.ts --project="Mobile Chrome"
+CI=1 VITE_DEV_MODE=true npx playwright test e2e/home-carousel.spec.ts --project="Mobile Chrome" --retries=0
 git diff --check origin/main...HEAD
 git status --short
 ```
