@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SettingRecord } from '../../lib/types';
 import {
   analyticsSyncMetadataKey,
+  clearAnalyticsSyncMetadata,
   readAnalyticsSyncMetadata,
   writeAnalyticsSyncMetadata,
   type AnalyticsSyncMetadataStore,
@@ -15,6 +16,9 @@ function memoryStore(seed?: SettingRecord): AnalyticsSyncMetadataStore {
     put: async (record) => {
       records.set(record.key, record);
       return record.key;
+    },
+    delete: async (key) => {
+      records.delete(key);
     },
   };
 }
@@ -65,5 +69,22 @@ describe('analytics sync metadata', () => {
       updatedAt: '2026-08-17T10:01:00.000Z',
     });
     await expect(readAnalyticsSyncMetadata('sheet-a', 'THB', mismatched)).resolves.toBeNull();
+  });
+
+  it('clears stale completion before a manual resync', async () => {
+    const store = memoryStore();
+    await writeAnalyticsSyncMetadata(
+      {
+        sheetId: 'sheet-a',
+        baseCurrency: 'THB',
+        historyCapturedAt: '2026-08-17T10:00:00.000Z',
+        completedAt: '2026-08-17T10:01:00.000Z',
+      },
+      store,
+    );
+
+    await clearAnalyticsSyncMetadata('sheet-a', 'THB', store);
+
+    await expect(readAnalyticsSyncMetadata('sheet-a', 'THB', store)).resolves.toBeNull();
   });
 });

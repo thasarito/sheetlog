@@ -235,4 +235,30 @@ describe('useAnalyticsSync', () => {
       },
     ]);
   });
+
+  it('reports an incomplete manual resync when a forced rate refresh fails', async () => {
+    state.history.isDownloading = false;
+    state.history.remoteStatus = 'success';
+    state.history.refresh.mockResolvedValue({
+      data: { records: state.history.records, meta: state.history.meta },
+    });
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useAnalyticsSync('THB'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('synced'));
+    state.backfill.mockResolvedValue({
+      completed: [],
+      failed: [
+        {
+          request: { base: 'THB', quotes: ['USD'], from: '2026-08-10', to: '2026-08-17' },
+          error: new Error('provider unavailable'),
+        },
+      ],
+    });
+
+    act(() => result.current.resync());
+
+    await waitFor(() => expect(result.current.isResyncing).toBe(false));
+    expect(result.current.status).toBe('incomplete');
+    expect(await db.settings.get('analytics-sync:sheet-a:THB')).toBeUndefined();
+  });
 });

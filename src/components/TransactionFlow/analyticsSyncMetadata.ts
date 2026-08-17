@@ -11,11 +11,13 @@ export type AnalyticsSyncMetadata = {
 export type AnalyticsSyncMetadataStore = {
   get: (key: string) => Promise<SettingRecord | undefined>;
   put: (record: SettingRecord) => Promise<unknown>;
+  delete: (key: string) => Promise<unknown>;
 };
 
 const defaultStore: AnalyticsSyncMetadataStore = {
   get: (key) => db.settings.get(key),
   put: (record) => db.settings.put(record),
+  delete: (key) => db.settings.delete(key),
 };
 
 function isIsoTimestamp(value: unknown): value is string {
@@ -73,4 +75,12 @@ export async function writeAnalyticsSyncMetadata(
     updatedAt: normalized.completedAt,
   });
   return normalized;
+}
+
+export async function clearAnalyticsSyncMetadata(
+  sheetId: string,
+  baseCurrency: string,
+  store: AnalyticsSyncMetadataStore = defaultStore,
+): Promise<void> {
+  await store.delete(analyticsSyncMetadataKey(sheetId, baseCurrency));
 }

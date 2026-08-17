@@ -10,6 +10,7 @@ import {
   unresolvedAnalyticsRateRequirements,
 } from './analyticsSync';
 import {
+  clearAnalyticsSyncMetadata,
   readAnalyticsSyncMetadata,
   writeAnalyticsSyncMetadata,
 } from './analyticsSyncMetadata';
@@ -154,6 +155,39 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     networkMode: 'always',
     staleTime: Number.POSITIVE_INFINITY,
   });
+  const resyncMutation = useMutation({
+    onMutate: async () => {
+      if (!sheetId) return;
+      await clearAnalyticsSyncMetadata(sheetId, baseCurrency);
+      queryClient.setQueryData(
+        analyticsSyncMetadataKeys.detail(sheetId, baseCurrency),
+        null,
+      );
+    },
+    mutationFn: async () => {
+      const refreshed = await history.refresh();
+      const records = combinedRecords(
+        history.records,
+        refreshed.data?.records ?? [],
+      );
+      const forcedRequirements = buildAnalyticsRateRequirements(records, baseCurrency);
+      const forcedChunks = buildAnalyticsRateChunks(forcedRequirements);
+      attemptedRef.current.keys.clear();
+      const result = await backfillHistoricalRateChunks(
+        forcedChunks.map(({ request }) => request),
+        {
+          concurrency: 3,
+          isOnline,
+          onChunkStored: invalidateRateCache,
+        },
+      );
+      await invalidateRateCache();
+      return result;
+    },
+    retry: false,
+  });
+  const resyncFailed =
+    resyncMutation.isError || (resyncMutation.data?.failed.length ?? 0) > 0;
   const completionMutation = useMutation({
     mutationFn: (metadata: Parameters<typeof writeAnalyticsSyncMetadata>[0]) =>
       writeAnalyticsSyncMetadata(metadata),
@@ -182,6 +216,8 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
       (readRequest !== null && !cachedRatesQuery.isSuccess) ||
       unresolved.length > 0 ||
       autoBackfill.isPending ||
+      resyncMutation.isPending ||
+      resyncFailed ||
       completionMutation.isPending ||
       hasCurrentCompletion
     ) {
@@ -206,33 +242,11 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     history.remoteStatus,
     metadataQuery.isSuccess,
     readRequest,
+    resyncFailed,
+    resyncMutation.isPending,
     sheetId,
     unresolved.length,
   ]);
-
-  const resyncMutation = useMutation({
-    mutationFn: async () => {
-      const refreshed = await history.refresh();
-      const records = combinedRecords(
-        history.records,
-        refreshed.data?.records ?? [],
-      );
-      const forcedRequirements = buildAnalyticsRateRequirements(records, baseCurrency);
-      const forcedChunks = buildAnalyticsRateChunks(forcedRequirements);
-      attemptedRef.current.keys.clear();
-      const result = await backfillHistoricalRateChunks(
-        forcedChunks.map(({ request }) => request),
-        {
-          concurrency: 3,
-          isOnline,
-          onChunkStored: invalidateRateCache,
-        },
-      );
-      await invalidateRateCache();
-      return result;
-    },
-    retry: false,
-  });
 
   let status: AnalyticsSyncStatus = 'incomplete';
   if (!isOnline) {
@@ -247,7 +261,7 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
     completionMutation.isPending
   ) {
     status = 'syncing';
-  } else if (hasCurrentCompletion && unresolved.length === 0) {
+  } else if (!resyncFailed && hasCurrentCompletion && unresolved.length === 0) {
     status = 'synced';
   }
 
