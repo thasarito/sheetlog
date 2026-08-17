@@ -12,14 +12,6 @@ type AnalyticsPeriodPickerProps = {
 
 const SCROLL_SETTLE_DELAY_MS = 80;
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-}
-
 export function AnalyticsPeriodPicker({
   options,
   value,
@@ -29,6 +21,7 @@ export function AnalyticsPeriodPicker({
   const viewportRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isProgrammaticScrollRef = useRef(false);
   const selectedIndex = useMemo(() => {
     const index = options.findIndex((option) => option.offset === value);
     return index >= 0 ? index : Math.max(0, options.length - 1);
@@ -49,10 +42,20 @@ export function AnalyticsPeriodPicker({
     const option = optionRefs.current[selectedIndex];
     if (!viewport || !option || typeof viewport.scrollTo !== 'function') return;
 
-    viewport.scrollTo({
-      left: option.offsetLeft - (viewport.clientWidth - option.offsetWidth) / 2,
-      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-    });
+    const targetLeft = Math.max(
+      0,
+      Math.min(
+        option.offsetLeft - (viewport.clientWidth - option.offsetWidth) / 2,
+        Math.max(0, viewport.scrollWidth - viewport.clientWidth),
+      ),
+    );
+    if (scrollTimerRef.current !== null) clearTimeout(scrollTimerRef.current);
+    isProgrammaticScrollRef.current = true;
+    try {
+      viewport.scrollTo({ left: targetLeft, behavior: 'auto' });
+    } finally {
+      isProgrammaticScrollRef.current = false;
+    }
   }, [selectedIndex]);
 
   useEffect(
@@ -63,6 +66,7 @@ export function AnalyticsPeriodPicker({
   );
 
   const handleScroll = useCallback(() => {
+    if (isProgrammaticScrollRef.current) return;
     if (scrollTimerRef.current !== null) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
       const viewport = viewportRef.current;
