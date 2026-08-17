@@ -60,6 +60,11 @@ const runnerMocks = vi.hoisted(() => ({
   runSettingsReconciliation: vi.fn(),
 }));
 
+const analyticsCurrencyMocks = vi.hoisted(() => ({
+  readAnalyticsBaseCurrencySetting: vi.fn(),
+  writeAnalyticsBaseCurrencySetting: vi.fn(),
+}));
+
 vi.mock('../app/providers', () => ({
   useSession: () => ({
     accessToken: providerState.accessToken,
@@ -74,6 +79,10 @@ vi.mock('../app/providers', () => ({
 }));
 
 vi.mock('../lib/googleSettings', () => googleSettingsMocks);
+vi.mock('../lib/google', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/google')>()),
+  ...analyticsCurrencyMocks,
+}));
 vi.mock('../lib/settingsReconciliationRunner', () => runnerMocks);
 vi.mock('../lib/mock', () => ({
   IS_DEV_MODE: false,
@@ -137,6 +146,12 @@ describe('settings-backed onboarding hooks', () => {
     providerState.signOut.mockReset();
     googleSettingsMocks.readSheetSettingsConfig.mockReset();
     googleSettingsMocks.replaceSheetSettingsSection.mockReset();
+    analyticsCurrencyMocks.readAnalyticsBaseCurrencySetting
+      .mockReset()
+      .mockResolvedValue(null);
+    analyticsCurrencyMocks.writeAnalyticsBaseCurrencySetting
+      .mockReset()
+      .mockResolvedValue(undefined);
     runnerMocks.runSettingsReconciliation.mockReset().mockResolvedValue({
       state: createDefaultSettingsSyncState('user-a'),
       changed: [],
@@ -245,6 +260,62 @@ describe('settings-backed onboarding hooks', () => {
         signOut: providerState.signOut,
       });
       expect(result.current.isSuccess).toBe(true);
+    });
+  });
+
+  it('hydrates a newer analytics base currency during settings reconciliation', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    await setOnboardingState(
+      {
+        ...getDefaultOnboardingState(),
+        analyticsBaseCurrency: 'THB',
+        analyticsBaseCurrencyUpdatedAt: '2026-08-16T10:00:00.000Z',
+      },
+      'sheet-a',
+    );
+    analyticsCurrencyMocks.readAnalyticsBaseCurrencySetting.mockResolvedValue({
+      currency: 'USD',
+      updatedAt: '2026-08-17T10:00:00.000Z',
+    });
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useOnboardingSync(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await expect(readLocalOnboardingState('sheet-a')).resolves.toMatchObject({
+      analyticsBaseCurrency: 'USD',
+      analyticsBaseCurrencyUpdatedAt: '2026-08-17T10:00:00.000Z',
+    });
+    expect(
+      analyticsCurrencyMocks.readAnalyticsBaseCurrencySetting,
+    ).toHaveBeenCalledWith('token-a', 'sheet-a');
+    expect(
+      analyticsCurrencyMocks.writeAnalyticsBaseCurrencySetting,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('pushes a locally selected analytics base currency when the Sheet has none', async () => {
+    providerState.isOnline = true;
+    onlineManager.setOnline(true);
+    await setOnboardingState(
+      {
+        ...getDefaultOnboardingState(),
+        analyticsBaseCurrency: 'EUR',
+        analyticsBaseCurrencyUpdatedAt: '2026-08-17T11:00:00.000Z',
+      },
+      'sheet-a',
+    );
+    const { wrapper } = createHarness();
+    const { result } = renderHook(() => useOnboardingSync(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(
+      analyticsCurrencyMocks.writeAnalyticsBaseCurrencySetting,
+    ).toHaveBeenCalledWith('token-a', 'sheet-a', {
+      currency: 'EUR',
+      updatedAt: '2026-08-17T11:00:00.000Z',
     });
   });
 

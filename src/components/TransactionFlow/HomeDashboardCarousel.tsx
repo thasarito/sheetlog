@@ -15,14 +15,16 @@ import { AnalyticsRangeDrawer } from "./AnalyticsRangeDrawer";
 import {
   buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
+  getAnalyticsRateRequest,
   type AnalyticsRange,
 } from "./analytics";
 import { AnalyticsSlide } from "./AnalyticsSlide";
+import { useHistoricalRatesQuery } from "./exchangeRateQueries";
 import { TopDashboard } from "./TopDashboard";
 import { useTransactionHistoryQuery } from "./useTransactionHistoryQuery";
 
 type HomeDashboardCarouselProps = {
-  currency: string;
+  baseCurrency: string;
   onEditTransaction: (transaction: TransactionRecord) => void;
   onViewAllTransactions: () => void;
 };
@@ -45,7 +47,7 @@ function ownsNestedHorizontalGesture(target: EventTarget | null): boolean {
 }
 
 export function HomeDashboardCarousel({
-  currency,
+  baseCurrency,
   onEditTransaction,
   onViewAllTransactions,
 }: HomeDashboardCarouselProps) {
@@ -56,7 +58,6 @@ export function HomeDashboardCarousel({
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [initialAnalyticsBucket, setInitialAnalyticsBucket] = useState<string | null>(null);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
-  const [drawerCurrency, setDrawerCurrency] = useState(currency);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
   const [customPeriod, setCustomPeriod] = useState(() => ({
     start: startOfMonth(analyticsNow),
@@ -83,21 +84,21 @@ export function HomeDashboardCarousel({
     () => buildAnalyticsPeriodOptions(range, transactions, analyticsNow),
     [analyticsNow, range, transactions],
   );
-  const summary = useMemo(
+  const rateRequest = useMemo(
     () =>
       history.hasCompleteCache
-        ? buildAnalyticsSummary({
+        ? getAnalyticsRateRequest({
             transactions,
             range,
-            currency,
+            baseCurrency,
             now: analyticsNow,
             customPeriod,
             periodOffset,
           })
-        : undefined,
+        : null,
     [
       analyticsNow,
-      currency,
+      baseCurrency,
       customPeriod,
       history.hasCompleteCache,
       periodOffset,
@@ -105,13 +106,54 @@ export function HomeDashboardCarousel({
       transactions,
     ],
   );
-  const currencies = useMemo(() => {
-    const values = new Set(
-      transactions.map((transaction) => transaction.currency),
-    );
-    values.add(currency);
-    return [...values].sort();
-  }, [currency, transactions]);
+  const analyticsEnabled = historyActivated || analyticsOpen || customRangeOpen;
+  const ratesQuery = useHistoricalRatesQuery(rateRequest, analyticsEnabled);
+  const analyticsResult = useMemo(() => {
+    if (!history.hasCompleteCache) return undefined;
+    if (rateRequest && ratesQuery.data === undefined && !ratesQuery.error) {
+      return undefined;
+    }
+    return buildAnalyticsSummary({
+      transactions,
+      range,
+      baseCurrency,
+      rates: ratesQuery.data?.rates ?? [],
+      now: analyticsNow,
+      customPeriod,
+      periodOffset,
+    });
+  }, [
+    analyticsNow,
+    baseCurrency,
+    customPeriod,
+    history.hasCompleteCache,
+    periodOffset,
+    range,
+    rateRequest,
+    ratesQuery.data,
+    ratesQuery.error,
+    transactions,
+  ]);
+  const summary =
+    analyticsResult?.status === "ready" ? analyticsResult.summary : undefined;
+  const missingRate =
+    analyticsResult?.status === "missing-rates"
+      ? analyticsResult.missingRates[0]
+      : undefined;
+  const analyticsLoading =
+    history.isLoading ||
+    history.isDownloading ||
+    (rateRequest !== null && ratesQuery.data === undefined && !ratesQuery.error);
+  const hasCompleteAnalytics =
+    history.hasCompleteCache &&
+    (rateRequest === null || ratesQuery.data !== undefined || Boolean(ratesQuery.error));
+  const analyticsError = useMemo(
+    () =>
+      history.error ??
+      ratesQuery.error ??
+      (ratesQuery.data?.refreshFailed ? new Error("Rate refresh failed") : null),
+    [history.error, ratesQuery.data?.refreshFailed, ratesQuery.error],
+  );
   const earliestDate = useMemo(() => {
     const dates = transactions
       .map((transaction) => tryParseDate(transaction.date))
@@ -122,16 +164,19 @@ export function HomeDashboardCarousel({
   const updatedAt = history.meta
     ? tryParseDate(history.meta.capturedAt)?.getTime()
     : undefined;
+  const analyticsUpdatedAt = useMemo(() => {
+    const timestamps = [
+      updatedAt,
+      rateRequest ? ratesQuery.data?.updatedAt : undefined,
+    ].filter((value): value is number => typeof value === 'number' && value > 0);
+    return timestamps.length > 0 ? Math.min(...timestamps) : undefined;
+  }, [rateRequest, ratesQuery.data?.updatedAt, updatedAt]);
 
   useEffect(() => {
     for (const [index, slide] of slideRefs.current.entries()) {
       if (slide) slide.inert = index !== activeIndex;
     }
   }, [activeIndex]);
-
-  useEffect(() => {
-    if (analyticsOpen) setDrawerCurrency(currency);
-  }, [analyticsOpen, currency]);
 
   useEffect(() => {
     if (range === "custom") {
@@ -285,6 +330,11 @@ export function HomeDashboardCarousel({
     setPeriodOffset(0);
   };
 
+  const retryAnalytics = () => {
+    void history.refresh();
+    if (rateRequest) void ratesQuery.refetch();
+  };
+
   return (
     <>
       <section
@@ -351,13 +401,12 @@ export function HomeDashboardCarousel({
               onPeriodChange={setPeriodOffset}
               onCustomRequest={handleCustomRangeRequest}
               summary={summary}
-              isLoading={history.isLoading || history.isDownloading}
+              missingRate={missingRate}
+              isLoading={analyticsLoading}
               isOffline={!history.isOnline}
-              updatedAt={updatedAt}
-              error={history.error}
-              onRetry={() => {
-                void history.refresh();
-              }}
+              updatedAt={analyticsUpdatedAt}
+              error={analyticsError}
+              onRetry={retryAnalytics}
               onBucketSelect={(key, trigger) => {
                 analyticsTriggerRef.current = trigger;
                 setInitialAnalyticsBucket(key);
@@ -420,6 +469,8 @@ export function HomeDashboardCarousel({
         initialSelectedBucket={initialAnalyticsBucket}
         onOpenChange={handleAnalyticsOpenChange}
         transactions={transactions}
+        summary={summary}
+        missingRate={missingRate}
         range={range}
         onRangeChange={handleRangeChange}
         periodOptions={periodOptions}
@@ -427,17 +478,12 @@ export function HomeDashboardCarousel({
         onPeriodChange={setPeriodOffset}
         customPeriod={customPeriod}
         onCustomPeriodChange={setCustomPeriod}
-        currency={drawerCurrency}
-        onCurrencyChange={setDrawerCurrency}
-        currencies={currencies}
-        isLoading={history.isLoading || history.isDownloading}
-        hasCompleteHistory={history.hasCompleteCache}
+        isLoading={analyticsLoading}
+        hasCompleteHistory={hasCompleteAnalytics}
         isOffline={!history.isOnline}
-        updatedAt={updatedAt}
-        error={history.error}
-        onRetry={() => {
-          void history.refresh();
-        }}
+        updatedAt={analyticsUpdatedAt}
+        error={analyticsError}
+        onRetry={retryAnalytics}
         onSelectTransaction={onEditTransaction}
         now={analyticsNow}
       />

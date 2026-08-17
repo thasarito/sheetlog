@@ -1,4 +1,5 @@
 import { DEFAULT_CATEGORIES } from './categories';
+import { DEFAULT_CURRENCY, isCurrency } from './currencies';
 import { db } from './db';
 import {
   normalizeAccounts,
@@ -25,6 +26,8 @@ const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   accountsConfirmed: false,
   categories: DEFAULT_CATEGORIES,
   categoriesConfirmed: false,
+  analyticsBaseCurrency: DEFAULT_CURRENCY,
+  analyticsBaseCurrencyUpdatedAt: null,
 };
 
 export const LEGACY_ONBOARDING_STATE_KEY = 'onboardingState';
@@ -177,11 +180,23 @@ export function migrateStoredOnboardingState(
       typeof value.categoriesConfirmed === 'boolean'
         ? value.categoriesConfirmed
         : false,
+    analyticsBaseCurrency: isCurrency(value.analyticsBaseCurrency)
+      ? value.analyticsBaseCurrency
+      : DEFAULT_CURRENCY,
+    analyticsBaseCurrencyUpdatedAt:
+      typeof value.analyticsBaseCurrencyUpdatedAt === 'string' &&
+      Number.isFinite(Date.parse(value.analyticsBaseCurrencyUpdatedAt))
+        ? value.analyticsBaseCurrencyUpdatedAt
+        : null,
   };
   return {
     state,
     migrated: legacyFormat || JSON.stringify(state) !== JSON.stringify(value),
   };
+}
+
+export function normalizeOnboardingState(value: unknown): OnboardingState {
+  return migrateStoredOnboardingState(value, { legacySource: true }).state;
 }
 
 export async function getRecentCategories(): Promise<RecentCategories> {

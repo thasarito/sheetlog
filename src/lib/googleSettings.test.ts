@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSheet, encodeA1Range, GoogleApiError } from './google';
+import {
+  createSheet,
+  encodeA1Range,
+  GoogleApiError,
+  readAnalyticsBaseCurrencySetting,
+  writeAnalyticsBaseCurrencySetting,
+} from './google';
 import { readSheetSettingsConfig, replaceSheetSettingsSection } from './googleSettings';
 import {
   createSheet as createMockSheet,
@@ -407,7 +413,7 @@ describe('Google settings Sheet creation', () => {
     vi.unstubAllGlobals();
   });
 
-  it('creates the exact four tabs and initializes the Quick Note header', async () => {
+  it('creates the five tabs and initializes the Quick Note and Settings headers', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ spreadsheetId: SHEET_ID }))
@@ -423,13 +429,21 @@ describe('Google settings Sheet creation', () => {
       { properties: { title: 'Account' } },
       { properties: { title: 'Category' } },
       { properties: { title: 'Quick Note' } },
+      { properties: { title: 'Settings' } },
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     const [quickNoteUrl, quickNoteInit] = requestAt(fetchMock, 4);
     expect(quickNoteUrl).toBe(
       "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A1%3AM1?valueInputOption=RAW",
     );
     expect(JSON.parse(String(quickNoteInit.body))).toEqual({ values: [QUICK_NOTE_HEADERS] });
+    const [settingsUrl, settingsInit] = requestAt(fetchMock, 5);
+    expect(settingsUrl).toBe(
+      'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Settings!A1:C1?valueInputOption=RAW',
+    );
+    expect(JSON.parse(String(settingsInit.body))).toEqual({
+      values: [['Key', 'Value', 'Updated At']],
+    });
   });
 });
 
@@ -1004,5 +1018,76 @@ describe('mock settings Sheet parity', () => {
       present: true,
       value: [{ name: 'Wallet', icon: 'Wallet', color: '#6366f1' }],
     });
+  });
+});
+
+describe('Google Sheet analytics settings', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reads a valid timestamped base currency', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('?fields=sheets(')) {
+          return jsonResponse({
+            sheets: [{ properties: { sheetId: 4, title: 'Settings' } }],
+          });
+        }
+        const values = url.includes('/values/Settings!A2:C')
+          ? [['analyticsBaseCurrency', 'USD', '2026-08-17T10:00:00.000Z']]
+          : [];
+        return jsonResponse({ values });
+      }),
+    );
+
+    await expect(
+      readAnalyticsBaseCurrencySetting('token', 'sheet-id'),
+    ).resolves.toEqual({
+      currency: 'USD',
+      updatedAt: '2026-08-17T10:00:00.000Z',
+    });
+  });
+
+  it('updates only the recognized row and preserves unknown settings', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('?fields=sheets(')) {
+        return jsonResponse({
+          sheets: [{ properties: { sheetId: 4, title: 'Settings' } }],
+        });
+      }
+      if (url.includes('/values/Settings!A2:C') && !init?.method) {
+        return jsonResponse({
+          values: [
+            ['theme', 'dark', '2026-01-01T00:00:00.000Z'],
+            ['analyticsBaseCurrency', 'THB', '2026-08-16T00:00:00.000Z'],
+          ],
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await writeAnalyticsBaseCurrencySetting('token', 'sheet-id', {
+      currency: 'EUR',
+      updatedAt: '2026-08-17T00:00:00.000Z',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/values/Settings!A3:C3?valueInputOption=RAW'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          values: [['analyticsBaseCurrency', 'EUR', '2026-08-17T00:00:00.000Z']],
+        }),
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('Settings!A2:C:clear'),
+      expect.anything(),
+    );
   });
 });

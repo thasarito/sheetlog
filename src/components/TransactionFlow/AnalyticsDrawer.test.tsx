@@ -3,8 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { type ComponentProps, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
-import * as analytics from './analytics';
-import type { AnalyticsPeriodOption, AnalyticsRange, DatePeriod } from './analytics';
+import {
+  buildAnalyticsSummary,
+  type AnalyticsPeriodOption,
+  type AnalyticsRange,
+  type DatePeriod,
+} from './analytics';
 import { AnalyticsDrawer } from './AnalyticsDrawer';
 
 const customPeriod: DatePeriod = {
@@ -80,6 +84,26 @@ const periodOptions: AnalyticsPeriodOption[] = [
   },
 ];
 
+function makeSummary(
+  rows: TransactionRecord[] = transactions,
+  range: AnalyticsRange = 'week',
+  selectedCustomPeriod: DatePeriod = customPeriod,
+  periodOffset = 0,
+  now = new Date(2026, 7, 17, 12),
+) {
+  const result = buildAnalyticsSummary({
+    transactions: rows,
+    range,
+    baseCurrency: 'THB',
+    rates: [],
+    now,
+    customPeriod: selectedCustomPeriod,
+    periodOffset,
+  });
+  if (result.status !== 'ready') throw new Error('Expected ready analytics');
+  return result.summary;
+}
+
 const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
   open: true,
   onOpenChange: vi.fn(),
@@ -91,9 +115,7 @@ const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
   onPeriodChange: vi.fn(),
   customPeriod,
   onCustomPeriodChange: vi.fn(),
-  currency: 'THB',
-  onCurrencyChange: vi.fn(),
-  currencies: ['THB'],
+  summary: makeSummary(),
   isLoading: false,
   hasCompleteHistory: true,
   isOffline: false,
@@ -104,7 +126,17 @@ const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
 };
 
 function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>> = {}) {
-  return render(<AnalyticsDrawer {...baseProps} {...overrides} />);
+  const props = { ...baseProps, ...overrides };
+  if (!Object.hasOwn(overrides, 'summary')) {
+    props.summary = makeSummary(
+      props.transactions,
+      props.range,
+      props.customPeriod,
+      props.periodOffset,
+      props.now,
+    );
+  }
+  return render(<AnalyticsDrawer {...props} />);
 }
 
 afterEach(() => {
@@ -112,17 +144,6 @@ afterEach(() => {
 });
 
 describe('AnalyticsDrawer', () => {
-  it('does not aggregate analytics while the drawer is closed', () => {
-    const buildSummary = vi.spyOn(analytics, 'buildAnalyticsSummary');
-    buildSummary.mockClear();
-
-    const { rerender } = renderDrawer({ open: false });
-    expect(buildSummary).not.toHaveBeenCalled();
-
-    rerender(<AnalyticsDrawer {...baseProps} open />);
-    expect(buildSummary).toHaveBeenCalledTimes(1);
-  });
-
   it('renders the shared grouped axis for a complete quarter', () => {
     renderDrawer({
       range: 'quarter',
@@ -268,6 +289,7 @@ describe('AnalyticsDrawer', () => {
       return (
         <AnalyticsDrawer
           {...baseProps}
+          summary={makeSummary(transactions, selectedRange, selectedPeriod)}
           range={selectedRange}
           onRangeChange={setSelectedRange}
           customPeriod={selectedPeriod}
@@ -300,7 +322,13 @@ describe('AnalyticsDrawer', () => {
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
 
-    rerender(<AnalyticsDrawer {...baseProps} range="month" />);
+    rerender(
+      <AnalyticsDrawer
+        {...baseProps}
+        summary={makeSummary(transactions, 'month')}
+        range="month"
+      />,
+    );
 
     await waitFor(() =>
       expect(
@@ -364,25 +392,21 @@ describe('AnalyticsDrawer', () => {
     ).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('shares range/currency controls and closes before editing a row', async () => {
+  it('shares the range control and closes before editing a row', async () => {
     const user = userEvent.setup();
     const onRangeChange = vi.fn();
-    const onCurrencyChange = vi.fn();
     const onOpenChange = vi.fn();
     const onSelectTransaction = vi.fn();
     renderDrawer({
       onRangeChange,
-      currency: 'THB',
-      onCurrencyChange,
-      currencies: ['THB', 'USD'],
       onOpenChange,
       onSelectTransaction,
     });
 
     await user.click(screen.getByRole('button', { name: 'Quarter' }));
     expect(onRangeChange).toHaveBeenCalledWith('quarter');
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Analytics currency' }), 'USD');
-    expect(onCurrencyChange).toHaveBeenCalledWith('USD');
+    expect(screen.queryByRole('combobox', { name: 'Analytics currency' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Frankfurter|All currencies/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /expense Dining Out/ }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSelectTransaction).toHaveBeenCalledWith(transactions[0]);
@@ -423,6 +447,7 @@ describe('AnalyticsDrawer', () => {
       return (
         <AnalyticsDrawer
           {...baseProps}
+          summary={makeSummary(transactions, selectedRange)}
           range={selectedRange}
           onRangeChange={setSelectedRange}
           periodOptions={selectedPeriodOptions}
@@ -518,5 +543,20 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Category F/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /expense Category G/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /expense Category A/ })).not.toBeInTheDocument();
+  });
+
+  it('shows the missing historical rate before generic offline errors', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    renderDrawer({
+      missingRate: { currency: 'USD', date: '2026-08-16' },
+      isOffline: true,
+      error: new Error('network'),
+      onRetry,
+    });
+
+    expect(screen.getByText('Rate unavailable for USD on Aug 16')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

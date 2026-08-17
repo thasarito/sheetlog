@@ -4,6 +4,7 @@
  */
 
 import type { OnboardingState } from '../types';
+import { DEFAULT_CURRENCY } from '../currencies';
 import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES } from './mockStorage';
 
 /**
@@ -17,4 +18,6 @@ export const MOCK_ONBOARDING_STATE: OnboardingState = {
   accountsConfirmed: true,
   categories: DEFAULT_CATEGORIES,
   categoriesConfirmed: true,
+  analyticsBaseCurrency: DEFAULT_CURRENCY,
+  analyticsBaseCurrencyUpdatedAt: null,
 };

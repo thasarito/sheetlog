@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
@@ -14,13 +14,14 @@ import {
 import { Skeleton } from '../ui/skeleton';
 import {
   buildAnalyticsScope,
-  buildAnalyticsSummary,
   formatAnalyticsAmount,
   getAnalyticsBucketDescription,
   getOfflineFreshness,
   type AnalyticsPeriodOption,
   type AnalyticsRange,
+  type AnalyticsSummary,
   type DatePeriod,
+  type MissingAnalyticsRate,
 } from './analytics';
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsCategories } from './AnalyticsCategories';
@@ -39,6 +40,8 @@ type AnalyticsDrawerProps = {
   initialSelectedBucket?: string | null;
   onOpenChange: (open: boolean) => void;
   transactions: TransactionRecord[];
+  summary?: AnalyticsSummary;
+  missingRate?: MissingAnalyticsRate;
   range: AnalyticsRange;
   onRangeChange: (range: AnalyticsRange) => void;
   periodOptions: AnalyticsPeriodOption[];
@@ -46,9 +49,6 @@ type AnalyticsDrawerProps = {
   onPeriodChange: (offset: number) => void;
   customPeriod: DatePeriod;
   onCustomPeriodChange: (period: DatePeriod) => void;
-  currency: string;
-  onCurrencyChange: (currency: string) => void;
-  currencies: string[];
   isLoading: boolean;
   hasCompleteHistory: boolean;
   isOffline: boolean;
@@ -64,6 +64,8 @@ export function AnalyticsDrawer({
   initialSelectedBucket,
   onOpenChange,
   transactions,
+  summary: incomingSummary,
+  missingRate,
   range,
   onRangeChange,
   periodOptions,
@@ -71,9 +73,6 @@ export function AnalyticsDrawer({
   onPeriodChange,
   customPeriod,
   onCustomPeriodChange,
-  currency,
-  onCurrencyChange,
-  currencies,
   isLoading,
   hasCompleteHistory,
   isOffline,
@@ -91,27 +90,8 @@ export function AnalyticsDrawer({
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
   const activeSummary = useMemo(
-    () =>
-      open && hasCompleteHistory
-        ? buildAnalyticsSummary({
-            transactions,
-            range,
-            currency,
-            now,
-            customPeriod,
-            periodOffset,
-          })
-        : null,
-    [
-      currency,
-      customPeriod,
-      hasCompleteHistory,
-      now,
-      open,
-      periodOffset,
-      range,
-      transactions,
-    ],
+    () => (open && hasCompleteHistory ? incomingSummary ?? null : null),
+    [hasCompleteHistory, incomingSummary, open],
   );
   const retainedSummary = useRef(activeSummary);
   if (activeSummary) retainedSummary.current = activeSummary;
@@ -143,7 +123,7 @@ export function AnalyticsDrawer({
   // biome-ignore lint/correctness/useExhaustiveDependencies: scalar custom endpoints intentionally define the controlled date scope
   useEffect(() => {
     clearFilters();
-  }, [clearFilters, currency, customEnd, customStart, periodOffset, range]);
+  }, [clearFilters, customEnd, customStart, periodOffset, range, summary?.currency]);
 
   useEffect(() => {
     if (!open) clearFilters();
@@ -219,10 +199,12 @@ export function AnalyticsDrawer({
       : selectedPeriod?.accessibleLabel ?? range;
   const analyticsAnnouncement = !open
     ? ''
-    : hasCompleteHistory && summary && scope
+    : missingRate
+      ? `Analytics unavailable · Rate unavailable for ${missingRate.currency} on ${format(parseISO(missingRate.date), 'MMM d')}`
+      : hasCompleteHistory && summary && scope
       ? selectedBucketDetails
-        ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, currency)} · Net ${formatAnalyticsAmount(scope.netTotal, currency)}`
-        : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, currency)}`
+        ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, summary.currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, summary.currency)} · Net ${formatAnalyticsAmount(scope.netTotal, summary.currency)}`
+        : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, summary.currency)}`
     : isOffline
       ? 'Full range unavailable offline'
       : isLoading
@@ -269,24 +251,8 @@ export function AnalyticsDrawer({
           <div className="space-y-7 pb-8">
             <div
               data-testid="analytics-range-controls"
-              className="flex items-center justify-between gap-3 pt-3"
+              className="flex items-center justify-end gap-3 pt-3"
             >
-              {currencies.length > 1 ? (
-                <select
-                  aria-label="Analytics currency"
-                  value={currency}
-                  onChange={(event) => onCurrencyChange(event.target.value)}
-                  className="h-11 min-w-20 rounded-xl border border-border bg-background px-2 text-sm font-semibold"
-                >
-                  {currencies.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span className="text-xs font-semibold text-muted-foreground">{currency}</span>
-              )}
               <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
             </div>
 
@@ -298,7 +264,21 @@ export function AnalyticsDrawer({
               />
             ) : null}
 
-            {!hasCompleteHistory && isOffline ? (
+            {missingRate ? (
+              <div className="flex min-h-48 items-center justify-between gap-3">
+                <span className="text-sm text-muted-foreground">
+                  Rate unavailable for {missingRate.currency} on{' '}
+                  {format(parseISO(missingRate.date), 'MMM d')}
+                </span>
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="min-h-11 font-semibold text-primary"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : !hasCompleteHistory && isOffline ? (
               <div className="flex min-h-48 items-center text-sm text-muted-foreground">
                 Full range unavailable offline
               </div>
@@ -326,7 +306,7 @@ export function AnalyticsDrawer({
                     buckets={summary.buckets}
                     axisGroups={summary.axisGroups}
                     series={summary.series}
-                    currency={currency}
+                    currency={summary.currency}
                     selectedKey={selectedBucket}
                     onSelect={(key) =>
                       setSelectedBucket((current) =>
@@ -339,18 +319,17 @@ export function AnalyticsDrawer({
                     <div className="mt-2 flex justify-center">
                       <button
                         type="button"
-                        aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, currency)}`}
+                        aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, summary.currency)}`}
                         onClick={() => setSelectedBucket(null)}
                         className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                       >
                         {selectedBucketDetails.accessibleLabel} ·{' '}
-                        {formatAnalyticsAmount(selectedBucketDetails.amount, currency)}
+                        {formatAnalyticsAmount(selectedBucketDetails.amount, summary.currency)}
                         <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>
                   ) : null}
                 </section>
-
               <section aria-labelledby="analytics-overview">
                 <h3
                   id="analytics-overview"
@@ -362,25 +341,25 @@ export function AnalyticsDrawer({
                   series={summary.series}
                   categories={scope.categories}
                   expenseTotal={scope.expenseTotal}
-                  currency={currency}
+                  currency={summary.currency}
                 />
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <p className="text-[10px] text-muted-foreground">Expenses</p>
                     <p className="text-base font-semibold tabular-nums">
-                      {formatAnalyticsAmount(scope.expenseTotal, currency)}
+                      {formatAnalyticsAmount(scope.expenseTotal, summary.currency)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground">Income</p>
                     <p className="text-base font-semibold tabular-nums text-primary">
-                      {formatAnalyticsAmount(scope.incomeTotal, currency)}
+                      {formatAnalyticsAmount(scope.incomeTotal, summary.currency)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground">Net</p>
                     <p className="text-base font-semibold tabular-nums">
-                      {formatAnalyticsAmount(scope.netTotal, currency)}
+                      {formatAnalyticsAmount(scope.netTotal, summary.currency)}
                     </p>
                   </div>
                 </div>
@@ -397,7 +376,7 @@ export function AnalyticsDrawer({
                   <AnalyticsCategories
                     series={summary.series}
                     categories={scope.categories}
-                    currency={currency}
+                    currency={summary.currency}
                     selectedKey={selectedCategory}
                     onSelect={setSelectedCategory}
                   />

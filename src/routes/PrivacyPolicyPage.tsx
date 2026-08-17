@@ -15,7 +15,7 @@ export function PrivacyPolicyPage() {
         </p>
         <h1 className="text-3xl font-semibold">Privacy Policy</h1>
         <p className="text-sm text-muted-foreground">
-          Effective date: 2026-08-15
+          Effective date: 2026-08-17
         </p>
       </section>
 
@@ -25,6 +25,13 @@ export function PrivacyPolicyPage() {
           SheetLog is a client-side app that lets you log transactions directly
           into a Google Sheet in your own Google account. We do not run a
           backend server for storing your data.
+        </p>
+        <p>
+          When analytics include more than one currency, SheetLog sends only
+          currency codes and bounded date ranges to Frankfurter to retrieve
+          historical reference rates. Transaction amounts, categories,
+          accounts, notes, Google identifiers, and spreadsheet contents are not
+          sent.
         </p>
       </section>
 
@@ -101,6 +108,7 @@ export function PrivacyPolicyPage() {
           <li>Create or locate a Google Sheet in your Drive.</li>
           <li>Write your transactions and settings to that sheet.</li>
           <li>Store offline entries locally until they are synced.</li>
+          <li>Retrieve historical reference rates for multi-currency analytics.</li>
         </ul>
       </section>
 
@@ -111,7 +119,10 @@ export function PrivacyPolicyPage() {
         <p>
           We do not sell your data. Data is sent directly from your browser to
           Google APIs to read or write your sheet and, when you use the Places
-          picker, to provide Google Maps place suggestions.
+          picker, to provide Google Maps place suggestions. For multi-currency
+          analytics, the bounded currency-code and date-range request described
+          above is sent directly to Frankfurter; transaction contents are not
+          included.
         </p>
         <p>
           Our use and transfer of information received from Google APIs adheres

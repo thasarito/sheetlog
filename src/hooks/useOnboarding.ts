@@ -102,6 +102,7 @@ export function useOnboarding() {
     onboarding,
     isLoading: onboardingQuery.isLoading,
     isSyncing: settingsSyncQuery.isFetching || importMutation.isPending,
+    isUpdating: updateMutation.isPending,
     updateOnboarding: updateMutation.mutateAsync,
     refreshSettings,
     refreshOnboarding: async () => {
