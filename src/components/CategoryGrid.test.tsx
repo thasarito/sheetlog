@@ -46,12 +46,14 @@ describe("CategoryGrid", () => {
     );
   });
 
-  it("centers the icon in the top half and the label in the bottom half", () => {
+  it("optically lowers the icon and clamps the bottom-half label", () => {
     renderGrid();
 
     const tile = screen.getByRole("button", { name: "Food Delivery" });
-    const iconRegion = tile.querySelector("svg")?.parentElement;
-    const labelRegion = screen.getByText("Food Delivery");
+    const icon = tile.querySelector("svg");
+    const iconRegion = icon?.parentElement;
+    const label = screen.getByText("Food Delivery");
+    const labelRegion = label.parentElement;
 
     expect(tile).toHaveClass("grid", "grid-rows-2", "p-0");
     expect(iconRegion).toHaveClass(
@@ -61,12 +63,14 @@ describe("CategoryGrid", () => {
       "items-center",
       "justify-center",
     );
+    expect(icon).toHaveClass("translate-y-2.5");
     expect(labelRegion).toHaveClass(
       "flex",
       "h-full",
       "items-center",
       "justify-center",
     );
+    expect(label).toHaveClass("line-clamp-2");
   });
 
   it("constrains extreme custom colors to a contrast-safe foreground mix", () => {

@@ -280,3 +280,30 @@ git push origin feature/transaction-entry-carousel
 ```
 
 Use the GitHub connector to update PR #148's inline screenshot URLs to the new screenshot commit SHA. Confirm every raw image URL returns `200 image/png` and report the PR URL plus the refreshed screenshots.
+
+### Task 4: Optically align category tile content
+
+**Files:**
+- Modify: `src/components/CategoryGrid.test.tsx`
+- Modify: `e2e/transaction-entry-carousel.spec.ts`
+- Modify: `src/components/CategoryGrid.tsx`
+
+- [ ] **Step 1: Add failing regressions**
+
+Assert that each category icon is translated 10 px down from the structural top-half center, the label remains centered in the bottom half, and visible label text is clamped to two lines.
+
+- [ ] **Step 2: Verify RED**
+
+Run `npm test -- src/components/CategoryGrid.test.tsx` and confirm the new optical-alignment and line-clamp assertions fail.
+
+- [ ] **Step 3: Implement the minimal tile-only change**
+
+Add `translate-y-2.5` to the icon. Keep the bottom-half flex wrapper and put the typography plus `line-clamp-2` on a nested label span. Do not change the button or any pointer, click, hover, focus, or context-menu handlers.
+
+- [ ] **Step 4: Verify GREEN and real geometry**
+
+Run the focused unit test, then the transaction-entry Playwright suite at 320 px and 390 px. Verify square tiles, a 10 px icon offset, two-line labels, and unchanged tap and long-press behavior.
+
+- [ ] **Step 5: Verify and integrate safely**
+
+Run lint, typecheck, build, and the full unit suite. Rebase the isolated feature branch onto the current `origin/main`; push `HEAD:main` only when the result is a fast-forward, never with force.

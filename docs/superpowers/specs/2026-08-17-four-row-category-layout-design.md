@@ -8,7 +8,8 @@ Give the Transactions/Analytics section all vertical space that is not required 
 
 - Reserve exactly four visible category rows for every transaction type, including tabs with fewer than four populated rows.
 - Keep the existing four-column grid and square category tiles.
-- Divide every category tile into two equal vertical regions: center the icon in the top half and center the wrapping label in the bottom half.
+- Divide every category tile into two equal vertical regions. Center the label in the bottom half, and optically lower the icon 10 px from the top-half center so it sits closer to the label without changing the regions.
+- Clamp visible category labels to two lines with ellipsis without shrinking the type; retain the complete category name for the button's accessible name.
 - Size the category viewport from its rendered width so the four square rows remain proportional at every supported app width.
 - Keep the category section at the actual app's 390 px maximum scale and center it on wider host surfaces, preventing the picker from consuming the Home carousel's usable gesture area.
 - Let the Transactions/Analytics section consume the remaining height above the category picker.

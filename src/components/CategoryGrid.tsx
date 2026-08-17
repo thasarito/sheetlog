@@ -182,12 +182,14 @@ function CategoryButton({
       >
         <DynamicIcon
           name={icon}
-          className="h-4 w-4 min-[360px]:h-5 min-[360px]:w-5"
+          className="h-4 w-4 translate-y-2.5 min-[360px]:h-5 min-[360px]:w-5"
           style={{ color: displayColor }}
         />
       </motion.span>
-      <span className="flex h-full w-full min-w-0 items-center justify-center break-words px-1.5 text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
-        {category.name}
+      <span className="flex h-full w-full min-w-0 items-center justify-center px-1.5">
+        <span className="line-clamp-2 min-w-0 break-words text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
+          {category.name}
+        </span>
       </span>
     </button>
   );

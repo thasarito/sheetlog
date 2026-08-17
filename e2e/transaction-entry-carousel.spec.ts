@@ -132,36 +132,45 @@ test.describe("Transaction type and category carousel", () => {
       const tile = element.querySelector("button");
       if (!tile) throw new Error("Category tile missing");
       const tileRect = tile.getBoundingClientRect();
-      const iconRegion = tile.querySelector("svg")?.parentElement;
-      const labelRegion = tile.querySelector("span:last-child");
-      if (!iconRegion || !labelRegion) {
+      const icon = tile.querySelector("svg");
+      const iconRegion = icon?.parentElement;
+      const labelRegion = tile.querySelector(":scope > span:last-child");
+      const label = labelRegion?.querySelector("span");
+      if (!icon || !iconRegion || !labelRegion || !label) {
         throw new Error("Category tile regions missing");
       }
+      const iconVisualRect = icon.getBoundingClientRect();
       const iconRect = iconRegion.getBoundingClientRect();
       const labelRect = labelRegion.getBoundingClientRect();
       const gridStyle = getComputedStyle(element);
       return {
         width: tileRect.width,
         height: tileRect.height,
-        iconCenter:
-          (iconRect.top + iconRect.height / 2 - tileRect.top) /
+        iconVisualCenter:
+          (iconVisualRect.top + iconVisualRect.height / 2 - tileRect.top) /
           tileRect.height,
         iconHeight: iconRect.height / tileRect.height,
         labelCenter:
           (labelRect.top + labelRect.height / 2 - tileRect.top) /
           tileRect.height,
         labelHeight: labelRect.height / tileRect.height,
+        labelLineClamp: getComputedStyle(label).webkitLineClamp,
+        labelOverflow: getComputedStyle(label).overflow,
         columns: gridStyle.gridTemplateColumns.split(" ").length,
         gap: gridStyle.columnGap,
         boxShadow: getComputedStyle(tile).boxShadow,
       };
     });
     expect(Math.abs(geometry.width - geometry.height)).toBeLessThan(1);
-    expect(Math.abs(geometry.iconCenter - 0.25)).toBeLessThan(0.01);
+    expect(
+      Math.abs(geometry.iconVisualCenter - (0.25 + 10 / geometry.height)),
+    ).toBeLessThan(0.01);
     expect(Math.abs(geometry.labelCenter - 0.75)).toBeLessThan(0.01);
     expect(Math.abs(geometry.iconHeight - geometry.labelHeight)).toBeLessThan(
       0.001,
     );
+    expect(geometry.labelLineClamp).toBe("2");
+    expect(geometry.labelOverflow).toBe("hidden");
     expect(geometry.columns).toBe(4);
     expect(geometry.gap).toBe("8px");
     expect(geometry.boxShadow).toBe("none");
@@ -295,9 +304,11 @@ test.describe("Transaction type and category carousel", () => {
       .evaluateAll((tiles) =>
         tiles.map((tile) => {
           const rect = tile.getBoundingClientRect();
-          const label = tile.querySelector("span:last-child");
-          if (!label) throw new Error("Category label missing");
+          const label = tile.querySelector(":scope > span:last-child > span");
+          const icon = tile.querySelector("svg");
+          if (!label || !icon) throw new Error("Category content missing");
           const labelRect = label.getBoundingClientRect();
+          const iconRect = icon.getBoundingClientRect();
           return {
             name: tile.textContent?.trim(),
             width: rect.width,
@@ -306,10 +317,18 @@ test.describe("Transaction type and category carousel", () => {
             labelScrollWidth: label.scrollWidth,
             labelClientHeight: label.clientHeight,
             labelScrollHeight: label.scrollHeight,
+            labelLineClamp: getComputedStyle(label).webkitLineClamp,
+            labelLineHeight: Number.parseFloat(
+              getComputedStyle(label).lineHeight,
+            ),
             labelLeft: labelRect.left,
             labelRight: labelRect.right,
+            labelTop: labelRect.top,
+            labelBottom: labelRect.bottom,
+            iconBottom: iconRect.bottom,
             tileLeft: rect.left,
             tileRight: rect.right,
+            tileBottom: rect.bottom,
           };
         }),
       );
@@ -324,10 +343,19 @@ test.describe("Transaction type and category carousel", () => {
         size.labelScrollWidth,
         `${size.name} label overflowed horizontally`,
       ).toBeLessThanOrEqual(size.labelClientWidth + 1);
+      expect(size.labelLineClamp, `${size.name} label was not clamped`).toBe(
+        "2",
+      );
       expect(
-        size.labelScrollHeight,
-        `${size.name} label overflowed vertically`,
-      ).toBeLessThanOrEqual(size.labelClientHeight + 1);
+        size.labelClientHeight,
+        `${size.name} label exceeded two visible lines`,
+      ).toBeLessThanOrEqual(size.labelLineHeight * 2 + 1);
+      expect(size.labelTop, `${size.name} label overlapped its icon`).toBeGreaterThanOrEqual(
+        size.iconBottom - 1,
+      );
+      expect(size.labelBottom, `${size.name} label escaped the tile bottom`).toBeLessThanOrEqual(
+        size.tileBottom + 1,
+      );
       expect(size.labelLeft, `${size.name} label escaped the tile left edge`).toBeGreaterThanOrEqual(
         size.tileLeft - 1,
       );
