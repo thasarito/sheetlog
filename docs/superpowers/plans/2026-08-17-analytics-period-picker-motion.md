@@ -98,10 +98,27 @@ npx vitest run src/components/TransactionFlow/AnalyticsPeriodPicker.test.tsx
 Expected: FAIL because the current component has no transform track, commits navigation
 immediately, and retains mandatory scroll snapping.
 
-- [ ] **Step 5: Commit the failing behavioral specification**
+- [ ] **Step 5: Add and run the failing Mobile Chrome motion assertion**
+
+Instrument the picker during a synthesized touch gesture and collect its track transform at several
+animation frames. Assert there are more than two distinct intermediate positions, the Analytics
+carousel dot stays active, and the selected option remains unchanged until motion settles. Click a
+chevron and assert the track moves before the selected offset changes, then wait for the final
+selection.
+
+Run:
 
 ```bash
-git add src/components/TransactionFlow/AnalyticsPeriodPicker.test.tsx
+CI=1 VITE_DEV_MODE=true npx playwright test e2e/home-carousel.spec.ts --project='Mobile Chrome' --retries=0
+```
+
+Expected: FAIL because the current picker has no transform track, exposes only snapped `scrollLeft`
+positions, and changes arrow selection before any animation.
+
+- [ ] **Step 6: Commit the failing behavioral specification**
+
+```bash
+git add src/components/TransactionFlow/AnalyticsPeriodPicker.test.tsx e2e/home-carousel.spec.ts
 git commit -m "test: specify smooth analytics period motion"
 ```
 
@@ -286,30 +303,21 @@ git commit -m "perf: defer closed analytics drawer derivation"
 **Files:**
 - Modify: `e2e/home-carousel.spec.ts`
 
-- [ ] **Step 1: Add a failing Mobile Chrome motion assertion**
-
-Instrument the picker during a synthesized touch gesture and collect its track transform at several
-animation frames. Assert there are more than two distinct intermediate positions, the Analytics
-carousel dot stays active, and the selected option remains unchanged until motion settles. Click a
-chevron and assert the track moves before the selected offset changes, then wait for the final
-selection.
-
-- [ ] **Step 2: Run the focused E2E test**
+- [ ] **Step 1: Run the focused E2E test against the implementation**
 
 ```bash
 CI=1 VITE_DEV_MODE=true npx playwright test e2e/home-carousel.spec.ts --project='Mobile Chrome' --retries=0
 ```
 
-Expected before implementation: FAIL because the current picker exposes only snapped `scrollLeft`
-positions and arrow selection changes before any animation.
+Expected: PASS with continuous transform samples and a delayed, single settled selection.
 
-- [ ] **Step 3: Adjust only timing-independent implementation details if required**
+- [ ] **Step 2: Adjust only timing-independent implementation details if required**
 
 Use observable states—distinct transforms, unchanged selection during active motion, and final
 selected offset—rather than fixed frame timestamps. Do not weaken the assertions to accept stepped
 motion or immediate arrow commits.
 
-- [ ] **Step 4: Run complete verification**
+- [ ] **Step 3: Run complete verification**
 
 ```bash
 npm test -- --reporter=dot
@@ -323,14 +331,14 @@ git diff --check
 Expected: 76 test files and 1,065-or-more tests pass; lint, TypeScript, build, three Mobile Chrome
 runs, and whitespace validation all pass.
 
-- [ ] **Step 5: Browser-profile the repaired gesture**
+- [ ] **Step 4: Browser-profile the repaired gesture**
 
 Run the local app with representative 50-row and 5,000-row mock histories. Confirm one visual
 transform update per delivered pointer frame, no period selection during drag, one selection after
 settle, no closed-drawer duplicate aggregation, and visible chevron centering. Preserve the trace
 numbers in the implementation handoff.
 
-- [ ] **Step 6: Commit E2E coverage**
+- [ ] **Step 5: Commit any verification-driven E2E refinement**
 
 ```bash
 git add e2e/home-carousel.spec.ts
