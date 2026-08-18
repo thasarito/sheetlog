@@ -1,0 +1,20 @@
+name: PR 166 Runner Sentinel
+
+on:
+  push:
+    branches:
+      - docs/home-settings-carousel-design
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  report:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report runner start
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment 166 --body "PR 166 implementation runner started. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
