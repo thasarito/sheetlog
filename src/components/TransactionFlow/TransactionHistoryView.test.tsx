@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "../../lib/types";
@@ -177,9 +177,21 @@ describe("TransactionHistoryView", () => {
       />,
     );
 
+    const heading = screen.getByRole("heading", { name: "Transactions" });
+    expect(heading).toBeVisible();
+    expect(heading.closest("section")).toHaveClass("bg-transparent");
+    expect(heading.closest("section")).not.toHaveClass("bg-card");
+    expect(heading.parentElement).toHaveClass("h-20");
+    expect(heading).toHaveClass("text-[28px]");
+    expect(screen.getByTestId("transaction-history-content")).toHaveClass(
+      "bg-transparent",
+    );
     expect(
-      screen.getByRole("heading", { name: "Transactions" }),
-    ).toBeVisible();
+      within(screen.getByTestId("transaction-history-metadata")).getByRole(
+        "button",
+        { name: "Refresh transaction history" },
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("searchbox", { name: "Search transaction history" }),
     ).toBeVisible();

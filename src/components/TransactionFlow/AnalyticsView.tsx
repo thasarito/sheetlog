@@ -200,14 +200,15 @@ export function AnalyticsView({
         : `Turn on no big spending mode; exclude expenses at or above ${thresholdLabel}`;
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-card">
-      <header className="flex h-16 shrink-0 flex-col justify-center border-b border-border/60 px-4 text-left">
-        <h2 className="text-lg font-semibold text-foreground">Analytics</h2>
+    <section className="flex h-full min-h-0 flex-col bg-transparent">
+      <header className="flex h-20 shrink-0 items-center justify-center px-4 text-center">
+        <h2 className="text-[28px] font-bold tracking-tight text-foreground">
+          Analytics
+        </h2>
         <p className="sr-only">
           Review spending analytics and filter matching transactions.
         </p>
       </header>
-      <div className="h-11 shrink-0" aria-hidden="true" />
 
       <output
         aria-label="Analytics summary update"
