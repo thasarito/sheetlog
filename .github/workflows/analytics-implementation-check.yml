@@ -1,0 +1,104 @@
+name: Analytics implementation check
+
+on:
+  push:
+    branches:
+      - feat/analytics-motion-layout
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/analytics-motion-layout
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+          run_install: false
+
+      - name: Refresh npm lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Refresh pnpm lockfile
+        run: pnpm install --lockfile-only --ignore-scripts
+
+      - name: Install dependencies
+        run: HUSKY=0 npm ci
+
+      - name: Format touched files
+        run: >-
+          npx biome check --write
+          src/components/TransactionFlow/AnalyticsNumber.tsx
+          src/components/TransactionFlow/AnalyticsBarChart.tsx
+          src/components/TransactionFlow/AnalyticsCategories.tsx
+          src/components/TransactionFlow/AnalyticsHalfDonut.tsx
+          src/components/TransactionFlow/AnalyticsView.tsx
+          src/components/TransactionFlow/AnalyticsNumber.test.tsx
+          src/components/TransactionFlow/AnalyticsBarChart.gestures.test.tsx
+          src/components/TransactionFlow/AnalyticsMotionPresentation.test.tsx
+          src/components/TransactionFlow/AnalyticsView.layout.test.tsx
+          e2e/analytics-motion.spec.ts
+
+      - name: Run focused analytics tests
+        run: >-
+          npx vitest run
+          src/components/TransactionFlow/AnalyticsNumber.test.tsx
+          src/components/TransactionFlow/AnalyticsBarChart.test.tsx
+          src/components/TransactionFlow/AnalyticsBarChart.gestures.test.tsx
+          src/components/TransactionFlow/AnalyticsCategories.test.tsx
+          src/components/TransactionFlow/AnalyticsHalfDonut.test.tsx
+          src/components/TransactionFlow/AnalyticsMotionPresentation.test.tsx
+          src/components/TransactionFlow/AnalyticsView.test.tsx
+          src/components/TransactionFlow/AnalyticsView.layout.test.tsx
+
+      - name: Run unit and integration tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Mobile Chrome analytics regression
+        run: npx playwright test e2e/analytics-motion.spec.ts --project="Mobile Chrome"
+
+      - name: Commit generated lockfiles and formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json pnpm-lock.yaml \
+            src/components/TransactionFlow/AnalyticsNumber.tsx \
+            src/components/TransactionFlow/AnalyticsBarChart.tsx \
+            src/components/TransactionFlow/AnalyticsCategories.tsx \
+            src/components/TransactionFlow/AnalyticsHalfDonut.tsx \
+            src/components/TransactionFlow/AnalyticsView.tsx \
+            src/components/TransactionFlow/AnalyticsNumber.test.tsx \
+            src/components/TransactionFlow/AnalyticsBarChart.gestures.test.tsx \
+            src/components/TransactionFlow/AnalyticsMotionPresentation.test.tsx \
+            src/components/TransactionFlow/AnalyticsView.layout.test.tsx \
+            e2e/analytics-motion.spec.ts
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: sync analytics motion implementation"
+          git push origin HEAD:feat/analytics-motion-layout
