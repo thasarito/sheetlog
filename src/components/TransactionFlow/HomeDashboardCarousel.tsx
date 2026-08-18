@@ -265,7 +265,7 @@ export function HomeDashboardCarousel({
 
   return (
     <section
-      className="relative h-full min-h-0"
+      className="h-full min-h-0"
       aria-roledescription="carousel"
       aria-label="Home activity"
       onKeyDown={(event) => {

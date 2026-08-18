@@ -204,9 +204,13 @@ describe('HomeDashboardCarousel', () => {
 
   it('removes dot controls while keeping viewport keyboard navigation', async () => {
     const { viewport } = renderCarousel();
+    const user = userEvent.setup();
     const transactionSlide = screen.getByLabelText('Transactions, slide 1 of 2');
     const analyticsSlide = screen.getByLabelText('Analytics, slide 2 of 2');
 
+    expect(viewport).toHaveAttribute('tabindex', '0');
+    viewport.focus();
+    expect(viewport).toHaveFocus();
     expect(
       screen.queryByRole('button', { name: 'Transactions slide' }),
     ).not.toBeInTheDocument();
@@ -214,17 +218,19 @@ describe('HomeDashboardCarousel', () => {
       screen.queryByRole('button', { name: 'Analytics slide' }),
     ).not.toBeInTheDocument();
 
-    fireEvent.keyDown(viewport, { key: 'ArrowRight' });
+    await user.keyboard('{ArrowRight}');
     await waitFor(() => {
       expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true');
       expect(transactionSlide).toHaveAttribute('aria-hidden', 'true');
     });
+    expect(viewport).toHaveFocus();
 
-    fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
+    await user.keyboard('{ArrowLeft}');
     await waitFor(() => {
       expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true');
       expect(analyticsSlide).toHaveAttribute('aria-hidden', 'true');
     });
+    expect(viewport).toHaveFocus();
   });
 
   it('snaps on touch swipes while leaving nested controls and mouse drags alone', async () => {
