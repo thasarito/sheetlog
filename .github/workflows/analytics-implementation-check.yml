@@ -1,9 +1,6 @@
-name: Analytics implementation check
+name: Analytics validation cleanup
 
 on:
-  push:
-    branches:
-      - feat/analytics-motion-layout
   pull_request:
 
 permissions:
@@ -11,57 +8,11 @@ permissions:
   pull-requests: write
 
 jobs:
-  validate:
+  cleanup:
+    if: github.head_ref == 'ci/analytics-motion-check-167'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - name: Checkout branch
-        uses: actions/checkout@v4
-        with:
-          ref: feat/analytics-motion-layout
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.4
-          run_install: false
-
-      - name: Refresh npm lockfile
-        run: npm install --package-lock-only --ignore-scripts
-
-      - name: Refresh pnpm lockfile
-        run: pnpm install --lockfile-only --ignore-scripts
-
-      - name: Install dependencies
-        run: HUSKY=0 npm ci
-
-      - name: Format browser regression
-        run: npx biome check --write e2e/analytics-motion.spec.ts
-
-      - name: Install Chromium
-        run: npx playwright install chromium
-
-      - name: Run Mobile Chrome analytics regression
-        run: VITE_DEV_MODE=true npx playwright test e2e/analytics-motion.spec.ts --project="Mobile Chrome" --retries=0
-
-      - name: Commit generated lockfiles and formatting
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json pnpm-lock.yaml e2e/analytics-motion.spec.ts
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "chore: sync analytics motion implementation"
-          git push origin HEAD:feat/analytics-motion-layout
-
-      - name: Close validation pull request
-        if: github.event_name == 'pull_request' && github.head_ref == 'ci/analytics-motion-check-167'
+      - name: Close validation pull request and delete branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh pr close "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --delete-branch
