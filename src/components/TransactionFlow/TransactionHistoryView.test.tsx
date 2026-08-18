@@ -281,6 +281,43 @@ describe("TransactionHistoryView", () => {
     });
   });
 
+  it("resets to the top when search removes the current scroll anchor", async () => {
+    mocks.history.records = Array.from({ length: 100 }, (_, index) =>
+      transaction(`row-${index}`, {
+        category: index === 0 ? "Needle category" : `Category ${index}`,
+        sheetRow: index + 2,
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+    const scrollElement = screen.getByRole("region", {
+      name: "Transaction history",
+    });
+    scrollElement.scrollTop = 64 * 20;
+    fireEvent.scroll(scrollElement);
+    const scrollToMock = vi.mocked(HTMLElement.prototype.scrollTo);
+    scrollToMock.mockClear();
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+      "needle",
+    );
+
+    await waitFor(() =>
+      expect(scrollToMock).toHaveBeenCalledWith(
+        expect.objectContaining({ top: 0 }),
+      ),
+    );
+    expect(await screen.findByText("Needle category")).toBeInTheDocument();
+  });
+
   it("labels local status, prevents legacy edits, and selects editable rows", async () => {
     const pending = transaction("pending", { status: "pending" });
     const failed = transaction("failed", {

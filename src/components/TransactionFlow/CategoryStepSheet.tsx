@@ -1,6 +1,11 @@
 import type React from "react";
-import { useLayoutEffect, useRef, useState } from "react";
-import { Drawer, DrawerContent } from "../ui/drawer";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerTitle,
+} from "../ui/drawer";
 
 const DEFAULT_LAUNCHER_HEIGHT = 64;
 const DEFAULT_EXPANDED_HEIGHT = 520;
@@ -22,6 +27,7 @@ export function CategoryStepSheet({
   const layoutRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLDivElement>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
+  const entryRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [heights, setHeights] = useState({
     collapsed: DEFAULT_LAUNCHER_HEIGHT,
@@ -72,6 +78,10 @@ export function CategoryStepSheet({
   const expandedPoint = `${heights.expanded}px`;
   const activePoint = collapsed ? collapsedPoint : expandedPoint;
 
+  useEffect(() => {
+    if (entryRef.current) entryRef.current.inert = collapsed;
+  }, [collapsed]);
+
   return (
     <div
       ref={layoutRef}
@@ -100,8 +110,14 @@ export function CategoryStepSheet({
       >
         <DrawerContent
           showHandle={false}
-          className="max-h-[calc(100dvh-4rem)] overflow-hidden sm:mx-auto sm:max-w-md"
+          className="overflow-hidden sm:mx-auto sm:max-w-md"
+          style={{ height: "100dvh" }}
         >
+          <DrawerTitle className="sr-only">Transaction entry</DrawerTitle>
+          <DrawerDescription className="sr-only">
+            Choose a transaction category or collapse the entry sheet to review
+            transactions and analytics.
+          </DrawerDescription>
           <div
             ref={sheetBodyRef}
             data-testid="category-step-sheet-body"
@@ -121,7 +137,7 @@ export function CategoryStepSheet({
                     : "Collapse transaction entry"
                 }
                 onClick={() => setCollapsed((value) => !value)}
-                className="flex min-h-11 w-full flex-col items-center justify-center gap-1 px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
+                className="flex min-h-16 w-full flex-col items-center justify-center gap-1 px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
               >
                 <span
                   className="h-1.5 w-12 rounded-full bg-border"
@@ -134,7 +150,12 @@ export function CategoryStepSheet({
                 ) : null}
               </button>
             </div>
-            <div data-vaul-no-drag className="min-h-0 overflow-y-auto">
+            <div
+              ref={entryRef}
+              aria-hidden={collapsed}
+              data-vaul-no-drag
+              className="min-h-0 overflow-y-auto"
+            >
               {entry}
             </div>
           </div>

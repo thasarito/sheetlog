@@ -108,6 +108,9 @@ function TransactionHistoryVirtualList({
           { align: "start" },
         );
       }
+    } else {
+      anchorRef.current = null;
+      virtualizer.scrollToOffset(0, { align: "start" });
     }
   }, [items, virtualizer]);
 

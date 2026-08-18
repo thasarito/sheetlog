@@ -35,6 +35,12 @@ vi.mock("../ui/drawer", () => ({
       {children}
     </section>
   ),
+  DrawerTitle: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h2 {...props} />
+  ),
+  DrawerDescription: (props: React.HTMLAttributes<HTMLParagraphElement>) => (
+    <p {...props} />
+  ),
 }));
 
 function rect(height: number): DOMRect {
@@ -115,11 +121,14 @@ describe("CategoryStepSheet", () => {
     expect(
       screen.getByRole("button", { name: "Interactive review" }),
     ).toBeEnabled();
+    const entryRegion = screen.getByTestId("entry").parentElement;
+    expect(entryRegion).not.toHaveAttribute("aria-hidden", "true");
+    expect(entryRegion?.inert).toBe(false);
 
     const collapse = screen.getByRole("button", {
       name: "Collapse transaction entry",
     });
-    expect(collapse).toHaveClass("min-h-11");
+    expect(collapse).toHaveClass("min-h-16");
     await userEvent.setup().click(collapse);
 
     expect(
@@ -130,6 +139,8 @@ describe("CategoryStepSheet", () => {
       "--category-sheet-occlusion": "64px",
     });
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("64px");
+    expect(entryRegion).toHaveAttribute("aria-hidden", "true");
+    expect(entryRegion?.inert).toBe(true);
   });
 
   it("clamps content height and never accepts a null dismiss point", () => {
