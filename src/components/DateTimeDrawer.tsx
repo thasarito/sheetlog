@@ -8,6 +8,7 @@ import {
   DrawerDescription,
   DrawerFooter,
   DrawerHeader,
+  DrawerNestedRoot,
   DrawerTitle,
   DrawerTrigger,
 } from "./ui/drawer";
@@ -21,6 +22,7 @@ type DateTimeDrawerProps = {
   showTrigger?: boolean;
   onConfirm?: () => void;
   container?: HTMLElement | null;
+  nested?: boolean;
 };
 
 export function DateTimeDrawer({
@@ -32,13 +34,15 @@ export function DateTimeDrawer({
   showTrigger = true,
   onConfirm,
   container,
+  nested = false,
 }: DateTimeDrawerProps) {
   const dateLabel = format(value, "EEE, MMM d");
   const timeLabel = format(value, "HH:mm");
   const isContained = Boolean(container);
+  const Root = nested ? DrawerNestedRoot : Drawer;
 
   return (
-    <Drawer
+    <Root
       open={open}
       onOpenChange={onOpenChange}
       defaultOpen={defaultOpen}
@@ -89,6 +93,6 @@ export function DateTimeDrawer({
           </DrawerClose>
         </DrawerFooter>
       </DrawerContent>
-    </Drawer>
+    </Root>
   );
 }

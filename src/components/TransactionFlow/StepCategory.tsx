@@ -27,6 +27,7 @@ type StepCategoryProps = {
   categoryGroups: Record<TransactionType, CategoryItem[]>;
   onConfirm: () => void;
   drawerContainer?: HTMLElement | null;
+  dateDrawerNested?: boolean;
 };
 
 const TYPE_META: Record<
@@ -60,6 +61,7 @@ export function StepCategory({
   categoryGroups,
   onConfirm,
   drawerContainer,
+  dateDrawerNested = false,
 }: StepCategoryProps) {
   const { type, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
@@ -329,6 +331,7 @@ export function StepCategory({
         onOpenChange={setIsDrawerOpen}
         showTrigger={false}
         container={drawerContainer}
+        nested={dateDrawerNested}
         onConfirm={handleConfirm}
       />
 
