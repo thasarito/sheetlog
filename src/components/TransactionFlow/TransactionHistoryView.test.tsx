@@ -288,6 +288,7 @@ describe("TransactionHistoryView", () => {
     expect(
       screen.queryByRole("button", { name: "Clear transaction search" }),
     ).not.toBeInTheDocument();
+    expect(search).toHaveClass("[&::-webkit-search-cancel-button]:hidden");
     await user.type(search, "lunch");
 
     const clear = screen.getByRole("button", {

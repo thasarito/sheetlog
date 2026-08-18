@@ -144,7 +144,7 @@ export function TransactionHistoryDock({
           placeholder="Search category, note, or account"
           aria-label="Search transaction history"
           className={cn(
-            "h-11 w-full rounded-xl border border-border bg-surface pl-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring",
+            "h-11 w-full rounded-xl border border-border bg-surface pl-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring [&::-webkit-search-cancel-button]:hidden",
             search ? "pr-12" : "pr-3",
           )}
         />
