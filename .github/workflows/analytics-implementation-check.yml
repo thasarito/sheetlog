@@ -5,11 +5,10 @@ on:
     branches:
       - feat/analytics-motion-layout
   pull_request:
-    branches:
-      - main
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   validate:
@@ -105,3 +104,9 @@ jobs:
           fi
           git commit -m "chore: sync analytics motion implementation"
           git push origin HEAD:feat/analytics-motion-layout
+
+      - name: Close validation pull request
+        if: github.event_name == 'pull_request' && github.head_ref == 'ci/analytics-motion-check-167'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr close "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --delete-branch
