@@ -121,7 +121,12 @@ function SheetAccessoryHarness({
 
   return (
     <CategoryStepSheetAccessoryProvider
-      value={{ provided: true, host, reportHeight }}
+      value={{
+        provided: true,
+        host,
+        reportHeight,
+        requestExpanded: vi.fn(),
+      }}
     >
       <div ref={setHost} data-testid="test-sheet-accessory-host" />
       <TransactionHistoryView {...viewProps} />
@@ -231,6 +236,10 @@ describe("TransactionHistoryView", () => {
     expect(screen.getByTestId("transaction-history-content")).toHaveClass(
       "bg-transparent",
     );
+    expect(screen.getByTestId("transaction-history-content")).toHaveStyle({
+      paddingTop:
+        "var(--dashboard-header-space, var(--dashboard-header-height, 68px))",
+    });
     expect(screen.getByRole("region", { name: "Transaction history" })).toHaveAttribute(
       "data-dashboard-scroll",
       "true",
@@ -259,6 +268,42 @@ describe("TransactionHistoryView", () => {
       screen.queryByRole("button", { name: "Close transaction history" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("clears transaction search through a 44px trailing control and restores focus", async () => {
+    mocks.history.records = [transaction("lunch", { note: "Lunch" })];
+    const user = userEvent.setup();
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    const search = screen.getByRole("searchbox", {
+      name: "Search transaction history",
+    });
+    expect(
+      screen.queryByText("Search transaction history"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Clear transaction search" }),
+    ).not.toBeInTheDocument();
+    expect(search).toHaveClass("[&::-webkit-search-cancel-button]:hidden");
+    await user.type(search, "lunch");
+
+    const clear = screen.getByRole("button", {
+      name: "Clear transaction search",
+    });
+    expect(clear).toHaveClass("absolute", "size-11");
+    expect(clear.closest("label")).toBeNull();
+    await user.click(clear);
+
+    expect(search).toHaveValue("");
+    expect(clear).not.toBeInTheDocument();
+    await waitFor(() => expect(search).toHaveFocus());
   });
 
   it("portals one measured dock and reserves its sheet occlusion", async () => {

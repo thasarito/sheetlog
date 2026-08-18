@@ -20,7 +20,7 @@ function ReloadPromptProd() {
   return (
     <div className="ReloadPrompt-container">
       {needRefresh && (
-        <div className="fixed bottom-0 right-0 left-0 z-50 p-4 md:bottom-4 md:right-4 md:left-auto">
+        <div className="fixed bottom-0 right-0 left-0 z-[60] p-4 md:bottom-4 md:right-4 md:left-auto">
           <div className="bg-foreground text-background rounded-lg p-4 flex flex-col gap-2 border border-border">
             <div className="mb-2 font-bold">New content available</div>
             <div className="text-sm mb-4">

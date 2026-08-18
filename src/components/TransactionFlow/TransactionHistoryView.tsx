@@ -256,7 +256,10 @@ export function TransactionHistoryView({
       <div
         data-testid="transaction-history-content"
         className="flex min-h-0 flex-1 flex-col bg-transparent"
-        style={{ paddingTop: "var(--dashboard-header-height, 68px)" }}
+        style={{
+          paddingTop:
+            "var(--dashboard-header-space, var(--dashboard-header-height, 68px))",
+        }}
       >
         <TransactionHistoryDock
           search={search}

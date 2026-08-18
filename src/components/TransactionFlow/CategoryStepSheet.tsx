@@ -18,6 +18,7 @@ import {
   DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT,
   TRANSACTION_HISTORY_DOCK_GAP,
 } from "./CategoryStepSheetAccessory";
+import { useKeyboardAccessoryPlacement } from "./useKeyboardAccessoryPlacement";
 
 const DEFAULT_LAUNCHER_HEIGHT = 44;
 const DEFAULT_EXPANDED_HEIGHT = 520;
@@ -26,6 +27,7 @@ const MIN_LAUNCHER_HEIGHT = 44;
 type CategoryStepSheetProps = {
   children: React.ReactNode;
   entry: React.ReactNode;
+  layoutHeight: number;
   typeTabsHostRef?: React.Ref<HTMLFieldSetElement>;
 };
 
@@ -36,15 +38,20 @@ function positiveHeight(value: number, fallback: number): number {
 export function CategoryStepSheet({
   children,
   entry,
+  layoutHeight,
   typeTabsHostRef,
 }: CategoryStepSheetProps) {
-  const layoutRef = useRef<HTMLDivElement>(null);
+  const layoutRef = useRef<HTMLDivElement | null>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
+  const [layoutElement, setLayoutElement] = useState<HTMLDivElement | null>(
+    null,
+  );
   const [launcherElement, setLauncherElement] =
     useState<HTMLDivElement | null>(null);
   const [safeAreaElement, setSafeAreaElement] =
     useState<HTMLDivElement | null>(null);
   const [entryElement, setEntryElement] = useState<HTMLDivElement | null>(null);
+  const [drawerElement, setDrawerElement] = useState<HTMLElement | null>(null);
   const [accessoryHost, setAccessoryHost] = useState<HTMLDivElement | null>(
     null,
   );
@@ -130,14 +137,26 @@ export function CategoryStepSheet({
       `${value}px`,
     );
   }, []);
+  const setLayoutHost = useCallback((element: HTMLDivElement | null) => {
+    layoutRef.current = element;
+    setLayoutElement(element);
+  }, []);
+  const requestExpanded = useCallback(() => setCollapsed(false), []);
   const accessoryContext = useMemo(
     () => ({
       provided: true,
       host: accessoryHost,
       reportHeight: reportAccessoryHeight,
+      requestExpanded,
     }),
-    [accessoryHost, reportAccessoryHeight],
+    [accessoryHost, reportAccessoryHeight, requestExpanded],
   );
+
+  useKeyboardAccessoryPlacement({
+    drawerElement,
+    accessoryHost,
+    layoutHeight,
+  });
 
   useEffect(() => {
     if (entryElement) entryElement.inert = collapsed;
@@ -146,7 +165,7 @@ export function CategoryStepSheet({
   return (
     <CategoryStepSheetAccessoryProvider value={accessoryContext}>
       <div
-        ref={layoutRef}
+        ref={setLayoutHost}
         data-testid="category-step-layout"
         className="relative h-full min-h-0"
         style={
@@ -158,20 +177,24 @@ export function CategoryStepSheet({
       >
         <div className="h-full min-h-0">{children}</div>
         <Drawer
-        open
-        modal={false}
-        dismissible={false}
-        shouldScaleBackground={false}
-        noBodyStyles
-        disablePreventScroll
-        snapPoints={[collapsedPoint, expandedPoint]}
-        activeSnapPoint={activePoint}
-        setActiveSnapPoint={(point) => {
-          if (point === collapsedPoint) setCollapsed(true);
-          if (point === expandedPoint) setCollapsed(false);
-        }}
+          container={layoutElement}
+          open
+          modal={false}
+          dismissible={false}
+          shouldScaleBackground={false}
+          noBodyStyles
+          disablePreventScroll
+          repositionInputs={false}
+          snapPoints={[collapsedPoint, expandedPoint]}
+          activeSnapPoint={activePoint}
+          setActiveSnapPoint={(point) => {
+            if (point === collapsedPoint) setCollapsed(true);
+            if (point === expandedPoint) setCollapsed(false);
+          }}
         >
           <DrawerContent
+            contained
+            ref={setDrawerElement}
             showHandle={false}
             onClick={() => {
               if (collapsed) setCollapsed(false);
@@ -179,7 +202,7 @@ export function CategoryStepSheet({
             className="overflow-visible motion-reduce:![transition:none] sm:mx-auto sm:max-w-md"
             style={
               {
-                height: "100dvh",
+                height: `${layoutHeight}px`,
                 "--category-sheet-safe-area": "env(safe-area-inset-bottom)",
               } as React.CSSProperties
             }
@@ -195,7 +218,7 @@ export function CategoryStepSheet({
               data-vaul-no-drag
               className="pointer-events-none absolute -top-px inset-x-0 z-10 overflow-visible"
               style={{
-                transform: `translateY(calc(-100% - ${TRANSACTION_HISTORY_DOCK_GAP}px))`,
+                transform: `translateY(calc(-100% - ${TRANSACTION_HISTORY_DOCK_GAP}px + var(--transaction-history-keyboard-offset, 0px)))`,
               }}
             />
             <div

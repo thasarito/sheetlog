@@ -1,4 +1,4 @@
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, X } from "lucide-react";
 import {
   useCallback,
   useImperativeHandle,
@@ -44,7 +44,13 @@ export function TransactionHistoryDock({
 }: TransactionHistoryDockProps) {
   const accessory = useCategoryStepSheetAccessory();
   const dockRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const portalled = accessory.provided;
+
+  const clearSearch = () => {
+    onSearchChange("");
+    window.requestAnimationFrame(() => searchRef.current?.focus());
+  };
 
   const setDockRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -126,18 +132,32 @@ export function TransactionHistoryDock({
         aria-hidden="true"
         className="absolute left-1/2 top-full h-2 w-px -translate-x-1/2 bg-border/80"
       />
-      <label className="relative block">
-        <span className="sr-only">Search transaction history</span>
+      <div className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
+          ref={searchRef}
           type="search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
+          onFocus={accessory.requestExpanded}
           placeholder="Search category, note, or account"
           aria-label="Search transaction history"
-          className="h-11 w-full rounded-xl border border-border bg-surface pl-10 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
+          className={cn(
+            "h-11 w-full rounded-xl border border-border bg-surface pl-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring [&::-webkit-search-cancel-button]:hidden",
+            search ? "pr-12" : "pr-3",
+          )}
         />
-      </label>
+        {search ? (
+          <button
+            type="button"
+            aria-label="Clear transaction search"
+            onClick={clearSearch}
+            className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
       <div
         data-testid="transaction-history-metadata"
         className="flex min-h-11 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground"
