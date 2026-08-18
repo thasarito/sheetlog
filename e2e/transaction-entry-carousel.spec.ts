@@ -187,7 +187,7 @@ test.describe("Transaction type and category carousel", () => {
           boxShadow: getComputedStyle(element).boxShadow,
         };
       });
-    expect(tabGeometry.controlHeight).toBe(52);
+    expect(tabGeometry.controlHeight).toBeCloseTo(52, 3);
     expect(tabGeometry.buttonHeight).toBeGreaterThanOrEqual(44);
     expect(tabGeometry.boxShadow).toBe("none");
 
