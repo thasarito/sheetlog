@@ -47,7 +47,7 @@ jobs:
         run: npx playwright install chromium
 
       - name: Run Mobile Chrome analytics regression
-        run: npx playwright test e2e/analytics-motion.spec.ts --project="Mobile Chrome"
+        run: npx playwright test e2e/analytics-motion.spec.ts --project="Mobile Chrome" --retries=0
 
       - name: Commit generated lockfiles and formatting
         run: |
