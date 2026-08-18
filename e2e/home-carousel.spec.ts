@@ -59,6 +59,7 @@ async function touchSwipe(
   target: Locator,
   deltaX: number,
   deltaY: number,
+  verticalStartRatio?: number,
 ) {
   const box = await target.boundingBox();
   if (!box) throw new Error("Swipe target is not visible");
@@ -66,7 +67,12 @@ async function touchSwipe(
   const horizontal = Math.abs(deltaX) > Math.abs(deltaY);
   const start = {
     x: box.x + box.width * (deltaX < 0 ? 0.85 : deltaX > 0 ? 0.15 : 0.5),
-    y: box.y + box.height * (horizontal ? 0.65 : deltaY < 0 ? 0.8 : 0.2),
+    y:
+      box.y +
+      box.height *
+        (horizontal
+          ? 0.65
+          : (verticalStartRatio ?? (deltaY < 0 ? 0.8 : 0.2))),
   };
   await client.send("Input.dispatchTouchEvent", {
     type: "touchStart",
@@ -151,6 +157,84 @@ function reelGaps(snapshot: TitleReelSnapshot): number[] {
   });
 }
 
+async function readTransactionDockMotion(page: Page) {
+  return page.evaluate(() => {
+    const viewport = document.querySelector<HTMLElement>(
+      '[data-testid="home-carousel-viewport"]',
+    );
+    const transactionSlide = document.querySelector<HTMLElement>(
+      '[data-home-carousel-slide-index="1"]',
+    );
+    const dock = document.querySelector<HTMLElement>(
+      '[data-testid="transaction-history-dock"]',
+    );
+    if (!viewport || !transactionSlide || !dock) {
+      throw new Error("Transaction dock motion geometry missing");
+    }
+    const viewportRect = viewport.getBoundingClientRect();
+    const transactionRect = transactionSlide.getBoundingClientRect();
+    return {
+      ariaHidden: dock.getAttribute("aria-hidden"),
+      dockOffset: Number(dock.dataset.offsetX),
+      inert: dock.inert,
+      motion: dock.dataset.motion,
+      slideOffset: transactionRect.left - viewportRect.left,
+      visibility: getComputedStyle(dock).visibility,
+    };
+  });
+}
+
+async function traceCategoryDockDrag(
+  page: Page,
+  target: Locator,
+  deltaY: number,
+) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("Category drag target is not visible");
+  const client = await page.context().newCDPSession(page);
+  const start = {
+    x: box.x + box.width * 0.5,
+    y: box.y + box.height * (deltaY < 0 ? 0.8 : 0.2),
+  };
+  const gaps: number[] = [];
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [start],
+  });
+  for (let step = 1; step <= 12; step += 1) {
+    await page.waitForTimeout(16);
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        {
+          x: start.x,
+          y: start.y + (deltaY * step) / 12,
+        },
+      ],
+    });
+    gaps.push(
+      await page.evaluate(() => {
+        const sheet = document.querySelector<HTMLElement>(
+          '[role="dialog"][aria-labelledby]',
+        );
+        const dock = document.querySelector<HTMLElement>(
+          '[data-testid="transaction-history-dock"]',
+        );
+        if (!sheet || !dock) {
+          throw new Error("Category dock drag geometry missing");
+        }
+        return sheet.getBoundingClientRect().top - dock.getBoundingClientRect().bottom;
+      }),
+    );
+  }
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await client.detach();
+  return gaps;
+}
+
 async function traceReversingDashboardDrag(
   page: Page,
   target: Locator,
@@ -187,12 +271,14 @@ async function traceReversingDashboardDrag(
     await moveTo(startX - (90 * step) / 8);
   }
   const forward = await readTitleReel(titleReel);
+  const forwardDock = await readTransactionDockMotion(page);
   const settingsForward = await settings.boundingBox();
 
   for (let step = 1; step <= 12; step += 1) {
     await moveTo(startX - 90 + (160 * step) / 12);
   }
   const backward = await readTitleReel(titleReel);
+  const backwardDock = await readTransactionDockMotion(page);
   const settingsBackward = await settings.boundingBox();
 
   for (let step = 1; step <= 6; step += 1) {
@@ -206,7 +292,9 @@ async function traceReversingDashboardDrag(
 
   return {
     backward,
+    backwardDock,
     forward,
+    forwardDock,
     settingsBefore,
     settingsBackward,
     settingsForward,
@@ -674,9 +762,31 @@ test.describe("Home Transactions and Analytics carousel", () => {
     const categorySheet = page.getByRole("dialog", {
       name: "Transaction entry",
     });
+    const accessoryHost = page.getByTestId("category-step-accessory-host");
+    const transactionDock = page.getByTestId("transaction-history-dock");
 
     await expect(categorySheet).toBeVisible();
     await waitForCategorySheetSnap(categorySheet);
+    await expect(transactionDock).toHaveCount(1);
+    await expect(
+      accessoryHost.getByTestId("transaction-history-dock"),
+    ).toHaveCount(1);
+    await expect(transactionDock).toHaveAttribute("aria-hidden", "true");
+    await expect(transactionDock).toHaveAttribute("inert", "");
+    expect(
+      await transactionDock.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          boxShadow: style.boxShadow,
+          pointerEvents: style.pointerEvents,
+          visibility: style.visibility,
+        };
+      }),
+    ).toEqual({
+      boxShadow: "none",
+      pointerEvents: "none",
+      visibility: "hidden",
+    });
     await expect(page.getByAltText("Sheetlog logo")).toHaveCount(0);
     await expect(dashboardHeader.locator("img")).toHaveCount(0);
     await expect(titleReel).toHaveAttribute("aria-hidden", "true");
@@ -771,7 +881,13 @@ test.describe("Home Transactions and Analytics carousel", () => {
     const collapseEntry = page.getByRole("button", {
       name: "Collapse transaction entry",
     });
-    await touchSwipe(page, collapseEntry, 0, 360);
+    const collapseGaps = await traceCategoryDockDrag(
+      page,
+      collapseEntry,
+      360,
+    );
+    expect(collapseGaps.length).toBeGreaterThan(3);
+    for (const gap of collapseGaps) expect(gap).toBeCloseTo(8, 0);
     const expandEntry = page.getByRole("button", {
       name: "Expand transaction entry",
     });
@@ -807,6 +923,14 @@ test.describe("Home Transactions and Analytics carousel", () => {
     expect(dragTrace.forward.direction).toBe("forward");
     expect(dragTrace.forward.progress).toBeGreaterThan(0.05);
     expect(dragTrace.forward.progress).toBeLessThan(0.7);
+    expect(dragTrace.forwardDock.motion).toBe("moving");
+    expect(dragTrace.forwardDock.inert).toBe(true);
+    expect(dragTrace.forwardDock.ariaHidden).toBe("true");
+    expect(dragTrace.forwardDock.visibility).toBe("visible");
+    expect(dragTrace.forwardDock.dockOffset).toBeCloseTo(
+      dragTrace.forwardDock.slideOffset,
+      1,
+    );
     expect(visibleReelItems(dragTrace.forward)).toHaveLength(3);
     for (const gap of reelGaps(dragTrace.forward)) {
       expect(gap).toBeCloseTo(dragTrace.forward.gap, 1);
@@ -814,6 +938,14 @@ test.describe("Home Transactions and Analytics carousel", () => {
     expect(dragTrace.backward.direction).toBe("backward");
     expect(dragTrace.backward.progress).toBeLessThan(-0.05);
     expect(dragTrace.backward.progress).toBeGreaterThan(-0.7);
+    expect(dragTrace.backwardDock.motion).toBe("moving");
+    expect(dragTrace.backwardDock.inert).toBe(true);
+    expect(dragTrace.backwardDock.ariaHidden).toBe("true");
+    expect(dragTrace.backwardDock.visibility).toBe("visible");
+    expect(dragTrace.backwardDock.dockOffset).toBeCloseTo(
+      dragTrace.backwardDock.slideOffset,
+      1,
+    );
     for (const gap of reelGaps(dragTrace.backward)) {
       expect(gap).toBeCloseTo(dragTrace.backward.gap, 1);
     }
@@ -897,7 +1029,9 @@ test.describe("Home Transactions and Analytics carousel", () => {
     }));
     expect(pageWidth.body).toBe(pageWidth.viewport);
 
-    await touchSwipe(page, expandEntry, 0, -360);
+    const expandGaps = await traceCategoryDockDrag(page, expandEntry, -360);
+    expect(expandGaps.length).toBeGreaterThan(3);
+    for (const gap of expandGaps) expect(gap).toBeCloseTo(8, 0);
     await expect(collapseEntry).toBeVisible();
     await waitForCategorySheetSnap(categorySheet);
     await categorySheet
@@ -921,6 +1055,21 @@ test.describe("Home Transactions and Analytics carousel", () => {
     );
     await expect(titleReel).toHaveAttribute("data-progress", "0.000");
     await expect(transactionHeading).toHaveClass(/sr-only/);
+    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
+    await expect(transactionDock).not.toHaveAttribute("inert");
+    await expect(transactionDock).toHaveCSS("pointer-events", "auto");
+    await expect(transactionDock).toHaveCSS("visibility", "visible");
+    const settledDockGap = await page.evaluate(() => {
+      const sheet = document.querySelector<HTMLElement>(
+        '[role="dialog"][aria-labelledby]',
+      );
+      const dock = document.querySelector<HTMLElement>(
+        '[data-testid="transaction-history-dock"]',
+      );
+      if (!sheet || !dock) throw new Error("Settled dock geometry missing");
+      return sheet.getBoundingClientRect().top - dock.getBoundingClientRect().bottom;
+    });
+    expect(settledDockGap).toBeCloseTo(8, 0);
     settledReel = await readTitleReel(titleReel);
     expect(visibleReelItems(settledReel).map((item) => item.label)).toEqual([
       "Transactions",
@@ -931,9 +1080,31 @@ test.describe("Home Transactions and Analytics carousel", () => {
       scale: "css",
     });
 
-    const search = page.getByRole("searchbox", {
-      name: "Search transaction history",
+    const search = transactionDock.locator('input[type="search"]');
+    await expect(search).toHaveAttribute(
+      "aria-label",
+      "Search transaction history",
+    );
+    const snapBeforeFocus = await categorySheet.evaluate(
+      (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).m42,
+    );
+    await search.focus();
+    await expect(search).toBeFocused();
+    const snapAfterFocus = await categorySheet.evaluate(
+      (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).m42,
+    );
+    expect(snapAfterFocus).toBeCloseTo(snapBeforeFocus, 1);
+    const focusedDockGap = await page.evaluate(() => {
+      const sheet = document.querySelector<HTMLElement>(
+        '[role="dialog"][aria-labelledby]',
+      );
+      const dock = document.querySelector<HTMLElement>(
+        '[data-testid="transaction-history-dock"]',
+      );
+      if (!sheet || !dock) throw new Error("Focused dock geometry missing");
+      return sheet.getBoundingClientRect().top - dock.getBoundingClientRect().bottom;
     });
+    expect(focusedDockGap).toBeCloseTo(8, 0);
     await touchSwipe(page, search, -120, 2);
     await expect(viewport).toHaveAttribute("data-motion-status", "settled");
     await expect(titleReel).toHaveAttribute("data-progress", "0.000");
@@ -944,13 +1115,31 @@ test.describe("Home Transactions and Analytics carousel", () => {
     });
     const historyGeometry = await historyRegion.evaluate((element) => ({
       clientHeight: element.clientHeight,
+      paddingBottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
       scrollHeight: element.scrollHeight,
     }));
     expect(historyGeometry.scrollHeight).toBeGreaterThan(
       historyGeometry.clientHeight,
     );
+    const reservedOcclusion = await page.evaluate(() => {
+      const layout = document.querySelector<HTMLElement>(
+        '[data-testid="category-step-layout"]',
+      );
+      const dock = document.querySelector<HTMLElement>(
+        '[data-testid="transaction-history-dock"]',
+      );
+      if (!layout || !dock) throw new Error("History occlusion geometry missing");
+      return (
+        Number.parseFloat(
+          getComputedStyle(layout).getPropertyValue("--category-sheet-occlusion"),
+        ) +
+        dock.getBoundingClientRect().height +
+        8
+      );
+    });
+    expect(historyGeometry.paddingBottom).toBeCloseTo(reservedOcclusion, 0);
     const before = await historyRegion.evaluate((element) => element.scrollTop);
-    await touchSwipe(page, historyRegion, 2, -240);
+    await touchSwipe(page, historyRegion, 2, -240, 0.45);
     await expect
       .poll(() => historyRegion.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(before);
@@ -979,6 +1168,31 @@ test.describe("Home Transactions and Analytics carousel", () => {
     expect(hiddenHeaderStyle.translateY).toBeLessThan(0);
     expect(hiddenHeaderStyle.opacity).toBeLessThan(1);
 
+    await historyRegion.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await expect
+      .poll(() => historyRegion.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(before);
+    const finalRowClearance = await page.evaluate(() => {
+      const rows = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="history-transaction-row"]',
+        ),
+      );
+      const dock = document.querySelector<HTMLElement>(
+        '[data-testid="transaction-history-dock"]',
+      );
+      if (rows.length === 0 || !dock) {
+        throw new Error("Final history row geometry missing");
+      }
+      const lastRow = rows.at(-1);
+      if (!lastRow) throw new Error("Final history row missing");
+      return dock.getBoundingClientRect().top - lastRow.getBoundingClientRect().bottom;
+    });
+    expect(finalRowClearance).toBeGreaterThanOrEqual(-1);
+
     await search.fill("lunch");
     await expect(
       historyRegion.getByRole("button", {
@@ -988,7 +1202,6 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(
       historyRegion.getByRole("button", { name: /income Salary/ }),
     ).toHaveCount(0);
-    await search.fill("");
 
     await touchSwipe(page, viewport, 260, 4);
     await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
@@ -1002,6 +1215,10 @@ test.describe("Home Transactions and Analytics carousel", () => {
       "data-hide-progress",
       "0.000",
     );
+    await expect(transactionDock).toHaveAttribute("aria-hidden", "true");
+    await expect(transactionDock).toHaveAttribute("inert", "");
+    await expect(search).not.toBeFocused();
+    await expect(search).toHaveValue("lunch");
 
     await touchSwipe(page, viewport, -260, 4);
     await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
@@ -1010,6 +1227,9 @@ test.describe("Home Transactions and Analytics carousel", () => {
       "data-last-settled-direction",
       "forward",
     );
+    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
+    await expect(search).toHaveValue("lunch");
+    await expect(transactionDock.getByText("1 transaction", { exact: true })).toBeVisible();
     const reviewRow = page.getByRole("button", {
       name: /expense Food Delivery.*Lunch/,
     });

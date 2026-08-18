@@ -193,7 +193,7 @@ export function CategoryStepSheet({
               ref={setAccessoryHost}
               data-testid="category-step-accessory-host"
               data-vaul-no-drag
-              className="pointer-events-none absolute inset-x-0 top-0 z-10 overflow-visible"
+              className="pointer-events-none absolute -top-px inset-x-0 z-10 overflow-visible"
               style={{
                 transform: `translateY(calc(-100% - ${TRANSACTION_HISTORY_DOCK_GAP}px))`,
               }}
