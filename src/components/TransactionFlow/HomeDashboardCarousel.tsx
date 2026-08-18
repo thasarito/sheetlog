@@ -8,7 +8,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { TransactionRecord } from "../../lib/types";
-import { cn } from "../../lib/utils";
 import {
   buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
@@ -40,40 +39,6 @@ function ownsNestedHorizontalGesture(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
     target.closest('[data-home-carousel-swipe-lock="true"]') !== null
-  );
-}
-
-function CarouselIndicators({
-  activeIndex,
-  onSelect,
-}: {
-  activeIndex: number;
-  onSelect: (index: number) => void;
-}) {
-  return (
-    <fieldset className="m-0 flex min-w-0 items-center justify-center border-0 p-0">
-      <legend className="sr-only">Carousel slides</legend>
-      {SLIDES.map((slide, index) => (
-        <button
-          key={slide}
-          type="button"
-          data-carousel-dot="true"
-          aria-label={`${slide} slide`}
-          aria-current={activeIndex === index ? "true" : undefined}
-          onClick={() => onSelect(index)}
-          className="flex h-11 w-11 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-        >
-          <span
-            className={cn(
-              "block bg-muted-foreground/35 transition-[width,background-color] motion-reduce:transition-none",
-              activeIndex === index
-                ? "h-1.5 w-4 rounded-full bg-primary"
-                : "h-1.5 w-1.5 rounded-full",
-            )}
-          />
-        </button>
-      ))}
-    </fieldset>
   );
 }
 
@@ -304,31 +269,17 @@ export function HomeDashboardCarousel({
       aria-roledescription="carousel"
       aria-label="Home activity"
       onKeyDown={(event) => {
-          const target = event.target as HTMLElement;
-          if (
-            target !== viewportRef.current &&
-            target.dataset.carouselDot !== "true"
-          ) {
-            return;
-          }
-          if (event.key === "ArrowRight") {
-            event.preventDefault();
-            scrollToSlide(1);
-          }
-          if (event.key === "ArrowLeft") {
-            event.preventDefault();
-            scrollToSlide(0);
-          }
+        if (event.target !== viewportRef.current) return;
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          scrollToSlide(1);
+        }
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          scrollToSlide(0);
+        }
       }}
     >
-        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center">
-          <div className="pointer-events-auto">
-            <CarouselIndicators
-              activeIndex={activeIndex}
-              onSelect={scrollToSlide}
-            />
-          </div>
-        </div>
         <div
           ref={viewportRef}
           data-testid="home-carousel-viewport"
