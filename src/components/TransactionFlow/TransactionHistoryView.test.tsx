@@ -250,6 +250,7 @@ describe("TransactionHistoryView", () => {
       dock,
     );
     expect(dock).toHaveClass("mx-3", "rounded-2xl");
+    expect(dock).toHaveAttribute("data-home-carousel-swipe-lock", "true");
     expect(dock.className).not.toMatch(/shadow/);
     expect(
       screen.getByRole("searchbox", { name: "Search transaction history" }),

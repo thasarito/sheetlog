@@ -106,6 +106,7 @@ export function TransactionHistoryDock({
     <div
       ref={setDockRef}
       data-testid="transaction-history-dock"
+      data-home-carousel-swipe-lock="true"
       data-vaul-no-drag
       data-motion="settled"
       data-offset-x="0"

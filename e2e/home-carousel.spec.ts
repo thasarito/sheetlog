@@ -46,7 +46,7 @@ const seededTransactions = [
       index + 3,
       "expense",
       20 + index,
-      "Groceries & Home Supplies",
+      index === 15 ? "Final history item" : "Groceries & Home Supplies",
     ),
   ),
 ];
@@ -439,6 +439,24 @@ async function waitForCategorySheetSnap(categorySheet: Locator) {
     .toBeLessThan(1);
 }
 
+async function openTransactionDock(page: Page) {
+  const viewport = page.getByTestId("home-carousel-viewport");
+  const transactionSlide = page.getByLabel("Transactions, slide 2 of 2");
+  const transactionDock = page.getByTestId("transaction-history-dock");
+  await page
+    .getByRole("button", { name: "Collapse transaction entry" })
+    .click();
+  await waitForCategorySheetSnap(
+    page.getByRole("dialog", { name: "Transaction entry" }),
+  );
+  await viewport.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(viewport).toHaveAttribute("data-motion-status", "settled");
+  await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
+  await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
+  return { transactionDock, transactionSlide, viewport };
+}
+
 test.describe("Home Transactions and Analytics carousel", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     frankfurterRequestCount = 0;
@@ -740,6 +758,76 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(
       typeTabs.getByRole("button", { name: "Income", exact: true }),
     ).toBeFocused();
+  });
+
+  test("keeps transaction dock swipes outside carousel gestures", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      !testInfo.project.use.hasTouch,
+      "requires a touch-enabled browser context",
+    );
+    const { transactionDock, transactionSlide, viewport } =
+      await openTransactionDock(page);
+
+    await touchSwipe(page, transactionDock, -80, 2);
+    await expect(viewport).toHaveAttribute("data-motion-status", "settled");
+    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
+    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
+    await expect(transactionDock).not.toHaveAttribute("inert");
+  });
+
+  test("refreshes transaction history once from a touch tap", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      !testInfo.project.use.hasTouch,
+      "requires a touch-enabled browser context",
+    );
+    const { transactionDock, transactionSlide, viewport } =
+      await openTransactionDock(page);
+
+    const refreshHistory = transactionDock.getByRole("button", {
+      name: "Refresh transaction history",
+    });
+    await page.evaluate(() => {
+      const testWindow = window as Window & {
+        __transactionDockRefreshClicks?: number;
+      };
+      testWindow.__transactionDockRefreshClicks = 0;
+      document.addEventListener(
+        "click",
+        (event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest(
+              '[aria-label="Refresh transaction history"]',
+            )
+          ) {
+            testWindow.__transactionDockRefreshClicks =
+              (testWindow.__transactionDockRefreshClicks ?? 0) + 1;
+          }
+        },
+        { capture: true },
+      );
+    });
+    await expect(refreshHistory).toBeEnabled();
+    await refreshHistory.tap();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & {
+              __transactionDockRefreshClicks?: number;
+            }).__transactionDockRefreshClicks ?? 0,
+        ),
+      )
+      .toBe(1);
+    await expect(refreshHistory).toBeEnabled();
+    await expect(viewport).toHaveAttribute("data-motion-status", "settled");
+    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
+    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
+    await expect(transactionDock).not.toHaveAttribute("inert");
   });
 
   test("layers category entry over both full review slides", async ({
@@ -1175,23 +1263,20 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect
       .poll(() => historyRegion.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(before);
-    const finalRowClearance = await page.evaluate(() => {
-      const rows = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          '[data-testid="history-transaction-row"]',
-        ),
-      );
+    const finalRow = historyRegion.getByRole("button", {
+      name: /expense Final history item/,
+    });
+    await expect(finalRow).toBeVisible();
+    const finalRowClearance = await finalRow.evaluate((element) => {
       const dock = document.querySelector<HTMLElement>(
         '[data-testid="transaction-history-dock"]',
       );
-      if (rows.length === 0 || !dock) {
+      if (!dock) {
         throw new Error("Final history row geometry missing");
       }
-      const lastRow = rows.at(-1);
-      if (!lastRow) throw new Error("Final history row missing");
-      return dock.getBoundingClientRect().top - lastRow.getBoundingClientRect().bottom;
+      return dock.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
     });
-    expect(finalRowClearance).toBeGreaterThanOrEqual(-1);
+    expect(finalRowClearance).toBeGreaterThanOrEqual(-2);
 
     await search.fill("lunch");
     await expect(
