@@ -1,6 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'framer-motion';
 import {
+  forwardRef,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -46,6 +47,12 @@ type ChartTouch = {
   startY: number;
   axis: 'horizontal' | 'vertical' | null;
   cancelled: boolean;
+};
+
+type AnalyticsBarPresenceProps = {
+  children: ReactNode;
+  className: string;
+  reducedMotion: boolean | null;
 };
 
 const AXIS_LOCK_THRESHOLD_PX = 6;
@@ -102,42 +109,37 @@ function getMonthAxisLabel(bucket: AnalyticsBucket, index: number): string {
   return format(parseISO(bucket.key), 'EEEEE');
 }
 
-function AnalyticsBarPresence({
-  children,
-  className,
-  reducedMotion,
-}: {
-  children: ReactNode;
-  className: string;
-  reducedMotion: boolean | null;
-}) {
-  const isPresent = useIsPresent();
-  const geometryTransition = reducedMotion
-    ? { duration: 0 }
-    : { duration: MOTION_DURATION_SECONDS, ease: 'easeOut' as const };
-  const exitTransition = reducedMotion
-    ? { duration: 0 }
-    : { duration: EXIT_DURATION_SECONDS, ease: 'easeOut' as const };
+const AnalyticsBarPresence = forwardRef<HTMLDivElement, AnalyticsBarPresenceProps>(
+  function AnalyticsBarPresence({ children, className, reducedMotion }, ref) {
+    const isPresent = useIsPresent();
+    const geometryTransition = reducedMotion
+      ? { duration: 0 }
+      : { duration: MOTION_DURATION_SECONDS, ease: 'easeOut' as const };
+    const exitTransition = reducedMotion
+      ? { duration: 0 }
+      : { duration: EXIT_DURATION_SECONDS, ease: 'easeOut' as const };
 
-  return (
-    <motion.div
-      layout="position"
-      aria-hidden={isPresent ? undefined : true}
-      style={{ pointerEvents: isPresent ? 'auto' : 'none' }}
-      className={className}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={{
-        layout: geometryTransition,
-        opacity: exitTransition,
-        y: geometryTransition,
-      }}
-    >
-      {children}
-    </motion.div>
-  );
-}
+    return (
+      <motion.div
+        ref={ref}
+        layout="position"
+        aria-hidden={isPresent ? undefined : true}
+        style={{ pointerEvents: isPresent ? 'auto' : 'none' }}
+        className={className}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={{
+          layout: geometryTransition,
+          opacity: exitTransition,
+          y: geometryTransition,
+        }}
+      >
+        {children}
+      </motion.div>
+    );
+  },
+);
 
 export function AnalyticsBarChart({
   buckets,
