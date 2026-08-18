@@ -15,14 +15,16 @@ describe('AnalyticsNumber', () => {
     );
 
     const number = screen.getByTestId('analytics-number');
-    expect(within(number).getByText(expected)).toHaveClass('sr-only');
-    expect(number.querySelector('number-flow-react')).toHaveAttribute('aria-hidden', 'true');
+    expect(within(number).getByText(expected)).toBeInTheDocument();
+    expect(number.querySelector('number-flow-react')).toHaveAttribute('aria-label', expected);
   });
 
   it('formats percentage values as settled integers', () => {
     render(<AnalyticsNumber value={61.7} presentation="percentage" />);
 
-    expect(within(screen.getByTestId('analytics-number')).getByText('62%')).toHaveClass('sr-only');
+    const number = screen.getByTestId('analytics-number');
+    expect(within(number).getByText('62%')).toBeInTheDocument();
+    expect(number.querySelector('number-flow-react')).toHaveAttribute('aria-label', '62%');
   });
 
   it('updates accessible text immediately to the settled value', () => {
@@ -35,5 +37,6 @@ describe('AnalyticsNumber', () => {
     const number = screen.getByTestId('analytics-number');
     expect(within(number).getByText('฿250')).toBeInTheDocument();
     expect(within(number).queryByText('฿100')).not.toBeInTheDocument();
+    expect(number.querySelector('number-flow-react')).toHaveAttribute('aria-label', '฿250');
   });
 });
