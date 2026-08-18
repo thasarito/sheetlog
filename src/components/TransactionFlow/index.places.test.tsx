@@ -196,6 +196,21 @@ vi.mock("./StepCard", () => ({
   StepCard: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+vi.mock("./CategoryStepSheet", () => ({
+  CategoryStepSheet: ({
+    children,
+    entry,
+  }: {
+    children: React.ReactNode;
+    entry: React.ReactNode;
+  }) => (
+    <div data-testid="category-step-layout">
+      {children}
+      <aside>{entry}</aside>
+    </div>
+  ),
+}));
+
 vi.mock("./StepCategory", () => ({
   StepCategory: ({
     form,
@@ -261,8 +276,8 @@ const linkedReimbursement: TransactionRecord = {
   updatedAt: "2026-08-15T09:00:00",
 };
 
-vi.mock("./TopDashboard", () => ({
-  TopDashboard: ({
+vi.mock("./HomeDashboardCarousel", () => ({
+  HomeDashboardCarousel: ({
     onEditTransaction,
   }: {
     onEditTransaction: (transaction: TransactionRecord) => void;
