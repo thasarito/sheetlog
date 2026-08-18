@@ -1,0 +1,466 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TransactionRecord } from "../../lib/types";
+import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
+import { TransactionHistoryView } from "./TransactionHistoryView";
+import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
+import type { TransactionHistoryQueryResult } from "./useTransactionHistoryQuery";
+
+const originalScrollTo = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "scrollTo",
+);
+
+const mocks = vi.hoisted(() => ({
+  history: {
+    records: [] as TransactionRecord[],
+    meta: {
+      sheetId: "sheet-a",
+      capturedAt: "2026-08-15T10:00:00.000Z",
+      sourceLastRow: 1,
+      rowCount: 0,
+    } as { capturedAt: string; rowCount: number; sheetId: string; sourceLastRow: number } | null,
+    error: null as Error | null,
+    hasCompleteCache: true,
+    isLoading: false,
+    isRefreshing: false,
+    isDownloading: false,
+    isOnline: true,
+    hasLocalSnapshot: true,
+    remoteStatus: "success" as const,
+    remoteFetchedAt: undefined as number | undefined,
+    remoteError: null as Error | null,
+    refresh: vi.fn(),
+  },
+  baseAmountStates: {} as Record<string, TransactionBaseAmountState>,
+  rateRefetch: vi.fn(),
+}));
+
+vi.mock("./useTransactionBaseAmounts", () => ({
+  useTransactionBaseAmounts: vi.fn(() => ({
+    states: mocks.baseAmountStates,
+    refetch: mocks.rateRefetch,
+    isRefreshing: false,
+  })),
+}));
+
+function transaction(
+  id: string,
+  overrides: Partial<TransactionRecord> = {},
+): TransactionRecord {
+  return {
+    id,
+    type: "expense",
+    amount: 10,
+    currency: "THB",
+    account: "Wallet",
+    for: "Me",
+    category: `Category ${id}`,
+    date: "2026-08-15T08:00:00.000Z",
+    status: "synced",
+    createdAt: "2026-08-15T08:00:00.000Z",
+    updatedAt: "2026-08-15T08:00:00.000Z",
+    sheetId: "sheet-a",
+    sheetRow: 2,
+    sheetRowValid: true,
+    ...overrides,
+  };
+}
+
+function TransactionHistoryViewHarness({
+  baseCurrency,
+  onEditTransaction,
+}: {
+  open: boolean;
+  baseCurrency: string;
+  onOpenChange: (open: boolean) => void;
+  onEditTransaction: (transaction: TransactionRecord) => void;
+}) {
+  return (
+    <TransactionHistoryView
+      history={mocks.history as TransactionHistoryQueryResult}
+      baseCurrency={baseCurrency}
+      carouselControls={<div data-testid="carousel-controls" />}
+      onEditTransaction={onEditTransaction}
+    />
+  );
+}
+
+beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+    function mockOffsetHeight(this: HTMLElement) {
+      return this.dataset.virtualScroll === "true" ? 560 : 64;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(390);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function mockClientHeight(this: HTMLElement) {
+      return this.dataset.virtualScroll === "true" ? 560 : 64;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function mockScrollHeight(this: HTMLElement) {
+      return this.dataset.virtualScroll === "true" ? 10_000 : 64;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function mockElementRect(this: HTMLElement) {
+      const height = this.dataset.virtualScroll === "true" ? 560 : 64;
+      return {
+        bottom: height,
+        height,
+        left: 0,
+        right: 390,
+        top: 0,
+        width: 390,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    },
+  );
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    value: vi.fn(function mockScrollTo(
+      this: HTMLElement,
+      options: ScrollToOptions | number,
+      y?: number,
+    ) {
+      this.scrollTop =
+        typeof options === "number" ? (y ?? 0) : (options.top ?? 0);
+    }),
+  });
+  mocks.history.records = [];
+  mocks.history.meta = {
+    sheetId: "sheet-a",
+    capturedAt: "2026-08-15T10:00:00.000Z",
+    sourceLastRow: 1,
+    rowCount: 0,
+  };
+  mocks.history.error = null;
+  mocks.history.hasCompleteCache = true;
+  mocks.history.isLoading = false;
+  mocks.history.isRefreshing = false;
+  mocks.history.isDownloading = false;
+  mocks.history.isOnline = true;
+  mocks.history.hasLocalSnapshot = true;
+  mocks.history.remoteStatus = "success";
+  mocks.history.remoteFetchedAt = undefined;
+  mocks.history.remoteError = null;
+  mocks.history.refresh.mockReset();
+  mocks.baseAmountStates = {};
+  mocks.rateRefetch.mockReset();
+  vi.mocked(useTransactionBaseAmounts).mockClear();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (originalScrollTo) {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      "scrollTo",
+      originalScrollTo,
+    );
+  } else {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
+  }
+});
+
+describe("TransactionHistoryView", () => {
+  it("renders the full history surface without modal controls", () => {
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Transactions" }),
+    ).toBeVisible();
+    expect(screen.getByTestId("carousel-controls")).toBeVisible();
+    expect(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Close transaction history" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("virtualizes hundreds of rows while full search can reveal an older transaction", async () => {
+    mocks.history.records = Array.from({ length: 500 }, (_, index) =>
+      transaction(`row-${index}`, {
+        category: index === 499 ? "Ancient travel" : `Category ${index}`,
+        sheetRow: index + 2,
+      }),
+    );
+    mocks.history.meta = {
+      sheetId: "sheet-a",
+      capturedAt: "2026-08-15T10:00:00.000Z",
+      sourceLastRow: 501,
+      rowCount: 500,
+    };
+    const user = userEvent.setup();
+
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("history-transaction-row").length,
+      ).toBeLessThan(50);
+    });
+    expect(screen.queryByText("Ancient travel")).not.toBeInTheDocument();
+
+    await user.type(
+      screen.getByRole("searchbox", {
+        name: "Search transaction history",
+      }),
+      "ancient",
+    );
+
+    expect(await screen.findByText("Ancient travel")).toBeInTheDocument();
+    expect(screen.getByText("1 transaction")).toBeInTheDocument();
+  });
+
+  it("preserves the exact scroll offset when a newer row is prepended", async () => {
+    const originalRecords = Array.from({ length: 100 }, (_, index) =>
+      transaction(`row-${index}`, { sheetRow: index + 2 }),
+    );
+    mocks.history.records = originalRecords;
+    const rendered = render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+    const scrollElement = screen.getByRole("region", {
+      name: "Transaction history",
+    });
+    expect(scrollElement).toHaveStyle({
+      paddingBottom:
+        "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
+      scrollPaddingBottom:
+        "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
+    });
+    const initialScrollTop = 64 * 20 + 17;
+    scrollElement.scrollTop = initialScrollTop;
+    fireEvent.scroll(scrollElement);
+    const scrollToMock = vi.mocked(HTMLElement.prototype.scrollTo);
+    scrollToMock.mockClear();
+
+    mocks.history.records = [
+      transaction("newest", { sheetRow: 102 }),
+      ...originalRecords,
+    ];
+    rendered.rerender(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(scrollToMock).toHaveBeenCalledWith(
+        expect.objectContaining({ top: initialScrollTop + 64 }),
+      );
+    });
+  });
+
+  it("labels local status, prevents legacy edits, and selects editable rows", async () => {
+    const pending = transaction("pending", { status: "pending" });
+    const failed = transaction("failed", {
+      status: "error",
+      error: "Network unavailable",
+    });
+    const failedWithoutReason = transaction("failed-without-reason", {
+      status: "error",
+    });
+    const legacy = transaction("row-8", {
+      category: "Legacy row",
+      sheetRowValid: false,
+    });
+    const pendingLegacy = transaction("row-9", {
+      category: "Pending legacy row",
+      status: "pending",
+      sheetRowValid: false,
+    });
+    mocks.history.records = [
+      pending,
+      failed,
+      failedWithoutReason,
+      legacy,
+      pendingLegacy,
+    ];
+    const onOpenChange = vi.fn();
+    const onEditTransaction = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={onOpenChange}
+        onEditTransaction={onEditTransaction}
+      />,
+    );
+
+    expect(await screen.findByText("Pending")).toBeInTheDocument();
+    expect(screen.getByText("Network unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Sync failed")).toBeInTheDocument();
+    expect(screen.getAllByText("Read only")).toHaveLength(2);
+    expect(screen.getByText("Network unavailable").closest("button")).toBeEnabled();
+    expect(screen.getByText("Legacy row").closest("button")).toBeDisabled();
+    expect(
+      screen.getByText("Pending legacy row").closest("button"),
+    ).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /Category pending/i }));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onEditTransaction).toHaveBeenCalledWith(pending);
+  });
+
+  it("explains when offline history has never been downloaded", () => {
+    mocks.history.records = [];
+    mocks.history.meta = null;
+    mocks.history.hasCompleteCache = false;
+    mocks.history.isOnline = false;
+
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText("Connect once to download transaction history."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a pending local row while offline history is incomplete", async () => {
+    mocks.history.records = [
+      transaction("offline-pending", { status: "pending" }),
+    ];
+    mocks.history.meta = null;
+    mocks.history.hasCompleteCache = false;
+    mocks.history.isOnline = false;
+
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Category offline-pending")).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Showing local entries. Connect to download full history.",
+    );
+  });
+
+  it("keeps a pending local row visible during the initial history download", async () => {
+    mocks.history.records = [
+      transaction("downloading-pending", { status: "pending" }),
+    ];
+    mocks.history.meta = null;
+    mocks.history.hasCompleteCache = false;
+    mocks.history.isDownloading = true;
+
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText("Category downloading-pending"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Showing local entries while full history downloads.",
+    );
+  });
+
+  it("keeps cached rows visible with a retry when refresh fails", async () => {
+    mocks.history.records = [transaction("cached")];
+    mocks.history.error = new Error("Google unavailable");
+    const user = userEvent.setup();
+
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Category cached")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Google unavailable");
+    await user.click(screen.getByRole("button", { name: "Retry history refresh" }));
+    await waitFor(() => expect(mocks.history.refresh).toHaveBeenCalled());
+  });
+
+  it("converts the complete record set independently of search and refreshes rates", async () => {
+    const foreign = transaction("foreign", {
+      amount: 3,
+      currency: "USD",
+      category: "Foreign coffee",
+    });
+    const local = transaction("local", { category: "Local lunch" });
+    mocks.history.records = [foreign, local];
+    mocks.baseAmountStates = {
+      foreign: { status: "ready", currency: "THB", amount: 100 },
+    };
+    const user = userEvent.setup();
+
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("≈ −฿100.00")).toBeInTheDocument();
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+      "foreign",
+    );
+    expect(await screen.findByText("1 transaction")).toBeInTheDocument();
+    expect(useTransactionBaseAmounts).toHaveBeenLastCalledWith(
+      mocks.history.records,
+      "THB",
+      true,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Refresh transaction history" }),
+    );
+    expect(mocks.history.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.rateRefetch).toHaveBeenCalledTimes(1);
+  });
+});
