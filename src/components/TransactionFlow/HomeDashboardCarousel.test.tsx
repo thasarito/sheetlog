@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
+import type { DashboardHeaderMotionHandle } from '../Header';
 import type { AnalyticsViewProps } from './AnalyticsView';
 import { HomeDashboardCarousel } from './HomeDashboardCarousel';
 import type { TransactionHistoryViewProps } from './TransactionHistoryView';
@@ -116,7 +117,10 @@ vi.mock('./TransactionHistoryView', () => ({
   TransactionHistoryView: (props: TransactionHistoryViewProps) => {
     transactionViewCalls.push(props);
     return (
-      <section>
+      <section
+        data-testid="transaction-history-scroll"
+        data-dashboard-scroll="true"
+      >
         <span>Full Transactions view</span>
         <button
           type="button"
@@ -186,6 +190,10 @@ function renderCarousel({
   status?: AnalyticsSyncController['status'];
 } = {}) {
   const onEditTransaction = vi.fn();
+  const headerMotion: DashboardHeaderMotionHandle = {
+    setHorizontalMotion: vi.fn(),
+    setVerticalProgress: vi.fn(),
+  };
   const analyticsSync: AnalyticsSyncController = {
     history: {
       records: historyData,
@@ -215,6 +223,7 @@ function renderCarousel({
       baseCurrency="THB"
       bigSpendingThreshold={bigSpendingThreshold}
       analyticsSync={analyticsSync}
+      headerMotionRef={{ current: headerMotion }}
       onToast={onToast}
       onEditTransaction={onEditTransaction}
     />,
@@ -231,7 +240,7 @@ function renderCarousel({
       fireEvent.scroll(viewport);
     },
   });
-  return { analyticsSync, onEditTransaction, viewport };
+  return { analyticsSync, headerMotion, onEditTransaction, viewport };
 }
 
 async function openTransactions() {
@@ -316,6 +325,25 @@ describe('HomeDashboardCarousel', () => {
       expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true'),
     );
     expect(resync).not.toHaveBeenCalled();
+  });
+
+  it('collapses the header over 68px regardless of virtual content height', async () => {
+    const { headerMotion } = renderCarousel();
+    await openTransactions();
+    const scroll = screen.getByTestId('transaction-history-scroll');
+    Object.defineProperties(scroll, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 6_800 },
+      scrollTop: { configurable: true, value: 34, writable: true },
+    });
+    vi.mocked(headerMotion.setVerticalProgress).mockClear();
+
+    fireEvent.scroll(scroll);
+    expect(headerMotion.setVerticalProgress).toHaveBeenLastCalledWith(0.5);
+
+    scroll.scrollTop = 68;
+    fireEvent.scroll(scroll);
+    expect(headerMotion.setVerticalProgress).toHaveBeenLastCalledWith(1);
   });
 
   it('removes dot controls while keeping viewport keyboard navigation', async () => {

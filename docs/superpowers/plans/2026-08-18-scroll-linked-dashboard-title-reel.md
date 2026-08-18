@@ -4,7 +4,7 @@
 
 **Goal:** Replace the Sheetlog/profile area with a passive, theme-aware Analytics/Transactions title reel that follows a looping Embla content gesture in real time and hides with the active slide's vertical scroll.
 
-**Architecture:** Keep the content viewport as the sole keyboard and pointer gesture surface. Use Embla for bidirectional looping, infer the signed motion direction from the initiating pointer or keyboard action, and publish horizontal/vertical motion through an imperative header handle so animation frames do not rerender `TransactionFlow`. The header renders five temporary alternating labels, measures each current word width, and positions them with one shared responsive gap.
+**Architecture:** Keep the content viewport as the sole keyboard and pointer gesture surface. Use Embla for bidirectional looping, infer the signed motion direction from the initiating pointer or keyboard action, and publish horizontal/vertical motion through an imperative header handle so animation frames do not rerender `TransactionFlow`. The header renders five temporary alternating labels, measures each current word width, and positions them with one shared responsive gap. Collapse the header over the first 68px of active content scroll so normal and virtualized lists behave consistently regardless of total height.
 
 **Tech Stack:** React 18, TypeScript, Embla Carousel React 8.6, Tailwind CSS, Vitest/Testing Library, Playwright.
 
@@ -47,7 +47,7 @@
 - [x] Add exact `embla-carousel-react@8.6.0`, matching the approved prototype.
 - [x] Configure a two-slide `loop: true` Embla viewport, preserve nested period-gesture ownership, click suppression, keyboard focus, inert slides, and the live announcement.
 - [x] Infer forward/backward direction from pointer delta (updating if the drag reverses), retain it through momentum/settle, and measure progress from the settled origin slide geometry.
-- [x] Mark the two vertical content scrollers, normalize their scroll progress by `scrollHeight - clientHeight`, and apply only the settled slide's value to the header.
+- [x] Mark the two vertical content scrollers, normalize their first 68px of scroll into header progress, and apply only the settled slide's value to the header.
 - [x] Remove the duplicate visible content headings while retaining semantic descriptions and reserve overlay space inside each slide.
 - [x] Run focused unit/view tests to GREEN.
 

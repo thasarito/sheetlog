@@ -944,9 +944,7 @@ test.describe("Home Transactions and Analytics carousel", () => {
       scrollHeight: element.scrollHeight,
       scrollTop: element.scrollTop,
     }));
-    const expectedHeaderProgress =
-      historyScroll.scrollTop /
-      (historyScroll.scrollHeight - historyScroll.clientHeight);
+    const expectedHeaderProgress = Math.min(1, historyScroll.scrollTop / 68);
     await expect
       .poll(() =>
         dashboardHeader.evaluate((element) =>

@@ -38,6 +38,7 @@ type EmblaCarouselOptions = NonNullable<
 >;
 
 const SLIDES = ["Analytics", "Transactions"] as const;
+const HEADER_COLLAPSE_DISTANCE = 68;
 const EMBLA_FOCUS_NODE_NAMES = new Set(["INPUT", "SELECT", "TEXTAREA"]);
 
 function prefersReducedMotion(): boolean {
@@ -88,10 +89,11 @@ function clampSignedProgress(value: number): number {
   return Math.min(1, Math.max(-1, value));
 }
 
-function normalizedScrollProgress(element: HTMLElement): number {
-  const maximum = Math.max(0, element.scrollHeight - element.clientHeight);
-  if (maximum === 0) return 0;
-  return Math.min(1, Math.max(0, element.scrollTop / maximum));
+function headerCollapseProgress(element: HTMLElement): number {
+  return Math.min(
+    1,
+    Math.max(0, element.scrollTop / HEADER_COLLAPSE_DISTANCE),
+  );
 }
 
 export function HomeDashboardCarousel({
@@ -431,7 +433,7 @@ export function HomeDashboardCarousel({
     );
     const index = Number(slide?.dataset.homeCarouselSlideIndex);
     if (!Number.isInteger(index) || index < 0 || index >= SLIDES.length) return;
-    const progress = normalizedScrollProgress(target);
+    const progress = headerCollapseProgress(target);
     verticalProgressRef.current[index] = progress;
     if (index === activeIndexRef.current) {
       headerMotionRef?.current?.setVerticalProgress(progress);
