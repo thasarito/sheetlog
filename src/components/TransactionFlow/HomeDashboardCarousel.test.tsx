@@ -152,13 +152,13 @@ function renderCarousel({
   return { analyticsSync, onEditTransaction, viewport };
 }
 
-async function openAnalytics() {
+async function openTransactions() {
   fireEvent.keyDown(screen.getByTestId('home-carousel-viewport'), {
     key: 'ArrowRight',
   });
   await waitFor(() =>
     expect(
-      screen.getByLabelText('Analytics, slide 2 of 2'),
+      screen.getByLabelText('Transactions, slide 2 of 2'),
     ).not.toHaveAttribute('aria-hidden', 'true'),
   );
 }
@@ -184,20 +184,20 @@ describe('HomeDashboardCarousel', () => {
     expect(transactionViewCalls.at(-1)?.history).toBe(analyticsSync.history);
   });
 
-  it('starts on Transactions and keeps full review controls active while switching', async () => {
+  it('starts on Analytics and keeps full review controls active while switching', async () => {
     const { viewport } = renderCarousel();
-    const transactionSlide = screen.getByLabelText('Transactions, slide 1 of 2');
-    const analyticsSlide = screen.getByLabelText('Analytics, slide 2 of 2');
+    const analyticsSlide = screen.getByLabelText('Analytics, slide 1 of 2');
+    const transactionSlide = screen.getByLabelText('Transactions, slide 2 of 2');
 
-    expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true');
-    expect(analyticsSlide).toHaveAttribute('aria-hidden', 'true');
-    await waitFor(() => expect(analyticsSlide.inert).toBe(true));
-    await openAnalytics();
     expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true');
     expect(transactionSlide).toHaveAttribute('aria-hidden', 'true');
+    await waitFor(() => expect(transactionSlide.inert).toBe(true));
+    await openTransactions();
+    expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true');
+    expect(analyticsSlide).toHaveAttribute('aria-hidden', 'true');
     fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
     await waitFor(() =>
-      expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true'),
+      expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true'),
     );
     expect(resync).not.toHaveBeenCalled();
   });
@@ -205,8 +205,8 @@ describe('HomeDashboardCarousel', () => {
   it('removes dot controls while keeping viewport keyboard navigation', async () => {
     const { viewport } = renderCarousel();
     const user = userEvent.setup();
-    const transactionSlide = screen.getByLabelText('Transactions, slide 1 of 2');
-    const analyticsSlide = screen.getByLabelText('Analytics, slide 2 of 2');
+    const analyticsSlide = screen.getByLabelText('Analytics, slide 1 of 2');
+    const transactionSlide = screen.getByLabelText('Transactions, slide 2 of 2');
 
     expect(viewport).toHaveAttribute('tabindex', '0');
     viewport.focus();
@@ -220,15 +220,15 @@ describe('HomeDashboardCarousel', () => {
 
     await user.keyboard('{ArrowRight}');
     await waitFor(() => {
-      expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true');
-      expect(transactionSlide).toHaveAttribute('aria-hidden', 'true');
+      expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true');
+      expect(analyticsSlide).toHaveAttribute('aria-hidden', 'true');
     });
     expect(viewport).toHaveFocus();
 
     await user.keyboard('{ArrowLeft}');
     await waitFor(() => {
-      expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true');
-      expect(analyticsSlide).toHaveAttribute('aria-hidden', 'true');
+      expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true');
+      expect(transactionSlide).toHaveAttribute('aria-hidden', 'true');
     });
     expect(viewport).toHaveFocus();
   });
@@ -236,27 +236,6 @@ describe('HomeDashboardCarousel', () => {
   it('snaps on touch swipes while leaving nested controls and mouse drags alone', async () => {
     const { viewport } = renderCarousel();
     expect(viewport.className).toContain('[touch-action:pan-y]');
-
-    fireEvent.pointerDown(viewport, {
-      pointerType: 'touch',
-      clientX: 260,
-      clientY: 90,
-    });
-    fireEvent.pointerMove(viewport, {
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 94,
-    });
-    fireEvent.pointerUp(viewport, {
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 94,
-    });
-    await waitFor(() =>
-      expect(
-        screen.getByLabelText('Analytics, slide 2 of 2'),
-      ).not.toHaveAttribute('aria-hidden', 'true'),
-    );
 
     const nestedTarget = screen.getByRole('button', {
       name: 'Nested period swipe target',
@@ -277,13 +256,48 @@ describe('HomeDashboardCarousel', () => {
       clientY: 94,
     });
     expect(
-      screen.getByLabelText('Analytics, slide 2 of 2'),
+      screen.getByLabelText('Analytics, slide 1 of 2'),
     ).not.toHaveAttribute('aria-hidden', 'true');
 
-    fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
+    fireEvent.pointerDown(viewport, {
+      pointerType: 'touch',
+      clientX: 260,
+      clientY: 90,
+    });
+    fireEvent.pointerMove(viewport, {
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 94,
+    });
+    fireEvent.pointerUp(viewport, {
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 94,
+    });
     await waitFor(() =>
       expect(
-        screen.getByLabelText('Transactions, slide 1 of 2'),
+        screen.getByLabelText('Transactions, slide 2 of 2'),
+      ).not.toHaveAttribute('aria-hidden', 'true'),
+    );
+
+    fireEvent.pointerDown(viewport, {
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 90,
+    });
+    fireEvent.pointerMove(viewport, {
+      pointerType: 'touch',
+      clientX: 260,
+      clientY: 94,
+    });
+    fireEvent.pointerUp(viewport, {
+      pointerType: 'touch',
+      clientX: 260,
+      clientY: 94,
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Analytics, slide 1 of 2'),
       ).not.toHaveAttribute('aria-hidden', 'true'),
     );
     fireEvent.pointerDown(viewport, {
@@ -302,12 +316,13 @@ describe('HomeDashboardCarousel', () => {
       clientY: 94,
     });
     expect(
-      screen.getByLabelText('Transactions, slide 1 of 2'),
+      screen.getByLabelText('Analytics, slide 1 of 2'),
     ).not.toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('suppresses a transaction action after a committed horizontal drag', () => {
+  it('suppresses a transaction action after a committed horizontal drag', async () => {
     const { onEditTransaction, viewport } = renderCarousel();
+    await openTransactions();
     const trigger = screen.getByRole('button', { name: 'Select transaction row' });
 
     fireEvent.pointerDown(trigger, {
@@ -333,7 +348,6 @@ describe('HomeDashboardCarousel', () => {
   it('builds month, quarter, year, custom, and shared period state', async () => {
     const user = userEvent.setup();
     renderCarousel();
-    await openAnalytics();
 
     expect(analyticsViewCalls.at(-1)?.periodOptions.length).toBeGreaterThan(1);
     await user.click(screen.getByRole('button', { name: 'Test previous period' }));
@@ -430,7 +444,6 @@ describe('HomeDashboardCarousel', () => {
       },
     ];
     renderCarousel({ bigSpendingThreshold: 10_000 });
-    await openAnalytics();
 
     expect(analyticsViewCalls.at(-1)?.summary?.expenseTotal).toBe(10_100);
     await user.click(screen.getByRole('button', { name: 'Toggle no big spending' }));
@@ -447,7 +460,6 @@ describe('HomeDashboardCarousel', () => {
   it('directs an unconfigured no-big-spending press to Settings', async () => {
     const onToast = vi.fn();
     renderCarousel({ onToast });
-    await openAnalytics();
 
     await userEvent
       .setup()
@@ -463,10 +475,10 @@ describe('HomeDashboardCarousel', () => {
     const user = userEvent.setup();
     const { onEditTransaction } = renderCarousel();
 
-    await user.click(screen.getByRole('button', { name: 'Select transaction row' }));
-    expect(onEditTransaction).toHaveBeenLastCalledWith(historyRecords[0]);
-    await openAnalytics();
     await user.click(screen.getByRole('button', { name: 'Select analytics row' }));
+    expect(onEditTransaction).toHaveBeenLastCalledWith(historyRecords[0]);
+    await openTransactions();
+    await user.click(screen.getByRole('button', { name: 'Select transaction row' }));
     expect(onEditTransaction).toHaveBeenCalledTimes(2);
   });
 

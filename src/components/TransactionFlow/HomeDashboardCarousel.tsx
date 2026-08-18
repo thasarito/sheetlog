@@ -25,7 +25,7 @@ type HomeDashboardCarouselProps = {
   onEditTransaction: (transaction: TransactionRecord) => void;
 };
 
-const SLIDES = ["Transactions", "Analytics"] as const;
+const SLIDES = ["Analytics", "Transactions"] as const;
 
 function prefersReducedMotion(): boolean {
   return (
@@ -297,22 +297,8 @@ export function HomeDashboardCarousel({
             ref={(node) => {
               slideRefs.current[0] = node;
             }}
-            aria-label="Transactions, slide 1 of 2"
+            aria-label="Analytics, slide 1 of 2"
             aria-hidden={activeIndex !== 0}
-            className="h-full min-w-full snap-center snap-always"
-          >
-            <TransactionHistoryView
-              history={analyticsSync.history}
-              baseCurrency={baseCurrency}
-              onEditTransaction={onEditTransaction}
-            />
-          </section>
-          <section
-            ref={(node) => {
-              slideRefs.current[1] = node;
-            }}
-            aria-label="Analytics, slide 2 of 2"
-            aria-hidden={activeIndex !== 1}
             className="h-full min-w-full snap-center snap-always"
           >
             <AnalyticsView
@@ -337,6 +323,20 @@ export function HomeDashboardCarousel({
               onRetry={analyticsSync.resync}
               onSelectTransaction={onEditTransaction}
               now={analyticsNow}
+            />
+          </section>
+          <section
+            ref={(node) => {
+              slideRefs.current[1] = node;
+            }}
+            aria-label="Transactions, slide 2 of 2"
+            aria-hidden={activeIndex !== 1}
+            className="h-full min-w-full snap-center snap-always"
+          >
+            <TransactionHistoryView
+              history={analyticsSync.history}
+              baseCurrency={baseCurrency}
+              onEditTransaction={onEditTransaction}
             />
           </section>
         </div>
