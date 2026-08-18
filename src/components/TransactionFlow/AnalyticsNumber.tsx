@@ -35,9 +35,8 @@ export function AnalyticsNumber(props: AnalyticsNumberProps) {
 
   return (
     <span className={cn('inline-flex tabular-nums', className)} data-testid="analytics-number">
-      <span className="sr-only">{settledText}</span>
       <NumberFlow
-        aria-hidden="true"
+        aria-label={settledText}
         value={presentation === 'currency' ? Math.abs(value) : percentageValue}
         prefix={prefix}
         suffix={presentation === 'percentage' ? '%' : undefined}
