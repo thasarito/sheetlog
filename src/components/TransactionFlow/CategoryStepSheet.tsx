@@ -13,6 +13,7 @@ const MIN_LAUNCHER_HEIGHT = 44;
 
 type CategoryStepSheetProps = {
   children: React.ReactNode;
+  collapsedControls?: React.ReactNode;
   entry: React.ReactNode;
 };
 
@@ -22,6 +23,7 @@ function positiveHeight(value: number, fallback: number): number {
 
 export function CategoryStepSheet({
   children,
+  collapsedControls,
   entry,
 }: CategoryStepSheetProps) {
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -166,18 +168,22 @@ export function CategoryStepSheet({
                     : "Collapse transaction entry"
                 }
                 onClick={() => setCollapsed((value) => !value)}
-                className="flex min-h-16 w-full flex-col items-center justify-center gap-1 px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
+                className={`flex ${collapsed ? "min-h-11" : "min-h-16"} w-full items-center justify-center px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40`}
               >
                 <span
                   className="h-1.5 w-12 rounded-full bg-border"
                   aria-hidden="true"
                 />
-                {collapsed ? (
-                  <span className="text-sm font-semibold text-foreground">
-                    Log transaction
-                  </span>
-                ) : null}
               </button>
+              {collapsed && collapsedControls ? (
+                <div
+                  data-testid="category-step-collapsed-controls"
+                  data-vaul-no-drag
+                  className="px-4 pb-3"
+                >
+                  {collapsedControls}
+                </div>
+              ) : null}
             </div>
             <div
               ref={entryRef}
