@@ -38,7 +38,7 @@ export function AnalyticsNumber(props: AnalyticsNumberProps) {
   useLayoutEffect(() => {
     const flow = flowRef.current;
     if (flow?.childNodes.length) flow.replaceChildren();
-  }, [settledText]);
+  });
 
   return (
     <span className={cn('inline-flex tabular-nums', className)} data-testid="analytics-number">
