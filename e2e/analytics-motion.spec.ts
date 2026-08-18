@@ -80,6 +80,19 @@ test.describe('Analytics motion and chart swipe', () => {
     await page.addInitScript((rows: TransactionRecord[]) => {
       window.localStorage.setItem('sheetlog.mock.transactions', JSON.stringify(rows));
     }, transactions);
+    await page.route('https://api.frankfurter.dev/v2/rates**', async (route) => {
+      const rows = Array.from({ length: 30 }, (_, index) => ({
+        date: format(subDays(new Date(), index), 'yyyy-MM-dd'),
+        base: 'THB',
+        quote: 'USD',
+        rate: 0.03,
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(rows),
+      });
+    });
     await page.goto('/app');
     await expect(page.getByRole('region', { name: 'Home activity' })).toBeVisible();
     await page.getByRole('button', { name: 'Collapse transaction entry' }).click();
