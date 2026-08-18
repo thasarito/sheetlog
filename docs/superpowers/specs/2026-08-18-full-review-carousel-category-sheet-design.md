@@ -25,9 +25,10 @@ On step zero, `TransactionFlow` uses a two-row grid:
 The compact slides open separate near-full-height `TransactionHistoryDrawer` and
 `AnalyticsDrawer` detail sheets through `View all`. The transaction detail sheet owns complete
 history search and refresh. The analytics detail sheet owns the full chart, overview, category,
-filter, and transaction experience. `HomeDashboardCarousel` already owns the complete-history and
-historical-rate query state needed by Analytics, while `TopDashboard` uses the recent transaction
-path.
+filter, and transaction experience. `TransactionFlow` owns the always-on `useAnalyticsSync`
+controller introduced on `main`; that controller already owns complete history, cached historical
+rates, and background refresh state. `HomeDashboardCarousel` consumes it for Analytics, while
+`TopDashboard` still uses the recent transaction path.
 
 `StepCategory` owns the Expense/Income/Transfer carousel, category grid, quick-note gestures, and
 the date drawer used after a category choice. The Amount and Receipt steps replace the complete
@@ -187,14 +188,16 @@ TanStack Query caches remain available, so remounting does not discard downloade
 - Continues to own create, edit, reimbursement, Amount, and Receipt state.
 - Mounts the layered review carousel and category sheet only when `step === 0`.
 - Supplies the existing category-confirm and transaction-edit callbacks.
-- Does not take ownership of review queries or analytics filters.
+- Continues to create the app-level `useAnalyticsSync` controller and passes it to the review
+  carousel and Settings.
+- Does not take ownership of review presentation or analytics filters.
 
 ### `HomeDashboardCarousel`
 
 - Owns active-slide state, native horizontal scrolling, indicators, keyboard navigation, inert
   slides, and slide announcements.
-- Owns the single complete-history query and the existing analytics range, period, custom-range,
-  no-big-spending, and rate state.
+- Consumes the single `AnalyticsSyncController` and owns the existing analytics range, period,
+  custom-range, and no-big-spending presentation state.
 - Renders `TransactionHistoryView` and `AnalyticsView` directly rather than compact slides.
 - Keeps both views mounted until step zero unmounts.
 
@@ -233,18 +236,23 @@ flow simply stops rendering them.
 
 ## Data and Query Behavior
 
-The carousel enables the existing `useTransactionHistoryQuery` immediately when step zero mounts.
-The full Transactions slide renders complete cached/local history at once and refreshes remote
-Sheet history in the background. This intentionally replaces the compact slide's recent-only query;
-a full history surface cannot truthfully rely on the latest 50 rows.
+The existing app-level `useAnalyticsSync` controller continues to enable
+`useTransactionHistoryQuery(true)` immediately. Extend the controller with a `history` view-state
+object containing the current history metadata, error, cache completeness, loading/refresh states,
+online state, and refresh callback. The full Transactions slide consumes that object and the
+controller's records rather than starting a second history hook. It renders complete cached/local
+history at once while the controller refreshes remote Sheet history in the background. This
+intentionally replaces the compact slide's recent-only query; a full history surface cannot
+truthfully rely on the latest 50 rows.
 
 The same merged, deduplicated history result feeds Transactions and Analytics. No second remote
 history fetch or non-query data path is added. Existing query keys, cache persistence, mutation
 invalidation, local pending/error rows, and base-amount conversion remain authoritative.
 
-Historical exchange-rate queries remain lazy until Analytics is first activated, then stay enabled
-for the remainder of that step-zero mount. Analytics derivation continues to use the existing pure
-aggregation functions and memoized rate/history inputs.
+The merged background analytics synchronization on `main` remains always-on. It fills historical
+rates independently of the selected slide, and both full review surfaces consume its cached data.
+Analytics derivation continues to use the existing pure aggregation functions and memoized
+rate/history inputs. This feature does not restore the older range-driven rate-fetch path.
 
 No transaction mutation, Google Sheet schema, analytics formula, or sync behavior changes.
 
@@ -292,7 +300,8 @@ the extracted surfaces.
 - Assert step zero directly renders complete Transactions and Analytics views without `View all`
   actions or outer detail dialogs.
 - Assert complete history is enabled on initial display and shared by both slides.
-- Assert historical rates remain disabled until Analytics is first activated.
+- Assert the carousel consumes the existing always-on analytics controller without starting a
+  second history or range-driven rate query.
 - Preserve transaction search, refresh, count, cache, partial-history, empty, loading, error,
   offline, virtualization, base-amount, and edit-selection tests after extraction.
 - Preserve analytics range, period, custom range, chart bucket, category, no-big-spending,
