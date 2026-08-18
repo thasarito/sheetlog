@@ -261,6 +261,37 @@ describe("TransactionHistoryView", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("clears transaction search through a 44px trailing control and restores focus", async () => {
+    mocks.history.records = [transaction("lunch", { note: "Lunch" })];
+    const user = userEvent.setup();
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    const search = screen.getByRole("searchbox", {
+      name: "Search transaction history",
+    });
+    expect(
+      screen.queryByRole("button", { name: "Clear transaction search" }),
+    ).not.toBeInTheDocument();
+    await user.type(search, "lunch");
+
+    const clear = screen.getByRole("button", {
+      name: "Clear transaction search",
+    });
+    expect(clear).toHaveClass("absolute", "size-11");
+    await user.click(clear);
+
+    expect(search).toHaveValue("");
+    expect(clear).not.toBeInTheDocument();
+    await waitFor(() => expect(search).toHaveFocus());
+  });
+
   it("portals one measured dock and reserves its sheet occlusion", async () => {
     mocks.history.records = [transaction("recent")];
     const reportHeight = vi.fn();
