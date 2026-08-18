@@ -121,7 +121,12 @@ function SheetAccessoryHarness({
 
   return (
     <CategoryStepSheetAccessoryProvider
-      value={{ provided: true, host, reportHeight }}
+      value={{
+        provided: true,
+        host,
+        reportHeight,
+        requestExpanded: vi.fn(),
+      }}
     >
       <div ref={setHost} data-testid="test-sheet-accessory-host" />
       <TransactionHistoryView {...viewProps} />

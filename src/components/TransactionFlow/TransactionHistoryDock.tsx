@@ -140,6 +140,7 @@ export function TransactionHistoryDock({
           type="search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
+          onFocus={accessory.requestExpanded}
           placeholder="Search category, note, or account"
           aria-label="Search transaction history"
           className={cn(
