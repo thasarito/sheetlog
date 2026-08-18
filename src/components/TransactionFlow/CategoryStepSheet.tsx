@@ -7,7 +7,7 @@ import {
   DrawerTitle,
 } from "../ui/drawer";
 
-const DEFAULT_LAUNCHER_HEIGHT = 64;
+const DEFAULT_LAUNCHER_HEIGHT = 44;
 const DEFAULT_EXPANDED_HEIGHT = 520;
 const MIN_LAUNCHER_HEIGHT = 44;
 
@@ -28,6 +28,8 @@ export function CategoryStepSheet({
 }: CategoryStepSheetProps) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
+  const launcherButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreLauncherFocusRef = useRef(false);
   const [launcherElement, setLauncherElement] =
     useState<HTMLDivElement | null>(null);
   const [safeAreaElement, setSafeAreaElement] =
@@ -109,6 +111,12 @@ export function CategoryStepSheet({
     if (entryElement) entryElement.inert = collapsed;
   }, [collapsed, entryElement]);
 
+  useLayoutEffect(() => {
+    if (collapsed || !restoreLauncherFocusRef.current) return;
+    restoreLauncherFocusRef.current = false;
+    launcherButtonRef.current?.focus({ preventScroll: true });
+  }, [collapsed]);
+
   return (
     <div
       ref={layoutRef}
@@ -137,6 +145,12 @@ export function CategoryStepSheet({
       >
         <DrawerContent
           showHandle={false}
+          onClick={() => {
+            if (collapsed) {
+              restoreLauncherFocusRef.current = true;
+              setCollapsed(false);
+            }
+          }}
           className="overflow-hidden motion-reduce:![transition:none] sm:mx-auto sm:max-w-md"
           style={
             {
@@ -162,6 +176,7 @@ export function CategoryStepSheet({
               className="order-1 shrink-0"
             >
               <button
+                ref={launcherButtonRef}
                 type="button"
                 aria-expanded={!collapsed}
                 aria-label={
@@ -169,11 +184,11 @@ export function CategoryStepSheet({
                     ? "Expand transaction entry"
                     : "Collapse transaction entry"
                 }
-                onClick={() => setCollapsed((value) => !value)}
-                className={`flex ${collapsed ? "min-h-11" : "min-h-16"} w-full items-center justify-center px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40`}
+                onClick={() => setCollapsed(!collapsed)}
+                className="flex min-h-11 w-full items-center justify-center px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
               >
                 <span
-                  className="h-1.5 w-12 rounded-full bg-border"
+                  className="h-1 w-8 rounded-full bg-border"
                   aria-hidden="true"
                 />
               </button>
@@ -181,7 +196,7 @@ export function CategoryStepSheet({
                 <div
                   data-testid="category-step-collapsed-controls"
                   data-vaul-no-drag
-                  className="px-4 pb-3"
+                  className="pb-3"
                 >
                   {collapsedControls}
                 </div>

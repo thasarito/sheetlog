@@ -1,8 +1,17 @@
-import { act, render, screen } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CategoryStepSheet } from "./CategoryStepSheet";
+import { StepCategoryTypeTabs } from "./StepCategoryTypeTabs";
+import { useTransactionForm } from "./useTransactionForm";
 
 type DrawerRootProps = {
   open?: boolean;
@@ -57,11 +66,15 @@ function rect(height: number): DOMRect {
   };
 }
 
-function renderSheet() {
+function renderSheet(onCollapsedControlClick?: () => void) {
   return render(
     <CategoryStepSheet
       entry={<div data-testid="entry">Categories</div>}
-      collapsedControls={<button type="button">Expense</button>}
+      collapsedControls={
+        <button type="button" onClick={onCollapsedControlClick}>
+          Expense
+        </button>
+      }
     >
       <button type="button">Interactive review</button>
     </CategoryStepSheet>,
@@ -121,7 +134,7 @@ describe("CategoryStepSheet", () => {
       noBodyStyles: true,
       disablePreventScroll: true,
       activeSnapPoint: "520px",
-      snapPoints: ["64px", "520px"],
+      snapPoints: ["44px", "520px"],
     });
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
       "--category-sheet-occlusion": "520px",
@@ -139,7 +152,7 @@ describe("CategoryStepSheet", () => {
     const collapse = screen.getByRole("button", {
       name: "Collapse transaction entry",
     });
-    expect(collapse).toHaveClass("min-h-16");
+    expect(collapse).toHaveClass("min-h-11");
     await userEvent.setup().click(collapse);
 
     expect(
@@ -151,11 +164,96 @@ describe("CategoryStepSheet", () => {
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Expense" })).toBeVisible();
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
-      "--category-sheet-occlusion": "64px",
+      "--category-sheet-occlusion": "44px",
     });
-    expect(drawerMock.rootProps?.activeSnapPoint).toBe("64px");
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("44px");
     expect(entryRegion).toHaveAttribute("aria-hidden", "true");
     expect(entryRegion?.inert).toBe(true);
+  });
+
+  it("expands from nested controls and unused launcher space while collapsed", async () => {
+    const onCollapsedControlClick = vi.fn();
+    const user = userEvent.setup();
+    renderSheet(onCollapsedControlClick);
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse transaction entry" }),
+    );
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Expense" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(onCollapsedControlClick).toHaveBeenCalledOnce();
+    const collapse = screen.getByRole("button", {
+      name: "Collapse transaction entry",
+    });
+    expect(collapse).toBeVisible();
+    expect(collapse).toHaveFocus();
+
+    await user.click(collapse);
+    await user.click(screen.getByTestId("category-step-launcher"));
+
+    expect(
+      screen.getByRole("button", { name: "Collapse transaction entry" }),
+    ).toBeVisible();
+  });
+
+  it("preserves a collapsed type selection while expanding", async () => {
+    const form = renderHook(() =>
+      useTransactionForm({
+        initialValues: { type: "expense", category: "Food" },
+      }),
+    ).result.current;
+    const user = userEvent.setup();
+    render(
+      <CategoryStepSheet
+        entry={<StepCategoryTypeTabs form={form} layoutId="entryType" />}
+        collapsedControls={
+          <StepCategoryTypeTabs form={form} layoutId="collapsedType" />
+        }
+      >
+        <button type="button">Interactive review</button>
+      </CategoryStepSheet>,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse transaction entry" }),
+    );
+    await user.click(
+      within(screen.getByTestId("category-step-collapsed-controls")).getByRole(
+        "button",
+        { name: "Income" },
+      ),
+    );
+
+    await waitFor(() => expect(form.state.values.type).toBe("income"));
+    expect(form.state.values.category).toBe("");
+    expect(
+      within(screen.getByTestId("category-step-entry")).getByRole("button", {
+        name: "Income",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("uses the same compact handle height in both sheet states", async () => {
+    renderSheet();
+
+    const collapse = screen.getByRole("button", {
+      name: "Collapse transaction entry",
+    });
+    expect(collapse).toHaveClass("min-h-11");
+    expect(collapse).not.toHaveClass("min-h-16");
+
+    await userEvent.setup().click(collapse);
+
+    const expand = screen.getByRole("button", {
+      name: "Expand transaction entry",
+    });
+    expect(expand).toHaveClass("min-h-11");
+    expect(expand.querySelector('[aria-hidden="true"]')).toHaveClass(
+      "h-1",
+      "w-8",
+    );
   });
 
   it("clamps content height and never accepts a null dismiss point", () => {

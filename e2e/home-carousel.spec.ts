@@ -579,6 +579,62 @@ test.describe("Home Transactions and Analytics carousel", () => {
       .toBe("none 0s");
   });
 
+  test("keeps category type tabs identical and expands a collapsed selection", async ({
+    page,
+  }) => {
+    const categorySheet = page.getByRole("dialog", {
+      name: "Transaction entry",
+    });
+    const expandedTypeTabs = page
+      .getByTestId("category-step-entry")
+      .getByTestId("animated-tabs-compact");
+    await waitForCategorySheetSnap(categorySheet);
+    const expandedTypeTabsBox = await expandedTypeTabs.boundingBox();
+    if (!expandedTypeTabsBox) {
+      throw new Error("Expanded transaction type tabs geometry missing");
+    }
+
+    const collapseEntry = page.getByRole("button", {
+      name: "Collapse transaction entry",
+    });
+    await collapseEntry.click();
+    const expandEntry = page.getByRole("button", {
+      name: "Expand transaction entry",
+    });
+    await expect(expandEntry).toBeVisible();
+    await waitForCategorySheetSnap(categorySheet);
+
+    const collapsedControls = page.getByTestId(
+      "category-step-collapsed-controls",
+    );
+    const collapsedTypeTabs = collapsedControls.getByTestId(
+      "animated-tabs-compact",
+    );
+    const collapsedTypeTabsBox = await collapsedTypeTabs.boundingBox();
+    if (!collapsedTypeTabsBox) {
+      throw new Error("Collapsed transaction type tabs geometry missing");
+    }
+    expect(collapsedTypeTabsBox.x).toBeCloseTo(expandedTypeTabsBox.x, 1);
+    expect(collapsedTypeTabsBox.width).toBeCloseTo(
+      expandedTypeTabsBox.width,
+      1,
+    );
+    expect(collapsedTypeTabsBox.height).toBeCloseTo(
+      expandedTypeTabsBox.height,
+      1,
+    );
+
+    await collapsedControls
+      .getByRole("button", { name: "Income", exact: true })
+      .click();
+    await expect(collapseEntry).toBeVisible();
+    await waitForCategorySheetSnap(categorySheet);
+    await expect(
+      expandedTypeTabs.getByRole("button", { name: "Income", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(collapseEntry).toBeFocused();
+  });
+
   test("layers category entry over both full review slides", async ({
     page,
   }, testInfo) => {
@@ -785,7 +841,6 @@ test.describe("Home Transactions and Analytics carousel", () => {
       "Analytics",
       "Transactions",
     ]);
-
     const periodPicker = page.getByTestId("analytics-period-picker");
     const selectedPeriod = periodPicker.getByRole("option", {
       selected: true,
