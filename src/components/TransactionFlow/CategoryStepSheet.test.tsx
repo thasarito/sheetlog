@@ -7,11 +7,12 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type React from "react";
 import { createPortal } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CategoryStepSheet } from "./CategoryStepSheet";
+import { useCategoryStepSheetAccessory } from "./CategoryStepSheetAccessory";
 import { StepCategoryTypeTabs } from "./StepCategoryTypeTabs";
 import { useTransactionForm } from "./useTransactionForm";
 
@@ -98,6 +99,18 @@ function renderSheet(onCollapsedControlClick?: () => void) {
   return render(
     <SheetHarness />,
   );
+}
+
+function AccessoryProbe() {
+  const accessory = useCategoryStepSheetAccessory();
+
+  useEffect(() => {
+    if (accessory.host) accessory.reportHeight(96);
+  }, [accessory]);
+
+  return accessory.host
+    ? createPortal(<span>Accessory probe</span>, accessory.host)
+    : null;
 }
 
 function renderSheetWithMeasurements({
@@ -358,6 +371,42 @@ describe("CategoryStepSheet", () => {
     );
     expect(screen.getByTestId("category-sheet-content").className).not.toMatch(
       /shadow/,
+    );
+  });
+
+  it("provides a non-drag accessory host without changing sheet geometry", () => {
+    renderSheetWithMeasurements({
+      contentHeight: 164,
+      layoutHeight: 700,
+      launcherHeight: 44,
+    });
+
+    const host = screen.getByTestId("category-step-accessory-host");
+    const body = screen.getByTestId("category-step-sheet-body");
+    expect(host).toHaveAttribute("data-vaul-no-drag");
+    expect(body).not.toContainElement(host);
+    expect(screen.getByTestId("category-step-layout")).toHaveStyle({
+      "--transaction-history-dock-height": "104px",
+    });
+    expect(drawerMock.rootProps?.snapPoints).toEqual(["44px", "164px"]);
+    expect(screen.getByTestId("category-sheet-content").className).not.toMatch(
+      /shadow/,
+    );
+  });
+
+  it("portals sheet-owned accessories and publishes their reported height", async () => {
+    render(
+      <CategoryStepSheet entry={<div>Categories</div>}>
+        <AccessoryProbe />
+      </CategoryStepSheet>,
+    );
+
+    const host = screen.getByTestId("category-step-accessory-host");
+    expect(host).toContainElement(await screen.findByText("Accessory probe"));
+    await waitFor(() =>
+      expect(screen.getByTestId("category-step-layout")).toHaveStyle({
+        "--transaction-history-dock-height": "96px",
+      }),
     );
   });
 });
