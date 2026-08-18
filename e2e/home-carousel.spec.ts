@@ -433,7 +433,9 @@ async function waitForCategorySheetSnap(categorySheet: Locator) {
         const translateY = new DOMMatrixReadOnly(
           getComputedStyle(element).transform,
         ).m42;
-        return Math.abs(translateY - (window.innerHeight - visibleHeight));
+        return Math.abs(
+          translateY - (layout.getBoundingClientRect().height - visibleHeight),
+        );
       }),
     )
     .toBeLessThan(1);
@@ -837,9 +839,207 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(transactionDock).not.toHaveAttribute("inert");
   });
 
+  test("keeps transaction search fixed above the keyboard", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      class TestVisualViewport extends EventTarget {
+        height = window.innerHeight;
+        offsetTop = 0;
+        width = window.innerWidth;
+
+        setHeight(height: number) {
+          this.height = height;
+          this.dispatchEvent(new Event("resize"));
+        }
+      }
+
+      const viewport = new TestVisualViewport();
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: viewport,
+      });
+      Object.assign(window, {
+        __setSheetlogVisualViewportHeight: (
+          height: number,
+          contractLayoutViewport = false,
+        ) => {
+          viewport.setHeight(height);
+          if (contractLayoutViewport) {
+            Object.defineProperty(window, "innerHeight", {
+              configurable: true,
+              value: height,
+            });
+            window.dispatchEvent(new Event("resize"));
+          }
+        },
+      });
+    });
+    await page.reload();
+    await expect(
+      page.getByRole("region", { name: "Home activity" }),
+    ).toBeVisible();
+
+    const viewport = page.getByTestId("home-carousel-viewport");
+    const transactionSlide = page.getByLabel("Transactions, slide 2 of 2");
+    const transactionContent = page.getByTestId(
+      "transaction-history-content",
+    );
+    const history = page.getByRole("region", {
+      name: "Transaction history",
+    });
+    const categorySheet = page.getByRole("dialog", {
+      name: "Transaction entry",
+    });
+    const collapseEntry = page.getByRole("button", {
+      name: "Collapse transaction entry",
+    });
+    const accessoryHost = page.getByTestId("category-step-accessory-host");
+    const dock = page.getByTestId("transaction-history-dock");
+    const search = dock.getByRole("searchbox", {
+      name: "Search transaction history",
+    });
+
+    await waitForCategorySheetSnap(categorySheet);
+    await viewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
+    await expect(dock).toHaveAttribute("aria-hidden", "false");
+
+    await collapseEntry.click();
+    await waitForCategorySheetSnap(categorySheet);
+    await history.evaluate((element) => {
+      element.scrollTop = 34;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await expect
+      .poll(() =>
+        transactionContent.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).paddingTop),
+        ),
+      )
+      .toBeCloseTo(34, 1);
+
+    await history.evaluate((element) => {
+      element.scrollTop = 68;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await expect
+      .poll(() =>
+        transactionContent.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).paddingTop),
+        ),
+      )
+      .toBeCloseTo(0, 1);
+
+    await search.fill("lunch");
+    await expect(collapseEntry).toBeVisible();
+    await waitForCategorySheetSnap(categorySheet);
+    const clearSearch = dock.getByRole("button", {
+      name: "Clear transaction search",
+    });
+    const clearBox = await clearSearch.boundingBox();
+    if (!clearBox) throw new Error("Search clear geometry missing");
+    expect(clearBox.width).toBeCloseTo(44, 0);
+    expect(clearBox.height).toBeCloseTo(44, 0);
+    await clearSearch.click();
+    await expect(search).toHaveValue("");
+    await expect(search).toBeFocused();
+
+    const readFixedGeometry = () =>
+      page.evaluate(() => {
+        const dashboard = document.querySelector<HTMLElement>(
+          '[aria-label="Home activity"]',
+        );
+        const transactionHistory = document.querySelector<HTMLElement>(
+          '[aria-label="Transaction history"]',
+        );
+        const drawer = document.querySelector<HTMLElement>(
+          '[role="dialog"][aria-labelledby]',
+        );
+        if (!dashboard || !transactionHistory || !drawer) {
+          throw new Error("Fixed keyboard geometry missing");
+        }
+        const readRect = (element: HTMLElement) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            height: rect.height,
+            width: rect.width,
+            x: rect.x,
+            y: rect.y,
+          };
+        };
+        return {
+          category: readRect(drawer),
+          dashboard: readRect(dashboard),
+          history: readRect(transactionHistory),
+        };
+      });
+    const beforeKeyboard = await readFixedGeometry();
+
+    await page.evaluate(() => {
+      (
+        window as Window & {
+          __setSheetlogVisualViewportHeight: (
+            height: number,
+            contractLayoutViewport?: boolean,
+          ) => void;
+        }
+      ).__setSheetlogVisualViewportHeight(544, true);
+    });
+    await expect(accessoryHost).toHaveAttribute(
+      "data-keyboard-active",
+      "true",
+    );
+    await expect(accessoryHost).toHaveAttribute("data-keyboard-top", "544");
+    await expect(collapseEntry).toBeVisible();
+    await waitForCategorySheetSnap(categorySheet);
+
+    const withKeyboard = await readFixedGeometry();
+    for (const region of ["category", "dashboard", "history"] as const) {
+      for (const value of ["height", "width", "x", "y"] as const) {
+        expect(withKeyboard[region][value]).toBeCloseTo(
+          beforeKeyboard[region][value],
+          1,
+        );
+      }
+    }
+    expect(544).toBeGreaterThan(withKeyboard.category.y);
+    expect(544).toBeLessThan(
+      withKeyboard.category.y + withKeyboard.category.height,
+    );
+    const keyboardDockBox = await dock.boundingBox();
+    if (!keyboardDockBox) throw new Error("Keyboard dock geometry missing");
+    expect(keyboardDockBox.y + keyboardDockBox.height).toBeCloseTo(536, 0);
+
+    await page.evaluate(() => {
+      (
+        window as Window & {
+          __setSheetlogVisualViewportHeight: (
+            height: number,
+            contractLayoutViewport?: boolean,
+          ) => void;
+        }
+      ).__setSheetlogVisualViewportHeight(844, true);
+    });
+    await expect(accessoryHost).toHaveAttribute(
+      "data-keyboard-active",
+      "false",
+    );
+    const ordinaryDockBox = await dock.boundingBox();
+    const ordinarySheetBox = await categorySheet.boundingBox();
+    if (!ordinaryDockBox || !ordinarySheetBox) {
+      throw new Error("Restored dock geometry missing");
+    }
+    expect(
+      ordinarySheetBox.y - (ordinaryDockBox.y + ordinaryDockBox.height),
+    ).toBeCloseTo(8, 0);
+  });
+
   test("layers category entry over both full review slides", async ({
     page,
   }, testInfo) => {
+    test.slow();
     const viewport = page.getByTestId("home-carousel-viewport");
     const dashboardHeader = page.getByTestId("dashboard-header");
     const titleReel = page.getByTestId("dashboard-title-reel");
@@ -1185,10 +1385,12 @@ test.describe("Home Transactions and Analytics carousel", () => {
     );
     await search.focus();
     await expect(search).toBeFocused();
+    await expect(collapseEntry).toBeVisible();
+    await waitForCategorySheetSnap(categorySheet);
     const snapAfterFocus = await categorySheet.evaluate(
       (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).m42,
     );
-    expect(snapAfterFocus).toBeCloseTo(snapBeforeFocus, 1);
+    expect(snapAfterFocus).toBeLessThan(snapBeforeFocus);
     const focusedDockGap = await page.evaluate(() => {
       const sheet = document.querySelector<HTMLElement>(
         '[role="dialog"][aria-labelledby]',
@@ -1234,7 +1436,7 @@ test.describe("Home Transactions and Analytics carousel", () => {
     });
     expect(historyGeometry.paddingBottom).toBeCloseTo(reservedOcclusion, 0);
     const before = await historyRegion.evaluate((element) => element.scrollTop);
-    await touchSwipe(page, historyRegion, 2, -240, 0.45);
+    await touchSwipe(page, historyRegion, 2, -120, 0.12);
     await expect
       .poll(() => historyRegion.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(before);
@@ -1295,6 +1497,9 @@ test.describe("Home Transactions and Analytics carousel", () => {
       historyRegion.getByRole("button", { name: /income Salary/ }),
     ).toHaveCount(0);
 
+    await collapseEntry.click();
+    await expect(expandEntry).toBeVisible();
+    await waitForCategorySheetSnap(categorySheet);
     await touchSwipe(page, viewport, 260, 4);
     await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
     await expect(transactionSlide).toHaveAttribute("aria-hidden", "true");

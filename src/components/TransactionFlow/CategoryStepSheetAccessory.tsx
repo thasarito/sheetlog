@@ -7,6 +7,7 @@ export type CategoryStepSheetAccessoryContextValue = {
   provided: boolean;
   host: HTMLDivElement | null;
   reportHeight: (height: number) => void;
+  requestExpanded: () => void;
 };
 
 const CategoryStepSheetAccessoryContext =
@@ -14,6 +15,7 @@ const CategoryStepSheetAccessoryContext =
     provided: false,
     host: null,
     reportHeight: () => undefined,
+    requestExpanded: () => undefined,
   });
 
 export const CategoryStepSheetAccessoryProvider =

@@ -1368,6 +1368,7 @@ export function TransactionFlow() {
           {step === 0 ? (
             <CategoryStepSheet
               entry={activeStep.content}
+              layoutHeight={stableTransactionHeight}
               typeTabsHostRef={setCategoryTypeTabsContainer}
             >
               <HomeDashboardCarousel

@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import type React from "react";
 import { createPortal } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +23,8 @@ type DrawerRootProps = {
   shouldScaleBackground?: boolean;
   noBodyStyles?: boolean;
   disablePreventScroll?: boolean;
+  repositionInputs?: boolean;
+  container?: HTMLElement | null;
   snapPoints?: Array<number | string>;
   activeSnapPoint?: number | string | null;
   setActiveSnapPoint?: (point: number | string | null) => void;
@@ -38,15 +40,27 @@ vi.mock("../ui/drawer", () => ({
     drawerMock.rootProps = props;
     return <>{props.children}</>;
   },
-  DrawerContent: ({
-    children,
-    showHandle: _showHandle,
-    ...props
-  }: React.HTMLAttributes<HTMLElement> & { showHandle?: boolean }) => (
-    <section data-testid="category-sheet-content" {...props}>
-      {children}
-    </section>
-  ),
+  DrawerContent: forwardRef<
+    HTMLElement,
+    React.HTMLAttributes<HTMLElement> & {
+      contained?: boolean;
+      showHandle?: boolean;
+    }
+  >(function MockDrawerContent(
+    {
+      children,
+      contained: _contained,
+      showHandle: _showHandle,
+      ...props
+    },
+    ref,
+  ) {
+    return (
+      <section ref={ref} data-testid="category-sheet-content" {...props}>
+        {children}
+      </section>
+    );
+  }),
   DrawerTitle: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
     <h2 {...props} />
   ),
@@ -89,6 +103,7 @@ function renderSheet(onCollapsedControlClick?: () => void) {
             <div data-testid="entry">Categories</div>
           </>
         }
+        layoutHeight={844}
         typeTabsHostRef={setTypeTabsHost}
       >
         <button type="button">Interactive review</button>
@@ -109,7 +124,16 @@ function AccessoryProbe() {
   }, [accessory]);
 
   return accessory.host
-    ? createPortal(<span>Accessory probe</span>, accessory.host)
+    ? createPortal(
+        <>
+          <span>Accessory probe</span>
+          <input
+            aria-label="Accessory search"
+            onFocus={accessory.requestExpanded}
+          />
+        </>,
+        accessory.host,
+      )
     : null;
 }
 
@@ -165,9 +189,13 @@ describe("CategoryStepSheet", () => {
       shouldScaleBackground: false,
       noBodyStyles: true,
       disablePreventScroll: true,
+      repositionInputs: false,
       activeSnapPoint: "520px",
       snapPoints: ["44px", "520px"],
     });
+    expect(drawerMock.rootProps?.container).toBe(
+      screen.getByTestId("category-step-layout"),
+    );
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
       "--category-sheet-occlusion": "520px",
     });
@@ -261,6 +289,7 @@ describe("CategoryStepSheet", () => {
               <div>Categories</div>
             </>
           }
+          layoutHeight={844}
           typeTabsHostRef={setTypeTabsHost}
         >
           <button type="button">Interactive review</button>
@@ -384,6 +413,9 @@ describe("CategoryStepSheet", () => {
     const host = screen.getByTestId("category-step-accessory-host");
     const body = screen.getByTestId("category-step-sheet-body");
     expect(host).toHaveAttribute("data-vaul-no-drag");
+    expect(host.style.transform).toContain(
+      "--transaction-history-keyboard-offset",
+    );
     expect(body).not.toContainElement(host);
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
       "--transaction-history-dock-height": "104px",
@@ -396,7 +428,7 @@ describe("CategoryStepSheet", () => {
 
   it("portals sheet-owned accessories and publishes their reported height", async () => {
     render(
-      <CategoryStepSheet entry={<div>Categories</div>}>
+      <CategoryStepSheet entry={<div>Categories</div>} layoutHeight={844}>
         <AccessoryProbe />
       </CategoryStepSheet>,
     );
@@ -408,5 +440,28 @@ describe("CategoryStepSheet", () => {
         "--transaction-history-dock-height": "96px",
       }),
     );
+  });
+
+  it("lets a focused sheet accessory request the existing expanded snap", async () => {
+    const user = userEvent.setup();
+    render(
+      <CategoryStepSheet entry={<div>Categories</div>} layoutHeight={844}>
+        <AccessoryProbe />
+      </CategoryStepSheet>,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse transaction entry" }),
+    );
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("44px");
+
+    await user.click(await screen.findByRole("textbox", {
+      name: "Accessory search",
+    }));
+
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("520px");
+    expect(
+      screen.getByRole("button", { name: "Collapse transaction entry" }),
+    ).toBeVisible();
   });
 });
