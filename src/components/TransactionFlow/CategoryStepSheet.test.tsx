@@ -87,8 +87,8 @@ function renderSheetWithMeasurements({
   );
   vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
     function scrollHeight(this: HTMLElement) {
-      return this.dataset.testid === "category-step-sheet-body"
-        ? contentHeight
+      return this.dataset.testid === "entry"
+        ? Math.max(0, contentHeight - launcherHeight)
         : 0;
     },
   );
@@ -152,6 +152,13 @@ describe("CategoryStepSheet", () => {
 
     expect(drawerMock.rootProps?.snapPoints).toEqual(["64px", "700px"]);
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("700px");
+    expect(screen.getByTestId("category-step-sheet-body")).toHaveStyle({
+      height: "700px",
+    });
+    expect(screen.getByTestId("entry").parentElement).toHaveClass(
+      "flex-1",
+      "overflow-y-auto",
+    );
 
     act(() => drawerMock.rootProps?.setActiveSnapPoint?.(null));
 

@@ -8,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { getQuickNotesForCategory, useQuickNotesQuery } from '../../hooks/useQuickNotes';
 import type { CategoryItem, QuickNote, TransactionType } from '../../lib/types';
 import { CategoryGrid } from '../CategoryGrid';
@@ -255,10 +256,21 @@ export function StepCategory({
     onConfirm();
   };
 
+  const radialMenu = radialMenuState ? (
+    <RadialMenu
+      items={menuItems}
+      anchorPosition={radialMenuState.anchorPosition}
+      dragPosition={radialMenuState.dragPosition}
+      isOpen={radialMenuState.isOpen}
+      onCancel={radialHandlers.onCancel}
+    />
+  ) : null;
+
   return (
     <section
       aria-roledescription="carousel"
       aria-label="Transaction type and categories"
+      data-quick-notes-ready={quickNotesConfig !== undefined}
       className="flex w-full min-h-0 flex-col select-none"
       onKeyDown={(event) => {
         const target = event.target as HTMLElement;
@@ -336,15 +348,9 @@ export function StepCategory({
       />
 
       {/* Radial menu for quick notes */}
-      {radialMenuState && (
-        <RadialMenu
-          items={menuItems}
-          anchorPosition={radialMenuState.anchorPosition}
-          dragPosition={radialMenuState.dragPosition}
-          isOpen={radialMenuState.isOpen}
-          onCancel={radialHandlers.onCancel}
-        />
-      )}
+      {radialMenu && dateDrawerNested && typeof document !== 'undefined'
+        ? createPortal(radialMenu, document.body)
+        : radialMenu}
     </section>
   );
 }

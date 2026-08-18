@@ -51,26 +51,40 @@ export function CategoryStepSheet({
           ),
         ),
       );
-      const contentHeight = Math.ceil(
+      const entryContent = entryRef.current?.firstElementChild as
+        | HTMLElement
+        | undefined;
+      const entryHeight = Math.ceil(
         positiveHeight(
-          sheetBodyRef.current?.scrollHeight ?? 0,
-          DEFAULT_EXPANDED_HEIGHT,
+          entryContent?.scrollHeight ?? entryRef.current?.scrollHeight ?? 0,
+          Math.max(1, DEFAULT_EXPANDED_HEIGHT - collapsedHeight),
         ),
       );
+      const contentHeight = collapsedHeight + entryHeight;
 
-      setHeights({
+      const nextHeights = {
         collapsed: collapsedHeight,
         expanded: Math.max(
           collapsedHeight + 1,
           Math.min(contentHeight, layoutHeight),
         ),
-      });
+      };
+      setHeights((current) =>
+        current.collapsed === nextHeights.collapsed &&
+        current.expanded === nextHeights.expanded
+          ? current
+          : nextHeights,
+      );
     };
 
     measure();
     const observer = new ResizeObserver(measure);
     if (layoutRef.current) observer.observe(layoutRef.current);
-    if (sheetBodyRef.current) observer.observe(sheetBodyRef.current);
+    if (launcherRef.current) observer.observe(launcherRef.current);
+    if (entryRef.current) observer.observe(entryRef.current);
+    if (entryRef.current?.firstElementChild) {
+      observer.observe(entryRef.current.firstElementChild);
+    }
     return () => observer.disconnect();
   }, []);
 
@@ -121,12 +135,13 @@ export function CategoryStepSheet({
           <div
             ref={sheetBodyRef}
             data-testid="category-step-sheet-body"
-            className="flex min-h-0 flex-col"
+            className="flex min-h-0 flex-col overflow-hidden"
+            style={{ height: expandedPoint }}
           >
             <div
               ref={launcherRef}
               data-testid="category-step-launcher"
-              className="pb-safe"
+              className="shrink-0 pb-safe"
             >
               <button
                 type="button"
@@ -153,8 +168,9 @@ export function CategoryStepSheet({
             <div
               ref={entryRef}
               aria-hidden={collapsed}
+              data-testid="category-step-entry"
               data-vaul-no-drag
-              className="min-h-0 overflow-y-auto"
+              className="min-h-0 flex-1 overflow-y-auto"
             >
               {entry}
             </div>
