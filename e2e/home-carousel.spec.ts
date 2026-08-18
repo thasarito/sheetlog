@@ -655,6 +655,10 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await page
       .getByRole("button", { name: "Collapse transaction entry" })
       .click();
+    await page.waitForTimeout(100);
+    expect(
+      await entry.evaluate((element) => getComputedStyle(element).opacity),
+    ).toBe("1");
     await waitForCategorySheetSnap(categorySheet);
     const collapsed = await Promise.all([
       launcher.boundingBox(),
@@ -662,6 +666,9 @@ test.describe("Home Transactions and Analytics carousel", () => {
       typeTabs.boundingBox(),
       categoryGrid.boundingBox(),
     ]);
+    expect(
+      await entry.evaluate((element) => getComputedStyle(element).opacity),
+    ).toBe("1");
     if (!collapsed[0] || !collapsed[1] || !collapsed[2] || !collapsed[3]) {
       throw new Error("Collapsed category sheet geometry missing");
     }
