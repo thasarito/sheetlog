@@ -69,10 +69,12 @@ function renderSheetWithMeasurements({
   contentHeight,
   layoutHeight,
   launcherHeight,
+  safeAreaHeight = 0,
 }: {
   contentHeight: number;
   layoutHeight: number;
   launcherHeight: number;
+  safeAreaHeight?: number;
 }) {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function getBoundingClientRect(this: HTMLElement) {
@@ -81,6 +83,9 @@ function renderSheetWithMeasurements({
       }
       if (this.dataset.testid === "category-step-launcher") {
         return rect(launcherHeight);
+      }
+      if (this.dataset.testid === "category-step-safe-area") {
+        return rect(safeAreaHeight);
       }
       return rect(0);
     },
@@ -166,6 +171,33 @@ describe("CategoryStepSheet", () => {
       screen.getByRole("button", { name: "Collapse transaction entry" }),
     ).toBeVisible();
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("700px");
+  });
+
+  it("reserves the bottom safe area at both snap points", async () => {
+    renderSheetWithMeasurements({
+      contentHeight: 400,
+      layoutHeight: 700,
+      launcherHeight: 64,
+      safeAreaHeight: 24,
+    });
+
+    const launcher = screen.getByTestId("category-step-launcher");
+    const entryRegion = screen.getByTestId("entry").parentElement;
+    const safeArea = screen.getByTestId("category-step-safe-area");
+    expect(drawerMock.rootProps?.snapPoints).toEqual(["88px", "424px"]);
+    expect(entryRegion).toHaveClass("order-2");
+    expect(safeArea).toHaveClass("order-3");
+
+    await userEvent
+      .setup()
+      .click(
+        screen.getByRole("button", { name: "Collapse transaction entry" }),
+      );
+
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("88px");
+    expect(launcher).toHaveClass("order-1");
+    expect(safeArea).toHaveClass("order-2");
+    expect(entryRegion).toHaveClass("order-3");
   });
 
   it("keeps entry controls out of the drag region and omits visual elevation", () => {

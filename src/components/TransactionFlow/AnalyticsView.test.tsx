@@ -130,7 +130,6 @@ const baseProps: ComponentProps<typeof AnalyticsView> = {
   error: null,
   onRetry: vi.fn(),
   onSelectTransaction: vi.fn(),
-  carouselControls: <div data-testid="carousel-controls" />,
   now: new Date(2026, 7, 19, 12),
 };
 
@@ -156,7 +155,6 @@ describe('AnalyticsView', () => {
     renderView();
 
     expect(screen.getByRole('heading', { name: 'Analytics' })).toBeVisible();
-    expect(screen.getByTestId('carousel-controls')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Close analytics' }),
@@ -197,7 +195,6 @@ describe('AnalyticsView', () => {
     renderView();
 
     expect(screen.getByRole('heading', { name: 'Analytics' })).toBeVisible();
-    expect(screen.getByTestId('carousel-controls')).toBeVisible();
     const trend = screen.getByRole('region', { name: 'Spending trend' });
     const overview = screen.getByRole('region', { name: 'Overview' });
     expect(trend.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

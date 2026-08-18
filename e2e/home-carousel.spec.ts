@@ -357,6 +357,116 @@ test.describe("Home Transactions and Analytics carousel", () => {
     ).toBeVisible();
   });
 
+  test("keeps carousel indicators focused across keyboard slide changes", async ({
+    page,
+  }) => {
+    const analyticsDot = page.getByRole("button", {
+      name: "Analytics slide",
+    });
+    const transactionsDot = page.getByRole("button", {
+      name: "Transactions slide",
+    });
+
+    await expect(analyticsDot).toHaveCount(1);
+    await analyticsDot.focus();
+    await page.keyboard.press("Enter");
+    await expect(analyticsDot).toHaveAttribute("aria-current", "true");
+    await expect(analyticsDot).toBeFocused();
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(transactionsDot).toHaveAttribute("aria-current", "true");
+    await expect(analyticsDot).toBeFocused();
+  });
+
+  test("keeps the bottom safe area below entry content at both snaps", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      const installStyle = () => {
+        if (!document.head || document.querySelector("#safe-area-test-style")) {
+          return false;
+        }
+        const style = document.createElement("style");
+        style.id = "safe-area-test-style";
+        style.textContent =
+          "[data-vaul-drawer] { --category-sheet-safe-area: 24px !important; }";
+        document.head.append(style);
+        return true;
+      };
+      if (!installStyle()) {
+        const observer = new MutationObserver(() => {
+          if (installStyle()) observer.disconnect();
+        });
+        observer.observe(document, { childList: true, subtree: true });
+      }
+    });
+    await page.reload();
+    await expect(
+      page.getByRole("region", { name: "Home activity" }),
+    ).toBeVisible();
+    const categorySheet = page.getByRole("dialog", {
+      name: "Transaction entry",
+    });
+    const launcher = page.getByTestId("category-step-launcher");
+    const entry = page.getByTestId("category-step-entry");
+    const safeArea = page.getByTestId("category-step-safe-area");
+    await waitForCategorySheetSnap(categorySheet);
+
+    const expanded = await Promise.all([
+      entry.boundingBox(),
+      safeArea.boundingBox(),
+    ]);
+    if (!expanded[0] || !expanded[1]) {
+      throw new Error("Expanded category sheet geometry missing");
+    }
+    expect(expanded[1].height).toBeCloseTo(24, 3);
+    expect(expanded[0].y + expanded[0].height).toBeLessThanOrEqual(
+      expanded[1].y + 1,
+    );
+    expect(Math.abs(expanded[1].y + expanded[1].height - 844)).toBeLessThanOrEqual(
+      1.5,
+    );
+
+    await page
+      .getByRole("button", { name: "Collapse transaction entry" })
+      .click();
+    await waitForCategorySheetSnap(categorySheet);
+    const collapsed = await Promise.all([
+      launcher.boundingBox(),
+      safeArea.boundingBox(),
+    ]);
+    if (!collapsed[0] || !collapsed[1]) {
+      throw new Error("Collapsed category sheet geometry missing");
+    }
+    expect(collapsed[0].y + collapsed[0].height).toBeLessThanOrEqual(
+      collapsed[1].y + 1,
+    );
+    expect(
+      Math.abs(collapsed[1].y + collapsed[1].height - 844),
+    ).toBeLessThanOrEqual(1.5);
+  });
+
+  test("disables category snap transitions for reduced motion", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const categorySheet = page.getByRole("dialog", {
+      name: "Transaction entry",
+    });
+    await page
+      .getByRole("button", { name: "Collapse transaction entry" })
+      .click();
+
+    await expect
+      .poll(() =>
+        categorySheet.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return `${style.transitionProperty} ${style.transitionDuration}`;
+        }),
+      )
+      .toBe("none 0s");
+  });
+
   test("layers category entry over both full review slides", async ({
     page,
   }, testInfo) => {
@@ -395,9 +505,10 @@ test.describe("Home Transactions and Analytics carousel", () => {
       scale: "css",
     });
 
-    await categorySheet
-      .getByRole("button", { name: "Collapse transaction entry" })
-      .click();
+    const collapseEntry = page.getByRole("button", {
+      name: "Collapse transaction entry",
+    });
+    await touchSwipe(page, collapseEntry, 0, 360);
     const expandEntry = page.getByRole("button", {
       name: "Expand transaction entry",
     });
@@ -441,9 +552,6 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await search.fill("");
 
     await touchSwipe(page, expandEntry, 0, -360);
-    const collapseEntry = page.getByRole("button", {
-      name: "Collapse transaction entry",
-    });
     await expect(collapseEntry).toBeVisible();
     await waitForCategorySheetSnap(categorySheet);
     await categorySheet
@@ -454,7 +562,7 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await page.keyboard.press("Escape");
     await expect(dateTimeDialog).toHaveCount(0);
     await waitForCategorySheetSnap(categorySheet);
-    await touchSwipe(page, collapseEntry, 0, 360);
+    await collapseEntry.click();
     await expect(expandEntry).toBeVisible();
     await waitForCategorySheetSnap(categorySheet);
 

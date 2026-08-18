@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { parseDate } from "../../lib/date-utils";
 import { filterTransactionHistory } from "../../lib/transactionHistory";
@@ -28,7 +27,6 @@ import type { TransactionHistoryQueryResult } from "./useTransactionHistoryQuery
 export type TransactionHistoryViewProps = {
   history: TransactionHistoryQueryResult;
   baseCurrency: string;
-  carouselControls: ReactNode;
   onEditTransaction: (transaction: TransactionRecord) => void;
 };
 
@@ -182,7 +180,6 @@ function TransactionHistoryVirtualList({
 export function TransactionHistoryView({
   history,
   baseCurrency,
-  carouselControls,
   onEditTransaction,
 }: TransactionHistoryViewProps) {
   const baseAmounts = useTransactionBaseAmounts(
@@ -228,7 +225,7 @@ export function TransactionHistoryView({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-card">
-      <header className="grid grid-cols-[40px_1fr_40px] items-center gap-2 border-b border-border/70 px-3 pb-3 pt-4 text-center">
+      <header className="grid h-16 grid-cols-[40px_1fr_40px] items-center gap-2 border-b border-border/70 px-3 text-center">
         <span aria-hidden="true" />
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-foreground">
@@ -250,7 +247,7 @@ export function TransactionHistoryView({
           />
         </button>
       </header>
-      {carouselControls}
+      <div className="h-11 shrink-0" aria-hidden="true" />
 
       <div className="flex min-h-0 flex-1 flex-col bg-card">
           <div className="space-y-2 px-4 pb-2 pt-3">

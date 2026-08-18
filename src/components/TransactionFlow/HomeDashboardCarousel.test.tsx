@@ -36,7 +36,6 @@ vi.mock('./TransactionHistoryView', () => ({
     return (
       <section>
         <span>Full Transactions view</span>
-        {props.carouselControls}
         <button
           type="button"
           onClick={() => props.onEditTransaction(historyRecords[0])}
@@ -54,7 +53,6 @@ vi.mock('./AnalyticsView', () => ({
     return (
       <section>
         <span>Full Analytics view</span>
-        {props.carouselControls}
         <button type="button" onClick={() => props.onRangeChange('month')}>
           Test month range
         </button>
@@ -197,8 +195,6 @@ describe('HomeDashboardCarousel', () => {
     expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true');
     expect(analyticsSlide).toHaveAttribute('aria-hidden', 'true');
     await waitFor(() => expect(analyticsSlide.inert).toBe(true));
-    expect(analyticsViewCalls.at(-1)?.carouselControls).toBeDefined();
-
     await openAnalytics();
     expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true');
     expect(transactionSlide).toHaveAttribute('aria-hidden', 'true');
@@ -209,6 +205,36 @@ describe('HomeDashboardCarousel', () => {
       ).toHaveAttribute('aria-current', 'true'),
     );
     expect(resync).not.toHaveBeenCalled();
+  });
+
+  it('keeps one persistent indicator set focused outside inert slides', async () => {
+    const user = userEvent.setup();
+    renderCarousel();
+    const transactionSlide = screen.getByLabelText('Transactions, slide 1 of 2');
+    const analyticsSlide = screen.getByLabelText('Analytics, slide 2 of 2');
+    const analyticsIndicator = screen.getByRole('button', {
+      name: 'Analytics slide',
+    });
+
+    expect(screen.getAllByRole('button', { name: 'Analytics slide' })).toHaveLength(
+      1,
+    );
+    expect(transactionSlide).not.toContainElement(analyticsIndicator);
+    expect(analyticsSlide).not.toContainElement(analyticsIndicator);
+
+    await user.click(analyticsIndicator);
+    await waitFor(() =>
+      expect(analyticsIndicator).toHaveAttribute('aria-current', 'true'),
+    );
+    expect(analyticsIndicator).toHaveFocus();
+
+    await user.keyboard('{ArrowLeft}');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Transactions slide' }),
+      ).toHaveAttribute('aria-current', 'true'),
+    );
+    expect(analyticsIndicator).toHaveFocus();
   });
 
   it('snaps on touch swipes while leaving nested controls and mouse drags alone', async () => {

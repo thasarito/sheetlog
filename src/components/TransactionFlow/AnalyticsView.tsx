@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
@@ -56,7 +55,6 @@ export type AnalyticsViewProps = {
   error: Error | null;
   onRetry: () => void;
   onSelectTransaction: (transaction: TransactionRecord) => void;
-  carouselControls: ReactNode;
   now?: Date;
 };
 
@@ -81,7 +79,6 @@ export function AnalyticsView({
   error,
   onRetry,
   onSelectTransaction,
-  carouselControls,
   now = new Date(),
 }: AnalyticsViewProps) {
   const customRangeTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -204,13 +201,13 @@ export function AnalyticsView({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-card">
-      <header className="border-b border-border/60 px-4 pb-3 pt-4 text-left">
+      <header className="flex h-16 shrink-0 flex-col justify-center border-b border-border/60 px-4 text-left">
         <h2 className="text-lg font-semibold text-foreground">Analytics</h2>
         <p className="sr-only">
           Review spending analytics and filter matching transactions.
         </p>
       </header>
-      {carouselControls}
+      <div className="h-11 shrink-0" aria-hidden="true" />
 
       <output
         aria-label="Analytics summary update"

@@ -81,7 +81,6 @@ function TransactionHistoryViewHarness({
     <TransactionHistoryView
       history={mocks.history as TransactionHistoryQueryResult}
       baseCurrency={baseCurrency}
-      carouselControls={<div data-testid="carousel-controls" />}
       onEditTransaction={onEditTransaction}
     />
   );
@@ -181,7 +180,6 @@ describe("TransactionHistoryView", () => {
     expect(
       screen.getByRole("heading", { name: "Transactions" }),
     ).toBeVisible();
-    expect(screen.getByTestId("carousel-controls")).toBeVisible();
     expect(
       screen.getByRole("searchbox", { name: "Search transaction history" }),
     ).toBeVisible();

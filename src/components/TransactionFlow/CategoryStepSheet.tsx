@@ -26,6 +26,7 @@ export function CategoryStepSheet({
 }: CategoryStepSheetProps) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLDivElement>(null);
+  const safeAreaRef = useRef<HTMLDivElement>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
   const entryRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -51,6 +52,12 @@ export function CategoryStepSheet({
           ),
         ),
       );
+      const measuredSafeAreaHeight =
+        safeAreaRef.current?.getBoundingClientRect().height ?? 0;
+      const safeAreaHeight =
+        Number.isFinite(measuredSafeAreaHeight) && measuredSafeAreaHeight > 0
+          ? Math.ceil(measuredSafeAreaHeight)
+          : 0;
       const entryContent = entryRef.current?.firstElementChild as
         | HTMLElement
         | undefined;
@@ -60,12 +67,13 @@ export function CategoryStepSheet({
           Math.max(1, DEFAULT_EXPANDED_HEIGHT - collapsedHeight),
         ),
       );
-      const contentHeight = collapsedHeight + entryHeight;
+      const collapsedContentHeight = collapsedHeight + safeAreaHeight;
+      const contentHeight = collapsedContentHeight + entryHeight;
 
       const nextHeights = {
-        collapsed: collapsedHeight,
+        collapsed: collapsedContentHeight,
         expanded: Math.max(
-          collapsedHeight + 1,
+          collapsedContentHeight + 1,
           Math.min(contentHeight, layoutHeight),
         ),
       };
@@ -81,6 +89,7 @@ export function CategoryStepSheet({
     const observer = new ResizeObserver(measure);
     if (layoutRef.current) observer.observe(layoutRef.current);
     if (launcherRef.current) observer.observe(launcherRef.current);
+    if (safeAreaRef.current) observer.observe(safeAreaRef.current);
     if (entryRef.current) observer.observe(entryRef.current);
     if (entryRef.current?.firstElementChild) {
       observer.observe(entryRef.current.firstElementChild);
@@ -124,8 +133,13 @@ export function CategoryStepSheet({
       >
         <DrawerContent
           showHandle={false}
-          className="overflow-hidden sm:mx-auto sm:max-w-md"
-          style={{ height: "100dvh" }}
+          className="overflow-hidden motion-reduce:![transition:none] sm:mx-auto sm:max-w-md"
+          style={
+            {
+              height: "100dvh",
+              "--category-sheet-safe-area": "env(safe-area-inset-bottom)",
+            } as React.CSSProperties
+          }
         >
           <DrawerTitle className="sr-only">Transaction entry</DrawerTitle>
           <DrawerDescription className="sr-only">
@@ -141,7 +155,7 @@ export function CategoryStepSheet({
             <div
               ref={launcherRef}
               data-testid="category-step-launcher"
-              className="shrink-0 pb-safe"
+              className="order-1 shrink-0"
             >
               <button
                 type="button"
@@ -170,10 +184,17 @@ export function CategoryStepSheet({
               aria-hidden={collapsed}
               data-testid="category-step-entry"
               data-vaul-no-drag
-              className="min-h-0 flex-1 overflow-y-auto"
+              className={`${collapsed ? "order-3" : "order-2"} min-h-0 flex-1 overflow-y-auto`}
             >
               {entry}
             </div>
+            <div
+              ref={safeAreaRef}
+              aria-hidden="true"
+              data-testid="category-step-safe-area"
+              className={`${collapsed ? "order-2" : "order-3"} shrink-0`}
+              style={{ height: "var(--category-sheet-safe-area)" }}
+            />
           </div>
         </DrawerContent>
       </Drawer>

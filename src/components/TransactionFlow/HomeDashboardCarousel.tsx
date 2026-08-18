@@ -300,7 +300,7 @@ export function HomeDashboardCarousel({
 
   return (
     <section
-      className="h-full min-h-0"
+      className="relative h-full min-h-0"
       aria-roledescription="carousel"
       aria-label="Home activity"
       onKeyDown={(event) => {
@@ -321,6 +321,14 @@ export function HomeDashboardCarousel({
           }
       }}
     >
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center">
+          <div className="pointer-events-auto">
+            <CarouselIndicators
+              activeIndex={activeIndex}
+              onSelect={scrollToSlide}
+            />
+          </div>
+        </div>
         <div
           ref={viewportRef}
           data-testid="home-carousel-viewport"
@@ -345,12 +353,6 @@ export function HomeDashboardCarousel({
             <TransactionHistoryView
               history={analyticsSync.history}
               baseCurrency={baseCurrency}
-              carouselControls={
-                <CarouselIndicators
-                  activeIndex={activeIndex}
-                  onSelect={scrollToSlide}
-                />
-              }
               onEditTransaction={onEditTransaction}
             />
           </section>
@@ -383,12 +385,6 @@ export function HomeDashboardCarousel({
               error={analyticsSync.history.error}
               onRetry={analyticsSync.resync}
               onSelectTransaction={onEditTransaction}
-              carouselControls={
-                <CarouselIndicators
-                  activeIndex={activeIndex}
-                  onSelect={scrollToSlide}
-                />
-              }
               now={analyticsNow}
             />
           </section>
