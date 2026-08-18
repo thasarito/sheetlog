@@ -1,6 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { format } from "date-fns";
-import { RefreshCw, Search } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -15,6 +14,12 @@ import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import { Skeleton } from "../ui/skeleton";
 import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
+import {
+  DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT,
+  TRANSACTION_HISTORY_DOCK_GAP,
+  useCategoryStepSheetAccessory,
+} from "./CategoryStepSheetAccessory";
+import { TransactionHistoryDock } from "./TransactionHistoryDock";
 import {
   flattenTransactionHistory,
   TransactionHistoryDateHeader,
@@ -44,10 +49,12 @@ function TransactionHistoryVirtualList({
   items,
   onEdit,
   baseAmountStates,
+  usesSheetAccessory,
 }: {
   items: TransactionHistoryListItem[];
   onEdit: (transaction: TransactionRecord) => void;
   baseAmountStates: Readonly<Record<string, TransactionBaseAmountState>>;
+  usesSheetAccessory: boolean;
 }) {
   const scrollRef = useRef<HTMLElement>(null);
   const anchorRef = useRef<{
@@ -85,6 +92,9 @@ function TransactionHistoryVirtualList({
     initialRect: HISTORY_INITIAL_RECT,
     measureElement,
   });
+  const bottomInset = usesSheetAccessory
+    ? `calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, ${DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT}px) + ${TRANSACTION_HISTORY_DOCK_GAP}px)`
+    : "var(--category-sheet-occlusion, env(safe-area-inset-bottom))";
   useLayoutEffect(() => {
     if (previousItemsRef.current === items) {
       return;
@@ -120,10 +130,8 @@ function TransactionHistoryVirtualList({
       data-virtual-scroll="true"
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2"
       style={{
-        paddingBottom:
-          "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
-        scrollPaddingBottom:
-          "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
+        paddingBottom: bottomInset,
+        scrollPaddingBottom: bottomInset,
       }}
       onScroll={() => {
         const scrollTop = scrollRef.current?.scrollTop ?? 0;
@@ -183,6 +191,7 @@ export function TransactionHistoryView({
   baseCurrency,
   onEditTransaction,
 }: TransactionHistoryViewProps) {
+  const sheetAccessory = useCategoryStepSheetAccessory();
   const baseAmounts = useTransactionBaseAmounts(
     history.records,
     baseCurrency,
@@ -243,40 +252,15 @@ export function TransactionHistoryView({
         className="flex min-h-0 flex-1 flex-col bg-transparent"
         style={{ paddingTop: "var(--dashboard-header-height, 68px)" }}
       >
-        <div className="space-y-2 px-4 pb-2 pt-3">
-          <label className="relative block">
-            <span className="sr-only">Search transaction history</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search category, note, or account"
-              aria-label="Search transaction history"
-              className="h-11 w-full rounded-xl border border-border bg-surface pl-10 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
-            />
-          </label>
-          <div
-            data-testid="transaction-history-metadata"
-            className="flex min-h-11 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground"
-          >
-            <span>{countLabel}</span>
-            <div className="flex min-w-0 items-center gap-1">
-              <span className="truncate text-right">{statusLabel}</span>
-              <button
-                type="button"
-                aria-label="Refresh transaction history"
-                disabled={!history.isOnline || isRefreshing}
-                onClick={refresh}
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4", isRefreshing && "animate-spin")}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
+        <TransactionHistoryDock
+          search={search}
+          onSearchChange={setSearch}
+          countLabel={countLabel}
+          statusLabel={statusLabel}
+          canRefresh={history.isOnline && !isRefreshing}
+          isRefreshing={isRefreshing}
+          onRefresh={refresh}
+        />
 
         {history.error && history.hasCompleteCache ? (
           <div
@@ -328,6 +312,7 @@ export function TransactionHistoryView({
             items={items}
             onEdit={handleEdit}
             baseAmountStates={baseAmounts.states}
+            usesSheetAccessory={sheetAccessory.provided}
           />
         ) : debouncedSearch && history.records.length > 0 ? (
           <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">

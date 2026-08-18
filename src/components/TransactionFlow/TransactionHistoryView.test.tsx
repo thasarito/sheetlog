@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "../../lib/types";
+import { CategoryStepSheetAccessoryProvider } from "./CategoryStepSheetAccessory";
 import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
 import { TransactionHistoryView } from "./TransactionHistoryView";
 import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
@@ -83,6 +85,27 @@ function TransactionHistoryViewHarness({
       baseCurrency={baseCurrency}
       onEditTransaction={onEditTransaction}
     />
+  );
+}
+
+function SheetAccessoryHarness({
+  reportHeight,
+}: {
+  reportHeight: (height: number) => void;
+}) {
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+
+  return (
+    <CategoryStepSheetAccessoryProvider
+      value={{ provided: true, host, reportHeight }}
+    >
+      <div ref={setHost} data-testid="test-sheet-accessory-host" />
+      <TransactionHistoryView
+        history={mocks.history as TransactionHistoryQueryResult}
+        baseCurrency="THB"
+        onEditTransaction={vi.fn()}
+      />
+    </CategoryStepSheetAccessoryProvider>
   );
 }
 
@@ -201,10 +224,43 @@ describe("TransactionHistoryView", () => {
     expect(
       screen.getByRole("searchbox", { name: "Search transaction history" }),
     ).toBeVisible();
+    const dock = screen.getByTestId("transaction-history-dock");
+    expect(screen.getAllByTestId("transaction-history-dock")).toHaveLength(1);
+    expect(screen.getByTestId("transaction-history-content")).toContainElement(
+      dock,
+    );
+    expect(dock).toHaveClass("mx-3", "rounded-2xl");
+    expect(dock.className).not.toMatch(/shadow/);
+    expect(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+    ).toHaveClass("h-11");
     expect(
       screen.queryByRole("button", { name: "Close transaction history" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("portals one measured dock and reserves its sheet occlusion", async () => {
+    mocks.history.records = [transaction("recent")];
+    const reportHeight = vi.fn();
+    render(<SheetAccessoryHarness reportHeight={reportHeight} />);
+
+    const host = screen.getByTestId("test-sheet-accessory-host");
+    const dock = await screen.findByTestId("transaction-history-dock");
+    expect(screen.getAllByTestId("transaction-history-dock")).toHaveLength(1);
+    expect(host).toContainElement(dock);
+    expect(
+      screen.getByTestId("transaction-history-content"),
+    ).not.toContainElement(dock);
+    await waitFor(() => expect(reportHeight).toHaveBeenCalledWith(64));
+    expect(
+      screen.getByRole("region", { name: "Transaction history" }),
+    ).toHaveStyle({
+      paddingBottom:
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+      scrollPaddingBottom:
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+    });
   });
 
   it("virtualizes hundreds of rows while full search can reveal an older transaction", async () => {
