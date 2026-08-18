@@ -351,6 +351,7 @@ git commit -m "test: cover transparent track-bound carousel titles"
 - Modify: `src/components/TransactionFlow/HomeDashboardCarousel.tsx`
 - Modify: `src/components/TransactionFlow/HomeDashboardCarousel.test.tsx`
 - Modify: `e2e/home-carousel.spec.ts`
+- Modify: `e2e/transaction-flow.spec.ts`
 
 - [ ] **Step 1: Write failing Analytics-first unit expectations**
 
@@ -406,6 +407,7 @@ In `e2e/home-carousel.spec.ts`:
 - Focused keyboard coverage presses ArrowRight to Transactions and ArrowLeft to Analytics.
 - Replace the title-motion assertion so the offscreen Transactions title moves more than 200 pixels left when swiping from Analytics to Transactions.
 - Preserve transparent-background checks for both views, nested analytics period gesture isolation, transaction search/edit coverage, and category-sheet coverage.
+- Add an explicit transaction-review helper in `e2e/transaction-flow.spec.ts` that collapses the category sheet, focuses the carousel viewport, presses ArrowRight, and waits for `Transactions, slide 2 of 2` to become active. Use it before linked-reimbursement source selection, after reimbursement Undo, and before complete-history search/virtualization assertions so those transaction-specific scenarios do not depend on the default slide.
 
 - [ ] **Step 6: Run focused unit and browser coverage**
 
@@ -415,6 +417,8 @@ Run:
 npm test -- src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
 VITE_DEV_MODE=true VITE_GOOGLE_MAPS_API_KEY=e2e-key PLAYWRIGHT_HTML_OPEN=never \
   npx playwright test e2e/home-carousel.spec.ts
+VITE_DEV_MODE=true VITE_GOOGLE_MAPS_API_KEY=e2e-key PLAYWRIGHT_HTML_OPEN=never \
+  npx playwright test e2e/transaction-flow.spec.ts
 ```
 
 Expected: carousel unit tests and all configured home-carousel Playwright projects PASS.
@@ -424,7 +428,7 @@ Expected: carousel unit tests and all configured home-carousel Playwright projec
 ```bash
 git add src/components/TransactionFlow/HomeDashboardCarousel.tsx \
   src/components/TransactionFlow/HomeDashboardCarousel.test.tsx \
-  e2e/home-carousel.spec.ts
+  e2e/home-carousel.spec.ts e2e/transaction-flow.spec.ts
 git commit -m "feat: make analytics the default carousel slide"
 ```
 

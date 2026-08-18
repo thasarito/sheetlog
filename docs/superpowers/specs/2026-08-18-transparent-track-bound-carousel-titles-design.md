@@ -69,6 +69,7 @@ Use a red-green cycle for focused regressions, then update affected existing exp
 
 - Assert that the carousel no longer renders slide-selection dot buttons.
 - Assert that Analytics is slide 1 and active by default, ArrowRight/swipe-left activates Transactions, and ArrowLeft/swipe-right returns to Analytics.
+- Update transaction-specific browser scenarios to activate Transactions explicitly instead of relying on the former default slide, including reimbursement source/Undo flows and complete-history search.
 - Assert that Transactions and Analytics retain their visible semantic headings inside their slides.
 - Assert that both slide canvases are transparent while internal controls retain their existing surface classes.
 - Assert that Refresh remains present and invokes the existing refresh operations from its new metadata-row location.
