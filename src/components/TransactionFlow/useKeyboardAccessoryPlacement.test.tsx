@@ -99,6 +99,35 @@ describe("keyboard accessory placement", () => {
     expect(host).toHaveAttribute("data-keyboard-top", "844");
   });
 
+  it("recalculates after a keyboard-triggered drawer snap settles", () => {
+    const viewport = new TestVisualViewport();
+    viewport.height = 544;
+    vi.stubGlobal("visualViewport", viewport);
+    const drawer = document.createElement("section");
+    const host = document.createElement("div");
+    let drawerTop = 736;
+    vi.spyOn(drawer, "getBoundingClientRect").mockImplementation(() =>
+      rect(drawerTop),
+    );
+
+    renderHook(() =>
+      useKeyboardAccessoryPlacement({
+        drawerElement: drawer,
+        accessoryHost: host,
+      }),
+    );
+    expect(
+      host.style.getPropertyValue("--transaction-history-keyboard-offset"),
+    ).toBe("0px");
+
+    drawerTop = 324;
+    act(() => drawer.dispatchEvent(new Event("transitionend")));
+
+    expect(
+      host.style.getPropertyValue("--transaction-history-keyboard-offset"),
+    ).toBe("220px");
+  });
+
   it("keeps the ordinary sheet attachment when VisualViewport is unavailable", () => {
     vi.stubGlobal("visualViewport", undefined);
     const drawer = document.createElement("section");

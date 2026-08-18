@@ -84,11 +84,22 @@ export function useKeyboardAccessoryPlacement({
       accessoryHost.dataset.keyboardActive = String(placement.active);
       accessoryHost.dataset.keyboardTop = String(placement.keyboardTop);
     };
+    const updateAfterDrawerTransition = (event: Event) => {
+      if (event.target === drawerElement) update();
+    };
 
     update();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
     window.addEventListener("resize", update);
+    drawerElement.addEventListener(
+      "transitionend",
+      updateAfterDrawerTransition,
+    );
+    drawerElement.addEventListener(
+      "transitioncancel",
+      updateAfterDrawerTransition,
+    );
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     observer?.observe(drawerElement);
@@ -98,6 +109,14 @@ export function useKeyboardAccessoryPlacement({
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      drawerElement.removeEventListener(
+        "transitionend",
+        updateAfterDrawerTransition,
+      );
+      drawerElement.removeEventListener(
+        "transitioncancel",
+        updateAfterDrawerTransition,
+      );
       reset();
     };
   }, [accessoryHost, drawerElement]);
