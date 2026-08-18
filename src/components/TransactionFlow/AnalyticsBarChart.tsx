@@ -1,8 +1,9 @@
 import { format, parseISO } from 'date-fns';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'framer-motion';
 import {
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
   type TouchEvent as ReactTouchEvent,
   useCallback,
   useEffect,
@@ -101,6 +102,43 @@ function getMonthAxisLabel(bucket: AnalyticsBucket, index: number): string {
   return format(parseISO(bucket.key), 'EEEEE');
 }
 
+function AnalyticsBarPresence({
+  children,
+  className,
+  reducedMotion,
+}: {
+  children: ReactNode;
+  className: string;
+  reducedMotion: boolean | null;
+}) {
+  const isPresent = useIsPresent();
+  const geometryTransition = reducedMotion
+    ? { duration: 0 }
+    : { duration: MOTION_DURATION_SECONDS, ease: 'easeOut' as const };
+  const exitTransition = reducedMotion
+    ? { duration: 0 }
+    : { duration: EXIT_DURATION_SECONDS, ease: 'easeOut' as const };
+
+  return (
+    <motion.div
+      layout="position"
+      aria-hidden={isPresent ? undefined : true}
+      style={{ pointerEvents: isPresent ? 'auto' : 'none' }}
+      className={className}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{
+        layout: geometryTransition,
+        opacity: exitTransition,
+        y: geometryTransition,
+      }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 export function AnalyticsBarChart({
   buckets,
   axisGroups = [],
@@ -133,9 +171,6 @@ export function AnalyticsBarChart({
   const geometryTransition = reducedMotion
     ? { duration: 0 }
     : { duration: MOTION_DURATION_SECONDS, ease: 'easeOut' as const };
-  const exitTransition = reducedMotion
-    ? { duration: 0 }
-    : { duration: EXIT_DURATION_SECONDS, ease: 'easeOut' as const };
 
   const activateBucket = useCallback(
     (key: string, trigger: HTMLElement) => {
@@ -417,23 +452,15 @@ export function AnalyticsBarChart({
     );
 
     return (
-      <motion.div
+      <AnalyticsBarPresence
         key={`${topologyKey}:${bucket.key}`}
-        layout="position"
+        reducedMotion={reducedMotion}
         className={cn(
           'grid h-full min-w-0 flex-1 items-center',
           hasGroupedAxis || isDenseMonth
             ? 'grid-rows-[minmax(4px,1fr)]'
             : 'grid-rows-[minmax(4px,1fr)_auto] gap-1',
         )}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0 }}
-        transition={{
-          layout: geometryTransition,
-          opacity: exitTransition,
-          y: geometryTransition,
-        }}
       >
         {interactive ? (
           <div
@@ -466,7 +493,7 @@ export function AnalyticsBarChart({
             {showLabel(index, buckets) ? bucket.label : null}
           </span>
         )}
-      </motion.div>
+      </AnalyticsBarPresence>
     );
   });
 
