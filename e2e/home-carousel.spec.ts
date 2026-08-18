@@ -331,6 +331,32 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(page.getByText(/^Synced · /)).toBeVisible();
   });
 
+  test("keeps category controls scrollable on a short viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 520 });
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+
+    const categorySheet = page.getByRole("dialog", {
+      name: "Transaction entry",
+    });
+    await waitForCategorySheetSnap(categorySheet);
+    const entry = page.getByTestId("category-step-entry");
+    const geometry = await entry.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+
+    await touchSwipe(page, entry, 0, -160);
+    await expect
+      .poll(() => entry.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await expect(
+      page.getByRole("button", { name: "Collapse transaction entry" }),
+    ).toBeVisible();
+  });
+
   test("layers category entry over both full review slides", async ({
     page,
   }, testInfo) => {

@@ -257,6 +257,9 @@ test.describe("Transaction type and category carousel", () => {
   }) => {
     await seedQuickNote(page);
     await page.reload();
+    await expect(
+      page.getByRole("region", { name: "Transaction type and categories" }),
+    ).toHaveAttribute("data-quick-notes-ready", "true");
     const viewport = page.getByTestId("transaction-type-carousel");
     const tile = page.getByRole("button", { name: "Food Delivery" });
     const box = await tile.boundingBox();
@@ -311,7 +314,9 @@ test.describe("Transaction type and category carousel", () => {
     });
     await client.detach();
 
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Date & time" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Done" }).click();
     await expect(page.getByLabel("Transaction note")).toHaveValue(
       "iOS snap target selected",
