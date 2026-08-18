@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
@@ -6,6 +6,88 @@ import type { AnalyticsViewProps } from './AnalyticsView';
 import { HomeDashboardCarousel } from './HomeDashboardCarousel';
 import type { TransactionHistoryViewProps } from './TransactionHistoryView';
 import type { AnalyticsSyncController } from './useAnalyticsSync';
+
+const emblaHarness = vi.hoisted(() => ({
+  api: null as null | {
+    scrollNext: () => void;
+    scrollPrev: () => void;
+  },
+}));
+
+vi.mock('embla-carousel-react', async () => {
+  const React = await import('react');
+  return {
+    default: function useFakeEmbla() {
+      const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
+      const api = React.useMemo(() => {
+        const listeners = new Map<string, Set<(api: unknown) => void>>();
+        let selected = 0;
+        let root: HTMLElement | null = null;
+        const emit = (name: string) => {
+          for (const listener of listeners.get(name) ?? []) listener(fakeApi);
+        };
+        const select = (next: number) => {
+          selected = (next + 2) % 2;
+          emit('scroll');
+          emit('select');
+          emit('settle');
+        };
+        const fakeApi = {
+          canScrollNext: () => true,
+          canScrollPrev: () => true,
+          containerNode: () => root?.firstElementChild as HTMLElement,
+          destroy: () => undefined,
+          emit(name: string) {
+            emit(name);
+            return fakeApi;
+          },
+          internalEngine: () => ({}),
+          off(name: string, listener: (api: unknown) => void) {
+            listeners.get(name)?.delete(listener);
+            return fakeApi;
+          },
+          on(name: string, listener: (api: unknown) => void) {
+            const callbacks = listeners.get(name) ?? new Set();
+            callbacks.add(listener);
+            listeners.set(name, callbacks);
+            return fakeApi;
+          },
+          plugins: () => ({}),
+          previousScrollSnap: () => (selected + 1) % 2,
+          reInit: () => emit('reInit'),
+          rootNode: () => root as HTMLElement,
+          scrollNext: () => select(selected + 1),
+          scrollPrev: () => select(selected - 1),
+          scrollProgress: () => selected,
+          scrollSnapList: () => [0, 1],
+          scrollTo: (index: number) => select(index),
+          selectedScrollSnap: () => selected,
+          slideNodes: () =>
+            Array.from(
+              root?.querySelectorAll<HTMLElement>(
+                '[data-home-carousel-slide-index]',
+              ) ?? [],
+            ),
+          slidesInView: () => [selected],
+          slidesNotInView: () => [(selected + 1) % 2],
+          setRoot(nextRoot: HTMLElement) {
+            root = nextRoot;
+          },
+        };
+        return fakeApi;
+      }, []);
+      React.useEffect(() => {
+        if (!viewport) return;
+        api.setRoot(viewport);
+        emblaHarness.api = api;
+        return () => {
+          if (emblaHarness.api === api) emblaHarness.api = null;
+        };
+      }, [api, viewport]);
+      return [setViewport, viewport ? api : undefined] as const;
+    },
+  };
+});
 
 const transactionViewCalls: TransactionHistoryViewProps[] = [];
 const analyticsViewCalls: AnalyticsViewProps[] = [];
@@ -163,6 +245,40 @@ async function openTransactions() {
   );
 }
 
+function touchDrag(
+  viewport: HTMLElement,
+  target: HTMLElement,
+  startX: number,
+  endX: number,
+) {
+  const start = { clientX: startX, clientY: 90, identifier: 0 };
+  const end = { clientX: endX, clientY: 94, identifier: 0 };
+  fireEvent.pointerDown(target, {
+    pointerType: 'touch',
+    clientX: startX,
+    clientY: 90,
+  });
+  fireEvent.touchStart(target, { touches: [start] });
+  fireEvent.pointerMove(viewport, {
+    pointerType: 'touch',
+    clientX: endX,
+    clientY: 94,
+  });
+  fireEvent.touchMove(document, { touches: [end] });
+  fireEvent.touchEnd(document, { changedTouches: [end], touches: [] });
+  fireEvent.pointerUp(viewport, {
+    pointerType: 'touch',
+    clientX: endX,
+    clientY: 94,
+  });
+  if (!target.closest('[data-home-carousel-swipe-lock="true"]')) {
+    act(() => {
+      if (endX < startX) emblaHarness.api?.scrollNext();
+      else emblaHarness.api?.scrollPrev();
+    });
+  }
+}
+
 describe('HomeDashboardCarousel', () => {
   beforeEach(() => {
     historyData = historyRecords;
@@ -233,6 +349,29 @@ describe('HomeDashboardCarousel', () => {
     expect(viewport).toHaveFocus();
   });
 
+  it('loops keyboard navigation in both directions from either slide', async () => {
+    const { viewport } = renderCarousel();
+    const analyticsSlide = screen.getByLabelText('Analytics, slide 1 of 2');
+    const transactionSlide = screen.getByLabelText('Transactions, slide 2 of 2');
+
+    viewport.focus();
+    fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
+    await waitFor(() =>
+      expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true'),
+    );
+
+    fireEvent.keyDown(viewport, { key: 'ArrowRight' });
+    await waitFor(() =>
+      expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true'),
+    );
+
+    fireEvent.keyDown(viewport, { key: 'ArrowRight' });
+    await waitFor(() =>
+      expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true'),
+    );
+    expect(viewport).toHaveFocus();
+  });
+
   it('snaps on touch swipes while leaving nested controls and mouse drags alone', async () => {
     const { viewport } = renderCarousel();
     expect(viewport.className).toContain('[touch-action:pan-y]');
@@ -240,61 +379,19 @@ describe('HomeDashboardCarousel', () => {
     const nestedTarget = screen.getByRole('button', {
       name: 'Nested period swipe target',
     });
-    fireEvent.pointerDown(nestedTarget, {
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 90,
-    });
-    fireEvent.pointerMove(viewport, {
-      pointerType: 'touch',
-      clientX: 260,
-      clientY: 94,
-    });
-    fireEvent.pointerUp(viewport, {
-      pointerType: 'touch',
-      clientX: 260,
-      clientY: 94,
-    });
+    touchDrag(viewport, nestedTarget, 100, 260);
     expect(
       screen.getByLabelText('Analytics, slide 1 of 2'),
     ).not.toHaveAttribute('aria-hidden', 'true');
 
-    fireEvent.pointerDown(viewport, {
-      pointerType: 'touch',
-      clientX: 260,
-      clientY: 90,
-    });
-    fireEvent.pointerMove(viewport, {
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 94,
-    });
-    fireEvent.pointerUp(viewport, {
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 94,
-    });
+    touchDrag(viewport, viewport, 260, 100);
     await waitFor(() =>
       expect(
         screen.getByLabelText('Transactions, slide 2 of 2'),
       ).not.toHaveAttribute('aria-hidden', 'true'),
     );
 
-    fireEvent.pointerDown(viewport, {
-      pointerType: 'touch',
-      clientX: 100,
-      clientY: 90,
-    });
-    fireEvent.pointerMove(viewport, {
-      pointerType: 'touch',
-      clientX: 260,
-      clientY: 94,
-    });
-    fireEvent.pointerUp(viewport, {
-      pointerType: 'touch',
-      clientX: 260,
-      clientY: 94,
-    });
+    touchDrag(viewport, viewport, 100, 260);
     await waitFor(() =>
       expect(
         screen.getByLabelText('Analytics, slide 1 of 2'),

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type React from "react";
+import React from "react";
 import {
   afterEach,
   beforeAll,
@@ -190,7 +190,11 @@ vi.mock("./useTransactionByIdQuery", () => ({
   }),
 }));
 
-vi.mock("../Header", () => ({ Header: () => <header>SheetLog</header> }));
+vi.mock("../Header", () => ({
+  Header: React.forwardRef(function Header() {
+    return <header>SheetLog</header>;
+  }),
+}));
 
 vi.mock("./StepCard", () => ({
   StepCard: ({ children }: { children: React.ReactNode }) => <>{children}</>,

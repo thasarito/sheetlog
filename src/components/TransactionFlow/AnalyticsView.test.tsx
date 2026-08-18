@@ -154,12 +154,17 @@ describe('AnalyticsView', () => {
   it('renders detailed analytics directly without outer modal controls', () => {
     renderView();
 
-    const heading = screen.getByRole('heading', { name: 'Analytics' });
-    expect(heading).toBeVisible();
+    const heading = screen.getByRole('heading', {
+      name: 'Analytics',
+      hidden: true,
+    });
+    expect(heading).toHaveClass('sr-only');
     expect(heading.closest('section')).toHaveClass('bg-transparent');
     expect(heading.closest('section')).not.toHaveClass('bg-card');
-    expect(heading.parentElement).toHaveClass('h-20');
-    expect(heading).toHaveClass('text-[28px]');
+    expect(screen.getByTestId('analytics-dashboard-scroll')).toHaveAttribute(
+      'data-dashboard-scroll',
+      'true',
+    );
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Close analytics' }),
@@ -199,7 +204,9 @@ describe('AnalyticsView', () => {
     const user = userEvent.setup();
     renderView();
 
-    expect(screen.getByRole('heading', { name: 'Analytics' })).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Analytics', hidden: true }),
+    ).toHaveClass('sr-only');
     const trend = screen.getByRole('region', { name: 'Spending trend' });
     const overview = screen.getByRole('region', { name: 'Overview' });
     expect(trend.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
