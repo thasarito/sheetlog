@@ -132,7 +132,7 @@ export function TransactionHistoryDock({
         aria-hidden="true"
         className="absolute left-1/2 top-full h-2 w-px -translate-x-1/2 bg-border/80"
       />
-      <label className="relative block">
+      <div className="relative block">
         <span className="sr-only">Search transaction history</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -158,7 +158,7 @@ export function TransactionHistoryDock({
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         ) : null}
-      </label>
+      </div>
       <div
         data-testid="transaction-history-metadata"
         className="flex min-h-11 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground"

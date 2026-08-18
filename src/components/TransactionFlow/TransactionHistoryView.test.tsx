@@ -295,6 +295,7 @@ describe("TransactionHistoryView", () => {
       name: "Clear transaction search",
     });
     expect(clear).toHaveClass("absolute", "size-11");
+    expect(clear.closest("label")).toBeNull();
     await user.click(clear);
 
     expect(search).toHaveValue("");

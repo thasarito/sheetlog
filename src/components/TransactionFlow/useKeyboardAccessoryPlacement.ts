@@ -48,14 +48,20 @@ export function calculateKeyboardAccessoryPlacement({
 type UseKeyboardAccessoryPlacementOptions = {
   drawerElement: HTMLElement | null;
   accessoryHost: HTMLElement | null;
+  layoutHeight: number;
 };
 
 export function useKeyboardAccessoryPlacement({
   drawerElement,
   accessoryHost,
+  layoutHeight,
 }: UseKeyboardAccessoryPlacementOptions) {
   useLayoutEffect(() => {
     if (!accessoryHost) return;
+
+    const stableLayoutHeight = Number.isFinite(layoutHeight)
+      ? Math.max(0, layoutHeight)
+      : window.innerHeight;
 
     const reset = () => {
       accessoryHost.style.setProperty(
@@ -63,7 +69,7 @@ export function useKeyboardAccessoryPlacement({
         "0px",
       );
       accessoryHost.dataset.keyboardActive = "false";
-      accessoryHost.dataset.keyboardTop = String(window.innerHeight);
+      accessoryHost.dataset.keyboardTop = String(stableLayoutHeight);
     };
     reset();
 
@@ -72,7 +78,7 @@ export function useKeyboardAccessoryPlacement({
 
     const update = () => {
       const placement = calculateKeyboardAccessoryPlacement({
-        windowHeight: window.innerHeight,
+        windowHeight: stableLayoutHeight,
         viewportHeight: viewport.height,
         viewportOffsetTop: viewport.offsetTop,
         drawerTop: drawerElement.getBoundingClientRect().top,
@@ -84,40 +90,67 @@ export function useKeyboardAccessoryPlacement({
       accessoryHost.dataset.keyboardActive = String(placement.active);
       accessoryHost.dataset.keyboardTop = String(placement.keyboardTop);
     };
-    const updateAfterDrawerTransition = (event: Event) => {
-      if (event.target === drawerElement) update();
+    let animationFrame: number | null = null;
+    const trackDrawerTransition = () => {
+      update();
+      animationFrame = window.requestAnimationFrame(trackDrawerTransition);
+    };
+    const startDrawerTransitionTracking = (event: Event) => {
+      if (event.target !== drawerElement || animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(trackDrawerTransition);
+    };
+    const stopDrawerTransitionTracking = (event: Event) => {
+      if (event.target !== drawerElement) return;
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+      update();
     };
 
     update();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
     window.addEventListener("resize", update);
+    drawerElement.addEventListener("transitionrun", startDrawerTransitionTracking);
     drawerElement.addEventListener(
-      "transitionend",
-      updateAfterDrawerTransition,
+      "transitionstart",
+      startDrawerTransitionTracking,
     );
+    drawerElement.addEventListener("transitionend", stopDrawerTransitionTracking);
     drawerElement.addEventListener(
       "transitioncancel",
-      updateAfterDrawerTransition,
+      stopDrawerTransitionTracking,
     );
     const observer =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     observer?.observe(drawerElement);
 
     return () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
       observer?.disconnect();
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       drawerElement.removeEventListener(
+        "transitionrun",
+        startDrawerTransitionTracking,
+      );
+      drawerElement.removeEventListener(
+        "transitionstart",
+        startDrawerTransitionTracking,
+      );
+      drawerElement.removeEventListener(
         "transitionend",
-        updateAfterDrawerTransition,
+        stopDrawerTransitionTracking,
       );
       drawerElement.removeEventListener(
         "transitioncancel",
-        updateAfterDrawerTransition,
+        stopDrawerTransitionTracking,
       );
       reset();
     };
-  }, [accessoryHost, drawerElement]);
+  }, [accessoryHost, drawerElement, layoutHeight]);
 }

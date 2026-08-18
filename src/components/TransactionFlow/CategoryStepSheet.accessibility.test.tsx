@@ -24,7 +24,10 @@ afterEach(() => {
 describe("CategoryStepSheet accessibility", () => {
   it("keeps review controls exposed while the non-modal sheet is open", async () => {
     render(
-      <CategoryStepSheet entry={<button type="button">Category entry</button>}>
+      <CategoryStepSheet
+        entry={<button type="button">Category entry</button>}
+        layoutHeight={844}
+      >
         <button type="button">Interactive review</button>
       </CategoryStepSheet>,
     );
@@ -40,7 +43,7 @@ describe("CategoryStepSheet accessibility", () => {
     ).toBeEnabled();
     expect(
       screen.getByRole("dialog", { name: "Transaction entry" }),
-    ).toHaveStyle({ height: "100dvh" });
+    ).toHaveStyle({ height: "844px" });
   });
 
   it("measures a collapsed launcher mounted through the drawer portal", async () => {
@@ -55,6 +58,7 @@ describe("CategoryStepSheet accessibility", () => {
     render(
       <CategoryStepSheet
         entry={<button type="button">Category entry</button>}
+        layoutHeight={844}
         typeTabsHostRef={() => undefined}
       >
         <button type="button">Interactive review</button>

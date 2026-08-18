@@ -433,7 +433,9 @@ async function waitForCategorySheetSnap(categorySheet: Locator) {
         const translateY = new DOMMatrixReadOnly(
           getComputedStyle(element).transform,
         ).m42;
-        return Math.abs(translateY - (window.innerHeight - visibleHeight));
+        return Math.abs(
+          translateY - (layout.getBoundingClientRect().height - visibleHeight),
+        );
       }),
     )
     .toBeLessThan(1);
@@ -858,8 +860,19 @@ test.describe("Home Transactions and Analytics carousel", () => {
         value: viewport,
       });
       Object.assign(window, {
-        __setSheetlogVisualViewportHeight: (height: number) =>
-          viewport.setHeight(height),
+        __setSheetlogVisualViewportHeight: (
+          height: number,
+          contractLayoutViewport = false,
+        ) => {
+          viewport.setHeight(height);
+          if (contractLayoutViewport) {
+            Object.defineProperty(window, "innerHeight", {
+              configurable: true,
+              value: height,
+            });
+            window.dispatchEvent(new Event("resize"));
+          }
+        },
       });
     });
     await page.reload();
@@ -967,9 +980,12 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await page.evaluate(() => {
       (
         window as Window & {
-          __setSheetlogVisualViewportHeight: (height: number) => void;
+          __setSheetlogVisualViewportHeight: (
+            height: number,
+            contractLayoutViewport?: boolean,
+          ) => void;
         }
-      ).__setSheetlogVisualViewportHeight(544);
+      ).__setSheetlogVisualViewportHeight(544, true);
     });
     await expect(accessoryHost).toHaveAttribute(
       "data-keyboard-active",
@@ -999,9 +1015,12 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await page.evaluate(() => {
       (
         window as Window & {
-          __setSheetlogVisualViewportHeight: (height: number) => void;
+          __setSheetlogVisualViewportHeight: (
+            height: number,
+            contractLayoutViewport?: boolean,
+          ) => void;
         }
-      ).__setSheetlogVisualViewportHeight(844);
+      ).__setSheetlogVisualViewportHeight(844, true);
     });
     await expect(accessoryHost).toHaveAttribute(
       "data-keyboard-active",

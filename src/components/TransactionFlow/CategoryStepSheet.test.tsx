@@ -24,6 +24,7 @@ type DrawerRootProps = {
   noBodyStyles?: boolean;
   disablePreventScroll?: boolean;
   repositionInputs?: boolean;
+  container?: HTMLElement | null;
   snapPoints?: Array<number | string>;
   activeSnapPoint?: number | string | null;
   setActiveSnapPoint?: (point: number | string | null) => void;
@@ -41,9 +42,17 @@ vi.mock("../ui/drawer", () => ({
   },
   DrawerContent: forwardRef<
     HTMLElement,
-    React.HTMLAttributes<HTMLElement> & { showHandle?: boolean }
+    React.HTMLAttributes<HTMLElement> & {
+      contained?: boolean;
+      showHandle?: boolean;
+    }
   >(function MockDrawerContent(
-    { children, showHandle: _showHandle, ...props },
+    {
+      children,
+      contained: _contained,
+      showHandle: _showHandle,
+      ...props
+    },
     ref,
   ) {
     return (
@@ -94,6 +103,7 @@ function renderSheet(onCollapsedControlClick?: () => void) {
             <div data-testid="entry">Categories</div>
           </>
         }
+        layoutHeight={844}
         typeTabsHostRef={setTypeTabsHost}
       >
         <button type="button">Interactive review</button>
@@ -183,6 +193,9 @@ describe("CategoryStepSheet", () => {
       activeSnapPoint: "520px",
       snapPoints: ["44px", "520px"],
     });
+    expect(drawerMock.rootProps?.container).toBe(
+      screen.getByTestId("category-step-layout"),
+    );
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
       "--category-sheet-occlusion": "520px",
     });
@@ -276,6 +289,7 @@ describe("CategoryStepSheet", () => {
               <div>Categories</div>
             </>
           }
+          layoutHeight={844}
           typeTabsHostRef={setTypeTabsHost}
         >
           <button type="button">Interactive review</button>
@@ -414,7 +428,7 @@ describe("CategoryStepSheet", () => {
 
   it("portals sheet-owned accessories and publishes their reported height", async () => {
     render(
-      <CategoryStepSheet entry={<div>Categories</div>}>
+      <CategoryStepSheet entry={<div>Categories</div>} layoutHeight={844}>
         <AccessoryProbe />
       </CategoryStepSheet>,
     );
@@ -431,7 +445,7 @@ describe("CategoryStepSheet", () => {
   it("lets a focused sheet accessory request the existing expanded snap", async () => {
     const user = userEvent.setup();
     render(
-      <CategoryStepSheet entry={<div>Categories</div>}>
+      <CategoryStepSheet entry={<div>Categories</div>} layoutHeight={844}>
         <AccessoryProbe />
       </CategoryStepSheet>,
     );

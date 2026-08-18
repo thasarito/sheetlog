@@ -75,6 +75,7 @@ describe("keyboard accessory placement", () => {
       useKeyboardAccessoryPlacement({
         drawerElement: drawer,
         accessoryHost: host,
+        layoutHeight: 844,
       }),
     );
 
@@ -99,6 +100,33 @@ describe("keyboard accessory placement", () => {
     expect(host).toHaveAttribute("data-keyboard-top", "844");
   });
 
+  it("uses the stable app height when the live layout viewport also contracts", () => {
+    const viewport = new TestVisualViewport();
+    viewport.height = 544;
+    vi.stubGlobal("visualViewport", viewport);
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 544,
+    });
+    const drawer = document.createElement("section");
+    const host = document.createElement("div");
+    vi.spyOn(drawer, "getBoundingClientRect").mockReturnValue(rect(324));
+
+    renderHook(() =>
+      useKeyboardAccessoryPlacement({
+        drawerElement: drawer,
+        accessoryHost: host,
+        layoutHeight: 844,
+      }),
+    );
+
+    expect(
+      host.style.getPropertyValue("--transaction-history-keyboard-offset"),
+    ).toBe("220px");
+    expect(host).toHaveAttribute("data-keyboard-active", "true");
+    expect(host).toHaveAttribute("data-keyboard-top", "544");
+  });
+
   it("recalculates after a keyboard-triggered drawer snap settles", () => {
     const viewport = new TestVisualViewport();
     viewport.height = 544;
@@ -114,6 +142,7 @@ describe("keyboard accessory placement", () => {
       useKeyboardAccessoryPlacement({
         drawerElement: drawer,
         accessoryHost: host,
+        layoutHeight: 844,
       }),
     );
     expect(
@@ -128,6 +157,47 @@ describe("keyboard accessory placement", () => {
     ).toBe("220px");
   });
 
+  it("tracks the drawer transform while the keyboard-triggered snap animates", () => {
+    const viewport = new TestVisualViewport();
+    viewport.height = 544;
+    vi.stubGlobal("visualViewport", viewport);
+    const frames: FrameRequestCallback[] = [];
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame");
+    const drawer = document.createElement("section");
+    const host = document.createElement("div");
+    let drawerTop = 736;
+    vi.spyOn(drawer, "getBoundingClientRect").mockImplementation(() =>
+      rect(drawerTop),
+    );
+
+    renderHook(() =>
+      useKeyboardAccessoryPlacement({
+        drawerElement: drawer,
+        accessoryHost: host,
+        layoutHeight: 844,
+      }),
+    );
+
+    act(() => drawer.dispatchEvent(new Event("transitionrun")));
+    expect(requestFrame).toHaveBeenCalledOnce();
+
+    drawerTop = 424;
+    act(() => frames.shift()?.(0));
+    expect(
+      host.style.getPropertyValue("--transaction-history-keyboard-offset"),
+    ).toBe("120px");
+    expect(frames).toHaveLength(1);
+
+    act(() => drawer.dispatchEvent(new Event("transitionend")));
+    expect(cancelFrame).toHaveBeenCalled();
+  });
+
   it("keeps the ordinary sheet attachment when VisualViewport is unavailable", () => {
     vi.stubGlobal("visualViewport", undefined);
     const drawer = document.createElement("section");
@@ -137,6 +207,7 @@ describe("keyboard accessory placement", () => {
       useKeyboardAccessoryPlacement({
         drawerElement: drawer,
         accessoryHost: host,
+        layoutHeight: 844,
       }),
     );
 
