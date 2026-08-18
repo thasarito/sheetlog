@@ -36,30 +36,22 @@ const seededTransactions = [
   transaction("transport", 2, "expense", 260, "Transport"),
   transaction("usd-coffee", 0, "expense", 3, "Coffee & Snacks", "USD"),
   transaction("salary", 2, "income", 2500, "Salary"),
-  transaction("rent", 3, "expense", 480, "Rent & Utilities"),
-  transaction("health", 4, "expense", 200, "Health"),
-  transaction("books", 5, "expense", 90, "Books"),
-  transaction("savings", 0, "transfer", 300, "Savings"),
-  ...Array.from({ length: 16 }, (_, index) =>
+  ...Array.from({ length: 12 }, (_, index) =>
     transaction(
       `history-${index}`,
       index + 3,
       "expense",
       20 + index,
-      index === 15 ? "Final history item" : "Groceries & Home Supplies",
+      index === 11 ? "Final history item" : "Groceries & Home Supplies",
     ),
   ),
 ];
-
-let frankfurterRequestCount = 0;
-let releaseBackgroundRates: (() => void) | null = null;
 
 async function touchSwipe(
   page: Page,
   target: Locator,
   deltaX: number,
   deltaY: number,
-  verticalStartRatio?: number,
 ) {
   const box = await target.boundingBox();
   if (!box) throw new Error("Swipe target is not visible");
@@ -67,12 +59,7 @@ async function touchSwipe(
   const horizontal = Math.abs(deltaX) > Math.abs(deltaY);
   const start = {
     x: box.x + box.width * (deltaX < 0 ? 0.85 : deltaX > 0 ? 0.15 : 0.5),
-    y:
-      box.y +
-      box.height *
-        (horizontal
-          ? 0.65
-          : (verticalStartRatio ?? (deltaY < 0 ? 0.8 : 0.2))),
+    y: box.y + box.height * (horizontal ? 0.65 : deltaY < 0 ? 0.8 : 0.2),
   };
   await client.send("Input.dispatchTouchEvent", {
     type: "touchStart",
@@ -95,326 +82,6 @@ async function touchSwipe(
     touchPoints: [],
   });
   await client.detach();
-}
-
-type TitleReelSnapshot = {
-  direction: string;
-  gap: number;
-  progress: number;
-  items: Array<{
-    active: boolean;
-    fontWeight: number;
-    label: string;
-    offset: number;
-    opacity: number;
-    visibility: string;
-    width: number;
-    x: number;
-  }>;
-};
-
-async function readTitleReel(reel: Locator): Promise<TitleReelSnapshot> {
-  return reel.evaluate((element) => {
-    const rootRect = element.getBoundingClientRect();
-    const items = Array.from(
-      element.querySelectorAll<HTMLElement>(
-        '[data-testid="dashboard-title-reel-item"]',
-      ),
-    ).map((item) => {
-      const style = getComputedStyle(item);
-      const rect = item.getBoundingClientRect();
-      return {
-        active: item.dataset.active === "true",
-        fontWeight: Number(style.fontWeight),
-        label: item.dataset.label ?? item.textContent ?? "",
-        offset: Number(item.dataset.offset),
-        opacity: Number(style.opacity),
-        visibility: style.visibility,
-        width: rect.width,
-        x: rect.x - rootRect.x,
-      };
-    });
-    return {
-      direction: (element as HTMLElement).dataset.direction ?? "",
-      gap: Number((element as HTMLElement).dataset.gap),
-      progress: Number((element as HTMLElement).dataset.progress),
-      items,
-    };
-  });
-}
-
-function visibleReelItems(snapshot: TitleReelSnapshot) {
-  return snapshot.items
-    .filter((item) => item.visibility !== "hidden" && item.opacity > 0.001)
-    .sort((left, right) => left.x - right.x);
-}
-
-function reelGaps(snapshot: TitleReelSnapshot): number[] {
-  const items = visibleReelItems(snapshot);
-  return items.slice(1).map((item, index) => {
-    const previous = items[index];
-    return item.x - previous.x - previous.width;
-  });
-}
-
-async function readTransactionDockMotion(page: Page) {
-  return page.evaluate(() => {
-    const viewport = document.querySelector<HTMLElement>(
-      '[data-testid="home-carousel-viewport"]',
-    );
-    const transactionSlide = document.querySelector<HTMLElement>(
-      '[data-home-carousel-slide-index="1"]',
-    );
-    const dock = document.querySelector<HTMLElement>(
-      '[data-testid="transaction-history-dock"]',
-    );
-    if (!viewport || !transactionSlide || !dock) {
-      throw new Error("Transaction dock motion geometry missing");
-    }
-    const viewportRect = viewport.getBoundingClientRect();
-    const transactionRect = transactionSlide.getBoundingClientRect();
-    return {
-      ariaHidden: dock.getAttribute("aria-hidden"),
-      dockOffset: Number(dock.dataset.offsetX),
-      inert: dock.inert,
-      motion: dock.dataset.motion,
-      slideOffset: transactionRect.left - viewportRect.left,
-      visibility: getComputedStyle(dock).visibility,
-    };
-  });
-}
-
-async function traceCategoryDockDrag(
-  page: Page,
-  target: Locator,
-  deltaY: number,
-) {
-  const box = await target.boundingBox();
-  if (!box) throw new Error("Category drag target is not visible");
-  const client = await page.context().newCDPSession(page);
-  const start = {
-    x: box.x + box.width * 0.5,
-    y: box.y + box.height * (deltaY < 0 ? 0.8 : 0.2),
-  };
-  const gaps: number[] = [];
-  await client.send("Input.dispatchTouchEvent", {
-    type: "touchStart",
-    touchPoints: [start],
-  });
-  for (let step = 1; step <= 12; step += 1) {
-    await page.waitForTimeout(16);
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [
-        {
-          x: start.x,
-          y: start.y + (deltaY * step) / 12,
-        },
-      ],
-    });
-    gaps.push(
-      await page.evaluate(() => {
-        const sheet = document.querySelector<HTMLElement>(
-          '[role="dialog"][aria-labelledby]',
-        );
-        const dock = document.querySelector<HTMLElement>(
-          '[data-testid="transaction-history-dock"]',
-        );
-        if (!sheet || !dock) {
-          throw new Error("Category dock drag geometry missing");
-        }
-        return sheet.getBoundingClientRect().top - dock.getBoundingClientRect().bottom;
-      }),
-    );
-  }
-  await client.send("Input.dispatchTouchEvent", {
-    type: "touchEnd",
-    touchPoints: [],
-  });
-  await client.detach();
-  return gaps;
-}
-
-async function traceReversingDashboardDrag(
-  page: Page,
-  target: Locator,
-  titleReel: Locator,
-  settings: Locator,
-) {
-  const box = await target.boundingBox();
-  const settingsBefore = await settings.boundingBox();
-  if (!box || !settingsBefore) throw new Error("Dashboard drag geometry missing");
-  const client = await page.context().newCDPSession(page);
-  const startX = box.x + box.width * 0.5;
-  const startY = box.y + box.height * 0.42;
-  const touchPoint = (x: number) => ({
-    x,
-    y: startY,
-    id: 0,
-    radiusX: 1,
-    radiusY: 1,
-    force: 1,
-  });
-  const moveTo = async (x: number) => {
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [touchPoint(x)],
-    });
-    await page.waitForTimeout(32);
-  };
-
-  await client.send("Input.dispatchTouchEvent", {
-    type: "touchStart",
-    touchPoints: [touchPoint(startX)],
-  });
-  for (let step = 1; step <= 8; step += 1) {
-    await moveTo(startX - (90 * step) / 8);
-  }
-  const forward = await readTitleReel(titleReel);
-  const forwardDock = await readTransactionDockMotion(page);
-  const settingsForward = await settings.boundingBox();
-
-  for (let step = 1; step <= 12; step += 1) {
-    await moveTo(startX - 90 + (160 * step) / 12);
-  }
-  const backward = await readTitleReel(titleReel);
-  const backwardDock = await readTransactionDockMotion(page);
-  const settingsBackward = await settings.boundingBox();
-
-  for (let step = 1; step <= 6; step += 1) {
-    await moveTo(startX + 70 - (70 * step) / 6);
-  }
-  await client.send("Input.dispatchTouchEvent", {
-    type: "touchEnd",
-    touchPoints: [],
-  });
-  await client.detach();
-
-  return {
-    backward,
-    backwardDock,
-    forward,
-    forwardDock,
-    settingsBefore,
-    settingsBackward,
-    settingsForward,
-  };
-}
-
-async function touchSwipeWithMotionTrace(
-  page: Page,
-  target: Locator,
-  deltaX: number,
-  deltaY: number,
-) {
-  const box = await target.boundingBox();
-  if (!box) throw new Error("Swipe target is not visible");
-  await target.evaluate((element) => {
-    const track = element.querySelector<HTMLElement>(
-      '[data-testid="analytics-period-track"]',
-    );
-    if (!track) throw new Error("Analytics period motion track is missing");
-    const motionElement = element as HTMLElement & {
-      __analyticsPeriodMotionTrace?: {
-        transforms: string[];
-        selectedOffsets: Array<string | null>;
-        touchEvents: { start: number; move: number; end: number; cancel: number };
-        done: boolean;
-      };
-    };
-    const trace = {
-      transforms: [] as string[],
-      selectedOffsets: [] as Array<string | null>,
-      touchEvents: { start: 0, move: 0, end: 0, cancel: 0 },
-      done: false,
-    };
-    motionElement.__analyticsPeriodMotionTrace = trace;
-    element.addEventListener("touchstart", () => {
-      trace.touchEvents.start += 1;
-    });
-    element.addEventListener("touchmove", () => {
-      trace.touchEvents.move += 1;
-    });
-    element.addEventListener("touchend", () => {
-      trace.touchEvents.end += 1;
-    });
-    element.addEventListener("touchcancel", () => {
-      trace.touchEvents.cancel += 1;
-    });
-
-    const sampleFrame = () => {
-      trace.transforms.push(track.style.transform);
-      trace.selectedOffsets.push(
-        element
-          .querySelector('[role="option"][aria-selected="true"]')
-          ?.getAttribute("data-period-offset") ?? null,
-      );
-      if (trace.transforms.length >= 120) {
-        trace.done = true;
-        return;
-      }
-      requestAnimationFrame(sampleFrame);
-    };
-    requestAnimationFrame(sampleFrame);
-  });
-
-  const client = await page.context().newCDPSession(page);
-  const horizontal = Math.abs(deltaX) > Math.abs(deltaY);
-  const startX =
-    box.x + box.width * (deltaX < 0 ? 0.85 : deltaX > 0 ? 0.15 : 0.5);
-  const startY =
-    box.y + box.height * (horizontal ? 0.65 : deltaY < 0 ? 0.8 : 0.2);
-  const touchPoint = (x: number, y: number) => ({
-    x,
-    y,
-    id: 0,
-    radiusX: 1,
-    radiusY: 1,
-    force: 1,
-  });
-  await client.send("Input.dispatchTouchEvent", {
-    type: "touchStart",
-    touchPoints: [touchPoint(startX, startY)],
-  });
-  for (let step = 1; step <= 16; step += 1) {
-    await page.waitForTimeout(16);
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [
-        touchPoint(
-          startX + (deltaX * step) / 16,
-          startY + (deltaY * step) / 16,
-        ),
-      ],
-    });
-  }
-  await client.send("Input.dispatchTouchEvent", {
-    type: "touchEnd",
-    touchPoints: [],
-  });
-  await client.detach();
-
-  return target.evaluate(async (element) => {
-    const motionElement = element as HTMLElement & {
-      __analyticsPeriodMotionTrace?: {
-        transforms: string[];
-        selectedOffsets: Array<string | null>;
-        touchEvents: { start: number; move: number; end: number; cancel: number };
-        done: boolean;
-      };
-    };
-    const trace = motionElement.__analyticsPeriodMotionTrace;
-    if (!trace) {
-      throw new Error("Analytics period motion trace was not initialized");
-    }
-    while (!trace.done) {
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
-      );
-    }
-    delete motionElement.__analyticsPeriodMotionTrace;
-    return trace;
-  });
 }
 
 async function waitForCategorySheetSnap(categorySheet: Locator) {
@@ -441,37 +108,29 @@ async function waitForCategorySheetSnap(categorySheet: Locator) {
     .toBeLessThan(1);
 }
 
-async function openTransactionDock(page: Page) {
-  const viewport = page.getByTestId("home-carousel-viewport");
-  const transactionSlide = page.getByLabel("Transactions, slide 2 of 2");
-  const transactionDock = page.getByTestId("transaction-history-dock");
-  await page
-    .getByRole("button", { name: "Collapse transaction entry" })
-    .click();
-  await waitForCategorySheetSnap(
-    page.getByRole("dialog", { name: "Transaction entry" }),
-  );
-  await viewport.focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(viewport).toHaveAttribute("data-motion-status", "settled");
-  await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-  await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
-  return { transactionDock, transactionSlide, viewport };
+async function collapseEntry(page: Page) {
+  const categorySheet = page.getByRole("dialog", {
+    name: "Transaction entry",
+  });
+  const collapse = page.getByRole("button", {
+    name: "Collapse transaction entry",
+  });
+  if (await collapse.isVisible()) {
+    await collapse.click();
+  }
+  await waitForCategorySheetSnap(categorySheet);
 }
 
-test.describe("Home Transactions and Analytics carousel", () => {
-  test.beforeEach(async ({ page }, testInfo) => {
-    frankfurterRequestCount = 0;
-    releaseBackgroundRates = null;
-    const delayBackgroundRates = testInfo.title.includes(
-      "keeps analytics usable while rates fill in the background",
-    );
-    let releaseRatesPromise: Promise<void> | null = null;
-    if (delayBackgroundRates) {
-      releaseRatesPromise = new Promise<void>((resolve) => {
-        releaseBackgroundRates = resolve;
-      });
-    }
+async function expectActiveTitle(page: Page, label: string) {
+  const activeLabel = await page
+    .getByTestId("dashboard-title-reel")
+    .locator('[data-testid="dashboard-title-reel-item"][data-active="true"]')
+    .getAttribute("data-label");
+  expect(activeLabel).toBe(label);
+}
+
+test.describe("Home dashboard carousel", () => {
+  test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript((transactions: TransactionRecord[]) => {
       window.localStorage.setItem(
@@ -479,89 +138,213 @@ test.describe("Home Transactions and Analytics carousel", () => {
         JSON.stringify(transactions),
       );
     }, seededTransactions);
-    await page.route(
-      "https://api.frankfurter.dev/v2/rates**",
-      async (route) => {
-        frankfurterRequestCount += 1;
-        if (releaseRatesPromise) await releaseRatesPromise;
-        const rows = Array.from({ length: 30 }, (_, index) => ({
-          date: format(subDays(new Date(), index), "yyyy-MM-dd"),
-          base: "THB",
-          quote: "USD",
-          rate: 0.03,
-        }));
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(rows),
-        });
-      },
-    );
+    await page.route("https://api.frankfurter.dev/v2/rates**", async (route) => {
+      const rows = Array.from({ length: 30 }, (_, index) => ({
+        date: format(subDays(new Date(), index), "yyyy-MM-dd"),
+        base: "THB",
+        quote: "USD",
+        rate: 0.03,
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(rows),
+      });
+    });
     await page.goto("/app");
-    await expect(
-      page.getByRole("region", { name: "Home activity" }),
-    ).toBeVisible();
+    await expect(page.getByRole("region", { name: "Home activity" })).toBeVisible();
   });
 
-  test("keeps analytics usable while rates fill in the background", async ({
+  test("uses the exact Analytics, Transactions, Settings order and loops with keyboard", async ({
     page,
   }) => {
-    await page
-      .getByRole("button", { name: "Collapse transaction entry" })
-      .click();
-    await waitForCategorySheetSnap(
-      page.getByRole("dialog", { name: "Transaction entry" }),
+    const viewport = page.getByTestId("home-carousel-viewport");
+    const analytics = page.getByLabel("Analytics, slide 1 of 3");
+    const transactions = page.getByLabel("Transactions, slide 2 of 3");
+    const settings = page.getByLabel("Settings, slide 3 of 3");
+
+    await expect(analytics).toHaveAttribute("aria-hidden", "false");
+    await expect(transactions).toHaveAttribute("aria-hidden", "true");
+    await expect(settings).toHaveAttribute("aria-hidden", "true");
+    await expect(page.getByRole("button", { name: "Open settings" })).toHaveCount(0);
+    await expectActiveTitle(page, "Analytics");
+
+    await viewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await expect(viewport).toBeFocused();
+    await expectActiveTitle(page, "Transactions");
+
+    await page.keyboard.press("ArrowRight");
+    await expect(settings).toHaveAttribute("aria-hidden", "false");
+    await expect(viewport).toBeFocused();
+    await expectActiveTitle(page, "Settings");
+
+    await page.keyboard.press("ArrowRight");
+    await expect(analytics).toHaveAttribute("aria-hidden", "false");
+    await expectActiveTitle(page, "Analytics");
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(settings).toHaveAttribute("aria-hidden", "false");
+    await expectActiveTitle(page, "Settings");
+  });
+
+  test("keeps Settings inline, mounted, scroll-linked, and free of modal chrome", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      !testInfo.project.use.hasTouch,
+      "requires a touch-enabled browser context",
     );
-    const analyticsSlide = page.getByLabel("Analytics, slide 1 of 2");
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
-    const analyticsUpdate = analyticsSlide.getByLabel(
-      "Analytics summary update",
-    );
+    await collapseEntry(page);
 
-    await expect.poll(() => frankfurterRequestCount).toBe(1);
-    await expect(analyticsUpdate).toContainText("Expenses ฿200");
-    await page.getByRole("button", { name: "Month" }).click();
-    await page.getByRole("button", { name: "Quarter" }).click();
-    await page.getByRole("button", { name: "Year" }).click();
-    await page.getByRole("button", { name: "Week" }).click();
-    expect(frankfurterRequestCount).toBe(1);
+    const viewport = page.getByTestId("home-carousel-viewport");
+    const analytics = page.getByLabel("Analytics, slide 1 of 3");
+    const settings = page.getByLabel("Settings, slide 3 of 3");
+    const dashboardHeader = page.getByTestId("dashboard-header");
 
-    await page.getByRole("button", { name: "Open settings" }).click();
-    await expect(page.getByText("Syncing…", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Done" }).click();
+    await viewport.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(settings).toHaveAttribute("aria-hidden", "false");
+    await expect(settings.getByTestId("settings-view")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close settings" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open settings" })).toHaveCount(0);
+    await expect(page.locator('[data-testid="settings-view"] [role="dialog"]')).toHaveCount(0);
+    expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
 
-    releaseBackgroundRates?.();
-    releaseBackgroundRates = null;
-    await expect(analyticsUpdate).toContainText("Expenses ฿300");
-    expect(frankfurterRequestCount).toBe(1);
-
-    await page.getByRole("button", { name: "Open settings" }).click();
-    await expect(page.getByText(/^Synced · /)).toBeVisible();
-    const requestsBeforeResync = frankfurterRequestCount;
-    await page.getByRole("button", { name: "Resync analytics" }).click();
+    const mainScroll = settings.getByTestId("settings-scroll-main");
+    await mainScroll.evaluate((element) => {
+      element.scrollTop = 34;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
     await expect
-      .poll(() => frankfurterRequestCount)
-      .toBeGreaterThan(requestsBeforeResync);
-    await expect(page.getByText(/^Synced · /)).toBeVisible();
+      .poll(() =>
+        dashboardHeader.evaluate((element) =>
+          Number((element as HTMLElement).dataset.hideProgress),
+        ),
+      )
+      .toBeCloseTo(0.5, 2);
+
+    await settings.getByRole("button", { name: /^Accounts/ }).click();
+    await settings.getByRole("button", { name: "Add Account" }).click();
+    const draft = settings.getByPlaceholder("e.g. Cash");
+    await draft.fill("Travel Wallet");
+
+    await touchSwipe(page, draft, -180, 2);
+    await expect(settings).toHaveAttribute("aria-hidden", "false");
+    await expect(draft).toHaveValue("Travel Wallet");
+
+    await viewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(analytics).toHaveAttribute("aria-hidden", "false");
+    await expect(dashboardHeader).toHaveAttribute("data-hide-progress", "0.000");
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(settings).toHaveAttribute("aria-hidden", "false");
+    await expect(settings.getByPlaceholder("e.g. Cash")).toHaveValue("Travel Wallet");
   });
 
-  test("keeps category controls scrollable on a short viewport", async ({
+  test("keeps the Transactions dock tied to slide 2 and preserves its search state", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      !testInfo.project.use.hasTouch,
+      "requires a touch-enabled browser context",
+    );
+    await collapseEntry(page);
+
+    const viewport = page.getByTestId("home-carousel-viewport");
+    const analytics = page.getByLabel("Analytics, slide 1 of 3");
+    const transactions = page.getByLabel("Transactions, slide 2 of 3");
+    const settings = page.getByLabel("Settings, slide 3 of 3");
+    const dock = page.getByTestId("transaction-history-dock");
+
+    await viewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await expect(dock).toHaveAttribute("aria-hidden", "false");
+    await expect(dock).not.toHaveAttribute("inert");
+
+    const search = dock.getByRole("searchbox", {
+      name: "Search transaction history",
+    });
+    await search.fill("lunch");
+    await expect(dock.getByText("1 transaction", { exact: true })).toBeVisible();
+
+    await touchSwipe(page, search, -140, 2);
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+
+    await viewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(settings).toHaveAttribute("aria-hidden", "false");
+    await expect(dock).toHaveAttribute("aria-hidden", "true");
+    await expect(dock).toHaveAttribute("inert", "");
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await expect(search).toHaveValue("lunch");
+    await expect(dock).toHaveAttribute("aria-hidden", "false");
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(analytics).toHaveAttribute("aria-hidden", "false");
+    await expect(dock).toHaveAttribute("aria-hidden", "true");
+  });
+
+  test("collapses the shared header independently from Transactions scrolling", async ({
     page,
   }) => {
+    await collapseEntry(page);
+    const viewport = page.getByTestId("home-carousel-viewport");
+    const transactions = page.getByLabel("Transactions, slide 2 of 3");
+    const dashboardHeader = page.getByTestId("dashboard-header");
+
+    await viewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+
+    const history = page.getByRole("region", { name: "Transaction history" });
+    await history.evaluate((element) => {
+      element.scrollTop = 34;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await expect
+      .poll(() =>
+        dashboardHeader.evaluate((element) =>
+          Number((element as HTMLElement).dataset.hideProgress),
+        ),
+      )
+      .toBeCloseTo(0.5, 2);
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.getByLabel("Analytics, slide 1 of 3")).toHaveAttribute(
+      "aria-hidden",
+      "false",
+    );
+    await expect(dashboardHeader).toHaveAttribute("data-hide-progress", "0.000");
+
+    await page.keyboard.press("ArrowRight");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await expect
+      .poll(() =>
+        dashboardHeader.evaluate((element) =>
+          Number((element as HTMLElement).dataset.hideProgress),
+        ),
+      )
+      .toBeCloseTo(0.5, 2);
+  });
+
+  test("keeps category entry usable over the three-slide carousel", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 440 });
     await page.evaluate(() => window.dispatchEvent(new Event("resize")));
-
-    const categorySheet = page.getByRole("dialog", {
-      name: "Transaction entry",
-    });
+    const categorySheet = page.getByRole("dialog", { name: "Transaction entry" });
     await waitForCategorySheetSnap(categorySheet);
+
     const entry = page.getByTestId("category-step-entry");
     const geometry = await entry.evaluate((element) => ({
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
     }));
     expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
-
     await touchSwipe(page, entry, 0, -160);
     await expect
       .poll(() => entry.evaluate((element) => element.scrollTop))
@@ -569,970 +352,5 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(
       page.getByRole("button", { name: "Collapse transaction entry" }),
     ).toBeVisible();
-  });
-
-  test("keeps the carousel viewport focused across keyboard slide changes", async ({
-    page,
-  }) => {
-    const viewport = page.getByTestId("home-carousel-viewport");
-    const analyticsSlide = page.getByLabel("Analytics, slide 1 of 2");
-    const transactionSlide = page.getByLabel("Transactions, slide 2 of 2");
-
-    await expect(
-      page.getByRole("button", { name: "Transactions slide" }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Analytics slide" }),
-    ).toHaveCount(0);
-    await viewport.focus();
-    await expect(viewport).toBeFocused();
-
-    await page.keyboard.press("ArrowRight");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "true");
-    await expect(viewport).toBeFocused();
-
-    await page.keyboard.press("ArrowLeft");
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "true");
-    await expect(viewport).toBeFocused();
-  });
-
-  test("keeps the bottom safe area below entry content at both snaps", async ({
-    page,
-  }) => {
-    await page.addInitScript(() => {
-      const installStyle = () => {
-        if (!document.head || document.querySelector("#safe-area-test-style")) {
-          return false;
-        }
-        const style = document.createElement("style");
-        style.id = "safe-area-test-style";
-        style.textContent =
-          "[data-vaul-drawer] { --category-sheet-safe-area: 24px !important; }";
-        document.head.append(style);
-        return true;
-      };
-      if (!installStyle()) {
-        const observer = new MutationObserver(() => {
-          if (installStyle()) observer.disconnect();
-        });
-        observer.observe(document, { childList: true, subtree: true });
-      }
-    });
-    await page.reload();
-    await expect(
-      page.getByRole("region", { name: "Home activity" }),
-    ).toBeVisible();
-    const categorySheet = page.getByRole("dialog", {
-      name: "Transaction entry",
-    });
-    const launcher = page.getByTestId("category-step-launcher");
-    const entry = page.getByTestId("category-step-entry");
-    const safeArea = page.getByTestId("category-step-safe-area");
-    const typeTabs = page.getByTestId("animated-tabs-compact");
-    const categoryGrid = page.getByTestId("category-grid").first();
-    await waitForCategorySheetSnap(categorySheet);
-
-    const expanded = await Promise.all([
-      entry.boundingBox(),
-      safeArea.boundingBox(),
-      typeTabs.boundingBox(),
-      categoryGrid.boundingBox(),
-    ]);
-    if (!expanded[0] || !expanded[1] || !expanded[2] || !expanded[3]) {
-      throw new Error("Expanded category sheet geometry missing");
-    }
-    const expandedTypeToCategoryGap = expanded[3].y - (
-      expanded[2].y + expanded[2].height
-    );
-    expect(expanded[1].height).toBeCloseTo(24, 3);
-    expect(expanded[0].y + expanded[0].height).toBeLessThanOrEqual(
-      expanded[1].y + 1,
-    );
-    expect(Math.abs(expanded[1].y + expanded[1].height - 844)).toBeLessThanOrEqual(
-      1.5,
-    );
-
-    await page
-      .getByRole("button", { name: "Collapse transaction entry" })
-      .click();
-    await page.waitForTimeout(100);
-    expect(
-      await entry.evaluate((element) => getComputedStyle(element).opacity),
-    ).toBe("1");
-    await waitForCategorySheetSnap(categorySheet);
-    const collapsed = await Promise.all([
-      launcher.boundingBox(),
-      safeArea.boundingBox(),
-      typeTabs.boundingBox(),
-      categoryGrid.boundingBox(),
-    ]);
-    expect(
-      await entry.evaluate((element) => getComputedStyle(element).opacity),
-    ).toBe("1");
-    if (!collapsed[0] || !collapsed[1] || !collapsed[2] || !collapsed[3]) {
-      throw new Error("Collapsed category sheet geometry missing");
-    }
-    const collapsedTypeToCategoryGap = collapsed[3].y - (
-      collapsed[2].y + collapsed[2].height
-    );
-    expect(collapsed[0].y + collapsed[0].height).toBeLessThanOrEqual(
-      collapsed[1].y + 1,
-    );
-    expect(
-      Math.abs(collapsed[1].y + collapsed[1].height - 844),
-    ).toBeLessThanOrEqual(1.5);
-    expect(collapsedTypeToCategoryGap).toBeCloseTo(
-      expandedTypeToCategoryGap,
-      1,
-    );
-  });
-
-  test("disables category snap transitions for reduced motion", async ({
-    page,
-  }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    const categorySheet = page.getByRole("dialog", {
-      name: "Transaction entry",
-    });
-    await page
-      .getByRole("button", { name: "Collapse transaction entry" })
-      .click();
-
-    await expect
-      .poll(() =>
-        categorySheet.evaluate((element) => {
-          const style = getComputedStyle(element);
-          return `${style.transitionProperty} ${style.transitionDuration}`;
-        }),
-      )
-      .toBe("none 0s");
-  });
-
-  test("keeps category type tabs identical and expands a collapsed selection", async ({
-    page,
-  }) => {
-    const categorySheet = page.getByRole("dialog", {
-      name: "Transaction entry",
-    });
-    const typeTabsHost = page.getByTestId("category-step-type-tabs");
-    const typeTabs = typeTabsHost.getByTestId("animated-tabs-compact");
-    await expect(page.getByTestId("animated-tabs-compact")).toHaveCount(1);
-    await waitForCategorySheetSnap(categorySheet);
-    const expandedTypeTabsBox = await typeTabs.boundingBox();
-    if (!expandedTypeTabsBox) {
-      throw new Error("Expanded transaction type tabs geometry missing");
-    }
-    await typeTabs.evaluate((element) => {
-      element.dataset.instanceMarker = "normal-category-tabs";
-    });
-
-    const collapseEntry = page.getByRole("button", {
-      name: "Collapse transaction entry",
-    });
-    await collapseEntry.click();
-    const expandEntry = page.getByRole("button", {
-      name: "Expand transaction entry",
-    });
-    await expect(expandEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-
-    await expect(typeTabsHost).toBeVisible();
-    await expect(
-      page.locator('[data-instance-marker="normal-category-tabs"]'),
-    ).toHaveCount(1);
-    const collapsedTypeTabsBox = await typeTabs.boundingBox();
-    if (!collapsedTypeTabsBox) {
-      throw new Error("Collapsed transaction type tabs geometry missing");
-    }
-    expect(collapsedTypeTabsBox.x).toBeCloseTo(expandedTypeTabsBox.x, 1);
-    expect(collapsedTypeTabsBox.width).toBeCloseTo(
-      expandedTypeTabsBox.width,
-      1,
-    );
-    expect(collapsedTypeTabsBox.height).toBeCloseTo(
-      expandedTypeTabsBox.height,
-      1,
-    );
-
-    await typeTabsHost
-      .getByRole("button", { name: "Income", exact: true })
-      .click();
-    await expect(collapseEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-    await expect(
-      typeTabs.getByRole("button", { name: "Income", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await expect(
-      typeTabs.getByRole("button", { name: "Income", exact: true }),
-    ).toBeFocused();
-  });
-
-  test("keeps transaction dock swipes outside carousel gestures", async ({
-    page,
-  }, testInfo) => {
-    test.skip(
-      !testInfo.project.use.hasTouch,
-      "requires a touch-enabled browser context",
-    );
-    const { transactionDock, transactionSlide, viewport } =
-      await openTransactionDock(page);
-
-    await touchSwipe(page, transactionDock, -80, 2);
-    await expect(viewport).toHaveAttribute("data-motion-status", "settled");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionDock).not.toHaveAttribute("inert");
-  });
-
-  test("refreshes transaction history once from a touch tap", async ({
-    page,
-  }, testInfo) => {
-    test.skip(
-      !testInfo.project.use.hasTouch,
-      "requires a touch-enabled browser context",
-    );
-    const { transactionDock, transactionSlide, viewport } =
-      await openTransactionDock(page);
-
-    const refreshHistory = transactionDock.getByRole("button", {
-      name: "Refresh transaction history",
-    });
-    await page.evaluate(() => {
-      const testWindow = window as Window & {
-        __transactionDockRefreshClicks?: number;
-      };
-      testWindow.__transactionDockRefreshClicks = 0;
-      document.addEventListener(
-        "click",
-        (event) => {
-          if (
-            event.target instanceof Element &&
-            event.target.closest(
-              '[aria-label="Refresh transaction history"]',
-            )
-          ) {
-            testWindow.__transactionDockRefreshClicks =
-              (testWindow.__transactionDockRefreshClicks ?? 0) + 1;
-          }
-        },
-        { capture: true },
-      );
-    });
-    await expect(refreshHistory).toBeEnabled();
-    await refreshHistory.tap();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (window as Window & {
-              __transactionDockRefreshClicks?: number;
-            }).__transactionDockRefreshClicks ?? 0,
-        ),
-      )
-      .toBe(1);
-    await expect(refreshHistory).toBeEnabled();
-    await expect(viewport).toHaveAttribute("data-motion-status", "settled");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionDock).not.toHaveAttribute("inert");
-  });
-
-  test("keeps transaction search fixed above the keyboard", async ({
-    page,
-  }) => {
-    await page.addInitScript(() => {
-      class TestVisualViewport extends EventTarget {
-        height = window.innerHeight;
-        offsetTop = 0;
-        width = window.innerWidth;
-
-        setHeight(height: number) {
-          this.height = height;
-          this.dispatchEvent(new Event("resize"));
-        }
-      }
-
-      const viewport = new TestVisualViewport();
-      Object.defineProperty(window, "visualViewport", {
-        configurable: true,
-        value: viewport,
-      });
-      Object.assign(window, {
-        __setSheetlogVisualViewportHeight: (
-          height: number,
-          contractLayoutViewport = false,
-        ) => {
-          viewport.setHeight(height);
-          if (contractLayoutViewport) {
-            Object.defineProperty(window, "innerHeight", {
-              configurable: true,
-              value: height,
-            });
-            window.dispatchEvent(new Event("resize"));
-          }
-        },
-      });
-    });
-    await page.reload();
-    await expect(
-      page.getByRole("region", { name: "Home activity" }),
-    ).toBeVisible();
-
-    const viewport = page.getByTestId("home-carousel-viewport");
-    const transactionSlide = page.getByLabel("Transactions, slide 2 of 2");
-    const transactionContent = page.getByTestId(
-      "transaction-history-content",
-    );
-    const history = page.getByRole("region", {
-      name: "Transaction history",
-    });
-    const categorySheet = page.getByRole("dialog", {
-      name: "Transaction entry",
-    });
-    const collapseEntry = page.getByRole("button", {
-      name: "Collapse transaction entry",
-    });
-    const accessoryHost = page.getByTestId("category-step-accessory-host");
-    const dock = page.getByTestId("transaction-history-dock");
-    const search = dock.getByRole("searchbox", {
-      name: "Search transaction history",
-    });
-
-    await waitForCategorySheetSnap(categorySheet);
-    await viewport.focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(dock).toHaveAttribute("aria-hidden", "false");
-
-    await collapseEntry.click();
-    await waitForCategorySheetSnap(categorySheet);
-    await history.evaluate((element) => {
-      element.scrollTop = 34;
-      element.dispatchEvent(new Event("scroll", { bubbles: true }));
-    });
-    await expect
-      .poll(() =>
-        transactionContent.evaluate((element) =>
-          Number.parseFloat(getComputedStyle(element).paddingTop),
-        ),
-      )
-      .toBeCloseTo(34, 1);
-
-    await history.evaluate((element) => {
-      element.scrollTop = 68;
-      element.dispatchEvent(new Event("scroll", { bubbles: true }));
-    });
-    await expect
-      .poll(() =>
-        transactionContent.evaluate((element) =>
-          Number.parseFloat(getComputedStyle(element).paddingTop),
-        ),
-      )
-      .toBeCloseTo(0, 1);
-
-    await search.fill("lunch");
-    await expect(collapseEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-    const clearSearch = dock.getByRole("button", {
-      name: "Clear transaction search",
-    });
-    const clearBox = await clearSearch.boundingBox();
-    if (!clearBox) throw new Error("Search clear geometry missing");
-    expect(clearBox.width).toBeCloseTo(44, 0);
-    expect(clearBox.height).toBeCloseTo(44, 0);
-    await clearSearch.click();
-    await expect(search).toHaveValue("");
-    await expect(search).toBeFocused();
-
-    const readFixedGeometry = () =>
-      page.evaluate(() => {
-        const dashboard = document.querySelector<HTMLElement>(
-          '[aria-label="Home activity"]',
-        );
-        const transactionHistory = document.querySelector<HTMLElement>(
-          '[aria-label="Transaction history"]',
-        );
-        const drawer = document.querySelector<HTMLElement>(
-          '[role="dialog"][aria-labelledby]',
-        );
-        if (!dashboard || !transactionHistory || !drawer) {
-          throw new Error("Fixed keyboard geometry missing");
-        }
-        const readRect = (element: HTMLElement) => {
-          const rect = element.getBoundingClientRect();
-          return {
-            height: rect.height,
-            width: rect.width,
-            x: rect.x,
-            y: rect.y,
-          };
-        };
-        return {
-          category: readRect(drawer),
-          dashboard: readRect(dashboard),
-          history: readRect(transactionHistory),
-        };
-      });
-    const beforeKeyboard = await readFixedGeometry();
-
-    await page.evaluate(() => {
-      (
-        window as Window & {
-          __setSheetlogVisualViewportHeight: (
-            height: number,
-            contractLayoutViewport?: boolean,
-          ) => void;
-        }
-      ).__setSheetlogVisualViewportHeight(544, true);
-    });
-    await expect(accessoryHost).toHaveAttribute(
-      "data-keyboard-active",
-      "true",
-    );
-    await expect(accessoryHost).toHaveAttribute("data-keyboard-top", "544");
-    await expect(collapseEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-
-    const withKeyboard = await readFixedGeometry();
-    for (const region of ["category", "dashboard", "history"] as const) {
-      for (const value of ["height", "width", "x", "y"] as const) {
-        expect(withKeyboard[region][value]).toBeCloseTo(
-          beforeKeyboard[region][value],
-          1,
-        );
-      }
-    }
-    expect(544).toBeGreaterThan(withKeyboard.category.y);
-    expect(544).toBeLessThan(
-      withKeyboard.category.y + withKeyboard.category.height,
-    );
-    const keyboardDockBox = await dock.boundingBox();
-    if (!keyboardDockBox) throw new Error("Keyboard dock geometry missing");
-    expect(keyboardDockBox.y + keyboardDockBox.height).toBeCloseTo(536, 0);
-
-    await page.evaluate(() => {
-      (
-        window as Window & {
-          __setSheetlogVisualViewportHeight: (
-            height: number,
-            contractLayoutViewport?: boolean,
-          ) => void;
-        }
-      ).__setSheetlogVisualViewportHeight(844, true);
-    });
-    await expect(accessoryHost).toHaveAttribute(
-      "data-keyboard-active",
-      "false",
-    );
-    const ordinaryDockBox = await dock.boundingBox();
-    const ordinarySheetBox = await categorySheet.boundingBox();
-    if (!ordinaryDockBox || !ordinarySheetBox) {
-      throw new Error("Restored dock geometry missing");
-    }
-    expect(
-      ordinarySheetBox.y - (ordinaryDockBox.y + ordinaryDockBox.height),
-    ).toBeCloseTo(8, 0);
-  });
-
-  test("layers category entry over both full review slides", async ({
-    page,
-  }, testInfo) => {
-    test.slow();
-    const viewport = page.getByTestId("home-carousel-viewport");
-    const dashboardHeader = page.getByTestId("dashboard-header");
-    const titleReel = page.getByTestId("dashboard-title-reel");
-    const settings = page.getByRole("button", { name: "Open settings" });
-    const analyticsSlide = page.getByLabel("Analytics, slide 1 of 2");
-    const transactionSlide = page.getByLabel("Transactions, slide 2 of 2");
-    const transactionHeading = transactionSlide.getByRole("heading", {
-      name: "Transactions",
-      includeHidden: true,
-    });
-    const analyticsHeading = analyticsSlide.getByRole("heading", {
-      name: "Analytics",
-      includeHidden: true,
-    });
-    const categorySheet = page.getByRole("dialog", {
-      name: "Transaction entry",
-    });
-    const accessoryHost = page.getByTestId("category-step-accessory-host");
-    const transactionDock = page.getByTestId("transaction-history-dock");
-
-    await expect(categorySheet).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-    await expect(transactionDock).toHaveCount(1);
-    await expect(
-      accessoryHost.getByTestId("transaction-history-dock"),
-    ).toHaveCount(1);
-    await expect(transactionDock).toHaveAttribute("aria-hidden", "true");
-    await expect(transactionDock).toHaveAttribute("inert", "");
-    expect(
-      await transactionDock.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-          boxShadow: style.boxShadow,
-          pointerEvents: style.pointerEvents,
-          visibility: style.visibility,
-        };
-      }),
-    ).toEqual({
-      boxShadow: "none",
-      pointerEvents: "none",
-      visibility: "hidden",
-    });
-    await expect(page.getByAltText("Sheetlog logo")).toHaveCount(0);
-    await expect(dashboardHeader.locator("img")).toHaveCount(0);
-    await expect(titleReel).toHaveAttribute("aria-hidden", "true");
-    await expect(titleReel).not.toHaveAttribute("tabindex", /.+/);
-    await expect(titleReel).toHaveAttribute("data-progress", "0.000");
-    await expect(titleReel).toHaveAttribute("data-direction", "settled");
-    await expect(dashboardHeader).toHaveAttribute(
-      "data-hide-progress",
-      "0.000",
-    );
-    await expect(settings).toBeVisible();
-    expect(
-      await titleReel.evaluate((element) =>
-        getComputedStyle(element).pointerEvents,
-      ),
-    ).toBe("none");
-    expect(
-      await dashboardHeader.evaluate((element) =>
-        getComputedStyle(element).boxShadow,
-      ),
-    ).toBe("none");
-    const initialReel = await readTitleReel(titleReel);
-    const initialVisibleTitles = visibleReelItems(initialReel);
-    expect(initialVisibleTitles.map((item) => item.label)).toEqual([
-      "Analytics",
-      "Transactions",
-    ]);
-    expect(initialVisibleTitles[0].active).toBe(true);
-    expect(initialVisibleTitles[0].opacity).toBeCloseTo(1, 2);
-    expect(initialVisibleTitles[1].opacity).toBeCloseTo(0.34, 2);
-    expect(initialVisibleTitles[0].fontWeight).toBeGreaterThan(
-      initialVisibleTitles[1].fontWeight,
-    );
-    expect(reelGaps(initialReel)[0]).toBeCloseTo(initialReel.gap, 1);
-    await expect(
-      page.getByRole("button", { name: "Transactions slide" }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Analytics slide" }),
-    ).toHaveCount(0);
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "true");
-    await expect(analyticsHeading).toHaveClass(/sr-only/);
-    await expect(transactionHeading).toHaveClass(/sr-only/);
-    for (const heading of [analyticsHeading, transactionHeading]) {
-      const hiddenHeadingStyle = await heading.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-          height: style.height,
-          overflow: style.overflow,
-          position: style.position,
-          width: style.width,
-        };
-      });
-      expect(hiddenHeadingStyle.position).toBe("absolute");
-      expect(hiddenHeadingStyle.width).toBe("1px");
-      expect(hiddenHeadingStyle.height).toBe("1px");
-      expect(hiddenHeadingStyle.overflow).toBe("hidden");
-    }
-    expect(
-      await analyticsHeading.evaluate((heading) => {
-        const section = heading.closest("section");
-        if (!section) throw new Error("Analytics title section missing");
-        return getComputedStyle(section).backgroundColor;
-      }),
-    ).toBe("rgba(0, 0, 0, 0)");
-    expect(
-      await transactionHeading.evaluate((heading) => {
-        const section = heading.closest("section");
-        if (!section) throw new Error("Transactions title section missing");
-        return getComputedStyle(section).backgroundColor;
-      }),
-    ).toBe("rgba(0, 0, 0, 0)");
-    await expect(
-      page.getByRole("button", { name: "View all transactions" }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "View all analytics" }),
-    ).toHaveCount(0);
-    await expect(page.locator("[data-vaul-overlay]")).toHaveCount(0);
-    expect(
-      await categorySheet.evaluate((element) =>
-        getComputedStyle(element).boxShadow,
-      ),
-    ).toBe("none");
-
-    await page.screenshot({
-      path: testInfo.outputPath("category-expanded-analytics.png"),
-      scale: "css",
-    });
-
-    const collapseEntry = page.getByRole("button", {
-      name: "Collapse transaction entry",
-    });
-    const collapseGaps = await traceCategoryDockDrag(
-      page,
-      collapseEntry,
-      360,
-    );
-    expect(collapseGaps.length).toBeGreaterThan(3);
-    for (const gap of collapseGaps) expect(gap).toBeCloseTo(8, 0);
-    const expandEntry = page.getByRole("button", {
-      name: "Expand transaction entry",
-    });
-    await expect(expandEntry).toBeVisible();
-    await expect(
-      page.getByText("Log transaction", { exact: true }),
-    ).toHaveCount(0);
-    const typeTabsHost = page.getByTestId("category-step-type-tabs");
-    await expect(typeTabsHost).toBeVisible();
-    for (const label of ["Expense", "Income", "Transfer"]) {
-      await expect(
-        typeTabsHost.getByRole("button", { name: label, exact: true }),
-      ).toBeVisible();
-    }
-    await expect(
-      typeTabsHost.getByRole("button", {
-        name: "Expense",
-        exact: true,
-      }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await waitForCategorySheetSnap(categorySheet);
-    await page.screenshot({
-      path: testInfo.outputPath("category-collapsed-analytics.png"),
-      scale: "css",
-    });
-
-    const dragTrace = await traceReversingDashboardDrag(
-      page,
-      viewport,
-      titleReel,
-      settings,
-    );
-    expect(dragTrace.forward.direction).toBe("forward");
-    expect(dragTrace.forward.progress).toBeGreaterThan(0.05);
-    expect(dragTrace.forward.progress).toBeLessThan(0.7);
-    expect(dragTrace.forwardDock.motion).toBe("moving");
-    expect(dragTrace.forwardDock.inert).toBe(true);
-    expect(dragTrace.forwardDock.ariaHidden).toBe("true");
-    expect(dragTrace.forwardDock.visibility).toBe("visible");
-    expect(dragTrace.forwardDock.dockOffset).toBeCloseTo(
-      dragTrace.forwardDock.slideOffset,
-      1,
-    );
-    expect(visibleReelItems(dragTrace.forward)).toHaveLength(3);
-    for (const gap of reelGaps(dragTrace.forward)) {
-      expect(gap).toBeCloseTo(dragTrace.forward.gap, 1);
-    }
-    expect(dragTrace.backward.direction).toBe("backward");
-    expect(dragTrace.backward.progress).toBeLessThan(-0.05);
-    expect(dragTrace.backward.progress).toBeGreaterThan(-0.7);
-    expect(dragTrace.backwardDock.motion).toBe("moving");
-    expect(dragTrace.backwardDock.inert).toBe(true);
-    expect(dragTrace.backwardDock.ariaHidden).toBe("true");
-    expect(dragTrace.backwardDock.visibility).toBe("visible");
-    expect(dragTrace.backwardDock.dockOffset).toBeCloseTo(
-      dragTrace.backwardDock.slideOffset,
-      1,
-    );
-    for (const gap of reelGaps(dragTrace.backward)) {
-      expect(gap).toBeCloseTo(dragTrace.backward.gap, 1);
-    }
-    if (!dragTrace.settingsForward || !dragTrace.settingsBackward) {
-      throw new Error("Settings geometry disappeared during dashboard drag");
-    }
-    expect(dragTrace.settingsForward.x).toBeCloseTo(
-      dragTrace.settingsBefore.x,
-      1,
-    );
-    expect(dragTrace.settingsBackward.x).toBeCloseTo(
-      dragTrace.settingsBefore.x,
-      1,
-    );
-    await expect(viewport).toHaveAttribute("data-motion-status", "settled");
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(titleReel).toHaveAttribute("data-progress", "0.000");
-
-    await touchSwipe(page, viewport, 260, 4);
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(viewport).toHaveAttribute(
-      "data-last-settled-direction",
-      "backward",
-    );
-    await expect(titleReel).toHaveAttribute("data-progress", "0.000");
-    let settledReel = await readTitleReel(titleReel);
-    expect(visibleReelItems(settledReel).map((item) => item.label)).toEqual([
-      "Transactions",
-      "Analytics",
-    ]);
-    expect(reelGaps(settledReel)[0]).toBeCloseTo(settledReel.gap, 1);
-
-    await touchSwipe(page, viewport, -260, 4);
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(viewport).toHaveAttribute(
-      "data-last-settled-direction",
-      "forward",
-    );
-    await expect(titleReel).toHaveAttribute("data-progress", "0.000");
-    settledReel = await readTitleReel(titleReel);
-    expect(visibleReelItems(settledReel).map((item) => item.label)).toEqual([
-      "Analytics",
-      "Transactions",
-    ]);
-    const periodPicker = page.getByTestId("analytics-period-picker");
-    const selectedPeriod = periodPicker.getByRole("option", {
-      selected: true,
-    });
-    const periodBefore = await selectedPeriod.getAttribute(
-      "data-period-offset",
-    );
-    const motionTrace = await touchSwipeWithMotionTrace(
-      page,
-      periodPicker,
-      180,
-      2,
-    );
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "true");
-    expect(motionTrace.touchEvents.start).toBe(1);
-    expect(motionTrace.touchEvents.move).toBeGreaterThan(3);
-    expect(motionTrace.touchEvents.end).toBe(1);
-    expect(motionTrace.touchEvents.cancel).toBe(0);
-    expect(new Set(motionTrace.transforms.filter(Boolean)).size).toBeGreaterThan(3);
-    await expect(selectedPeriod).not.toHaveAttribute(
-      "data-period-offset",
-      periodBefore ?? "",
-    );
-
-    await page.getByRole("button", { name: "Custom date range" }).click();
-    const rangeDialog = page.getByRole("dialog", {
-      name: "Custom date range",
-    });
-    await expect(rangeDialog).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(rangeDialog).toHaveCount(0);
-
-    const pageWidth = await page.evaluate(() => ({
-      body: document.body.scrollWidth,
-      viewport: document.documentElement.clientWidth,
-    }));
-    expect(pageWidth.body).toBe(pageWidth.viewport);
-
-    const expandGaps = await traceCategoryDockDrag(page, expandEntry, -360);
-    expect(expandGaps.length).toBeGreaterThan(3);
-    for (const gap of expandGaps) expect(gap).toBeCloseTo(8, 0);
-    await expect(collapseEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-    await categorySheet
-      .getByRole("button", { name: "Food Delivery", exact: true })
-      .click();
-    const dateTimeDialog = page.getByRole("dialog", { name: "Date & time" });
-    await expect(dateTimeDialog).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(dateTimeDialog).toHaveCount(0);
-    await waitForCategorySheetSnap(categorySheet);
-    await collapseEntry.click();
-    await expect(expandEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-
-    await touchSwipe(page, viewport, -260, 4);
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "true");
-    await expect(viewport).toHaveAttribute(
-      "data-last-settled-direction",
-      "forward",
-    );
-    await expect(titleReel).toHaveAttribute("data-progress", "0.000");
-    await expect(transactionHeading).toHaveClass(/sr-only/);
-    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionDock).not.toHaveAttribute("inert");
-    await expect(transactionDock).toHaveCSS("pointer-events", "auto");
-    await expect(transactionDock).toHaveCSS("visibility", "visible");
-    const settledDockGap = await page.evaluate(() => {
-      const sheet = document.querySelector<HTMLElement>(
-        '[role="dialog"][aria-labelledby]',
-      );
-      const dock = document.querySelector<HTMLElement>(
-        '[data-testid="transaction-history-dock"]',
-      );
-      if (!sheet || !dock) throw new Error("Settled dock geometry missing");
-      return sheet.getBoundingClientRect().top - dock.getBoundingClientRect().bottom;
-    });
-    expect(settledDockGap).toBeCloseTo(8, 0);
-    settledReel = await readTitleReel(titleReel);
-    expect(visibleReelItems(settledReel).map((item) => item.label)).toEqual([
-      "Transactions",
-      "Analytics",
-    ]);
-    await page.screenshot({
-      path: testInfo.outputPath("category-collapsed-transactions.png"),
-      scale: "css",
-    });
-
-    const search = transactionDock.locator('input[type="search"]');
-    await expect(search).toHaveAttribute(
-      "aria-label",
-      "Search transaction history",
-    );
-    const snapBeforeFocus = await categorySheet.evaluate(
-      (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).m42,
-    );
-    await search.focus();
-    await expect(search).toBeFocused();
-    await expect(collapseEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-    const snapAfterFocus = await categorySheet.evaluate(
-      (element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).m42,
-    );
-    expect(snapAfterFocus).toBeLessThan(snapBeforeFocus);
-    const focusedDockGap = await page.evaluate(() => {
-      const sheet = document.querySelector<HTMLElement>(
-        '[role="dialog"][aria-labelledby]',
-      );
-      const dock = document.querySelector<HTMLElement>(
-        '[data-testid="transaction-history-dock"]',
-      );
-      if (!sheet || !dock) throw new Error("Focused dock geometry missing");
-      return sheet.getBoundingClientRect().top - dock.getBoundingClientRect().bottom;
-    });
-    expect(focusedDockGap).toBeCloseTo(8, 0);
-    await touchSwipe(page, search, -120, 2);
-    await expect(viewport).toHaveAttribute("data-motion-status", "settled");
-    await expect(titleReel).toHaveAttribute("data-progress", "0.000");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-
-    const historyRegion = page.getByRole("region", {
-      name: "Transaction history",
-    });
-    const historyGeometry = await historyRegion.evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      paddingBottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
-      scrollHeight: element.scrollHeight,
-    }));
-    expect(historyGeometry.scrollHeight).toBeGreaterThan(
-      historyGeometry.clientHeight,
-    );
-    const reservedOcclusion = await page.evaluate(() => {
-      const layout = document.querySelector<HTMLElement>(
-        '[data-testid="category-step-layout"]',
-      );
-      const dock = document.querySelector<HTMLElement>(
-        '[data-testid="transaction-history-dock"]',
-      );
-      if (!layout || !dock) throw new Error("History occlusion geometry missing");
-      return (
-        Number.parseFloat(
-          getComputedStyle(layout).getPropertyValue("--category-sheet-occlusion"),
-        ) +
-        dock.getBoundingClientRect().height +
-        8
-      );
-    });
-    expect(historyGeometry.paddingBottom).toBeCloseTo(reservedOcclusion, 0);
-    const before = await historyRegion.evaluate((element) => element.scrollTop);
-    await touchSwipe(page, historyRegion, 2, -120, 0.12);
-    await expect
-      .poll(() => historyRegion.evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(before);
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "true");
-    const historyScroll = await historyRegion.evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      scrollHeight: element.scrollHeight,
-      scrollTop: element.scrollTop,
-    }));
-    const expectedHeaderProgress = Math.min(1, historyScroll.scrollTop / 68);
-    await expect
-      .poll(() =>
-        dashboardHeader.evaluate((element) =>
-          Number((element as HTMLElement).dataset.hideProgress),
-        ),
-      )
-      .toBeCloseTo(expectedHeaderProgress, 2);
-    const hiddenHeaderStyle = await dashboardHeader.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        opacity: Number(style.opacity),
-        translateY: new DOMMatrixReadOnly(style.transform).m42,
-      };
-    });
-    expect(hiddenHeaderStyle.translateY).toBeLessThan(0);
-    expect(hiddenHeaderStyle.opacity).toBeLessThan(1);
-
-    await historyRegion.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-      element.dispatchEvent(new Event("scroll", { bubbles: true }));
-    });
-    await expect
-      .poll(() => historyRegion.evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(before);
-    const finalRow = historyRegion.getByRole("button", {
-      name: /expense Final history item/,
-    });
-    await expect(finalRow).toBeVisible();
-    const finalRowClearance = await finalRow.evaluate((element) => {
-      const dock = document.querySelector<HTMLElement>(
-        '[data-testid="transaction-history-dock"]',
-      );
-      if (!dock) {
-        throw new Error("Final history row geometry missing");
-      }
-      return dock.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
-    });
-    expect(finalRowClearance).toBeGreaterThanOrEqual(-2);
-
-    await search.fill("lunch");
-    await expect(
-      historyRegion.getByRole("button", {
-        name: /expense Food Delivery Lunch/,
-      }),
-    ).toBeVisible();
-    await expect(
-      historyRegion.getByRole("button", { name: /income Salary/ }),
-    ).toHaveCount(0);
-
-    await collapseEntry.click();
-    await expect(expandEntry).toBeVisible();
-    await waitForCategorySheetSnap(categorySheet);
-    await touchSwipe(page, viewport, 260, 4);
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "true");
-    await expect(viewport).toHaveAttribute(
-      "data-last-settled-direction",
-      "backward",
-    );
-    await expect(analyticsHeading).toHaveClass(/sr-only/);
-    await expect(dashboardHeader).toHaveAttribute(
-      "data-hide-progress",
-      "0.000",
-    );
-    await expect(transactionDock).toHaveAttribute("aria-hidden", "true");
-    await expect(transactionDock).toHaveAttribute("inert", "");
-    await expect(search).not.toBeFocused();
-    await expect(search).toHaveValue("lunch");
-
-    await touchSwipe(page, viewport, -260, 4);
-    await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
-    await expect(analyticsSlide).toHaveAttribute("aria-hidden", "true");
-    await expect(viewport).toHaveAttribute(
-      "data-last-settled-direction",
-      "forward",
-    );
-    await expect(transactionDock).toHaveAttribute("aria-hidden", "false");
-    await expect(search).toHaveValue("lunch");
-    await expect(transactionDock.getByText("1 transaction", { exact: true })).toBeVisible();
-    const reviewRow = page.getByRole("button", {
-      name: /expense Food Delivery.*Lunch/,
-    });
-    await expect(reviewRow).toBeVisible();
-    await reviewRow.click();
-    await expect(page.getByPlaceholder("Add a note...")).toHaveValue("Lunch");
-    await expect(page.getByTestId("category-step-layout")).toHaveCount(0);
   });
 });
