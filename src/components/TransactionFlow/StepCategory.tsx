@@ -1,5 +1,3 @@
-import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from 'lucide-react';
-import type React from 'react';
 import {
   useCallback,
   useEffect,
@@ -15,12 +13,13 @@ import { CategoryGrid } from '../CategoryGrid';
 import { DateTimeDrawer } from '../DateTimeDrawer';
 import { RadialMenu } from '../RadialMenu';
 import { useRadialMenu } from '../RadialMenu/useRadialMenu';
-import { AnimatedTabs } from '../ui/AnimatedTabs';
 import { TYPE_OPTIONS } from './constants';
 import {
-  clearTransactionPlace,
-  replaceTransactionNote,
-} from './transactionNoteForm';
+  StepCategoryTypeTabs,
+  TRANSACTION_TYPE_META,
+  updateTransactionType,
+} from './StepCategoryTypeTabs';
+import { replaceTransactionNote } from './transactionNoteForm';
 import type { TransactionFormApi } from './useTransactionForm';
 
 type StepCategoryProps = {
@@ -30,24 +29,6 @@ type StepCategoryProps = {
   drawerContainer?: HTMLElement | null;
   dateDrawerNested?: boolean;
 };
-
-const TYPE_META: Record<
-  TransactionType,
-  {
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-  }
-> = {
-  expense: { label: 'Expense', icon: ArrowDownRight },
-  income: { label: 'Income', icon: ArrowUpRight },
-  transfer: { label: 'Transfer', icon: ArrowLeftRight },
-};
-
-const TYPE_TABS = TYPE_OPTIONS.map((type) => ({
-  value: type,
-  label: TYPE_META[type].label,
-  icon: TYPE_META[type].icon,
-}));
 
 function prefersReducedMotion(): boolean {
   return (
@@ -120,12 +101,9 @@ export function StepCategory({
     (index: number) => {
       const boundedIndex = Math.max(0, Math.min(TYPE_OPTIONS.length - 1, index));
       const nextType = TYPE_OPTIONS[boundedIndex];
-      if (nextType === type) return;
-      form.setFieldValue('type', nextType);
-      if (nextType !== 'expense') clearTransactionPlace(form);
-      form.setFieldValue('category', '');
+      updateTransactionType(form, activeType, nextType);
     },
-    [form, type],
+    [activeType, form],
   );
 
   const scrollToType = useCallback(
@@ -288,12 +266,10 @@ export function StepCategory({
         }
       }}
     >
-      <AnimatedTabs
-        tabs={TYPE_TABS}
-        value={activeType}
+      <StepCategoryTypeTabs
+        form={form}
         onChange={(value) => scrollToType(TYPE_OPTIONS.indexOf(value))}
         layoutId="transactionType"
-        variant="compact"
         visualProgress={visualProgress}
       />
 
@@ -319,7 +295,7 @@ export function StepCategory({
             ref={(node) => {
               slideRefs.current[index] = node;
             }}
-            aria-label={`${TYPE_META[typeOption].label} categories, slide ${index + 1} of ${TYPE_OPTIONS.length}`}
+            aria-label={`${TRANSACTION_TYPE_META[typeOption].label} categories, slide ${index + 1} of ${TYPE_OPTIONS.length}`}
             aria-hidden={selectedIndex !== index}
             className="h-full min-w-full snap-center snap-always overflow-y-auto px-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
