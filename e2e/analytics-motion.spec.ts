@@ -112,6 +112,12 @@ async function selectedBucketIndex(chart: Locator) {
 
 test.describe('Analytics motion and chart swipe', () => {
   test.beforeEach(async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.stack ?? error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript((rows: TransactionRecord[]) => {
       window.localStorage.setItem('sheetlog.mock.transactions', JSON.stringify(rows));
@@ -129,8 +135,21 @@ test.describe('Analytics motion and chart swipe', () => {
         body: JSON.stringify(rows),
       });
     });
-    await page.goto('/app');
-    await expect(page.getByRole('region', { name: 'Home activity' })).toBeVisible();
+    const response = await page.goto('/app');
+    const home = page.getByRole('region', { name: 'Home activity' });
+    try {
+      await expect(home).toBeVisible();
+    } catch {
+      const body = await page.locator('body').innerText().catch(() => '<body unavailable>');
+      throw new Error(
+        [
+          `Home failed to render (status ${response?.status() ?? 'unknown'}, url ${page.url()})`,
+          `page errors: ${pageErrors.join(' | ') || '<none>'}`,
+          `console errors: ${consoleErrors.join(' | ') || '<none>'}`,
+          `body: ${body || '<empty>'}`,
+        ].join('\n'),
+      );
+    }
     const categorySheet = page.getByRole('dialog', { name: 'Transaction entry' });
     await page.getByRole('button', { name: 'Collapse transaction entry' }).click();
     await waitForCategorySheetSnap(categorySheet);
