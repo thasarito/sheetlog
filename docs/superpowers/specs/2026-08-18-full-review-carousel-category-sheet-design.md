@@ -84,8 +84,9 @@ The Analytics slide directly contains the current detailed analytics experience:
 - current loading, offline, missing-rate, stale-data, and retry treatments.
 
 There is no compact analytics summary, `View all` action, or outer analytics drawer on step zero.
-The custom-range picker remains a temporary nested Vaul sheet. Selecting a transaction calls the
-existing edit handler.
+The custom-range picker remains a temporary modal Vaul sheet. Because Analytics is no longer inside
+an outer drawer, the picker uses a standard Vaul root rather than `DrawerNestedRoot`. Selecting a
+transaction calls the existing edit handler.
 
 Both slide surfaces stay mounted while step zero is active. Switching slides therefore preserves
 search text, analytics filters, vertical scroll positions, and loaded query state. The inactive
@@ -133,10 +134,11 @@ carousel slides, vertically scroll, search, change analytics controls, or select
 without first collapsing the category sheet.
 
 The review scrollers receive bottom padding and `scroll-padding-bottom` equal to the category
-sheet's current occluded height. The drawer publishes this value through shared layout state or a
-CSS custom property whenever its snap point or measured height changes. This lets the end of a
-list and keyboard-focused controls scroll above the foreground sheet rather than remaining hidden
-behind it.
+sheet's current occluded height. `CategoryStepSheet` owns the shared step-zero layout root and
+writes that height to a `--category-sheet-occlusion` CSS custom property on its root whenever its
+snap point or measured height changes. Both review scrollers consume that inherited property. This
+lets the end of a list and keyboard-focused controls scroll above the foreground sheet rather than
+remaining hidden behind it.
 
 ## Gesture Contract
 
@@ -170,6 +172,11 @@ and category sheet and renders the unchanged full-screen Amount flow. Receipt ha
 undo, reimbursement, deletion, place suggestions, date editing, and submission behavior remain
 unchanged.
 
+The Date/Time drawer that opens after a category selection remains a modal sheet above both layers.
+It uses Vaul nested-root semantics while `CategoryStepSheet` is mounted, and the parent sheet cannot
+snap while Date/Time is open. Its fields, appearance, confirmation callback, and transition to the
+Amount step remain unchanged.
+
 Returning to step zero mounts the default Transactions slide with the category sheet expanded.
 TanStack Query caches remain available, so remounting does not discard downloaded history or rates.
 
@@ -191,8 +198,7 @@ TanStack Query caches remain available, so remounting does not discard downloade
 - Renders `TransactionHistoryView` and `AnalyticsView` directly rather than compact slides.
 - Keeps both views mounted until step zero unmounts.
 
-The component may be renamed to reflect its new review role if doing so makes call sites and tests
-clearer. A rename is not itself a product requirement.
+Keep the existing `HomeDashboardCarousel` name to avoid an unrelated rename during this change.
 
 ### `TransactionHistoryView`
 
@@ -208,17 +214,22 @@ clearer. A rename is not itself a product requirement.
 - Owns selected bucket/category filters and detailed analytics presentation.
 - Receives transactions, derived summary, query states, period state, and callbacks from the
   carousel owner.
-- Retains the custom-range nested drawer and removes only the outer detail drawer behavior.
+- Retains the custom-range modal drawer through a standard Vaul root and removes only the outer
+  detail drawer behavior.
 
 ### `CategoryStepSheet`
 
+- Owns the shared layered-layout root, with the review carousel as its base-layer child and the
+  category drawer as its foreground child.
 - Owns Vaul configuration, active snap point, content measurement, collapsed/expanded controls,
   and the published occlusion inset.
 - Renders the existing `StepCategory` content without changing its form or quick-note contract.
 - Does not own transaction form values or step transitions.
 
-Compact-only components and drawer wrappers may be removed after their callers and tests migrate,
-provided they are not used elsewhere.
+Remove the orphaned `AnalyticsSlide`, `TransactionHistoryDrawer`, and `AnalyticsDrawer` wrappers
+after their behavior and tests migrate to the full review surfaces. Keep `TopDashboard` and
+`CarouselActionButton` because the landing-page demo still uses them; the production step-zero
+flow simply stops rendering them.
 
 ## Data and Query Behavior
 
@@ -265,7 +276,7 @@ No transaction mutation, Google Sheet schema, analytics formula, or sync behavio
 - Dynamic review scroll padding ensures focused controls can be brought above the drawer.
 - Existing chart descriptions, live analytics totals, search labels, refresh labels, and row
   semantics are preserved.
-- The nested custom-range drawer retains modal focus management and returns focus to its trigger.
+- The custom-range drawer retains modal focus management and returns focus to its trigger.
 
 ## Verification
 
@@ -291,6 +302,8 @@ the extracted surfaces.
 - Assert visible review controls remain operable while the category sheet is expanded.
 - Assert selecting a category enters the existing Amount flow and returning to step zero restores
   the expanded sheet.
+- Assert the existing Date/Time drawer opens above the category sheet, prevents parent snapping,
+  and confirms into the unchanged Amount transition.
 - Assert inactive slides are inert and slide announcements remain correct.
 
 ### Browser coverage
