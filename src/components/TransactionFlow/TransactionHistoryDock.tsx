@@ -1,5 +1,11 @@
 import { RefreshCw, Search } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/utils";
 import { useCategoryStepSheetAccessory } from "./CategoryStepSheetAccessory";
@@ -12,6 +18,18 @@ export type TransactionHistoryDockProps = {
   canRefresh: boolean;
   isRefreshing: boolean;
   onRefresh: () => void;
+  motionRef?: RefObject<TransactionHistoryDockMotionHandle | null>;
+};
+
+export type TransactionHistoryDockMotion = {
+  x: number;
+  viewportWidth: number;
+  interactive: boolean;
+  moving: boolean;
+};
+
+export type TransactionHistoryDockMotionHandle = {
+  setMotion: (motion: TransactionHistoryDockMotion) => void;
 };
 
 export function TransactionHistoryDock({
@@ -22,9 +40,52 @@ export function TransactionHistoryDock({
   canRefresh,
   isRefreshing,
   onRefresh,
+  motionRef,
 }: TransactionHistoryDockProps) {
   const accessory = useCategoryStepSheetAccessory();
   const dockRef = useRef<HTMLDivElement>(null);
+  const portalled = accessory.provided;
+
+  const setDockRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      dockRef.current = element;
+      if (element) element.inert = portalled;
+    },
+    [portalled],
+  );
+  const setMotion = useCallback(
+    ({ x, viewportWidth, interactive, moving }: TransactionHistoryDockMotion) => {
+      const element = dockRef.current;
+      if (!element) return;
+      const safeX = Number.isFinite(x) ? x : 0;
+      const safeViewportWidth = Number.isFinite(viewportWidth)
+        ? Math.max(0, viewportWidth)
+        : 0;
+      const hidden =
+        !moving &&
+        !interactive &&
+        safeViewportWidth > 0 &&
+        Math.abs(safeX) >= safeViewportWidth - 1;
+
+      if (
+        !moving &&
+        !interactive &&
+        document.activeElement instanceof HTMLElement &&
+        element.contains(document.activeElement)
+      ) {
+        document.activeElement.blur();
+      }
+      element.style.transform = `translate3d(${safeX}px, 0, 0)`;
+      element.style.pointerEvents = interactive ? "auto" : "none";
+      element.style.visibility = hidden ? "hidden" : "visible";
+      element.inert = !interactive;
+      element.setAttribute("aria-hidden", interactive ? "false" : "true");
+      element.dataset.motion = moving ? "moving" : "settled";
+      element.dataset.offsetX = String(safeX);
+    },
+    [],
+  );
+  useImperativeHandle(motionRef, () => ({ setMotion }), [setMotion]);
 
   useLayoutEffect(() => {
     if (!accessory.provided || !accessory.host || !dockRef.current) return;
@@ -43,10 +104,22 @@ export function TransactionHistoryDock({
 
   const dock = (
     <div
-      ref={dockRef}
+      ref={setDockRef}
       data-testid="transaction-history-dock"
       data-vaul-no-drag
+      data-motion="settled"
+      data-offset-x="0"
+      aria-hidden={portalled}
       className="pointer-events-auto relative mx-3 rounded-2xl border border-border/70 bg-background/95 p-2 backdrop-blur-md"
+      style={
+        portalled
+          ? {
+              pointerEvents: "none",
+              transform: "translate3d(100%, 0, 0)",
+              visibility: "hidden",
+            }
+          : undefined
+      }
     >
       <span
         aria-hidden="true"

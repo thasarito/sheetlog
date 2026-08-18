@@ -20,6 +20,7 @@ import {
   type AnalyticsRange,
 } from "./analytics";
 import { AnalyticsView } from "./AnalyticsView";
+import type { TransactionHistoryDockMotionHandle } from "./TransactionHistoryDock";
 import { TransactionHistoryView } from "./TransactionHistoryView";
 import type { AnalyticsSyncController } from "./useAnalyticsSync";
 
@@ -115,6 +116,8 @@ export function HomeDashboardCarousel({
   }));
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
+  const transactionDockMotionRef =
+    useRef<TransactionHistoryDockMotionHandle | null>(null);
   const activeIndexRef = useRef(0);
   const verticalProgressRef = useRef([0, 0]);
   const horizontalMotionRef = useRef({
@@ -179,6 +182,24 @@ export function HomeDashboardCarousel({
     ? Date.parse(analyticsSync.lastSyncedAt)
     : undefined;
 
+  const renderTransactionDockMotion = useCallback(
+    (interactive: boolean, moving: boolean) => {
+      const viewport = viewportRef.current;
+      const transactionSlide = slideRefs.current[1];
+      if (!viewport || !transactionSlide) return;
+      const viewportRect = viewport.getBoundingClientRect();
+      if (viewportRect.width === 0) return;
+      const transactionRect = transactionSlide.getBoundingClientRect();
+      transactionDockMotionRef.current?.setMotion({
+        x: transactionRect.left - viewportRect.left,
+        viewportWidth: viewportRect.width,
+        interactive,
+        moving,
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     for (const [index, slide] of slideRefs.current.entries()) {
       if (slide) slide.inert = index !== activeIndex;
@@ -226,10 +247,11 @@ export function HomeDashboardCarousel({
       headerMotionRef?.current?.setVerticalProgress(
         verticalProgressRef.current[index] ?? 0,
       );
+      renderTransactionDockMotion(index === 1, false);
       const viewport = viewportRef.current;
       if (viewport) viewport.dataset.selectedSnap = String(index);
     },
-    [headerMotionRef],
+    [headerMotionRef, renderTransactionDockMotion],
   );
 
   const beginHorizontalMotion = useCallback(
@@ -243,8 +265,9 @@ export function HomeDashboardCarousel({
       if (direction !== 0) motion.direction = direction;
       const viewport = viewportRef.current;
       if (viewport) viewport.dataset.motionStatus = "moving";
+      renderTransactionDockMotion(false, false);
     },
-    [],
+    [renderTransactionDockMotion],
   );
 
   const renderHorizontalMotion = useCallback(() => {
@@ -261,8 +284,9 @@ export function HomeDashboardCarousel({
     const progress = clampSignedProgress(Math.abs(measured) * direction);
     motion.lastProgress = progress;
     headerMotionRef?.current?.setHorizontalMotion(motion.origin, progress);
+    renderTransactionDockMotion(false, true);
     viewport.dataset.motionProgress = progress.toFixed(3);
-  }, [headerMotionRef]);
+  }, [headerMotionRef, renderTransactionDockMotion]);
 
   const releasePointerGesture = useCallback(() => {
     pointerStart.current = null;
@@ -400,6 +424,7 @@ export function HomeDashboardCarousel({
       horizontalMotionRef.current.direction = 0;
       horizontalMotionRef.current.lastProgress = 0;
       headerMotionRef?.current?.setHorizontalMotion(activeIndexRef.current, 0);
+      renderTransactionDockMotion(activeIndexRef.current === 1, false);
       const viewport = viewportRef.current;
       if (viewport) {
         viewport.dataset.motionProgress = "0.000";
@@ -541,6 +566,7 @@ export function HomeDashboardCarousel({
               history={analyticsSync.history}
               baseCurrency={baseCurrency}
               onEditTransaction={onEditTransaction}
+              dockMotionRef={transactionDockMotionRef}
             />
           </section>
         </div>

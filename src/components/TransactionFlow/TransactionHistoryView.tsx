@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 import { parseDate } from "../../lib/date-utils";
 import { filterTransactionHistory } from "../../lib/transactionHistory";
@@ -19,7 +20,10 @@ import {
   TRANSACTION_HISTORY_DOCK_GAP,
   useCategoryStepSheetAccessory,
 } from "./CategoryStepSheetAccessory";
-import { TransactionHistoryDock } from "./TransactionHistoryDock";
+import {
+  TransactionHistoryDock,
+  type TransactionHistoryDockMotionHandle,
+} from "./TransactionHistoryDock";
 import {
   flattenTransactionHistory,
   TransactionHistoryDateHeader,
@@ -33,6 +37,7 @@ export type TransactionHistoryViewProps = {
   history: TransactionHistoryQueryResult;
   baseCurrency: string;
   onEditTransaction: (transaction: TransactionRecord) => void;
+  dockMotionRef?: RefObject<TransactionHistoryDockMotionHandle | null>;
 };
 
 const HISTORY_SKELETON_KEYS = [
@@ -190,6 +195,7 @@ export function TransactionHistoryView({
   history,
   baseCurrency,
   onEditTransaction,
+  dockMotionRef,
 }: TransactionHistoryViewProps) {
   const sheetAccessory = useCategoryStepSheetAccessory();
   const baseAmounts = useTransactionBaseAmounts(
@@ -260,6 +266,7 @@ export function TransactionHistoryView({
           canRefresh={history.isOnline && !isRefreshing}
           isRefreshing={isRefreshing}
           onRefresh={refresh}
+          motionRef={dockMotionRef}
         />
 
         {history.error && history.hasCompleteCache ? (

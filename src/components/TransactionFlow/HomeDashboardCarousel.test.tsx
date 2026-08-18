@@ -10,9 +10,12 @@ import type { AnalyticsSyncController } from './useAnalyticsSync';
 
 const emblaHarness = vi.hoisted(() => ({
   api: null as null | {
+    emit: (name: string) => unknown;
+    reInit: () => void;
     scrollNext: () => void;
     scrollPrev: () => void;
   },
+  slideOffsets: [0, 300] as [number, number],
 }));
 
 vi.mock('embla-carousel-react', async () => {
@@ -29,6 +32,8 @@ vi.mock('embla-carousel-react', async () => {
         };
         const select = (next: number) => {
           selected = (next + 2) % 2;
+          emblaHarness.slideOffsets =
+            selected === 0 ? [0, 300] : [-300, 0];
           emit('scroll');
           emit('select');
           emit('settle');
@@ -92,6 +97,15 @@ vi.mock('embla-carousel-react', async () => {
 
 const transactionViewCalls: TransactionHistoryViewProps[] = [];
 const analyticsViewCalls: AnalyticsViewProps[] = [];
+type DockMotionHandle = {
+  setMotion: (motion: {
+    x: number;
+    viewportWidth: number;
+    interactive: boolean;
+    moving: boolean;
+  }) => void;
+};
+const dockMotion: DockMotionHandle = { setMotion: vi.fn() };
 let historyData: TransactionRecord[] = [];
 let rateData: AnalyticsSyncController['rates'] = [];
 const resync = vi.fn();
@@ -116,6 +130,12 @@ const historyRecords: TransactionRecord[] = [
 vi.mock('./TransactionHistoryView', () => ({
   TransactionHistoryView: (props: TransactionHistoryViewProps) => {
     transactionViewCalls.push(props);
+    const motionRef = (
+      props as TransactionHistoryViewProps & {
+        dockMotionRef?: { current: DockMotionHandle | null };
+      }
+    ).dockMotionRef;
+    if (motionRef) motionRef.current = dockMotion;
     return (
       <section
         data-testid="transaction-history-scroll"
@@ -189,6 +209,33 @@ function renderCarousel({
   onToast?: (message: string) => void;
   status?: AnalyticsSyncController['status'];
 } = {}) {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+    function mockCarouselRect(this: HTMLElement) {
+      const viewportLeft = 40;
+      const slideIndex = Number(this.dataset.homeCarouselSlideIndex);
+      const left = Number.isInteger(slideIndex)
+        ? viewportLeft + emblaHarness.slideOffsets[slideIndex]
+        : this.dataset.testid === 'home-carousel-viewport'
+          ? viewportLeft
+          : 0;
+      const width =
+        Number.isInteger(slideIndex) ||
+        this.dataset.testid === 'home-carousel-viewport'
+          ? 300
+          : 0;
+      return {
+        bottom: 600,
+        height: 600,
+        left,
+        right: left + width,
+        top: 0,
+        width,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    },
+  );
   const onEditTransaction = vi.fn();
   const headerMotion: DashboardHeaderMotionHandle = {
     setHorizontalMotion: vi.fn(),
@@ -295,6 +342,8 @@ describe('HomeDashboardCarousel', () => {
     resync.mockReset();
     transactionViewCalls.splice(0);
     analyticsViewCalls.splice(0);
+    emblaHarness.slideOffsets = [0, 300];
+    vi.mocked(dockMotion.setMotion).mockReset();
   });
 
   it('renders both full review views and no View all flow', () => {
@@ -325,6 +374,72 @@ describe('HomeDashboardCarousel', () => {
       expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true'),
     );
     expect(resync).not.toHaveBeenCalled();
+  });
+
+  it('tracks the Transactions slide through motion, reversal, settle, and reInit', async () => {
+    renderCarousel();
+
+    await waitFor(() =>
+      expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
+        x: 300,
+        viewportWidth: 300,
+        interactive: false,
+        moving: false,
+      }),
+    );
+
+    emblaHarness.slideOffsets = [-175, 125];
+    act(() => {
+      emblaHarness.api?.emit('scroll');
+    });
+    expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
+      x: 125,
+      viewportWidth: 300,
+      interactive: false,
+      moving: true,
+    });
+
+    emblaHarness.slideOffsets = [175, -125];
+    act(() => {
+      emblaHarness.api?.emit('scroll');
+    });
+    expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
+      x: -125,
+      viewportWidth: 300,
+      interactive: false,
+      moving: true,
+    });
+
+    await openTransactions();
+    expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
+      x: 0,
+      viewportWidth: 300,
+      interactive: true,
+      moving: false,
+    });
+
+    emblaHarness.slideOffsets = [-440, -140];
+    act(() => {
+      emblaHarness.api?.emit('scroll');
+    });
+    expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
+      x: -140,
+      viewportWidth: 300,
+      interactive: false,
+      moving: true,
+    });
+
+    emblaHarness.slideOffsets = [-300, 0];
+    act(() => {
+      emblaHarness.api?.emit('settle');
+      emblaHarness.api?.reInit();
+    });
+    expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
+      x: 0,
+      viewportWidth: 300,
+      interactive: true,
+      moving: false,
+    });
   });
 
   it('collapses the header over 68px regardless of virtual content height', async () => {

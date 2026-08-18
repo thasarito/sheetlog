@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +15,15 @@ import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
 import { TransactionHistoryView } from "./TransactionHistoryView";
 import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
 import type { TransactionHistoryQueryResult } from "./useTransactionHistoryQuery";
+
+type DockMotionHandle = {
+  setMotion: (motion: {
+    x: number;
+    viewportWidth: number;
+    interactive: boolean;
+    moving: boolean;
+  }) => void;
+};
 
 const originalScrollTo = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
@@ -90,21 +106,25 @@ function TransactionHistoryViewHarness({
 
 function SheetAccessoryHarness({
   reportHeight,
+  dockMotionRef,
 }: {
   reportHeight: (height: number) => void;
+  dockMotionRef?: { current: DockMotionHandle | null };
 }) {
   const [host, setHost] = useState<HTMLDivElement | null>(null);
+  const viewProps = {
+    history: mocks.history as TransactionHistoryQueryResult,
+    baseCurrency: "THB",
+    onEditTransaction: vi.fn(),
+    dockMotionRef,
+  };
 
   return (
     <CategoryStepSheetAccessoryProvider
       value={{ provided: true, host, reportHeight }}
     >
       <div ref={setHost} data-testid="test-sheet-accessory-host" />
-      <TransactionHistoryView
-        history={mocks.history as TransactionHistoryQueryResult}
-        baseCurrency="THB"
-        onEditTransaction={vi.fn()}
-      />
+      <TransactionHistoryView {...viewProps} />
     </CategoryStepSheetAccessoryProvider>
   );
 }
@@ -260,6 +280,77 @@ describe("TransactionHistoryView", () => {
         "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
       scrollPaddingBottom:
         "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+    });
+  });
+
+  it("makes the portalled dock inert in Analytics and interactive in Transactions", async () => {
+    mocks.history.records = [transaction("recent")];
+    const dockMotionRef = { current: null as DockMotionHandle | null };
+    render(
+      <SheetAccessoryHarness
+        reportHeight={vi.fn()}
+        dockMotionRef={dockMotionRef}
+      />,
+    );
+
+    const dock = await screen.findByTestId("transaction-history-dock");
+    const search = within(dock).getByLabelText("Search transaction history");
+    await waitFor(() => expect(dockMotionRef.current).not.toBeNull());
+    expect(dock).toHaveAttribute("aria-hidden", "true");
+    expect(dock.inert).toBe(true);
+    expect(dock).toHaveStyle({
+      pointerEvents: "none",
+      visibility: "hidden",
+    });
+
+    act(() => {
+      dockMotionRef.current?.setMotion({
+        x: 0,
+        viewportWidth: 390,
+        interactive: true,
+        moving: false,
+      });
+    });
+    expect(dock).toHaveAttribute("aria-hidden", "false");
+    expect(dock.inert).toBe(false);
+    expect(dock).toHaveStyle({
+      pointerEvents: "auto",
+      transform: "translate3d(0px, 0, 0)",
+      visibility: "visible",
+    });
+    search.focus();
+    expect(search).toHaveFocus();
+
+    act(() => {
+      dockMotionRef.current?.setMotion({
+        x: 390,
+        viewportWidth: 390,
+        interactive: false,
+        moving: false,
+      });
+    });
+    expect(search).not.toHaveFocus();
+    expect(dock).toHaveAttribute("aria-hidden", "true");
+    expect(dock.inert).toBe(true);
+    expect(dock).toHaveStyle({
+      pointerEvents: "none",
+      transform: "translate3d(390px, 0, 0)",
+      visibility: "hidden",
+    });
+
+    act(() => {
+      dockMotionRef.current?.setMotion({
+        x: -125,
+        viewportWidth: 390,
+        interactive: false,
+        moving: true,
+      });
+    });
+    expect(dock).toHaveAttribute("data-motion", "moving");
+    expect(dock).toHaveStyle({
+      pointerEvents: "none",
+      transform: "translate3d(-125px, 0, 0)",
+      visibility: "visible",
     });
   });
 
