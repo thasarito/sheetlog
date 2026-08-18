@@ -1,4 +1,5 @@
-import NumberFlow from '@number-flow/react';
+import NumberFlow, { type NumberFlowElement } from '@number-flow/react';
+import { useLayoutEffect, useRef } from 'react';
 import { cn } from '../../lib/utils';
 import { formatAnalyticsAmount } from './analytics';
 
@@ -21,6 +22,7 @@ const OPACITY_TIMING: EffectTiming = {
 
 export function AnalyticsNumber(props: AnalyticsNumberProps) {
   const { value, className, presentation } = props;
+  const flowRef = useRef<NumberFlowElement | null>(null);
   const percentageValue = Math.round(value);
   const settledText =
     presentation === 'currency'
@@ -33,10 +35,17 @@ export function AnalyticsNumber(props: AnalyticsNumberProps) {
         }`
       : undefined;
 
+  useLayoutEffect(() => {
+    const flow = flowRef.current;
+    if (flow?.childNodes.length) flow.replaceChildren();
+  }, [settledText]);
+
   return (
     <span className={cn('inline-flex tabular-nums', className)} data-testid="analytics-number">
+      <span className="sr-only">{settledText}</span>
       <NumberFlow
-        aria-label={settledText}
+        ref={flowRef}
+        aria-hidden="true"
         value={presentation === 'currency' ? Math.abs(value) : percentageValue}
         prefix={prefix}
         suffix={presentation === 'percentage' ? '%' : undefined}
