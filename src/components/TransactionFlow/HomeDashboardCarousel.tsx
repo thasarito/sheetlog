@@ -10,6 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
+  type CSSProperties,
   type UIEvent as ReactUIEvent,
 } from "react";
 import type { TransactionRecord } from "../../lib/types";
@@ -460,6 +461,11 @@ export function HomeDashboardCarousel({
     if (!Number.isInteger(index) || index < 0 || index >= SLIDES.length) return;
     const progress = headerCollapseProgress(target);
     verticalProgressRef.current[index] = progress;
+    const remainingHeaderSpace = HEADER_COLLAPSE_DISTANCE * (1 - progress);
+    slide?.style.setProperty(
+      "--dashboard-header-space",
+      `${Number(remainingHeaderSpace.toFixed(2))}px`,
+    );
     if (index === activeIndexRef.current) {
       headerMotionRef?.current?.setVerticalProgress(progress);
     }
@@ -561,6 +567,11 @@ export function HomeDashboardCarousel({
             aria-hidden={activeIndex !== 1}
             data-home-carousel-slide-index="1"
             className="h-full min-w-0 flex-[0_0_100%]"
+            style={
+              {
+                "--dashboard-header-space": `${HEADER_COLLAPSE_DISTANCE}px`,
+              } as CSSProperties
+            }
           >
             <TransactionHistoryView
               history={analyticsSync.history}

@@ -231,6 +231,10 @@ describe("TransactionHistoryView", () => {
     expect(screen.getByTestId("transaction-history-content")).toHaveClass(
       "bg-transparent",
     );
+    expect(screen.getByTestId("transaction-history-content")).toHaveStyle({
+      paddingTop:
+        "var(--dashboard-header-space, var(--dashboard-header-height, 68px))",
+    });
     expect(screen.getByRole("region", { name: "Transaction history" })).toHaveAttribute(
       "data-dashboard-scroll",
       "true",

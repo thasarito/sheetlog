@@ -446,19 +446,31 @@ describe('HomeDashboardCarousel', () => {
     const { headerMotion } = renderCarousel();
     await openTransactions();
     const scroll = screen.getByTestId('transaction-history-scroll');
+    const transactionSlide = screen.getByLabelText(
+      'Transactions, slide 2 of 2',
+    );
     Object.defineProperties(scroll, {
       clientHeight: { configurable: true, value: 600 },
       scrollHeight: { configurable: true, value: 6_800 },
       scrollTop: { configurable: true, value: 34, writable: true },
     });
     vi.mocked(headerMotion.setVerticalProgress).mockClear();
+    expect(transactionSlide).toHaveStyle({
+      '--dashboard-header-space': '68px',
+    });
 
     fireEvent.scroll(scroll);
     expect(headerMotion.setVerticalProgress).toHaveBeenLastCalledWith(0.5);
+    expect(transactionSlide).toHaveStyle({
+      '--dashboard-header-space': '34px',
+    });
 
     scroll.scrollTop = 68;
     fireEvent.scroll(scroll);
     expect(headerMotion.setVerticalProgress).toHaveBeenLastCalledWith(1);
+    expect(transactionSlide).toHaveStyle({
+      '--dashboard-header-space': '0px',
+    });
   });
 
   it('removes dot controls while keeping viewport keyboard navigation', async () => {
