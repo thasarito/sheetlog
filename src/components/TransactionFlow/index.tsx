@@ -23,6 +23,7 @@ import type {
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
+import { StepCategoryTypeTabs } from "./StepCategoryTypeTabs";
 import { StepReceipt, type ReceiptData } from "./StepReceipt";
 import { FOR_OPTIONS, TYPE_OPTIONS } from "./constants";
 import { toast } from "sonner";
@@ -1357,7 +1358,15 @@ export function TransactionFlow() {
         {/* Main content - full height */}
         <div className={step === 0 ? "flex-1 min-h-0" : "flex-1 min-h-0 pb-6"}>
           {step === 0 ? (
-            <CategoryStepSheet entry={activeStep.content}>
+            <CategoryStepSheet
+              entry={activeStep.content}
+              collapsedControls={
+                <StepCategoryTypeTabs
+                  form={form}
+                  layoutId="collapsedTransactionType"
+                />
+              }
+            >
               <HomeDashboardCarousel
                 baseCurrency={onboarding.analyticsBaseCurrency}
                 bigSpendingThreshold={bigSpendingThreshold}

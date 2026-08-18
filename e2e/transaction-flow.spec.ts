@@ -130,8 +130,18 @@ async function collapseTransactionEntry(page: Page) {
     .toBeLessThan(1);
 }
 
-async function openSourceExpense(page: Page) {
+async function openTransactionHistoryFromExpandedEntry(page: Page) {
   await collapseTransactionEntry(page);
+  const viewport = page.getByTestId("home-carousel-viewport");
+  const transactionSlide = page.getByLabel("Transactions, slide 2 of 2");
+  await viewport.focus();
+  await expect(viewport).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(transactionSlide).toHaveAttribute("aria-hidden", "false");
+}
+
+async function openSourceExpense(page: Page) {
+  await openTransactionHistoryFromExpandedEntry(page);
   await page
     .getByRole("button", { name: /Dining Out.*Dinner with friends/ })
     .click();
@@ -438,6 +448,7 @@ test.describe("Transaction flow - linked reimbursements", () => {
     });
 
     await page.getByRole("button", { name: "Undo reimbursement" }).click();
+    await openTransactionHistoryFromExpandedEntry(page);
     await expect(
       page.getByRole("button", { name: /Dining Out.*Dinner with friends/ }),
     ).toBeVisible();
@@ -479,7 +490,7 @@ test.describe("Transaction flow - complete history", () => {
     await seedTransactions(page, transactions);
     await page.goto("/app");
 
-    await collapseTransactionEntry(page);
+    await openTransactionHistoryFromExpandedEntry(page);
     await expect(page.getByText("Ancient archive")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible();
     await expect(

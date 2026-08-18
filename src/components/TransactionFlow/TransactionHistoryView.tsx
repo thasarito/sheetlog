@@ -222,34 +222,29 @@ export function TransactionHistoryView({
     void history.refresh();
     void baseAmounts.refetch();
   };
+  const statusLabel = isRefreshing
+    ? "Updating…"
+    : history.meta
+      ? `Saved ${format(parseDate(history.meta.capturedAt), "MMM d, HH:mm")}`
+      : history.isDownloading
+        ? "Downloading…"
+        : "Not downloaded";
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-card">
-      <header className="grid h-16 grid-cols-[40px_1fr_40px] items-center gap-2 border-b border-border/70 px-3 text-center">
-        <span aria-hidden="true" />
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-foreground">
-            Transactions
-          </h2>
-          <p className="sr-only">
-            Search and browse the complete transaction history.
-          </p>
-        </div>
-        <button
-          type="button"
-          aria-label="Refresh transaction history"
-          disabled={!history.isOnline || isRefreshing}
-          onClick={refresh}
-          className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-        >
-          <RefreshCw
-            className={cn("h-4 w-4", isRefreshing && "animate-spin")}
-          />
-        </button>
+    <section className="flex h-full min-h-0 flex-col bg-transparent">
+      <header className="flex h-20 shrink-0 items-center justify-center px-4 text-center">
+        <h2 className="text-[28px] font-bold tracking-tight text-foreground">
+          Transactions
+        </h2>
+        <p className="sr-only">
+          Search and browse the complete transaction history.
+        </p>
       </header>
-      <div className="h-11 shrink-0" aria-hidden="true" />
 
-      <div className="flex min-h-0 flex-1 flex-col bg-card">
+      <div
+        data-testid="transaction-history-content"
+        className="flex min-h-0 flex-1 flex-col bg-transparent"
+      >
           <div className="space-y-2 px-4 pb-2 pt-3">
             <label className="relative block">
               <span className="sr-only">Search transaction history</span>
@@ -263,17 +258,25 @@ export function TransactionHistoryView({
                 className="h-11 w-full rounded-xl border border-border bg-surface pl-10 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
               />
             </label>
-            <div className="flex min-h-5 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground">
+            <div
+              data-testid="transaction-history-metadata"
+              className="flex min-h-11 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground"
+            >
               <span>{countLabel}</span>
-              <span className="truncate text-right">
-                {isRefreshing
-                  ? "Updating…"
-                  : history.meta
-                    ? `Saved ${format(parseDate(history.meta.capturedAt), "MMM d, HH:mm")}`
-                    : history.isDownloading
-                      ? "Downloading…"
-                      : "Not downloaded"}
-              </span>
+              <div className="flex min-w-0 items-center gap-1">
+                <span className="truncate text-right">{statusLabel}</span>
+                <button
+                  type="button"
+                  aria-label="Refresh transaction history"
+                  disabled={!history.isOnline || isRefreshing}
+                  onClick={refresh}
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                >
+                  <RefreshCw
+                    className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+                  />
+                </button>
+              </div>
             </div>
           </div>
 

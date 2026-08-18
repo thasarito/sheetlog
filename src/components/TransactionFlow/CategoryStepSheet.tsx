@@ -13,6 +13,7 @@ const MIN_LAUNCHER_HEIGHT = 44;
 
 type CategoryStepSheetProps = {
   children: React.ReactNode;
+  collapsedControls?: React.ReactNode;
   entry: React.ReactNode;
 };
 
@@ -22,13 +23,16 @@ function positiveHeight(value: number, fallback: number): number {
 
 export function CategoryStepSheet({
   children,
+  collapsedControls,
   entry,
 }: CategoryStepSheetProps) {
   const layoutRef = useRef<HTMLDivElement>(null);
-  const launcherRef = useRef<HTMLDivElement>(null);
-  const safeAreaRef = useRef<HTMLDivElement>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
-  const entryRef = useRef<HTMLDivElement>(null);
+  const [launcherElement, setLauncherElement] =
+    useState<HTMLDivElement | null>(null);
+  const [safeAreaElement, setSafeAreaElement] =
+    useState<HTMLDivElement | null>(null);
+  const [entryElement, setEntryElement] = useState<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [heights, setHeights] = useState({
     collapsed: DEFAULT_LAUNCHER_HEIGHT,
@@ -47,23 +51,23 @@ export function CategoryStepSheet({
         MIN_LAUNCHER_HEIGHT,
         Math.ceil(
           positiveHeight(
-            launcherRef.current?.getBoundingClientRect().height ?? 0,
+            launcherElement?.getBoundingClientRect().height ?? 0,
             DEFAULT_LAUNCHER_HEIGHT,
           ),
         ),
       );
       const measuredSafeAreaHeight =
-        safeAreaRef.current?.getBoundingClientRect().height ?? 0;
+        safeAreaElement?.getBoundingClientRect().height ?? 0;
       const safeAreaHeight =
         Number.isFinite(measuredSafeAreaHeight) && measuredSafeAreaHeight > 0
           ? Math.ceil(measuredSafeAreaHeight)
           : 0;
-      const entryContent = entryRef.current?.firstElementChild as
+      const entryContent = entryElement?.firstElementChild as
         | HTMLElement
         | undefined;
       const entryHeight = Math.ceil(
         positiveHeight(
-          entryContent?.scrollHeight ?? entryRef.current?.scrollHeight ?? 0,
+          entryContent?.scrollHeight ?? entryElement?.scrollHeight ?? 0,
           Math.max(1, DEFAULT_EXPANDED_HEIGHT - collapsedHeight),
         ),
       );
@@ -88,22 +92,22 @@ export function CategoryStepSheet({
     measure();
     const observer = new ResizeObserver(measure);
     if (layoutRef.current) observer.observe(layoutRef.current);
-    if (launcherRef.current) observer.observe(launcherRef.current);
-    if (safeAreaRef.current) observer.observe(safeAreaRef.current);
-    if (entryRef.current) observer.observe(entryRef.current);
-    if (entryRef.current?.firstElementChild) {
-      observer.observe(entryRef.current.firstElementChild);
+    if (launcherElement) observer.observe(launcherElement);
+    if (safeAreaElement) observer.observe(safeAreaElement);
+    if (entryElement) observer.observe(entryElement);
+    if (entryElement?.firstElementChild) {
+      observer.observe(entryElement.firstElementChild);
     }
     return () => observer.disconnect();
-  }, []);
+  }, [entryElement, launcherElement, safeAreaElement]);
 
   const collapsedPoint = `${heights.collapsed}px`;
   const expandedPoint = `${heights.expanded}px`;
   const activePoint = collapsed ? collapsedPoint : expandedPoint;
 
   useEffect(() => {
-    if (entryRef.current) entryRef.current.inert = collapsed;
-  }, [collapsed]);
+    if (entryElement) entryElement.inert = collapsed;
+  }, [collapsed, entryElement]);
 
   return (
     <div
@@ -153,7 +157,7 @@ export function CategoryStepSheet({
             style={{ height: expandedPoint }}
           >
             <div
-              ref={launcherRef}
+              ref={setLauncherElement}
               data-testid="category-step-launcher"
               className="order-1 shrink-0"
             >
@@ -166,21 +170,25 @@ export function CategoryStepSheet({
                     : "Collapse transaction entry"
                 }
                 onClick={() => setCollapsed((value) => !value)}
-                className="flex min-h-16 w-full flex-col items-center justify-center gap-1 px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
+                className={`flex ${collapsed ? "min-h-11" : "min-h-16"} w-full items-center justify-center px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40`}
               >
                 <span
                   className="h-1.5 w-12 rounded-full bg-border"
                   aria-hidden="true"
                 />
-                {collapsed ? (
-                  <span className="text-sm font-semibold text-foreground">
-                    Log transaction
-                  </span>
-                ) : null}
               </button>
+              {collapsed && collapsedControls ? (
+                <div
+                  data-testid="category-step-collapsed-controls"
+                  data-vaul-no-drag
+                  className="px-4 pb-3"
+                >
+                  {collapsedControls}
+                </div>
+              ) : null}
             </div>
             <div
-              ref={entryRef}
+              ref={setEntryElement}
               aria-hidden={collapsed}
               data-testid="category-step-entry"
               data-vaul-no-drag
@@ -189,7 +197,7 @@ export function CategoryStepSheet({
               {entry}
             </div>
             <div
-              ref={safeAreaRef}
+              ref={setSafeAreaElement}
               aria-hidden="true"
               data-testid="category-step-safe-area"
               className={`${collapsed ? "order-2" : "order-3"} shrink-0`}

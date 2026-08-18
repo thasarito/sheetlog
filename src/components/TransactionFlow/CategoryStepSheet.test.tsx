@@ -59,7 +59,10 @@ function rect(height: number): DOMRect {
 
 function renderSheet() {
   return render(
-    <CategoryStepSheet entry={<div data-testid="entry">Categories</div>}>
+    <CategoryStepSheet
+      entry={<div data-testid="entry">Categories</div>}
+      collapsedControls={<button type="button">Expense</button>}
+    >
       <button type="button">Interactive review</button>
     </CategoryStepSheet>,
   );
@@ -129,6 +132,9 @@ describe("CategoryStepSheet", () => {
     const entryRegion = screen.getByTestId("entry").parentElement;
     expect(entryRegion).not.toHaveAttribute("aria-hidden", "true");
     expect(entryRegion?.inert).toBe(false);
+    expect(
+      screen.queryByTestId("category-step-collapsed-controls"),
+    ).not.toBeInTheDocument();
 
     const collapse = screen.getByRole("button", {
       name: "Collapse transaction entry",
@@ -139,7 +145,11 @@ describe("CategoryStepSheet", () => {
     expect(
       screen.getByRole("button", { name: "Expand transaction entry" }),
     ).toBeVisible();
-    expect(screen.getByText("Log transaction")).toBeVisible();
+    expect(screen.queryByText("Log transaction")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("category-step-collapsed-controls"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Expense" })).toBeVisible();
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
       "--category-sheet-occlusion": "64px",
     });

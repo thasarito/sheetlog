@@ -154,7 +154,12 @@ describe('AnalyticsView', () => {
   it('renders detailed analytics directly without outer modal controls', () => {
     renderView();
 
-    expect(screen.getByRole('heading', { name: 'Analytics' })).toBeVisible();
+    const heading = screen.getByRole('heading', { name: 'Analytics' });
+    expect(heading).toBeVisible();
+    expect(heading.closest('section')).toHaveClass('bg-transparent');
+    expect(heading.closest('section')).not.toHaveClass('bg-card');
+    expect(heading.parentElement).toHaveClass('h-20');
+    expect(heading).toHaveClass('text-[28px]');
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Close analytics' }),
