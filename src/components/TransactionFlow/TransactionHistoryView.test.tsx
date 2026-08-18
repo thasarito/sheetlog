@@ -286,6 +286,9 @@ describe("TransactionHistoryView", () => {
       name: "Search transaction history",
     });
     expect(
+      screen.queryByText("Search transaction history"),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: "Clear transaction search" }),
     ).not.toBeInTheDocument();
     expect(search).toHaveClass("[&::-webkit-search-cancel-button]:hidden");

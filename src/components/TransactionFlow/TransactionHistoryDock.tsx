@@ -133,7 +133,6 @@ export function TransactionHistoryDock({
         className="absolute left-1/2 top-full h-2 w-px -translate-x-1/2 bg-border/80"
       />
       <div className="relative block">
-        <span className="sr-only">Search transaction history</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={searchRef}
