@@ -69,7 +69,7 @@ function renderSheetWithMeasurements({
   launcherHeight: number;
 }) {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-    function getBoundingClientRect() {
+    function getBoundingClientRect(this: HTMLElement) {
       if (this.dataset.testid === "category-step-layout") {
         return rect(layoutHeight);
       }
@@ -80,7 +80,7 @@ function renderSheetWithMeasurements({
     },
   );
   vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-    function scrollHeight() {
+    function scrollHeight(this: HTMLElement) {
       return this.dataset.testid === "category-step-sheet-body"
         ? contentHeight
         : 0;

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -304,12 +304,15 @@ vi.mock("./StepCategory", () => ({
   StepCategory: ({
     form,
     onConfirm,
+    dateDrawerNested,
   }: {
     form: { setFieldValue: (name: string, value: unknown) => void };
     onConfirm: () => void;
+    dateDrawerNested?: boolean;
   }) => (
     <button
       type="button"
+      data-date-drawer-nested={String(dateDrawerNested)}
       onClick={() => {
         form.setFieldValue("type", "expense");
         form.setFieldValue("category", "Food");
@@ -321,87 +324,96 @@ vi.mock("./StepCategory", () => ({
   ),
 }));
 
-vi.mock("./TopDashboard", () => ({
-  TopDashboard: ({
+vi.mock("./HomeDashboardCarousel", () => ({
+  HomeDashboardCarousel: ({
     onEditTransaction,
-    onViewAll,
   }: {
     onEditTransaction: (transaction: TransactionRecord) => void;
-    onViewAll: () => void;
   }) => {
     mocks.dashboardEdit = onEditTransaction;
     return (
-      <div data-testid="top-dashboard">
-      <button type="button" onClick={onViewAll}>
-        View transaction history
-      </button>
-      <button type="button" onClick={() => onEditTransaction(mocks.expense)}>
-        Edit expense
-      </button>
-      <button type="button" onClick={() => onEditTransaction(mocks.expenseB)}>
-        Edit expense B
-      </button>
-      <button type="button" onClick={() => onEditTransaction(mocks.income)}>
-        Edit income
-      </button>
-      <button
-        type="button"
-        onClick={() => onEditTransaction(mocks.zeroExpense)}
-      >
-        Edit zero expense
-      </button>
-      <button
-        type="button"
-        onClick={() => onEditTransaction(mocks.malformedExpense)}
-      >
-        Edit malformed expense
-      </button>
-      <button
-        type="button"
-        onClick={() => onEditTransaction(mocks.linkedChild)}
-      >
-        Edit linked reimbursement
-      </button>
-      <button
-        type="button"
-        onClick={() => onEditTransaction(mocks.failedLinkedChild)}
-      >
-        Edit failed reimbursement
-      </button>
-      </div>
-    );
-  },
-}));
-
-vi.mock("./TransactionHistoryDrawer", () => ({
-  TransactionHistoryDrawer: ({
-    open,
-    onOpenChange,
-    onEditTransaction,
-  }: {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    onEditTransaction: (transaction: TransactionRecord) => void;
-  }) =>
-    open ? (
-      <div role="dialog" aria-label="Complete transaction history">
+      <section aria-label="Home activity">
         <button
           type="button"
-          onClick={() => {
-            onOpenChange(false);
+          onClick={() => onEditTransaction(mocks.expense)}
+        >
+          Edit expense from full review
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditTransaction(mocks.expense)}
+        >
+          Edit expense
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditTransaction(mocks.expenseB)}
+        >
+          Edit expense B
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditTransaction(mocks.income)}
+        >
+          Edit income
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditTransaction(mocks.zeroExpense)}
+        >
+          Edit zero expense
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditTransaction(mocks.malformedExpense)}
+        >
+          Edit malformed expense
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditTransaction(mocks.linkedChild)}
+        >
+          Edit linked reimbursement
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditTransaction(mocks.failedLinkedChild)}
+        >
+          Edit failed reimbursement
+        </button>
+        <button
+          type="button"
+          onClick={() =>
             onEditTransaction({
               ...mocks.expense,
               place: { provider: "google", placeId: "history-place" },
               cachedAt: "2026-08-15T10:00:00.000Z",
               canEdit: true,
               searchText: "food lunch wallet",
-            } as TransactionRecord);
-          }}
+            } as TransactionRecord)
+          }
         >
           Edit history expense
         </button>
+      </section>
+    );
+  },
+}));
+
+vi.mock("./CategoryStepSheet", () => ({
+  CategoryStepSheet: ({
+    children,
+    entry,
+  }: {
+    children: React.ReactNode;
+    entry: React.ReactNode;
+  }) =>
+    (
+      <div data-testid="category-step-layout">
+        {children}
+        <aside>{entry}</aside>
       </div>
-    ) : null,
+    ),
 }));
 
 vi.mock("../DateTimeDrawer", () => ({
@@ -559,7 +571,7 @@ beforeEach(() => {
 });
 
 describe("TransactionFlow reimbursement entry", () => {
-  it("gives remaining dashboard space to activity above an intrinsic category row", () => {
+  it("layers the default category entry above the full review carousel", () => {
     renderFlow();
 
     const transactionCanvas = screen.getByTestId("transaction-canvas");
@@ -569,37 +581,34 @@ describe("TransactionFlow reimbursement entry", () => {
     expect(transactionCanvas).toHaveClass("shrink-0");
     expect(transactionCanvas).not.toHaveClass("h-dvh");
 
-    const dashboardCarousel = screen.getByRole("region", {
-      name: "Home activity",
-    });
-    const dashboardCell = dashboardCarousel.parentElement;
-    const dashboardActionGrid = dashboardCell?.parentElement;
-
-    expect(dashboardActionGrid).toHaveClass(
-      "grid-rows-[minmax(0,1fr)_auto]",
-      "gap-4",
-    );
+    const layout = screen.getByTestId("category-step-layout");
+    expect(
+      within(layout).getByRole("region", { name: "Home activity" }),
+    ).toBeVisible();
+    expect(
+      within(layout).getByRole("button", { name: "Start expense" }),
+    ).toHaveAttribute("data-date-drawer-nested", "true");
   });
 
-  it("opens complete history and routes a selected row into the existing editor", async () => {
-    const user = userEvent.setup();
+  it("routes a full-review row into the existing editor", async () => {
     renderFlow();
 
-    await user.click(
-      screen.getByRole("button", { name: "View transaction history" }),
+    await userEvent.setup().click(
+      screen.getByRole("button", { name: "Edit expense from full review" }),
     );
-    expect(
-      screen.getByRole("dialog", { name: "Complete transaction history" }),
-    ).toBeInTheDocument();
+
+    expect(await screen.findByDisplayValue("Lunch")).toBeInTheDocument();
+  });
+
+  it("routes a complete-history row directly into the existing editor", async () => {
+    const user = userEvent.setup();
+    renderFlow();
 
     await user.click(
       screen.getByRole("button", { name: "Edit history expense" }),
     );
 
     expect(await screen.findByDisplayValue("Lunch")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("dialog", { name: "Complete transaction history" }),
-    ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mocks.dbPut).toHaveBeenCalledWith({
         ...mocks.expense,
