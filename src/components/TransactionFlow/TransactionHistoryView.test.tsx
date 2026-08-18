@@ -168,6 +168,7 @@ afterEach(() => {
 
 describe("TransactionHistoryView", () => {
   it("renders the full history surface without modal controls", () => {
+    mocks.history.records = [transaction("recent")];
     render(
       <TransactionHistoryViewHarness
         open
@@ -177,14 +178,19 @@ describe("TransactionHistoryView", () => {
       />,
     );
 
-    const heading = screen.getByRole("heading", { name: "Transactions" });
-    expect(heading).toBeVisible();
+    const heading = screen.getByRole("heading", {
+      name: "Transactions",
+      hidden: true,
+    });
+    expect(heading).toHaveClass("sr-only");
     expect(heading.closest("section")).toHaveClass("bg-transparent");
     expect(heading.closest("section")).not.toHaveClass("bg-card");
-    expect(heading.parentElement).toHaveClass("h-20");
-    expect(heading).toHaveClass("text-[28px]");
     expect(screen.getByTestId("transaction-history-content")).toHaveClass(
       "bg-transparent",
+    );
+    expect(screen.getByRole("region", { name: "Transaction history" })).toHaveAttribute(
+      "data-dashboard-scroll",
+      "true",
     );
     expect(
       within(screen.getByTestId("transaction-history-metadata")).getByRole(

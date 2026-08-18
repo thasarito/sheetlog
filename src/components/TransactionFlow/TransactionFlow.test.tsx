@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type React from "react";
+import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionInput, TransactionRecord } from "../../lib/types";
 import { TransactionFlow } from "./index";
@@ -294,7 +294,11 @@ vi.mock("./useUpdateTransactionMutation", async (importOriginal) => {
   };
 });
 
-vi.mock("../Header", () => ({ Header: () => <header>SheetLog</header> }));
+vi.mock("../Header", () => ({
+  Header: React.forwardRef(function Header() {
+    return <header>SheetLog</header>;
+  }),
+}));
 
 vi.mock("./StepCard", () => ({
   StepCard: ({ children }: { children: React.ReactNode }) => <>{children}</>,

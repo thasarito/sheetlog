@@ -201,13 +201,9 @@ export function AnalyticsView({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-transparent">
-      <header className="flex h-20 shrink-0 items-center justify-center px-4 text-center">
-        <h2 className="text-[28px] font-bold tracking-tight text-foreground">
-          Analytics
-        </h2>
-        <p className="sr-only">
-          Review spending analytics and filter matching transactions.
-        </p>
+      <header className="sr-only">
+        <h2 className="sr-only">Analytics</h2>
+        <p>Review spending analytics and filter matching transactions.</p>
       </header>
 
       <output
@@ -220,10 +216,15 @@ export function AnalyticsView({
       </output>
 
       <div
+        data-testid="analytics-dashboard-scroll"
+        data-dashboard-scroll="true"
         className="min-h-0 flex-1 overflow-y-auto px-4"
         style={{
+          paddingTop:
+            'calc(var(--dashboard-header-height, 68px) + 0.75rem)',
           paddingBottom:
             'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
+          scrollPaddingTop: 'var(--dashboard-header-height, 68px)',
           scrollPaddingBottom:
             'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
         }}
@@ -231,7 +232,7 @@ export function AnalyticsView({
           <div className="space-y-7 pb-8">
             <div
               data-testid="analytics-range-controls"
-              className="flex items-center justify-end gap-3 pt-3"
+              className="flex items-center justify-end gap-3"
             >
               <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
               <button

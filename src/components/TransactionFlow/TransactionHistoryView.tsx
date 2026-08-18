@@ -116,6 +116,7 @@ function TransactionHistoryVirtualList({
     <section
       ref={scrollRef}
       aria-label="Transaction history"
+      data-dashboard-scroll="true"
       data-virtual-scroll="true"
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2"
       style={{
@@ -232,60 +233,84 @@ export function TransactionHistoryView({
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-transparent">
-      <header className="flex h-20 shrink-0 items-center justify-center px-4 text-center">
-        <h2 className="text-[28px] font-bold tracking-tight text-foreground">
-          Transactions
-        </h2>
-        <p className="sr-only">
-          Search and browse the complete transaction history.
-        </p>
+      <header className="sr-only">
+        <h2 className="sr-only">Transactions</h2>
+        <p>Search and browse the complete transaction history.</p>
       </header>
 
       <div
         data-testid="transaction-history-content"
         className="flex min-h-0 flex-1 flex-col bg-transparent"
+        style={{ paddingTop: "var(--dashboard-header-height, 68px)" }}
       >
-          <div className="space-y-2 px-4 pb-2 pt-3">
-            <label className="relative block">
-              <span className="sr-only">Search transaction history</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search category, note, or account"
-                aria-label="Search transaction history"
-                className="h-11 w-full rounded-xl border border-border bg-surface pl-10 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
-              />
-            </label>
-            <div
-              data-testid="transaction-history-metadata"
-              className="flex min-h-11 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground"
-            >
-              <span>{countLabel}</span>
-              <div className="flex min-w-0 items-center gap-1">
-                <span className="truncate text-right">{statusLabel}</span>
-                <button
-                  type="button"
-                  aria-label="Refresh transaction history"
-                  disabled={!history.isOnline || isRefreshing}
-                  onClick={refresh}
-                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                >
-                  <RefreshCw
-                    className={cn("h-4 w-4", isRefreshing && "animate-spin")}
-                  />
-                </button>
-              </div>
+        <div className="space-y-2 px-4 pb-2 pt-3">
+          <label className="relative block">
+            <span className="sr-only">Search transaction history</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search category, note, or account"
+              aria-label="Search transaction history"
+              className="h-11 w-full rounded-xl border border-border bg-surface pl-10 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
+            />
+          </label>
+          <div
+            data-testid="transaction-history-metadata"
+            className="flex min-h-11 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground"
+          >
+            <span>{countLabel}</span>
+            <div className="flex min-w-0 items-center gap-1">
+              <span className="truncate text-right">{statusLabel}</span>
+              <button
+                type="button"
+                aria-label="Refresh transaction history"
+                disabled={!history.isOnline || isRefreshing}
+                onClick={refresh}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+                />
+              </button>
             </div>
           </div>
+        </div>
 
-          {history.error && history.hasCompleteCache ? (
-            <div
-              role="alert"
-              className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger"
+        {history.error && history.hasCompleteCache ? (
+          <div
+            role="alert"
+            className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger"
+          >
+            <span className="truncate">{history.error.message}</span>
+            <button
+              type="button"
+              aria-label="Retry history refresh"
+              onClick={refresh}
+              className="shrink-0 font-semibold underline underline-offset-2"
             >
-              <span className="truncate">{history.error.message}</span>
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        {hasIncompleteLocalRows ? (
+          <div
+            role={history.error ? "alert" : "status"}
+            className={cn(
+              "mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs",
+              history.error
+                ? "border-danger/20 bg-danger/10 text-danger"
+                : "border-border/70 bg-muted/40 text-muted-foreground",
+            )}
+          >
+            <span>
+              {history.error
+                ? history.error.message
+                : incompleteHistoryMessage}
+            </span>
+            {history.error ? (
               <button
                 type="button"
                 aria-label="Retry history refresh"
@@ -294,84 +319,57 @@ export function TransactionHistoryView({
               >
                 Retry
               </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
+        ) : null}
 
-          {hasIncompleteLocalRows ? (
-            <div
-              role={history.error ? "alert" : "status"}
-              className={cn(
-                "mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs",
-                history.error
-                  ? "border-danger/20 bg-danger/10 text-danger"
-                  : "border-border/70 bg-muted/40 text-muted-foreground",
-              )}
-            >
-              <span>
-                {history.error
-                  ? history.error.message
-                  : incompleteHistoryMessage}
-              </span>
-              {history.error ? (
-                <button
-                  type="button"
-                  aria-label="Retry history refresh"
-                  onClick={refresh}
-                  className="shrink-0 font-semibold underline underline-offset-2"
-                >
-                  Retry
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {filteredTransactions.length > 0 ? (
-            <TransactionHistoryVirtualList
-              items={items}
-              onEdit={handleEdit}
-              baseAmountStates={baseAmounts.states}
-            />
-          ) : debouncedSearch && history.records.length > 0 ? (
-            <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">
-              No transactions match this search.
-            </div>
-          ) : history.isLoading || history.isDownloading ? (
-            <div className="space-y-3 px-5 py-4">
-              <span className="sr-only">Downloading history</span>
-              {HISTORY_SKELETON_KEYS.map((key) => (
-                <div
-                  key={key}
-                  className="grid grid-cols-[42px_1fr_72px] items-center gap-3"
-                >
-                  <Skeleton className="h-3 w-9" />
-                  <Skeleton className="h-8 w-full" />
-                  <Skeleton className="h-4 w-16 justify-self-end" />
-                </div>
-              ))}
-            </div>
-          ) : !history.hasCompleteCache && !history.isOnline ? (
-            <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">
-              Connect once to download transaction history.
-            </div>
-          ) : !history.hasCompleteCache && history.error ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
-              <p role="alert" className="text-sm text-danger">
-                {history.error.message}
-              </p>
-              <button
-                type="button"
-                aria-label="Retry history refresh"
-                onClick={refresh}
-                className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+        {filteredTransactions.length > 0 ? (
+          <TransactionHistoryVirtualList
+            items={items}
+            onEdit={handleEdit}
+            baseAmountStates={baseAmounts.states}
+          />
+        ) : debouncedSearch && history.records.length > 0 ? (
+          <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">
+            No transactions match this search.
+          </div>
+        ) : history.isLoading || history.isDownloading ? (
+          <div className="space-y-3 px-5 py-4">
+            <span className="sr-only">Downloading history</span>
+            {HISTORY_SKELETON_KEYS.map((key) => (
+              <div
+                key={key}
+                className="grid grid-cols-[42px_1fr_72px] items-center gap-3"
               >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">
-              No transactions yet.
-            </div>
-          )}
+                <Skeleton className="h-3 w-9" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-4 w-16 justify-self-end" />
+              </div>
+            ))}
+          </div>
+        ) : !history.hasCompleteCache && !history.isOnline ? (
+          <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">
+            Connect once to download transaction history.
+          </div>
+        ) : !history.hasCompleteCache && history.error ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
+            <p role="alert" className="text-sm text-danger">
+              {history.error.message}
+            </p>
+            <button
+              type="button"
+              aria-label="Retry history refresh"
+              onClick={refresh}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-muted-foreground">
+            No transactions yet.
+          </div>
+        )}
       </div>
     </section>
   );

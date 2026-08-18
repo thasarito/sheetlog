@@ -9,7 +9,10 @@ import {
   useWorkspace,
 } from "../../app/providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
-import { Header } from "../Header";
+import {
+  Header,
+  type DashboardHeaderMotionHandle,
+} from "../Header";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
 import { db } from "../../lib/db";
@@ -136,6 +139,7 @@ function receiptDataFromRecord(record: TransactionRecord): ReceiptData {
 
 export function TransactionFlow() {
   const stableTransactionHeight = useStableTransactionHeight();
+  const dashboardHeaderMotionRef = useRef<DashboardHeaderMotionHandle>(null);
   const { undoLast, lastSyncError, lastSyncErrorAt } = useTransactions();
   const { userProfile } = useSession();
   const { sheetId } = useWorkspace();
@@ -1347,10 +1351,12 @@ export function TransactionFlow() {
       style={{ height: `${stableTransactionHeight}px` }}
       className="h-full shrink-0 from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6"
     >
-      <div className="mx-auto flex h-full w-full max-w-md flex-col">
+      <div className="relative mx-auto flex h-full w-full max-w-md flex-col">
         {/* Header with settings drawer */}
         <Header
+          ref={dashboardHeaderMotionRef}
           showSettings
+          overlayDashboard={step === 0}
           onToast={handleToast}
           analyticsSync={analyticsSync}
         />
@@ -1371,6 +1377,7 @@ export function TransactionFlow() {
                 baseCurrency={onboarding.analyticsBaseCurrency}
                 bigSpendingThreshold={bigSpendingThreshold}
                 analyticsSync={analyticsSync}
+                headerMotionRef={dashboardHeaderMotionRef}
                 onToast={handleToast}
                 onEditTransaction={handleEditTransaction}
               />
