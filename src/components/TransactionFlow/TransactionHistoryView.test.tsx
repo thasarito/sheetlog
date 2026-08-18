@@ -1,11 +1,29 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "../../lib/types";
+import { CategoryStepSheetAccessoryProvider } from "./CategoryStepSheetAccessory";
 import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
 import { TransactionHistoryView } from "./TransactionHistoryView";
 import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
 import type { TransactionHistoryQueryResult } from "./useTransactionHistoryQuery";
+
+type DockMotionHandle = {
+  setMotion: (motion: {
+    x: number;
+    viewportWidth: number;
+    interactive: boolean;
+    moving: boolean;
+  }) => void;
+};
 
 const originalScrollTo = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
@@ -83,6 +101,31 @@ function TransactionHistoryViewHarness({
       baseCurrency={baseCurrency}
       onEditTransaction={onEditTransaction}
     />
+  );
+}
+
+function SheetAccessoryHarness({
+  reportHeight,
+  dockMotionRef,
+}: {
+  reportHeight: (height: number) => void;
+  dockMotionRef?: { current: DockMotionHandle | null };
+}) {
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+  const viewProps = {
+    history: mocks.history as TransactionHistoryQueryResult,
+    baseCurrency: "THB",
+    onEditTransaction: vi.fn(),
+    dockMotionRef,
+  };
+
+  return (
+    <CategoryStepSheetAccessoryProvider
+      value={{ provided: true, host, reportHeight }}
+    >
+      <div ref={setHost} data-testid="test-sheet-accessory-host" />
+      <TransactionHistoryView {...viewProps} />
+    </CategoryStepSheetAccessoryProvider>
   );
 }
 
@@ -201,10 +244,115 @@ describe("TransactionHistoryView", () => {
     expect(
       screen.getByRole("searchbox", { name: "Search transaction history" }),
     ).toBeVisible();
+    const dock = screen.getByTestId("transaction-history-dock");
+    expect(screen.getAllByTestId("transaction-history-dock")).toHaveLength(1);
+    expect(screen.getByTestId("transaction-history-content")).toContainElement(
+      dock,
+    );
+    expect(dock).toHaveClass("mx-3", "rounded-2xl");
+    expect(dock).toHaveAttribute("data-home-carousel-swipe-lock", "true");
+    expect(dock.className).not.toMatch(/shadow/);
+    expect(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+    ).toHaveClass("h-11");
     expect(
       screen.queryByRole("button", { name: "Close transaction history" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("portals one measured dock and reserves its sheet occlusion", async () => {
+    mocks.history.records = [transaction("recent")];
+    const reportHeight = vi.fn();
+    render(<SheetAccessoryHarness reportHeight={reportHeight} />);
+
+    const host = screen.getByTestId("test-sheet-accessory-host");
+    const dock = await screen.findByTestId("transaction-history-dock");
+    expect(screen.getAllByTestId("transaction-history-dock")).toHaveLength(1);
+    expect(host).toContainElement(dock);
+    expect(
+      screen.getByTestId("transaction-history-content"),
+    ).not.toContainElement(dock);
+    await waitFor(() => expect(reportHeight).toHaveBeenCalledWith(64));
+    expect(
+      screen.getByRole("region", { name: "Transaction history" }),
+    ).toHaveStyle({
+      paddingBottom:
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+      scrollPaddingBottom:
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+    });
+  });
+
+  it("makes the portalled dock inert in Analytics and interactive in Transactions", async () => {
+    mocks.history.records = [transaction("recent")];
+    const dockMotionRef = { current: null as DockMotionHandle | null };
+    render(
+      <SheetAccessoryHarness
+        reportHeight={vi.fn()}
+        dockMotionRef={dockMotionRef}
+      />,
+    );
+
+    const dock = await screen.findByTestId("transaction-history-dock");
+    const search = within(dock).getByLabelText("Search transaction history");
+    await waitFor(() => expect(dockMotionRef.current).not.toBeNull());
+    expect(dock).toHaveAttribute("aria-hidden", "true");
+    expect(dock.inert).toBe(true);
+    expect(dock).toHaveStyle({
+      pointerEvents: "none",
+      visibility: "hidden",
+    });
+
+    act(() => {
+      dockMotionRef.current?.setMotion({
+        x: 0,
+        viewportWidth: 390,
+        interactive: true,
+        moving: false,
+      });
+    });
+    expect(dock).toHaveAttribute("aria-hidden", "false");
+    expect(dock.inert).toBe(false);
+    expect(dock).toHaveStyle({
+      pointerEvents: "auto",
+      transform: "translate3d(0px, 0, 0)",
+      visibility: "visible",
+    });
+    search.focus();
+    expect(search).toHaveFocus();
+
+    act(() => {
+      dockMotionRef.current?.setMotion({
+        x: 390,
+        viewportWidth: 390,
+        interactive: false,
+        moving: false,
+      });
+    });
+    expect(search).not.toHaveFocus();
+    expect(dock).toHaveAttribute("aria-hidden", "true");
+    expect(dock.inert).toBe(true);
+    expect(dock).toHaveStyle({
+      pointerEvents: "none",
+      transform: "translate3d(390px, 0, 0)",
+      visibility: "hidden",
+    });
+
+    act(() => {
+      dockMotionRef.current?.setMotion({
+        x: -125,
+        viewportWidth: 390,
+        interactive: false,
+        moving: true,
+      });
+    });
+    expect(dock).toHaveAttribute("data-motion", "moving");
+    expect(dock).toHaveStyle({
+      pointerEvents: "none",
+      transform: "translate3d(-125px, 0, 0)",
+      visibility: "visible",
+    });
   });
 
   it("virtualizes hundreds of rows while full search can reveal an older transaction", async () => {
