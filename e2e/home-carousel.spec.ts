@@ -546,7 +546,24 @@ test.describe("Home Transactions and Analytics carousel", () => {
       name: "Expand transaction entry",
     });
     await expect(expandEntry).toBeVisible();
-    await expect(page.getByText("Log transaction", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Log transaction", { exact: true }),
+    ).toHaveCount(0);
+    const collapsedControls = page.getByTestId(
+      "category-step-collapsed-controls",
+    );
+    await expect(collapsedControls).toBeVisible();
+    for (const label of ["Expense", "Income", "Transfer"]) {
+      await expect(
+        collapsedControls.getByRole("button", { name: label, exact: true }),
+      ).toBeVisible();
+    }
+    await expect(
+      collapsedControls.getByRole("button", {
+        name: "Expense",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
     await waitForCategorySheetSnap(categorySheet);
     await page.screenshot({
       path: testInfo.outputPath("category-collapsed-analytics.png"),
