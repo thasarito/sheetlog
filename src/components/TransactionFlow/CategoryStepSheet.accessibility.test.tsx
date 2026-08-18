@@ -55,7 +55,7 @@ describe("CategoryStepSheet accessibility", () => {
     render(
       <CategoryStepSheet
         entry={<button type="button">Category entry</button>}
-        collapsedControls={<button type="button">Expense</button>}
+        typeTabsHostRef={() => undefined}
       >
         <button type="button">Interactive review</button>
       </CategoryStepSheet>,

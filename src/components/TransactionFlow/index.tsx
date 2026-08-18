@@ -26,7 +26,6 @@ import type {
 import { StepCard } from "./StepCard";
 import { StepAmount } from "./StepAmount";
 import { StepCategory } from "./StepCategory";
-import { StepCategoryTypeTabs } from "./StepCategoryTypeTabs";
 import { StepReceipt, type ReceiptData } from "./StepReceipt";
 import { FOR_OPTIONS, TYPE_OPTIONS } from "./constants";
 import { toast } from "sonner";
@@ -147,6 +146,8 @@ export function TransactionFlow() {
   const analyticsSync = useAnalyticsSync(onboarding.analyticsBaseCurrency);
   const { isOnline } = useConnectivity();
   const [step, setStep] = useState(0);
+  const [categoryTypeTabsContainer, setCategoryTypeTabsContainer] =
+    useState<HTMLFieldSetElement | null>(null);
   const [placeSuggestionSessionId, setPlaceSuggestionSessionId] = useState(
     createPlaceSessionId
   );
@@ -1176,6 +1177,7 @@ export function TransactionFlow() {
           categoryGroups={categoryGroups}
           onConfirm={openCreateAmountStep}
           dateDrawerNested
+          typeTabsContainer={categoryTypeTabsContainer}
         />
       ),
     },
@@ -1366,12 +1368,7 @@ export function TransactionFlow() {
           {step === 0 ? (
             <CategoryStepSheet
               entry={activeStep.content}
-              collapsedControls={
-                <StepCategoryTypeTabs
-                  form={form}
-                  layoutId="collapsedTransactionType"
-                />
-              }
+              typeTabsHostRef={setCategoryTypeTabsContainer}
             >
               <HomeDashboardCarousel
                 baseCurrency={onboarding.analyticsBaseCurrency}

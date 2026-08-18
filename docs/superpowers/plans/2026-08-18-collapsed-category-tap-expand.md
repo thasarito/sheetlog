@@ -4,7 +4,9 @@
 
 **Goal:** Expand the category entry sheet from any tap within its collapsed launcher, reduce the handle, and keep the transaction-type tabs visually identical in both sheet states.
 
-**Architecture:** Keep collapse state inside `CategoryStepSheet`. Add a bubble-phase click handler to the existing sheet dialog so nested tab actions commit before expansion, keep the handle button responsible for collapsing from the expanded state, and restore focus to that persistent handle when expansion unmounts a focused collapsed control. Give both states the same 44px handle slot and full-width shared tab component.
+**Architecture:** Keep collapse state inside `CategoryStepSheet`. Add a bubble-phase click handler to the existing sheet dialog so nested tab actions commit before expansion, keep the handle button responsible for collapsing from the expanded state, and expose an always-mounted launcher host for the one normal `StepCategoryTypeTabs` instance. Portal that instance from `StepCategory` so its carousel state, DOM identity, and focus persist across both states. Give both states the same 44px handle slot.
+
+> **Follow-up correction:** The initial implementation rendered separate expanded and collapsed tab components. The final implementation supersedes that approach with one persistent portaled instance; tests require a single `animated-tabs-compact` node and focus to remain on the selected tab.
 
 **Tech Stack:** React 18, TypeScript, Vaul, Vitest, Testing Library, Playwright, Tailwind CSS.
 

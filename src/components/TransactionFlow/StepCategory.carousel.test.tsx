@@ -40,7 +40,13 @@ const categoryGroups: Record<TransactionType, CategoryItem[]> = {
   transfer: [],
 };
 
-function Harness({ dateDrawerNested = false }: { dateDrawerNested?: boolean }) {
+function Harness({
+  dateDrawerNested = false,
+  typeTabsContainer,
+}: {
+  dateDrawerNested?: boolean;
+  typeTabsContainer?: HTMLElement | null;
+}) {
   const form = useTransactionForm({
     initialValues: { type: "expense", category: "Food Delivery" },
   });
@@ -54,6 +60,7 @@ function Harness({ dateDrawerNested = false }: { dateDrawerNested?: boolean }) {
         categoryGroups={categoryGroups}
         onConfirm={vi.fn()}
         dateDrawerNested={dateDrawerNested}
+        typeTabsContainer={typeTabsContainer}
       />
     </>
   );
@@ -104,6 +111,45 @@ describe("StepCategory carousel", () => {
     expect(
       screen.getByLabelText("Income categories, slide 2 of 3"),
     ).not.toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("portals its normal tabs as one persistent carousel control", async () => {
+    const typeTabsHost = document.createElement("div");
+    document.body.append(typeTabsHost);
+    const rendered = render(<Harness typeTabsContainer={typeTabsHost} />);
+    const viewport = screen.getByTestId("transaction-type-carousel");
+    Object.defineProperty(viewport, "clientWidth", {
+      configurable: true,
+      value: 300,
+    });
+    Object.defineProperty(viewport, "scrollTo", {
+      configurable: true,
+      value: ({ left }: ScrollToOptions) => {
+        viewport.scrollLeft = Number(left ?? 0);
+        fireEvent.scroll(viewport);
+      },
+    });
+
+    try {
+      const typeTabs = within(typeTabsHost).getByTestId(
+        "animated-tabs-compact",
+      );
+      expect(screen.getAllByTestId("animated-tabs-compact")).toHaveLength(1);
+
+      await userEvent
+        .setup()
+        .click(within(typeTabs).getByRole("button", { name: "Income" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("form-type")).toHaveTextContent("income"),
+      );
+      expect(within(typeTabsHost).getByTestId("animated-tabs-compact")).toBe(
+        typeTabs,
+      );
+    } finally {
+      rendered.unmount();
+      typeTabsHost.remove();
+    }
   });
 
   it("commits the nearest finite slide after scrolling", async () => {

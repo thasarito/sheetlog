@@ -28,6 +28,7 @@ type StepCategoryProps = {
   onConfirm: () => void;
   drawerContainer?: HTMLElement | null;
   dateDrawerNested?: boolean;
+  typeTabsContainer?: HTMLElement | null;
 };
 
 function prefersReducedMotion(): boolean {
@@ -44,6 +45,7 @@ export function StepCategory({
   onConfirm,
   drawerContainer,
   dateDrawerNested = false,
+  typeTabsContainer,
 }: StepCategoryProps) {
   const { type, dateObject } = form.useStore((state) => state.values);
   const activeType = type ?? TYPE_OPTIONS[0];
@@ -244,6 +246,15 @@ export function StepCategory({
     />
   ) : null;
 
+  const typeTabs = (
+    <StepCategoryTypeTabs
+      form={form}
+      onChange={(value) => scrollToType(TYPE_OPTIONS.indexOf(value))}
+      layoutId="transactionType"
+      visualProgress={visualProgress}
+    />
+  );
+
   return (
     <section
       aria-roledescription="carousel"
@@ -266,12 +277,11 @@ export function StepCategory({
         }
       }}
     >
-      <StepCategoryTypeTabs
-        form={form}
-        onChange={(value) => scrollToType(TYPE_OPTIONS.indexOf(value))}
-        layoutId="transactionType"
-        visualProgress={visualProgress}
-      />
+      {typeTabsContainer === undefined
+        ? typeTabs
+        : typeTabsContainer
+          ? createPortal(typeTabs, typeTabsContainer)
+          : null}
 
       <div
         ref={viewportRef}
@@ -287,7 +297,7 @@ export function StepCategory({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onClickCapture={handleClickCapture}
-        className="mt-3 flex aspect-square w-full min-h-0 flex-none snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={`${typeTabsContainer === undefined ? 'mt-3 ' : ''}flex aspect-square w-full min-h-0 flex-none snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
       >
         {TYPE_OPTIONS.map((typeOption, index) => (
           <section

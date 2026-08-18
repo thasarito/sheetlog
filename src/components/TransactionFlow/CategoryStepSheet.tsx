@@ -13,8 +13,8 @@ const MIN_LAUNCHER_HEIGHT = 44;
 
 type CategoryStepSheetProps = {
   children: React.ReactNode;
-  collapsedControls?: React.ReactNode;
   entry: React.ReactNode;
+  typeTabsHostRef?: React.Ref<HTMLFieldSetElement>;
 };
 
 function positiveHeight(value: number, fallback: number): number {
@@ -23,13 +23,11 @@ function positiveHeight(value: number, fallback: number): number {
 
 export function CategoryStepSheet({
   children,
-  collapsedControls,
   entry,
+  typeTabsHostRef,
 }: CategoryStepSheetProps) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
-  const launcherButtonRef = useRef<HTMLButtonElement>(null);
-  const restoreLauncherFocusRef = useRef(false);
   const [launcherElement, setLauncherElement] =
     useState<HTMLDivElement | null>(null);
   const [safeAreaElement, setSafeAreaElement] =
@@ -111,12 +109,6 @@ export function CategoryStepSheet({
     if (entryElement) entryElement.inert = collapsed;
   }, [collapsed, entryElement]);
 
-  useLayoutEffect(() => {
-    if (collapsed || !restoreLauncherFocusRef.current) return;
-    restoreLauncherFocusRef.current = false;
-    launcherButtonRef.current?.focus({ preventScroll: true });
-  }, [collapsed]);
-
   return (
     <div
       ref={layoutRef}
@@ -146,10 +138,7 @@ export function CategoryStepSheet({
         <DrawerContent
           showHandle={false}
           onClick={() => {
-            if (collapsed) {
-              restoreLauncherFocusRef.current = true;
-              setCollapsed(false);
-            }
+            if (collapsed) setCollapsed(false);
           }}
           className="overflow-hidden motion-reduce:![transition:none] sm:mx-auto sm:max-w-md"
           style={
@@ -176,7 +165,6 @@ export function CategoryStepSheet({
               className="order-1 shrink-0"
             >
               <button
-                ref={launcherButtonRef}
                 type="button"
                 aria-expanded={!collapsed}
                 aria-label={
@@ -192,14 +180,14 @@ export function CategoryStepSheet({
                   aria-hidden="true"
                 />
               </button>
-              {collapsed && collapsedControls ? (
-                <div
-                  data-testid="category-step-collapsed-controls"
+              {typeTabsHostRef ? (
+                <fieldset
+                  ref={typeTabsHostRef}
+                  aria-label="Transaction type"
+                  data-testid="category-step-type-tabs"
                   data-vaul-no-drag
-                  className="pb-3"
-                >
-                  {collapsedControls}
-                </div>
+                  className="m-0 min-w-0 border-0 p-0 pb-3"
+                />
               ) : null}
             </div>
             <div

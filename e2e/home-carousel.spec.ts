@@ -585,14 +585,17 @@ test.describe("Home Transactions and Analytics carousel", () => {
     const categorySheet = page.getByRole("dialog", {
       name: "Transaction entry",
     });
-    const expandedTypeTabs = page
-      .getByTestId("category-step-entry")
-      .getByTestId("animated-tabs-compact");
+    const typeTabsHost = page.getByTestId("category-step-type-tabs");
+    const typeTabs = typeTabsHost.getByTestId("animated-tabs-compact");
+    await expect(page.getByTestId("animated-tabs-compact")).toHaveCount(1);
     await waitForCategorySheetSnap(categorySheet);
-    const expandedTypeTabsBox = await expandedTypeTabs.boundingBox();
+    const expandedTypeTabsBox = await typeTabs.boundingBox();
     if (!expandedTypeTabsBox) {
       throw new Error("Expanded transaction type tabs geometry missing");
     }
+    await typeTabs.evaluate((element) => {
+      element.dataset.instanceMarker = "normal-category-tabs";
+    });
 
     const collapseEntry = page.getByRole("button", {
       name: "Collapse transaction entry",
@@ -604,13 +607,11 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(expandEntry).toBeVisible();
     await waitForCategorySheetSnap(categorySheet);
 
-    const collapsedControls = page.getByTestId(
-      "category-step-collapsed-controls",
-    );
-    const collapsedTypeTabs = collapsedControls.getByTestId(
-      "animated-tabs-compact",
-    );
-    const collapsedTypeTabsBox = await collapsedTypeTabs.boundingBox();
+    await expect(typeTabsHost).toBeVisible();
+    await expect(
+      page.locator('[data-instance-marker="normal-category-tabs"]'),
+    ).toHaveCount(1);
+    const collapsedTypeTabsBox = await typeTabs.boundingBox();
     if (!collapsedTypeTabsBox) {
       throw new Error("Collapsed transaction type tabs geometry missing");
     }
@@ -624,15 +625,17 @@ test.describe("Home Transactions and Analytics carousel", () => {
       1,
     );
 
-    await collapsedControls
+    await typeTabsHost
       .getByRole("button", { name: "Income", exact: true })
       .click();
     await expect(collapseEntry).toBeVisible();
     await waitForCategorySheetSnap(categorySheet);
     await expect(
-      expandedTypeTabs.getByRole("button", { name: "Income", exact: true }),
+      typeTabs.getByRole("button", { name: "Income", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await expect(collapseEntry).toBeFocused();
+    await expect(
+      typeTabs.getByRole("button", { name: "Income", exact: true }),
+    ).toBeFocused();
   });
 
   test("layers category entry over both full review slides", async ({
@@ -760,17 +763,15 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(
       page.getByText("Log transaction", { exact: true }),
     ).toHaveCount(0);
-    const collapsedControls = page.getByTestId(
-      "category-step-collapsed-controls",
-    );
-    await expect(collapsedControls).toBeVisible();
+    const typeTabsHost = page.getByTestId("category-step-type-tabs");
+    await expect(typeTabsHost).toBeVisible();
     for (const label of ["Expense", "Income", "Transfer"]) {
       await expect(
-        collapsedControls.getByRole("button", { name: label, exact: true }),
+        typeTabsHost.getByRole("button", { name: label, exact: true }),
       ).toBeVisible();
     }
     await expect(
-      collapsedControls.getByRole("button", {
+      typeTabsHost.getByRole("button", {
         name: "Expense",
         exact: true,
       }),

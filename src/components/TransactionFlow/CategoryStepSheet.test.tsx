@@ -7,7 +7,9 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import type React from "react";
+import { createPortal } from "react-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CategoryStepSheet } from "./CategoryStepSheet";
 import { StepCategoryTypeTabs } from "./StepCategoryTypeTabs";
@@ -67,17 +69,34 @@ function rect(height: number): DOMRect {
 }
 
 function renderSheet(onCollapsedControlClick?: () => void) {
+  function SheetHarness() {
+    const [typeTabsHost, setTypeTabsHost] =
+      useState<HTMLFieldSetElement | null>(null);
+
+    return (
+      <CategoryStepSheet
+        entry={
+          <>
+            {typeTabsHost
+              ? createPortal(
+                  <button type="button" onClick={onCollapsedControlClick}>
+                    Expense
+                  </button>,
+                  typeTabsHost,
+                )
+              : null}
+            <div data-testid="entry">Categories</div>
+          </>
+        }
+        typeTabsHostRef={setTypeTabsHost}
+      >
+        <button type="button">Interactive review</button>
+      </CategoryStepSheet>
+    );
+  }
+
   return render(
-    <CategoryStepSheet
-      entry={<div data-testid="entry">Categories</div>}
-      collapsedControls={
-        <button type="button" onClick={onCollapsedControlClick}>
-          Expense
-        </button>
-      }
-    >
-      <button type="button">Interactive review</button>
-    </CategoryStepSheet>,
+    <SheetHarness />,
   );
 }
 
@@ -143,11 +162,14 @@ describe("CategoryStepSheet", () => {
       screen.getByRole("button", { name: "Interactive review" }),
     ).toBeEnabled();
     const entryRegion = screen.getByTestId("entry").parentElement;
+    const typeTabsHost = screen.getByTestId("category-step-type-tabs");
+    const expenseTab = screen.getByRole("button", { name: "Expense" });
+    expect(
+      screen.getByRole("group", { name: "Transaction type" }),
+    ).toBe(typeTabsHost);
     expect(entryRegion).not.toHaveAttribute("aria-hidden", "true");
     expect(entryRegion?.inert).toBe(false);
-    expect(
-      screen.queryByTestId("category-step-collapsed-controls"),
-    ).not.toBeInTheDocument();
+    expect(typeTabsHost).toBeVisible();
 
     const collapse = screen.getByRole("button", {
       name: "Collapse transaction entry",
@@ -159,10 +181,9 @@ describe("CategoryStepSheet", () => {
       screen.getByRole("button", { name: "Expand transaction entry" }),
     ).toBeVisible();
     expect(screen.queryByText("Log transaction")).not.toBeInTheDocument();
-    expect(
-      screen.getByTestId("category-step-collapsed-controls"),
-    ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Expense" })).toBeVisible();
+    expect(screen.getByTestId("category-step-type-tabs")).toBe(typeTabsHost);
+    expect(screen.getByRole("button", { name: "Expense" })).toBe(expenseTab);
+    expect(expenseTab).toBeVisible();
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
       "--category-sheet-occlusion": "44px",
     });
@@ -180,7 +201,8 @@ describe("CategoryStepSheet", () => {
       screen.getByRole("button", { name: "Collapse transaction entry" }),
     );
     await user.tab();
-    expect(screen.getByRole("button", { name: "Expense" })).toHaveFocus();
+    const expenseTab = screen.getByRole("button", { name: "Expense" });
+    expect(expenseTab).toHaveFocus();
     await user.keyboard("{Enter}");
 
     expect(onCollapsedControlClick).toHaveBeenCalledOnce();
@@ -188,7 +210,7 @@ describe("CategoryStepSheet", () => {
       name: "Collapse transaction entry",
     });
     expect(collapse).toBeVisible();
-    expect(collapse).toHaveFocus();
+    expect(expenseTab).toHaveFocus();
 
     await user.click(collapse);
     await user.click(screen.getByTestId("category-step-launcher"));
@@ -198,41 +220,61 @@ describe("CategoryStepSheet", () => {
     ).toBeVisible();
   });
 
-  it("preserves a collapsed type selection while expanding", async () => {
+  it("keeps one type-tabs instance mounted while a selection expands the sheet", async () => {
     const form = renderHook(() =>
       useTransactionForm({
         initialValues: { type: "expense", category: "Food" },
       }),
     ).result.current;
     const user = userEvent.setup();
+
+    function TypeTabsSheet() {
+      const [typeTabsHost, setTypeTabsHost] =
+        useState<HTMLFieldSetElement | null>(null);
+
+      return (
+        <CategoryStepSheet
+          entry={
+            <>
+              {typeTabsHost
+                ? createPortal(
+                    <StepCategoryTypeTabs
+                      form={form}
+                      layoutId="transactionType"
+                    />,
+                    typeTabsHost,
+                  )
+                : null}
+              <div>Categories</div>
+            </>
+          }
+          typeTabsHostRef={setTypeTabsHost}
+        >
+          <button type="button">Interactive review</button>
+        </CategoryStepSheet>
+      );
+    }
+
     render(
-      <CategoryStepSheet
-        entry={<StepCategoryTypeTabs form={form} layoutId="entryType" />}
-        collapsedControls={
-          <StepCategoryTypeTabs form={form} layoutId="collapsedType" />
-        }
-      >
-        <button type="button">Interactive review</button>
-      </CategoryStepSheet>,
+      <TypeTabsSheet />,
     );
+
+    const typeTabs = screen.getByTestId("animated-tabs-compact");
+    expect(screen.getAllByTestId("animated-tabs-compact")).toHaveLength(1);
 
     await user.click(
       screen.getByRole("button", { name: "Collapse transaction entry" }),
     );
-    await user.click(
-      within(screen.getByTestId("category-step-collapsed-controls")).getByRole(
-        "button",
-        { name: "Income" },
-      ),
-    );
+    expect(screen.getByTestId("animated-tabs-compact")).toBe(typeTabs);
+    await user.click(within(typeTabs).getByRole("button", { name: "Income" }));
 
     await waitFor(() => expect(form.state.values.type).toBe("income"));
     expect(form.state.values.category).toBe("");
-    expect(
-      within(screen.getByTestId("category-step-entry")).getByRole("button", {
-        name: "Income",
-      }),
-    ).toHaveAttribute("aria-pressed", "true");
+    expect(within(typeTabs).getByRole("button", { name: "Income" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("animated-tabs-compact")).toBe(typeTabs);
   });
 
   it("uses the same compact handle height in both sheet states", async () => {
