@@ -8,6 +8,8 @@ export type CategoryStepSheetAccessoryContextValue = {
   host: HTMLDivElement | null;
   reportHeight: (height: number) => void;
   requestExpanded: () => void;
+  requestKeyboard?: () => void;
+  releaseKeyboard?: () => void;
 };
 
 const CategoryStepSheetAccessoryContext =
@@ -16,6 +18,8 @@ const CategoryStepSheetAccessoryContext =
     host: null,
     reportHeight: () => undefined,
     requestExpanded: () => undefined,
+    requestKeyboard: () => undefined,
+    releaseKeyboard: () => undefined,
   });
 
 export const CategoryStepSheetAccessoryProvider =

@@ -1,12 +1,12 @@
 import type React from "react";
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { cn } from "../../lib/utils";
 import {
   Drawer,
   DrawerContent,
@@ -18,11 +18,18 @@ import {
   DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT,
   TRANSACTION_HISTORY_DOCK_GAP,
 } from "./CategoryStepSheetAccessory";
-import { useKeyboardAccessoryPlacement } from "./useKeyboardAccessoryPlacement";
+import { useKeyboardViewportState } from "./useKeyboardViewportState";
 
 const DEFAULT_LAUNCHER_HEIGHT = 44;
 const DEFAULT_EXPANDED_HEIGHT = 520;
+const DEFAULT_KEYBOARD_HEIGHT = 300;
 const MIN_LAUNCHER_HEIGHT = 44;
+
+type CategoryStepSheetState = "collapsed" | "expanded" | "keyboard";
+type RestorableCategoryStepSheetState = Exclude<
+  CategoryStepSheetState,
+  "keyboard"
+>;
 
 type CategoryStepSheetProps = {
   children: React.ReactNode;
@@ -33,6 +40,12 @@ type CategoryStepSheetProps = {
 
 function positiveHeight(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function uniqueSortedSnapPoints(heights: number[]): string[] {
+  return [...new Set(heights)]
+    .sort((left, right) => left - right)
+    .map((height) => `${height}px`);
 }
 
 export function CategoryStepSheet({
@@ -51,19 +64,32 @@ export function CategoryStepSheet({
   const [safeAreaElement, setSafeAreaElement] =
     useState<HTMLDivElement | null>(null);
   const [entryElement, setEntryElement] = useState<HTMLDivElement | null>(null);
-  const [drawerElement, setDrawerElement] = useState<HTMLElement | null>(null);
   const [accessoryHost, setAccessoryHost] = useState<HTMLDivElement | null>(
     null,
   );
-  const [collapsed, setCollapsed] = useState(false);
+  const [sheetState, setSheetStateValue] =
+    useState<CategoryStepSheetState>("expanded");
+  const sheetStateRef = useRef<CategoryStepSheetState>("expanded");
+  const previousSheetStateRef =
+    useRef<RestorableCategoryStepSheetState>("expanded");
+  const keyboardWasActiveRef = useRef(false);
+  const [rememberedKeyboardHeight, setRememberedKeyboardHeight] = useState(
+    DEFAULT_KEYBOARD_HEIGHT,
+  );
   const [heights, setHeights] = useState({
     collapsed: DEFAULT_LAUNCHER_HEIGHT,
     expanded: DEFAULT_EXPANDED_HEIGHT,
   });
+  const keyboardViewport = useKeyboardViewportState(layoutHeight);
+
+  const setSheetState = useCallback((nextState: CategoryStepSheetState) => {
+    sheetStateRef.current = nextState;
+    setSheetStateValue(nextState);
+  }, []);
 
   useLayoutEffect(() => {
     const measure = () => {
-      const layoutHeight = Math.floor(
+      const measuredLayoutHeight = Math.floor(
         positiveHeight(
           layoutRef.current?.getBoundingClientRect().height ?? 0,
           window.innerHeight,
@@ -100,7 +126,7 @@ export function CategoryStepSheet({
         collapsed: collapsedContentHeight,
         expanded: Math.max(
           collapsedContentHeight + 1,
-          Math.min(contentHeight, layoutHeight),
+          Math.min(contentHeight, measuredLayoutHeight),
         ),
       };
       setHeights((current) =>
@@ -123,9 +149,52 @@ export function CategoryStepSheet({
     return () => observer.disconnect();
   }, [entryElement, launcherElement, safeAreaElement]);
 
+  useLayoutEffect(() => {
+    if (keyboardViewport.active) {
+      keyboardWasActiveRef.current = true;
+      setRememberedKeyboardHeight(keyboardViewport.height);
+      return;
+    }
+
+    if (!keyboardWasActiveRef.current) return;
+    keyboardWasActiveRef.current = false;
+    if (sheetStateRef.current === "keyboard") {
+      setSheetState(previousSheetStateRef.current);
+    }
+  }, [keyboardViewport.active, keyboardViewport.height, setSheetState]);
+
+  const maximumKeyboardHeight = Math.max(
+    heights.collapsed + 1,
+    Math.floor(positiveHeight(layoutHeight, DEFAULT_EXPANDED_HEIGHT)),
+  );
+  const rawKeyboardHeight = keyboardViewport.active
+    ? keyboardViewport.height
+    : rememberedKeyboardHeight;
+  const keyboardHeight = Math.min(
+    maximumKeyboardHeight,
+    Math.max(heights.collapsed + 1, Math.round(rawKeyboardHeight)),
+  );
   const collapsedPoint = `${heights.collapsed}px`;
   const expandedPoint = `${heights.expanded}px`;
-  const activePoint = collapsed ? collapsedPoint : expandedPoint;
+  const keyboardPoint = `${keyboardHeight}px`;
+  const snapPoints = useMemo(
+    () =>
+      uniqueSortedSnapPoints(
+        sheetState === "keyboard"
+          ? [heights.collapsed, keyboardHeight, heights.expanded]
+          : [heights.collapsed, heights.expanded],
+      ),
+    [heights.collapsed, heights.expanded, keyboardHeight, sheetState],
+  );
+  const activePoint =
+    sheetState === "collapsed"
+      ? collapsedPoint
+      : sheetState === "keyboard"
+        ? keyboardPoint
+        : expandedPoint;
+  const collapsed = sheetState === "collapsed";
+  const entryVisible = sheetState === "expanded";
+  const keyboardState = sheetState === "keyboard";
 
   const reportAccessoryHeight = useCallback((height: number) => {
     const value =
@@ -141,32 +210,50 @@ export function CategoryStepSheet({
     layoutRef.current = element;
     setLayoutElement(element);
   }, []);
-  const requestExpanded = useCallback(() => setCollapsed(false), []);
+  const requestExpanded = useCallback(
+    () => setSheetState("expanded"),
+    [setSheetState],
+  );
+  const requestKeyboard = useCallback(() => {
+    const currentState = sheetStateRef.current;
+    if (currentState === "keyboard") return;
+    previousSheetStateRef.current = currentState;
+    setSheetState("keyboard");
+  }, [setSheetState]);
+  const releaseKeyboard = useCallback(() => {
+    if (!keyboardViewport.active && sheetStateRef.current === "keyboard") {
+      setSheetState(previousSheetStateRef.current);
+    }
+  }, [keyboardViewport.active, setSheetState]);
   const accessoryContext = useMemo(
     () => ({
       provided: true,
       host: accessoryHost,
       reportHeight: reportAccessoryHeight,
       requestExpanded,
+      requestKeyboard,
+      releaseKeyboard,
     }),
-    [accessoryHost, reportAccessoryHeight, requestExpanded],
+    [
+      accessoryHost,
+      releaseKeyboard,
+      reportAccessoryHeight,
+      requestExpanded,
+      requestKeyboard,
+    ],
   );
 
-  useKeyboardAccessoryPlacement({
-    drawerElement,
-    accessoryHost,
-    layoutHeight,
-  });
-
-  useEffect(() => {
-    if (entryElement) entryElement.inert = collapsed;
-  }, [collapsed, entryElement]);
+  useLayoutEffect(() => {
+    if (entryElement) entryElement.inert = !entryVisible;
+    if (sheetBodyRef.current) sheetBodyRef.current.inert = keyboardState;
+  }, [entryElement, entryVisible, keyboardState]);
 
   return (
     <CategoryStepSheetAccessoryProvider value={accessoryContext}>
       <div
         ref={setLayoutHost}
         data-testid="category-step-layout"
+        data-category-sheet-state={sheetState}
         className="relative h-full min-h-0"
         style={
           {
@@ -185,21 +272,37 @@ export function CategoryStepSheet({
           noBodyStyles
           disablePreventScroll
           repositionInputs={false}
-          snapPoints={[collapsedPoint, expandedPoint]}
+          snapPoints={snapPoints}
           activeSnapPoint={activePoint}
           setActiveSnapPoint={(point) => {
-            if (point === collapsedPoint) setCollapsed(true);
-            if (point === expandedPoint) setCollapsed(false);
+            if (
+              sheetStateRef.current === "keyboard" &&
+              point === keyboardPoint
+            ) {
+              return;
+            }
+            if (point === collapsedPoint) {
+              setSheetState("collapsed");
+              return;
+            }
+            if (point === expandedPoint) {
+              setSheetState("expanded");
+              return;
+            }
+            if (point === keyboardPoint) setSheetState("keyboard");
           }}
         >
           <DrawerContent
             contained
-            ref={setDrawerElement}
             showHandle={false}
+            data-category-sheet-state={sheetState}
             onClick={() => {
-              if (collapsed) setCollapsed(false);
+              if (collapsed) setSheetState("expanded");
             }}
-            className="overflow-visible motion-reduce:![transition:none] sm:mx-auto sm:max-w-md"
+            className={cn(
+              "overflow-visible motion-reduce:![transition:none] sm:mx-auto sm:max-w-md",
+              keyboardState && "![transition:none]",
+            )}
             style={
               {
                 height: `${layoutHeight}px`,
@@ -215,6 +318,10 @@ export function CategoryStepSheet({
             <div
               ref={setAccessoryHost}
               data-testid="category-step-accessory-host"
+              data-category-sheet-state={sheetState}
+              data-keyboard-active={keyboardViewport.active}
+              data-keyboard-height={keyboardViewport.height}
+              data-keyboard-top={keyboardViewport.top}
               data-vaul-no-drag
               className="pointer-events-none absolute -top-px inset-x-0 z-10 overflow-visible"
               style={{
@@ -240,7 +347,9 @@ export function CategoryStepSheet({
                       ? "Expand transaction entry"
                       : "Collapse transaction entry"
                   }
-                  onClick={() => setCollapsed(!collapsed)}
+                  onClick={() =>
+                    setSheetState(collapsed ? "expanded" : "collapsed")
+                  }
                   className="flex min-h-11 w-full items-center justify-center px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
                 >
                   <span
@@ -260,7 +369,7 @@ export function CategoryStepSheet({
               </div>
               <div
                 ref={setEntryElement}
-                aria-hidden={collapsed}
+                aria-hidden={!entryVisible}
                 data-testid="category-step-entry"
                 data-vaul-no-drag
                 className={`${collapsed ? "order-3" : "order-2"} min-h-0 flex-1 overflow-y-auto`}
