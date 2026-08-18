@@ -453,6 +453,7 @@ test.describe("Home Transactions and Analytics carousel", () => {
     await expect(dateTimeDialog).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dateTimeDialog).toHaveCount(0);
+    await waitForCategorySheetSnap(categorySheet);
     await touchSwipe(page, collapseEntry, 0, 360);
     await expect(expandEntry).toBeVisible();
     await waitForCategorySheetSnap(categorySheet);
