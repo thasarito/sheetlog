@@ -522,15 +522,22 @@ test.describe("Home Transactions and Analytics carousel", () => {
     const launcher = page.getByTestId("category-step-launcher");
     const entry = page.getByTestId("category-step-entry");
     const safeArea = page.getByTestId("category-step-safe-area");
+    const typeTabs = page.getByTestId("animated-tabs-compact");
+    const categoryGrid = page.getByTestId("category-grid").first();
     await waitForCategorySheetSnap(categorySheet);
 
     const expanded = await Promise.all([
       entry.boundingBox(),
       safeArea.boundingBox(),
+      typeTabs.boundingBox(),
+      categoryGrid.boundingBox(),
     ]);
-    if (!expanded[0] || !expanded[1]) {
+    if (!expanded[0] || !expanded[1] || !expanded[2] || !expanded[3]) {
       throw new Error("Expanded category sheet geometry missing");
     }
+    const expandedTypeToCategoryGap = expanded[3].y - (
+      expanded[2].y + expanded[2].height
+    );
     expect(expanded[1].height).toBeCloseTo(24, 3);
     expect(expanded[0].y + expanded[0].height).toBeLessThanOrEqual(
       expanded[1].y + 1,
@@ -546,16 +553,25 @@ test.describe("Home Transactions and Analytics carousel", () => {
     const collapsed = await Promise.all([
       launcher.boundingBox(),
       safeArea.boundingBox(),
+      typeTabs.boundingBox(),
+      categoryGrid.boundingBox(),
     ]);
-    if (!collapsed[0] || !collapsed[1]) {
+    if (!collapsed[0] || !collapsed[1] || !collapsed[2] || !collapsed[3]) {
       throw new Error("Collapsed category sheet geometry missing");
     }
+    const collapsedTypeToCategoryGap = collapsed[3].y - (
+      collapsed[2].y + collapsed[2].height
+    );
     expect(collapsed[0].y + collapsed[0].height).toBeLessThanOrEqual(
       collapsed[1].y + 1,
     );
     expect(
       Math.abs(collapsed[1].y + collapsed[1].height - 844),
     ).toBeLessThanOrEqual(1.5);
+    expect(collapsedTypeToCategoryGap).toBeCloseTo(
+      expandedTypeToCategoryGap,
+      1,
+    );
   });
 
   test("disables category snap transitions for reduced motion", async ({

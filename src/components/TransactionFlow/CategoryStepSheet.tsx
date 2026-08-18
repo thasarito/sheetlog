@@ -195,7 +195,12 @@ export function CategoryStepSheet({
               aria-hidden={collapsed}
               data-testid="category-step-entry"
               data-vaul-no-drag
-              className={`${collapsed ? "order-3" : "order-2"} min-h-0 flex-1 overflow-y-auto`}
+              className={`${collapsed ? "order-3 opacity-0" : "order-2 opacity-100"} min-h-0 flex-1 overflow-y-auto transition-opacity duration-200 ease-out motion-reduce:transition-none`}
+              style={{
+                transform: collapsed
+                  ? "translateY(calc(-1 * var(--category-sheet-safe-area)))"
+                  : "translateY(0)",
+              }}
             >
               {entry}
             </div>
