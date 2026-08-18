@@ -345,7 +345,90 @@ git add e2e/home-carousel.spec.ts
 git commit -m "test: cover transparent track-bound carousel titles"
 ```
 
-### Task 4: Full verification and direct delivery
+### Task 4: Make Analytics the first and default slide
+
+**Files:**
+- Modify: `src/components/TransactionFlow/HomeDashboardCarousel.tsx`
+- Modify: `src/components/TransactionFlow/HomeDashboardCarousel.test.tsx`
+- Modify: `e2e/home-carousel.spec.ts`
+
+- [ ] **Step 1: Write failing Analytics-first unit expectations**
+
+Update the carousel tests so the initial state requires Analytics as slide 1 and Transactions as slide 2:
+
+```tsx
+const analyticsSlide = screen.getByLabelText('Analytics, slide 1 of 2');
+const transactionSlide = screen.getByLabelText('Transactions, slide 2 of 2');
+
+expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true');
+expect(transactionSlide).toHaveAttribute('aria-hidden', 'true');
+```
+
+Update keyboard and swipe assertions so ArrowRight/swipe-left moves from Analytics to Transactions and ArrowLeft/swipe-right returns to Analytics. Update analytics-focused tests to use the initial slide; update edit-routing coverage to navigate to Transactions before selecting its row.
+
+- [ ] **Step 2: Run the carousel unit test and verify RED**
+
+Run:
+
+```bash
+npm test -- src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+```
+
+Expected: FAIL because production still labels and renders Transactions as slide 1.
+
+- [ ] **Step 3: Reorder production slides**
+
+In `HomeDashboardCarousel.tsx`, set:
+
+```tsx
+const SLIDES = ['Analytics', 'Transactions'] as const;
+```
+
+Render `AnalyticsView` in `slideRefs.current[0]` with `aria-label="Analytics, slide 1 of 2"` and `aria-hidden={activeIndex !== 0}`. Render `TransactionHistoryView` in `slideRefs.current[1]` with `aria-label="Transactions, slide 2 of 2"` and `aria-hidden={activeIndex !== 1}`. Keep `useState(0)`, scroll behavior, live announcement, and all child props unchanged.
+
+- [ ] **Step 4: Run the carousel unit test and verify GREEN**
+
+Run:
+
+```bash
+npm test -- src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+```
+
+Expected: all carousel unit tests PASS with Analytics active initially.
+
+- [ ] **Step 5: Update browser expectations for the new order**
+
+In `e2e/home-carousel.spec.ts`:
+
+- Use `Analytics, slide 1 of 2` and `Transactions, slide 2 of 2` labels.
+- Assert Analytics is active on initial load.
+- Remove navigation to Analytics from tests that can use the default slide directly.
+- Focused keyboard coverage presses ArrowRight to Transactions and ArrowLeft to Analytics.
+- Replace the title-motion assertion so the offscreen Transactions title moves more than 200 pixels left when swiping from Analytics to Transactions.
+- Preserve transparent-background checks for both views, nested analytics period gesture isolation, transaction search/edit coverage, and category-sheet coverage.
+
+- [ ] **Step 6: Run focused unit and browser coverage**
+
+Run:
+
+```bash
+npm test -- src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+VITE_DEV_MODE=true VITE_GOOGLE_MAPS_API_KEY=e2e-key PLAYWRIGHT_HTML_OPEN=never \
+  npx playwright test e2e/home-carousel.spec.ts
+```
+
+Expected: carousel unit tests and all configured home-carousel Playwright projects PASS.
+
+- [ ] **Step 7: Commit the reorder**
+
+```bash
+git add src/components/TransactionFlow/HomeDashboardCarousel.tsx \
+  src/components/TransactionFlow/HomeDashboardCarousel.test.tsx \
+  e2e/home-carousel.spec.ts
+git commit -m "feat: make analytics the default carousel slide"
+```
+
+### Task 5: Full verification and direct delivery
 
 **Files:**
 - Verify all modified files and lockfiles without changing dependencies.

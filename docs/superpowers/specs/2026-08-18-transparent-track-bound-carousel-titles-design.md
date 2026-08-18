@@ -9,6 +9,7 @@ Make the home review carousel feel like one continuous canvas behind the categor
 - Make the full Transactions and Analytics slide canvases transparent.
 - Remove the existing compact Transactions and Analytics headers.
 - Remove the shared carousel dot controls.
+- Make Analytics slide 1 and the initially visible/default review; make Transactions slide 2.
 - Add one large, centered visible title to each slide: `Transactions` and `Analytics`.
 - Make each title part of its slide so it follows the carousel's drag and snap motion.
 - Move the transaction Refresh action beside the transaction count/status below Search.
@@ -25,7 +26,7 @@ Make the home review carousel feel like one continuous canvas behind the categor
 
 ### Carousel
 
-`HomeDashboardCarousel` keeps the existing horizontal snap viewport, pointer gesture handling, scroll settling, inactive-slide isolation, keyboard ArrowLeft/ArrowRight navigation, and live slide announcement.
+`HomeDashboardCarousel` keeps the existing horizontal snap viewport, pointer gesture handling, scroll settling, inactive-slide isolation, keyboard ArrowLeft/ArrowRight navigation, and live slide announcement. The track order becomes Analytics first and Transactions second, with active index zero continuing to define the default slide.
 
 The shared `CarouselIndicators` overlay is removed. Each slide remains a full-width child of the same horizontal track, so its title and detail content translate together during a drag or smooth snap.
 
@@ -53,6 +54,7 @@ Programmatic and keyboard slide changes continue to use the carousel's existing 
 
 - Keep the carousel label, roledescription, live current-slide announcement, and viewport keyboard target.
 - Keep exactly one visible `h2` in each slide; the inactive slide remains `aria-hidden` and inert through the existing synchronization.
+- Label Analytics as slide 1 of 2 and Transactions as slide 2 of 2 everywhere the carousel exposes its order.
 - Remove dot-control buttons and their fieldset because the chosen treatment intentionally has no persistent direct-selection control.
 - Keep the transaction Refresh action keyboard reachable and clearly labeled in its new location.
 - Do not create focusable elements solely for animation.
@@ -66,6 +68,7 @@ No query, mutation, analytics, or transaction data flow changes. Refresh continu
 Use a red-green cycle for focused regressions, then update affected existing expectations:
 
 - Assert that the carousel no longer renders slide-selection dot buttons.
+- Assert that Analytics is slide 1 and active by default, ArrowRight/swipe-left activates Transactions, and ArrowLeft/swipe-right returns to Analytics.
 - Assert that Transactions and Analytics retain their visible semantic headings inside their slides.
 - Assert that both slide canvases are transparent while internal controls retain their existing surface classes.
 - Assert that Refresh remains present and invokes the existing refresh operations from its new metadata-row location.
