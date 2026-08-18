@@ -1,17 +1,15 @@
 import { format } from 'date-fns';
 import { BadgeDollarSign, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
 import { cn } from '../../lib/utils';
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '../ui/drawer';
 import { Skeleton } from '../ui/skeleton';
 import {
   buildAnalyticsScope,
@@ -36,10 +34,7 @@ import {
   TransactionHistoryRow,
 } from './TransactionHistoryItems';
 
-type AnalyticsDrawerProps = {
-  open: boolean;
-  initialSelectedBucket?: string | null;
-  onOpenChange: (open: boolean) => void;
+export type AnalyticsViewProps = {
   transactions: TransactionRecord[];
   summary?: AnalyticsSummary;
   baseCurrency: string;
@@ -63,10 +58,7 @@ type AnalyticsDrawerProps = {
   now?: Date;
 };
 
-export function AnalyticsDrawer({
-  open,
-  initialSelectedBucket,
-  onOpenChange,
+export function AnalyticsView({
   transactions,
   summary: incomingSummary,
   baseCurrency,
@@ -88,28 +80,21 @@ export function AnalyticsDrawer({
   onRetry,
   onSelectTransaction,
   now = new Date(),
-}: AnalyticsDrawerProps) {
-  const titleRef = useRef<HTMLHeadingElement>(null);
+}: AnalyticsViewProps) {
   const customRangeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
-  const activeSummary = useMemo(
-    () => (open && hasCompleteHistory ? incomingSummary ?? null : null),
-    [hasCompleteHistory, incomingSummary, open],
+  const summary = useMemo(
+    () => (hasCompleteHistory ? incomingSummary ?? null : null),
+    [hasCompleteHistory, incomingSummary],
   );
-  const retainedSummary = useRef(activeSummary);
-  if (activeSummary) retainedSummary.current = activeSummary;
-  const summary = activeSummary ?? retainedSummary.current;
-  const activeScope = useMemo(
-    () => (open && activeSummary ? buildAnalyticsScope(activeSummary, selectedBucket) : null),
-    [activeSummary, open, selectedBucket],
+  const scope = useMemo(
+    () => (summary ? buildAnalyticsScope(summary, selectedBucket) : null),
+    [selectedBucket, summary],
   );
-  const retainedScope = useRef(activeScope);
-  if (activeScope) retainedScope.current = activeScope;
-  const scope = activeScope ?? retainedScope.current;
   const selectedBucketDetails = summary?.buckets.find(
     (bucket) => bucket.key === selectedBucket,
   );
@@ -140,34 +125,14 @@ export function AnalyticsDrawer({
     summary?.currency,
   ]);
 
-  useEffect(() => {
-    if (!open) clearFilters();
-  }, [clearFilters, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    setSelectedBucket(initialSelectedBucket ?? null);
-    setSelectedCategory(null);
-  }, [initialSelectedBucket, open]);
-
-  useEffect(() => {
-    if (!open) setCustomRangeOpen(false);
-  }, [open]);
-
-  const activeFilteredTransactions = useMemo(() => {
-    if (!open || !activeScope) return null;
-    if (!selectedSeries) return activeScope.transactions;
+  const filteredTransactions = useMemo(() => {
+    if (!scope) return [];
+    if (!selectedSeries) return scope.transactions;
     const categoryNames = new Set(selectedSeries.categoryNames);
-    return activeScope.transactions.filter(
+    return scope.transactions.filter(
       (row) => row.type === 'expense' && categoryNames.has(row.category.trim() || 'Uncategorized'),
     );
-  }, [activeScope, open, selectedSeries]);
-  const retainedFilteredTransactions = useRef(activeFilteredTransactions);
-  if (activeFilteredTransactions) {
-    retainedFilteredTransactions.current = activeFilteredTransactions;
-  }
-  const filteredTransactions =
-    activeFilteredTransactions ?? retainedFilteredTransactions.current ?? [];
+  }, [scope, selectedSeries]);
   const transactionBaseCurrency = summary?.currency ?? baseCurrency;
   const convertedAmounts = summary?.convertedAmounts;
   const transactionBaseAmountStates = useMemo(
@@ -180,25 +145,14 @@ export function AnalyticsDrawer({
       ),
     [convertedAmounts, filteredTransactions, transactionBaseCurrency],
   );
-  const activeTransactionItems = useMemo(
-    () => (open ? flattenTransactionHistory(filteredTransactions) : null),
-    [filteredTransactions, open],
+  const transactionItems = useMemo(
+    () => flattenTransactionHistory(filteredTransactions),
+    [filteredTransactions],
   );
-  const retainedTransactionItems = useRef(activeTransactionItems);
-  if (activeTransactionItems) retainedTransactionItems.current = activeTransactionItems;
-  const transactionItems = activeTransactionItems ?? retainedTransactionItems.current ?? [];
 
   const selectTransaction = (transaction: TransactionRecord) => {
     clearFilters();
-    onOpenChange(false);
     onSelectTransaction(transaction);
-  };
-  const handleDrawerOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      setCustomRangeOpen(false);
-      clearFilters();
-    }
-    onOpenChange(nextOpen);
   };
   const handleRangeChange = (
     nextRange: AnalyticsRange,
@@ -224,12 +178,10 @@ export function AnalyticsDrawer({
     range === 'custom'
       ? `Custom, ${format(customPeriod.start, 'MMM d')} through ${format(customPeriod.end, 'MMM d')}`
       : selectedPeriod?.accessibleLabel ?? range;
-  const analyticsAnnouncement = !open
-    ? ''
-    : hasCompleteHistory && summary && scope
-      ? selectedBucketDetails
-        ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, summary.currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, summary.currency)} · Net ${formatAnalyticsAmount(scope.netTotal, summary.currency)}`
-        : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, summary.currency)}`
+  const analyticsAnnouncement = hasCompleteHistory && summary && scope
+    ? selectedBucketDetails
+      ? `${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, summary.currency)} · Income ${formatAnalyticsAmount(scope.incomeTotal, summary.currency)} · Net ${formatAnalyticsAmount(scope.netTotal, summary.currency)}`
+      : `${rangeAnnouncement} · Expenses ${formatAnalyticsAmount(summary.expenseTotal, summary.currency)}`
     : isOffline
       ? 'Full range unavailable offline'
       : isLoading
@@ -248,42 +200,33 @@ export function AnalyticsDrawer({
         : `Turn on no big spending mode; exclude expenses at or above ${thresholdLabel}`;
 
   return (
-    <Drawer open={open} onOpenChange={handleDrawerOpenChange}>
-      <DrawerContent
-        className="h-[92dvh]! sm:mx-auto sm:max-w-md"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          titleRef.current?.focus();
+    <section className="flex h-full min-h-0 flex-col bg-card">
+      <header className="flex h-16 shrink-0 flex-col justify-center border-b border-border/60 px-4 text-left">
+        <h2 className="text-lg font-semibold text-foreground">Analytics</h2>
+        <p className="sr-only">
+          Review spending analytics and filter matching transactions.
+        </p>
+      </header>
+      <div className="h-11 shrink-0" aria-hidden="true" />
+
+      <output
+        aria-label="Analytics summary update"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {analyticsAnnouncement}
+      </output>
+
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-4"
+        style={{
+          paddingBottom:
+            'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
+          scrollPaddingBottom:
+            'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
         }}
       >
-        <DrawerHeader className="grid grid-cols-[1fr_auto] items-center border-b border-border/60 text-left">
-          <DrawerTitle ref={titleRef} tabIndex={-1}>
-            Analytics
-          </DrawerTitle>
-          <DrawerDescription className="sr-only">
-            Review spending analytics and filter matching transactions.
-          </DrawerDescription>
-          <DrawerClose asChild>
-            <button
-              type="button"
-              aria-label="Close analytics"
-              className="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </DrawerClose>
-        </DrawerHeader>
-
-        <output
-          aria-label="Analytics summary update"
-          aria-live="polite"
-          aria-atomic="true"
-          className="sr-only"
-        >
-          {analyticsAnnouncement}
-        </output>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-safe" data-vaul-no-drag>
           <div className="space-y-7 pb-8">
             <div
               data-testid="analytics-range-controls"
@@ -479,10 +422,8 @@ export function AnalyticsDrawer({
               </>
             )}
           </div>
-        </div>
-      </DrawerContent>
+      </div>
       <AnalyticsRangeDrawer
-        nested
         open={customRangeOpen}
         onOpenChange={setCustomRangeOpen}
         value={customPeriod}
@@ -491,6 +432,6 @@ export function AnalyticsDrawer({
         onApply={applyCustomPeriod}
         returnFocusTo={customRangeTriggerRef.current}
       />
-    </Drawer>
+    </section>
   );
 }

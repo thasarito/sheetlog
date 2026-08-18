@@ -17,9 +17,21 @@ vi.mock("../../hooks/useQuickNotes", () => ({
   useQuickNotesQuery: () => ({ data: {} }),
 }));
 
+const dateTimeDrawerMock = vi.hoisted(() => ({
+  nested: undefined as boolean | undefined,
+}));
+
 vi.mock("../DateTimeDrawer", () => ({
-  DateTimeDrawer: ({ open }: { open: boolean }) =>
-    open ? <div role="dialog">Date &amp; time</div> : null,
+  DateTimeDrawer: ({
+    open,
+    nested,
+  }: {
+    open: boolean;
+    nested?: boolean;
+  }) => {
+    dateTimeDrawerMock.nested = nested;
+    return open ? <div role="dialog">Date &amp; time</div> : null;
+  },
 }));
 
 const categoryGroups: Record<TransactionType, CategoryItem[]> = {
@@ -28,7 +40,7 @@ const categoryGroups: Record<TransactionType, CategoryItem[]> = {
   transfer: [],
 };
 
-function Harness() {
+function Harness({ dateDrawerNested = false }: { dateDrawerNested?: boolean }) {
   const form = useTransactionForm({
     initialValues: { type: "expense", category: "Food Delivery" },
   });
@@ -41,6 +53,7 @@ function Harness() {
         form={form}
         categoryGroups={categoryGroups}
         onConfirm={vi.fn()}
+        dateDrawerNested={dateDrawerNested}
       />
     </>
   );
@@ -68,6 +81,12 @@ afterEach(() => {
 });
 
 describe("StepCategory carousel", () => {
+  it("can open Date & time as a nested drawer", () => {
+    render(<Harness dateDrawerNested />);
+
+    expect(dateTimeDrawerMock.nested).toBe(true);
+  });
+
   it("syncs a tab click to the form and clears the old category", async () => {
     const user = userEvent.setup();
     renderCarousel();

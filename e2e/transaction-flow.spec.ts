@@ -99,7 +99,39 @@ async function expectBefore(before: Locator, after: Locator) {
   ).toBe(true);
 }
 
+async function collapseTransactionEntry(page: Page) {
+  const collapse = page.getByRole("button", {
+    name: "Collapse transaction entry",
+  });
+  await expect(collapse).toBeVisible();
+  await collapse.click();
+  const sheet = page.getByRole("dialog", { name: "Transaction entry" });
+  await expect(
+    page.getByRole("button", { name: "Expand transaction entry" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      sheet.evaluate((element) => {
+        const layout = document.querySelector<HTMLElement>(
+          '[data-testid="category-step-layout"]',
+        );
+        if (!layout) return Number.POSITIVE_INFINITY;
+        const visibleHeight = Number.parseFloat(
+          getComputedStyle(layout).getPropertyValue(
+            "--category-sheet-occlusion",
+          ),
+        );
+        const translateY = new DOMMatrixReadOnly(
+          getComputedStyle(element).transform,
+        ).m42;
+        return Math.abs(translateY - (window.innerHeight - visibleHeight));
+      }),
+    )
+    .toBeLessThan(1);
+}
+
 async function openSourceExpense(page: Page) {
+  await collapseTransactionEntry(page);
   await page
     .getByRole("button", { name: /Dining Out.*Dinner with friends/ })
     .click();
@@ -447,9 +479,12 @@ test.describe("Transaction flow - complete history", () => {
     await seedTransactions(page, transactions);
     await page.goto("/app");
 
+    await collapseTransactionEntry(page);
     await expect(page.getByText("Ancient archive")).toHaveCount(0);
-    await page.getByRole("button", { name: "View all transactions" }).click();
     await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "View all transactions" }),
+    ).toHaveCount(0);
     await expect(page.getByText("520 transactions", { exact: true })).toBeVisible();
     await expect
       .poll(() => page.getByTestId("history-transaction-row").count())
@@ -664,6 +699,29 @@ test.describe("Transaction flow - Places", () => {
       });
     await safeAreaStyle.evaluate((element) => element.remove());
     await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const root = document.getElementById("root")?.getBoundingClientRect();
+          const canvas = document
+            .querySelector('[data-testid="transaction-canvas"]')
+            ?.getBoundingClientRect();
+          return root && canvas
+            ? {
+                rootTop: Math.round(root.top),
+                rootBottom: Math.round(root.bottom),
+                canvasTop: Math.round(canvas.top),
+                canvasBottom: Math.round(canvas.bottom),
+              }
+            : null;
+        }),
+      )
+      .toEqual({
+        rootTop: 0,
+        rootBottom: 844,
+        canvasTop: 0,
+        canvasBottom: 844,
+      });
 
     await page.getByRole("button", { name: "Dining Out" }).click();
     await page.getByRole("button", { name: "Done" }).click();
@@ -755,17 +813,22 @@ test.describe("Transaction flow - Places", () => {
       contentType: "image/png",
     });
 
-    await page.setViewportSize({ width: 390, height: 544 });
-    await page.clock.runFor(32);
-    const keyboardNote = await note.boundingBox();
-    const keyboardKeypad = await keypad.boundingBox();
-    const keyboardSubmit = await submit.boundingBox();
-    if (!keyboardNote || !keyboardKeypad || !keyboardSubmit) {
-      throw new Error("Expected transaction geometry with keyboard visible");
+    const hasCoarsePointer = await page.evaluate(() =>
+      window.matchMedia("(pointer: coarse)").matches,
+    );
+    if (hasCoarsePointer) {
+      await page.setViewportSize({ width: 390, height: 544 });
+      await page.clock.runFor(32);
+      const keyboardNote = await note.boundingBox();
+      const keyboardKeypad = await keypad.boundingBox();
+      const keyboardSubmit = await submit.boundingBox();
+      if (!keyboardNote || !keyboardKeypad || !keyboardSubmit) {
+        throw new Error("Expected transaction geometry with keyboard visible");
+      }
+      expectSameBox(keyboardNote, resultsNote);
+      expectSameBox(keyboardKeypad, afterKeypad);
+      expectSameBox(keyboardSubmit, afterSubmit);
     }
-    expectSameBox(keyboardNote, resultsNote);
-    expectSameBox(keyboardKeypad, afterKeypad);
-    expectSameBox(keyboardSubmit, afterSubmit);
 
     const autocompleteResult = page.getByRole("option", {
       name: /Central Cafe.*123 Test Street/,
@@ -776,17 +839,19 @@ test.describe("Transaction flow - Places", () => {
     await expect(note).not.toBeFocused();
     await expect(page.getByRole("listbox")).toHaveCount(0);
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.clock.runFor(32);
-    const restoredNote = await note.boundingBox();
-    const restoredKeypad = await keypad.boundingBox();
-    const restoredSubmit = await submit.boundingBox();
-    if (!restoredNote || !restoredKeypad || !restoredSubmit) {
-      throw new Error("Expected restored transaction geometry");
+    if (hasCoarsePointer) {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.clock.runFor(32);
+      const restoredNote = await note.boundingBox();
+      const restoredKeypad = await keypad.boundingBox();
+      const restoredSubmit = await submit.boundingBox();
+      if (!restoredNote || !restoredKeypad || !restoredSubmit) {
+        throw new Error("Expected restored transaction geometry");
+      }
+      expectSameBox(restoredNote, resultsNote);
+      expectSameBox(restoredKeypad, afterKeypad);
+      expectSameBox(restoredSubmit, afterSubmit);
     }
-    expectSameBox(restoredNote, resultsNote);
-    expectSameBox(restoredKeypad, afterKeypad);
-    expectSameBox(restoredSubmit, afterSubmit);
 
     const clear = page.getByRole("button", { name: "Clear note" });
     const clearBox = await clear.boundingBox();

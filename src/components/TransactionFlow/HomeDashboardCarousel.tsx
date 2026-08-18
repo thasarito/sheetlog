@@ -7,18 +7,15 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { tryParseDate } from "../../lib/date-utils";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
-import { AnalyticsDrawer } from "./AnalyticsDrawer";
-import { AnalyticsRangeDrawer } from "./AnalyticsRangeDrawer";
 import {
   buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
   type AnalyticsRange,
 } from "./analytics";
-import { AnalyticsSlide } from "./AnalyticsSlide";
-import { TopDashboard } from "./TopDashboard";
+import { AnalyticsView } from "./AnalyticsView";
+import { TransactionHistoryView } from "./TransactionHistoryView";
 import type { AnalyticsSyncController } from "./useAnalyticsSync";
 
 type HomeDashboardCarouselProps = {
@@ -27,7 +24,6 @@ type HomeDashboardCarouselProps = {
   analyticsSync: AnalyticsSyncController;
   onToast: (message: string) => void;
   onEditTransaction: (transaction: TransactionRecord) => void;
-  onViewAllTransactions: () => void;
 };
 
 const SLIDES = ["Transactions", "Analytics"] as const;
@@ -47,20 +43,50 @@ function ownsNestedHorizontalGesture(target: EventTarget | null): boolean {
   );
 }
 
+function CarouselIndicators({
+  activeIndex,
+  onSelect,
+}: {
+  activeIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <fieldset className="m-0 flex min-w-0 items-center justify-center border-0 p-0">
+      <legend className="sr-only">Carousel slides</legend>
+      {SLIDES.map((slide, index) => (
+        <button
+          key={slide}
+          type="button"
+          data-carousel-dot="true"
+          aria-label={`${slide} slide`}
+          aria-current={activeIndex === index ? "true" : undefined}
+          onClick={() => onSelect(index)}
+          className="flex h-11 w-11 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        >
+          <span
+            className={cn(
+              "block bg-muted-foreground/35 transition-[width,background-color] motion-reduce:transition-none",
+              activeIndex === index
+                ? "h-1.5 w-4 rounded-full bg-primary"
+                : "h-1.5 w-1.5 rounded-full",
+            )}
+          />
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
 export function HomeDashboardCarousel({
   baseCurrency,
   bigSpendingThreshold,
   analyticsSync,
   onToast,
   onEditTransaction,
-  onViewAllTransactions,
 }: HomeDashboardCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [range, setRange] = useState<AnalyticsRange>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [initialAnalyticsBucket, setInitialAnalyticsBucket] = useState<string | null>(null);
-  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [noBigSpending, setNoBigSpending] = useState(false);
   const [analyticsNow, setAnalyticsNow] = useState(() => new Date());
   const [customPeriod, setCustomPeriod] = useState(() => ({
@@ -69,8 +95,6 @@ export function HomeDashboardCarousel({
   }));
   const viewportRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLElement | null>>([]);
-  const analyticsTriggerRef = useRef<HTMLElement | null>(null);
-  const customRangeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const pointerStart = useRef<{
     startX: number;
     startY: number;
@@ -91,6 +115,10 @@ export function HomeDashboardCarousel({
       transactions,
       range,
       baseCurrency,
+      bigSpendingThreshold:
+        noBigSpending && bigSpendingThreshold !== null
+          ? bigSpendingThreshold
+          : undefined,
       rates: analyticsSync.rates,
       now: analyticsNow,
       customPeriod,
@@ -98,32 +126,6 @@ export function HomeDashboardCarousel({
     });
   }, [
     analyticsNow,
-    analyticsSync.hasLocalHistory,
-    analyticsSync.rates,
-    baseCurrency,
-    customPeriod,
-    periodOffset,
-    range,
-    transactions,
-  ]);
-  const summary =
-    analyticsResult?.status === "ready" ? analyticsResult.summary : undefined;
-  const drawerAnalyticsResult = useMemo(() => {
-    if (!noBigSpending || bigSpendingThreshold === null) return analyticsResult;
-    if (!analyticsSync.hasLocalHistory) return undefined;
-    return buildAnalyticsSummary({
-      transactions,
-      range,
-      baseCurrency,
-      bigSpendingThreshold,
-      rates: analyticsSync.rates,
-      now: analyticsNow,
-      customPeriod,
-      periodOffset,
-    });
-  }, [
-    analyticsNow,
-    analyticsResult,
     analyticsSync.hasLocalHistory,
     analyticsSync.rates,
     baseCurrency,
@@ -134,18 +136,9 @@ export function HomeDashboardCarousel({
     range,
     transactions,
   ]);
-  const drawerSummary =
-    drawerAnalyticsResult?.status === 'ready' ? drawerAnalyticsResult.summary : undefined;
+  const summary =
+    analyticsResult?.status === "ready" ? analyticsResult.summary : undefined;
   const analyticsLoading = !analyticsSync.hasLocalHistory;
-  const hasCompleteAnalytics = analyticsSync.hasLocalHistory;
-  const analyticsError = null;
-  const earliestDate = useMemo(() => {
-    const dates = transactions
-      .map((transaction) => tryParseDate(transaction.date))
-      .filter((date): date is Date => date !== null);
-    if (dates.length === 0) return customPeriod.start;
-    return new Date(Math.min(...dates.map((date) => date.getTime())));
-  }, [customPeriod.start, transactions]);
   const analyticsUpdatedAt = analyticsSync.lastSyncedAt
     ? Date.parse(analyticsSync.lastSyncedAt)
     : undefined;
@@ -292,35 +285,25 @@ export function HomeDashboardCarousel({
     suppressClick.current = false;
   };
 
-  const handleAnalyticsOpenChange = (open: boolean) => {
-    setAnalyticsOpen(open);
-    if (!open) {
-      setNoBigSpending(false);
-      window.requestAnimationFrame(() => analyticsTriggerRef.current?.focus());
-    }
-  };
-
-  const handleCustomRangeRequest = (trigger: HTMLButtonElement) => {
-    customRangeTriggerRef.current = trigger;
-    setCustomRangeOpen(true);
-  };
-
   const handleRangeChange = (nextRange: AnalyticsRange) => {
     setRange(nextRange);
     setPeriodOffset(0);
   };
 
-  const retryAnalytics = () => {
-    analyticsSync.resync();
+  const handleNoBigSpendingToggle = () => {
+    if (bigSpendingThreshold === null) {
+      onToast("Set a big spending cutoff in Settings.");
+      return;
+    }
+    setNoBigSpending((current) => !current);
   };
 
   return (
-    <>
-      <section
-        className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_1.5rem]"
-        aria-roledescription="carousel"
-        aria-label="Home activity"
-        onKeyDown={(event) => {
+    <section
+      className="relative h-full min-h-0"
+      aria-roledescription="carousel"
+      aria-label="Home activity"
+      onKeyDown={(event) => {
           const target = event.target as HTMLElement;
           if (
             target !== viewportRef.current &&
@@ -336,8 +319,16 @@ export function HomeDashboardCarousel({
             event.preventDefault();
             scrollToSlide(0);
           }
-        }}
-      >
+      }}
+    >
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center">
+          <div className="pointer-events-auto">
+            <CarouselIndicators
+              activeIndex={activeIndex}
+              onSelect={scrollToSlide}
+            />
+          </div>
+        </div>
         <div
           ref={viewportRef}
           data-testid="home-carousel-viewport"
@@ -349,7 +340,7 @@ export function HomeDashboardCarousel({
           onPointerUp={handlePointerUp}
           onPointerCancel={() => finishPointerGesture()}
           onClickCapture={handleClickCapture}
-          className="flex min-h-0 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex h-full min-h-0 snap-x snap-mandatory overflow-x-auto overscroll-x-contain [touch-action:pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <section
             ref={(node) => {
@@ -359,10 +350,10 @@ export function HomeDashboardCarousel({
             aria-hidden={activeIndex !== 0}
             className="h-full min-w-full snap-center snap-always"
           >
-            <TopDashboard
+            <TransactionHistoryView
+              history={analyticsSync.history}
               baseCurrency={baseCurrency}
               onEditTransaction={onEditTransaction}
-              onViewAll={onViewAllTransactions}
             />
           </section>
           <section
@@ -373,106 +364,35 @@ export function HomeDashboardCarousel({
             aria-hidden={activeIndex !== 1}
             className="h-full min-w-full snap-center snap-always"
           >
-            <AnalyticsSlide
+            <AnalyticsView
+              transactions={transactions}
+              summary={summary}
+              baseCurrency={baseCurrency}
+              bigSpendingThreshold={bigSpendingThreshold}
+              noBigSpending={noBigSpending}
+              onNoBigSpendingToggle={handleNoBigSpendingToggle}
               range={range}
               onRangeChange={handleRangeChange}
               periodOptions={periodOptions}
               periodOffset={periodOffset}
               onPeriodChange={setPeriodOffset}
-              onCustomRequest={handleCustomRangeRequest}
-              summary={summary}
+              customPeriod={customPeriod}
+              onCustomPeriodChange={setCustomPeriod}
               isLoading={analyticsLoading}
-              isOffline={analyticsSync.status === 'offline'}
+              hasCompleteHistory={analyticsSync.history.hasCompleteCache}
+              isOffline={analyticsSync.status === "offline"}
               updatedAt={analyticsUpdatedAt}
-              error={analyticsError}
-              onRetry={retryAnalytics}
-              onBucketSelect={(key, trigger) => {
-                analyticsTriggerRef.current = trigger;
-                setInitialAnalyticsBucket(key);
-                setAnalyticsOpen(true);
-              }}
-              onViewAll={(event) => {
-                analyticsTriggerRef.current = event.currentTarget;
-                setInitialAnalyticsBucket(null);
-                setAnalyticsOpen(true);
-              }}
+              error={analyticsSync.history.error}
+              onRetry={analyticsSync.resync}
+              onSelectTransaction={onEditTransaction}
+              now={analyticsNow}
             />
           </section>
         </div>
 
-        <fieldset className="m-0 flex min-w-0 items-center justify-center border-0 p-0">
-          <legend className="sr-only">Carousel slides</legend>
-          {SLIDES.map((slide, index) => (
-            <button
-              key={slide}
-              type="button"
-              data-carousel-dot="true"
-              aria-label={`${slide} slide`}
-              aria-current={activeIndex === index ? "true" : undefined}
-              onClick={() => scrollToSlide(index)}
-              className="flex h-11 w-11 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            >
-              <span
-                className={cn(
-                  "block bg-muted-foreground/35 transition-[width,background-color] motion-reduce:transition-none",
-                  activeIndex === index
-                    ? "h-1.5 w-4 rounded-full bg-primary"
-                    : "h-1.5 w-1.5 rounded-full",
-                )}
-              />
-            </button>
-          ))}
-        </fieldset>
         <p className="sr-only" aria-live="polite">
           {SLIDES[activeIndex]}, slide {activeIndex + 1} of {SLIDES.length}
         </p>
-      </section>
-
-      <AnalyticsRangeDrawer
-        open={customRangeOpen}
-        onOpenChange={setCustomRangeOpen}
-        value={customPeriod}
-        minDate={earliestDate}
-        maxDate={analyticsNow}
-        onApply={(period) => {
-          setCustomPeriod(period);
-          setRange("custom");
-        }}
-        returnFocusTo={customRangeTriggerRef.current}
-      />
-
-      <AnalyticsDrawer
-        open={analyticsOpen}
-        initialSelectedBucket={initialAnalyticsBucket}
-        onOpenChange={handleAnalyticsOpenChange}
-        transactions={transactions}
-        summary={drawerSummary}
-        baseCurrency={baseCurrency}
-        bigSpendingThreshold={bigSpendingThreshold}
-        noBigSpending={noBigSpending}
-        onNoBigSpendingToggle={() => {
-          if (bigSpendingThreshold === null) {
-            onToast('Set a big spending cutoff in Settings.');
-            return;
-          }
-          setNoBigSpending((current) => !current);
-        }}
-        range={range}
-        onRangeChange={handleRangeChange}
-        periodOptions={periodOptions}
-        periodOffset={periodOffset}
-        onPeriodChange={setPeriodOffset}
-        customPeriod={customPeriod}
-        onCustomPeriodChange={setCustomPeriod}
-        isLoading={analyticsLoading}
-        hasCompleteHistory={hasCompleteAnalytics}
-        isOffline={analyticsSync.status === 'offline'}
-        updatedAt={analyticsUpdatedAt}
-        error={analyticsError}
-        onRetry={retryAnalytics}
-        onSelectTransaction={onEditTransaction}
-        now={analyticsNow}
-      />
-    </>
+    </section>
   );
 }

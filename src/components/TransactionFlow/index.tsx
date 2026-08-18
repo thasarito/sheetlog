@@ -32,8 +32,8 @@ import {
   transactionSchema,
   type TransactionFormValues,
 } from "./transactionSchema";
-import { TransactionHistoryDrawer } from "./TransactionHistoryDrawer";
 import { HomeDashboardCarousel } from "./HomeDashboardCarousel";
+import { CategoryStepSheet } from "./CategoryStepSheet";
 import { CategoryGridDrawer } from "../CategoryGridDrawer";
 import { DateTimeDrawer } from "../DateTimeDrawer";
 import {
@@ -157,7 +157,6 @@ export function TransactionFlow() {
   } | null>(null);
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
-  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [flowGeneration] = useState(() =>
     createFlowGeneration("dashboard"),
@@ -561,7 +560,6 @@ export function TransactionFlow() {
 
   const handleEditTransaction = useCallback(
     async (transaction: TransactionRecord) => {
-      setHistoryDrawerOpen(false);
       if (
         deleteMutation.isPending ||
         sourceDeletionRef.current !== null
@@ -1172,6 +1170,7 @@ export function TransactionFlow() {
           form={form}
           categoryGroups={categoryGroups}
           onConfirm={openCreateAmountStep}
+          dateDrawerNested
         />
       ),
     },
@@ -1356,28 +1355,17 @@ export function TransactionFlow() {
         />
 
         {/* Main content - full height */}
-        <div className="flex-1 min-h-0 pb-6">
+        <div className={step === 0 ? "flex-1 min-h-0" : "flex-1 min-h-0 pb-6"}>
           {step === 0 ? (
-            <div className="grid h-full grid-rows-[minmax(0,1fr)_auto] gap-4">
-              <div className="min-h-0">
-                <HomeDashboardCarousel
-                  baseCurrency={onboarding.analyticsBaseCurrency}
-                  bigSpendingThreshold={bigSpendingThreshold}
-                  analyticsSync={analyticsSync}
-                  onToast={handleToast}
-                  onEditTransaction={handleEditTransaction}
-                  onViewAllTransactions={() => setHistoryDrawerOpen(true)}
-                />
-              </div>
-              <div className="min-h-0">
-                <StepCard
-                  animationKey={activeStep.key}
-                  className={activeStep.className}
-                >
-                  {activeStep.content}
-                </StepCard>
-              </div>
-            </div>
+            <CategoryStepSheet entry={activeStep.content}>
+              <HomeDashboardCarousel
+                baseCurrency={onboarding.analyticsBaseCurrency}
+                bigSpendingThreshold={bigSpendingThreshold}
+                analyticsSync={analyticsSync}
+                onToast={handleToast}
+                onEditTransaction={handleEditTransaction}
+              />
+            </CategoryStepSheet>
           ) : (
             <StepCard
               animationKey={activeStep.key}
@@ -1389,15 +1377,6 @@ export function TransactionFlow() {
           )}
         </div>
       </div>
-
-      <TransactionHistoryDrawer
-        open={historyDrawerOpen}
-        baseCurrency={onboarding.analyticsBaseCurrency}
-        onOpenChange={setHistoryDrawerOpen}
-        onEditTransaction={(transaction) => {
-          void handleEditTransaction(transaction);
-        }}
-      />
 
       {flowMode.kind !== "create" ? (
         <DateTimeDrawer

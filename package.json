@@ -9,6 +9,7 @@
     "preview": "node scripts/vite.js preview",
     "start": "node scripts/vite.js preview",
     "worktree": "bash scripts/worktree.sh",
+    "postinstall": "node scripts/patch-vaul.mjs",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -36,7 +37,7 @@
     "react-day-picker": "^10.0.1",
     "react-dom": "^18.3.1",
     "sonner": "^1.5.0",
-    "vaul": "^1.0.0",
+    "vaul": "1.1.2",
     "workbox-window": "^7.3.0",
     "zod": "^3.23.8"
   },

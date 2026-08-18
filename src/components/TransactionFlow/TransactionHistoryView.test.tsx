@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TransactionRecord } from "../../lib/types";
 import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
-import { TransactionHistoryDrawer } from "./TransactionHistoryDrawer";
+import { TransactionHistoryView } from "./TransactionHistoryView";
 import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
+import type { TransactionHistoryQueryResult } from "./useTransactionHistoryQuery";
 
 const originalScrollTo = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
@@ -27,14 +27,14 @@ const mocks = vi.hoisted(() => ({
     isRefreshing: false,
     isDownloading: false,
     isOnline: true,
+    hasLocalSnapshot: true,
+    remoteStatus: "success" as const,
+    remoteFetchedAt: undefined as number | undefined,
+    remoteError: null as Error | null,
     refresh: vi.fn(),
   },
   baseAmountStates: {} as Record<string, TransactionBaseAmountState>,
   rateRefetch: vi.fn(),
-}));
-
-vi.mock("./useTransactionHistoryQuery", () => ({
-  useTransactionHistoryQuery: () => mocks.history,
 }));
 
 vi.mock("./useTransactionBaseAmounts", () => ({
@@ -43,29 +43,6 @@ vi.mock("./useTransactionBaseAmounts", () => ({
     refetch: mocks.rateRefetch,
     isRefreshing: false,
   })),
-}));
-
-vi.mock("../ui/drawer", () => ({
-  Drawer: ({
-    children,
-    open,
-  }: {
-    children: React.ReactNode;
-    open: boolean;
-  }) => (open ? <div data-testid="history-drawer">{children}</div> : null),
-  DrawerContent: ({ children }: { children: React.ReactNode }) => (
-    <section>{children}</section>
-  ),
-  DrawerHeader: ({ children }: { children: React.ReactNode }) => (
-    <header>{children}</header>
-  ),
-  DrawerTitle: React.forwardRef<
-    HTMLHeadingElement,
-    { children: React.ReactNode }
-  >(({ children }, ref) => <h2 ref={ref}>{children}</h2>),
-  DrawerDescription: ({ children }: { children: React.ReactNode }) => (
-    <p>{children}</p>
-  ),
 }));
 
 function transaction(
@@ -89,6 +66,24 @@ function transaction(
     sheetRowValid: true,
     ...overrides,
   };
+}
+
+function TransactionHistoryViewHarness({
+  baseCurrency,
+  onEditTransaction,
+}: {
+  open: boolean;
+  baseCurrency: string;
+  onOpenChange: (open: boolean) => void;
+  onEditTransaction: (transaction: TransactionRecord) => void;
+}) {
+  return (
+    <TransactionHistoryView
+      history={mocks.history as TransactionHistoryQueryResult}
+      baseCurrency={baseCurrency}
+      onEditTransaction={onEditTransaction}
+    />
+  );
 }
 
 beforeEach(() => {
@@ -148,6 +143,10 @@ beforeEach(() => {
   mocks.history.isRefreshing = false;
   mocks.history.isDownloading = false;
   mocks.history.isOnline = true;
+  mocks.history.hasLocalSnapshot = true;
+  mocks.history.remoteStatus = "success";
+  mocks.history.remoteFetchedAt = undefined;
+  mocks.history.remoteError = null;
   mocks.history.refresh.mockReset();
   mocks.baseAmountStates = {};
   mocks.rateRefetch.mockReset();
@@ -167,7 +166,29 @@ afterEach(() => {
   }
 });
 
-describe("TransactionHistoryDrawer", () => {
+describe("TransactionHistoryView", () => {
+  it("renders the full history surface without modal controls", () => {
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Transactions" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Close transaction history" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("virtualizes hundreds of rows while full search can reveal an older transaction", async () => {
     mocks.history.records = Array.from({ length: 500 }, (_, index) =>
       transaction(`row-${index}`, {
@@ -184,7 +205,7 @@ describe("TransactionHistoryDrawer", () => {
     const user = userEvent.setup();
 
     render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}
@@ -216,7 +237,7 @@ describe("TransactionHistoryDrawer", () => {
     );
     mocks.history.records = originalRecords;
     const rendered = render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}
@@ -226,7 +247,12 @@ describe("TransactionHistoryDrawer", () => {
     const scrollElement = screen.getByRole("region", {
       name: "Transaction history",
     });
-    expect(scrollElement).toHaveClass("pb-safe");
+    expect(scrollElement).toHaveStyle({
+      paddingBottom:
+        "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
+      scrollPaddingBottom:
+        "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
+    });
     const initialScrollTop = 64 * 20 + 17;
     scrollElement.scrollTop = initialScrollTop;
     fireEvent.scroll(scrollElement);
@@ -238,7 +264,7 @@ describe("TransactionHistoryDrawer", () => {
       ...originalRecords,
     ];
     rendered.rerender(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}
@@ -253,7 +279,44 @@ describe("TransactionHistoryDrawer", () => {
     });
   });
 
-  it("labels local status, prevents legacy edits, and closes before editing", async () => {
+  it("resets to the top when search removes the current scroll anchor", async () => {
+    mocks.history.records = Array.from({ length: 100 }, (_, index) =>
+      transaction(`row-${index}`, {
+        category: index === 0 ? "Needle category" : `Category ${index}`,
+        sheetRow: index + 2,
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <TransactionHistoryViewHarness
+        open
+        baseCurrency="THB"
+        onOpenChange={vi.fn()}
+        onEditTransaction={vi.fn()}
+      />,
+    );
+    const scrollElement = screen.getByRole("region", {
+      name: "Transaction history",
+    });
+    scrollElement.scrollTop = 64 * 20;
+    fireEvent.scroll(scrollElement);
+    const scrollToMock = vi.mocked(HTMLElement.prototype.scrollTo);
+    scrollToMock.mockClear();
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search transaction history" }),
+      "needle",
+    );
+
+    await waitFor(() =>
+      expect(scrollToMock).toHaveBeenCalledWith(
+        expect.objectContaining({ top: 0 }),
+      ),
+    );
+    expect(await screen.findByText("Needle category")).toBeInTheDocument();
+  });
+
+  it("labels local status, prevents legacy edits, and selects editable rows", async () => {
     const pending = transaction("pending", { status: "pending" });
     const failed = transaction("failed", {
       status: "error",
@@ -283,7 +346,7 @@ describe("TransactionHistoryDrawer", () => {
     const user = userEvent.setup();
 
     render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={onOpenChange}
@@ -302,7 +365,7 @@ describe("TransactionHistoryDrawer", () => {
     ).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: /Category pending/i }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
     expect(onEditTransaction).toHaveBeenCalledWith(pending);
   });
 
@@ -313,7 +376,7 @@ describe("TransactionHistoryDrawer", () => {
     mocks.history.isOnline = false;
 
     render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}
@@ -335,7 +398,7 @@ describe("TransactionHistoryDrawer", () => {
     mocks.history.isOnline = false;
 
     render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}
@@ -359,7 +422,7 @@ describe("TransactionHistoryDrawer", () => {
     mocks.history.isDownloading = true;
 
     render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}
@@ -381,7 +444,7 @@ describe("TransactionHistoryDrawer", () => {
     const user = userEvent.setup();
 
     render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}
@@ -409,7 +472,7 @@ describe("TransactionHistoryDrawer", () => {
     const user = userEvent.setup();
 
     render(
-      <TransactionHistoryDrawer
+      <TransactionHistoryViewHarness
         open
         baseCurrency="THB"
         onOpenChange={vi.fn()}

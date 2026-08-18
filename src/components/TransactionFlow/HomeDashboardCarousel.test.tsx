@@ -1,198 +1,95 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import type { MouseEvent } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TransactionRecord } from "../../lib/types";
-import type {
-  AnalyticsPeriodOption,
-  AnalyticsRange,
-  AnalyticsSummary,
-  DatePeriod,
-} from "./analytics";
-import { HomeDashboardCarousel } from "./HomeDashboardCarousel";
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TransactionRecord } from '../../lib/types';
+import type { AnalyticsViewProps } from './AnalyticsView';
+import { HomeDashboardCarousel } from './HomeDashboardCarousel';
+import type { TransactionHistoryViewProps } from './TransactionHistoryView';
 import type { AnalyticsSyncController } from './useAnalyticsSync';
 
-const analyticsSlideCalls: Array<{
-  range: AnalyticsRange;
-  onRangeChange: (range: AnalyticsRange) => void;
-  periodOptions: AnalyticsPeriodOption[];
-  periodOffset: number;
-  onPeriodChange: (offset: number) => void;
-  onBucketSelect?: (key: string, trigger: HTMLElement) => void;
-  summary?: AnalyticsSummary;
-}> = [];
-const analyticsDrawerCalls: Array<{
-  customPeriod: DatePeriod;
-  initialSelectedBucket?: string | null;
-  periodOptions: AnalyticsPeriodOption[];
-  periodOffset: number;
-  onPeriodChange: (offset: number) => void;
-  summary?: AnalyticsSummary;
-  noBigSpending: boolean;
-  onNoBigSpendingToggle: () => void;
-}> = [];
-const analyticsRangeDrawerCalls: Array<{
-  open: boolean;
-  value: DatePeriod;
-}> = [];
+const transactionViewCalls: TransactionHistoryViewProps[] = [];
+const analyticsViewCalls: AnalyticsViewProps[] = [];
 let historyData: TransactionRecord[] = [];
 let rateData: AnalyticsSyncController['rates'] = [];
 const resync = vi.fn();
 
 const historyRecords: TransactionRecord[] = [
   {
-    id: "older-expense",
-    type: "expense" as const,
+    id: 'older-expense',
+    type: 'expense',
     amount: 100,
-    currency: "THB",
-    account: "Cash",
-    for: "Me",
-    category: "Dining Out",
-    date: "2026-07-01T12:00:00",
-    status: "synced" as const,
+    currency: 'THB',
+    account: 'Cash',
+    for: 'Me',
+    category: 'Dining Out',
+    date: '2026-07-01T12:00:00',
+    status: 'synced',
     sheetRowValid: true,
-    createdAt: "2026-07-01T12:00:00",
-    updatedAt: "2026-07-01T12:00:00",
+    createdAt: '2026-07-01T12:00:00',
+    updatedAt: '2026-07-01T12:00:00',
   },
 ];
 
-vi.mock("./TopDashboard", () => ({
-  TopDashboard: ({ onViewAll }: { onViewAll: () => void }) => (
-    <button type="button" onClick={onViewAll}>
-      Transactions content
-    </button>
-  ),
-}));
-
-vi.mock("./AnalyticsSlide", () => ({
-  AnalyticsSlide: (props: {
-    range: AnalyticsRange;
-    onRangeChange: (range: AnalyticsRange) => void;
-    periodOptions: AnalyticsPeriodOption[];
-    periodOffset: number;
-    onPeriodChange: (offset: number) => void;
-    onCustomRequest: (trigger: HTMLButtonElement) => void;
-    onBucketSelect?: (key: string, trigger: HTMLElement) => void;
-    summary?: AnalyticsSummary;
-    onViewAll: (event: MouseEvent<HTMLButtonElement>) => void;
-  }) => {
-    analyticsSlideCalls.push(props);
+vi.mock('./TransactionHistoryView', () => ({
+  TransactionHistoryView: (props: TransactionHistoryViewProps) => {
+    transactionViewCalls.push(props);
     return (
-      <div>
-        <button type="button" onClick={props.onViewAll}>
-          Analytics content
-        </button>
+      <section>
+        <span>Full Transactions view</span>
         <button
           type="button"
-          onClick={(event) => props.onBucketSelect?.("2026-07-01", event.currentTarget)}
+          onClick={() => props.onEditTransaction(historyRecords[0])}
         >
-          Analytics bar
+          Select transaction row
         </button>
-        <button type="button" onClick={() => props.onRangeChange("month")}>
+      </section>
+    );
+  },
+}));
+
+vi.mock('./AnalyticsView', () => ({
+  AnalyticsView: (props: AnalyticsViewProps) => {
+    analyticsViewCalls.push(props);
+    return (
+      <section>
+        <span>Full Analytics view</span>
+        <button type="button" onClick={() => props.onRangeChange('month')}>
           Test month range
         </button>
         <button type="button" onClick={() => props.onPeriodChange(-1)}>
           Test previous period
         </button>
-        <button type="button" onClick={() => props.onRangeChange("quarter")}>
+        <button type="button" onClick={() => props.onRangeChange('quarter')}>
           Test quarter range
         </button>
-        <button type="button" onClick={() => props.onRangeChange("year")}>
+        <button type="button" onClick={() => props.onRangeChange('year')}>
           Test year range
         </button>
         <button
           type="button"
-          onClick={(event) => props.onCustomRequest(event.currentTarget)}
-        >
-          Test custom range
-        </button>
-        <button type="button" data-home-carousel-swipe-lock="true">
-          Nested period swipe target
-        </button>
-      </div>
-    );
-  },
-}));
-
-vi.mock("./AnalyticsDrawer", () => ({
-  AnalyticsDrawer: ({
-    open,
-    onOpenChange,
-    customPeriod,
-    initialSelectedBucket,
-    periodOptions,
-    periodOffset,
-    onPeriodChange,
-    summary,
-    noBigSpending,
-    onNoBigSpendingToggle,
-  }: {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    customPeriod: DatePeriod;
-    initialSelectedBucket?: string | null;
-    periodOptions: AnalyticsPeriodOption[];
-    periodOffset: number;
-    onPeriodChange: (offset: number) => void;
-    summary?: AnalyticsSummary;
-    noBigSpending: boolean;
-    onNoBigSpendingToggle: () => void;
-  }) => {
-    analyticsDrawerCalls.push({
-      customPeriod,
-      initialSelectedBucket,
-      periodOptions,
-      periodOffset,
-      onPeriodChange,
-      summary,
-      noBigSpending,
-      onNoBigSpendingToggle,
-    });
-    return open ? (
-      <div>
-        <button type="button" onClick={onNoBigSpendingToggle}>
-          Toggle no big spending
-        </button>
-        <button type="button" onClick={() => onOpenChange(false)}>
-          Close analytics drawer
-        </button>
-      </div>
-    ) : null;
-  },
-}));
-
-vi.mock("./AnalyticsRangeDrawer", () => ({
-  AnalyticsRangeDrawer: ({
-    open,
-    onOpenChange,
-    value,
-    onApply,
-  }: {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    value: DatePeriod;
-    onApply: (period: DatePeriod) => void;
-  }) => {
-    analyticsRangeDrawerCalls.push({ open, value });
-    if (!open) return null;
-    return (
-      <div role="dialog" aria-label="Custom date range">
-        <button
-          type="button"
           onClick={() => {
-            onApply({
+            props.onCustomPeriodChange({
               start: new Date(2026, 7, 5),
               end: new Date(2026, 7, 12),
             });
-            onOpenChange(false);
+            props.onRangeChange('custom');
           }}
         >
           Apply test custom range
         </button>
-        <button type="button" onClick={() => onOpenChange(false)}>
-          Cancel test custom range
+        <button type="button" onClick={props.onNoBigSpendingToggle}>
+          Toggle no big spending
         </button>
-      </div>
+        <button
+          type="button"
+          onClick={() => props.onSelectTransaction(historyRecords[0])}
+        >
+          Select analytics row
+        </button>
+        <button type="button" data-home-carousel-swipe-lock="true">
+          Nested period swipe target
+        </button>
+      </section>
     );
   },
 }));
@@ -200,441 +97,391 @@ vi.mock("./AnalyticsRangeDrawer", () => ({
 function renderCarousel({
   bigSpendingThreshold = null,
   onToast = vi.fn(),
+  status = 'synced',
 }: {
   bigSpendingThreshold?: number | null;
   onToast?: (message: string) => void;
+  status?: AnalyticsSyncController['status'];
 } = {}) {
-  const onViewAllTransactions = vi.fn();
+  const onEditTransaction = vi.fn();
+  const analyticsSync: AnalyticsSyncController = {
+    history: {
+      records: historyData,
+      meta: null,
+      error: null,
+      hasCompleteCache: true,
+      hasLocalSnapshot: true,
+      isLoading: false,
+      isRefreshing: false,
+      isDownloading: false,
+      isOnline: status !== 'offline',
+      remoteStatus: 'success',
+      remoteFetchedAt: undefined,
+      remoteError: null,
+      refresh: vi.fn(),
+    },
+    records: historyData,
+    rates: rateData,
+    hasLocalHistory: true,
+    status,
+    lastSyncedAt: '2026-08-17T12:00:00.000Z',
+    isResyncing: false,
+    resync,
+  };
   render(
     <HomeDashboardCarousel
       baseCurrency="THB"
       bigSpendingThreshold={bigSpendingThreshold}
-      analyticsSync={{
-        records: historyData,
-        rates: rateData,
-        hasLocalHistory: true,
-        status: 'synced',
-        lastSyncedAt: '2026-08-17T12:00:00.000Z',
-        isResyncing: false,
-        resync,
-      }}
+      analyticsSync={analyticsSync}
       onToast={onToast}
-      onEditTransaction={vi.fn()}
-      onViewAllTransactions={onViewAllTransactions}
+      onEditTransaction={onEditTransaction}
     />,
   );
-  const viewport = screen.getByTestId("home-carousel-viewport");
-  Object.defineProperty(viewport, "clientWidth", {
+  const viewport = screen.getByTestId('home-carousel-viewport');
+  Object.defineProperty(viewport, 'clientWidth', {
     configurable: true,
     value: 300,
   });
-  Object.defineProperty(viewport, "scrollTo", {
+  Object.defineProperty(viewport, 'scrollTo', {
     configurable: true,
     value: ({ left }: ScrollToOptions) => {
       viewport.scrollLeft = Number(left ?? 0);
       fireEvent.scroll(viewport);
     },
   });
-  return { onViewAllTransactions, viewport };
+  return { analyticsSync, onEditTransaction, viewport };
 }
 
-describe("HomeDashboardCarousel", () => {
+async function openAnalytics() {
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'Analytics slide' }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Analytics slide' }),
+    ).toHaveAttribute('aria-current', 'true'),
+  );
+}
+
+describe('HomeDashboardCarousel', () => {
   beforeEach(() => {
     historyData = historyRecords;
     rateData = [];
     resync.mockReset();
-    analyticsSlideCalls.splice(0);
-    analyticsDrawerCalls.splice(0);
-    analyticsRangeDrawerCalls.splice(0);
+    transactionViewCalls.splice(0);
+    analyticsViewCalls.splice(0);
   });
 
-  it("starts on Transactions while analytics stays ready from local snapshots", async () => {
-    const user = userEvent.setup();
-    renderCarousel();
+  it('renders both full review views and no View all flow', () => {
+    const { analyticsSync } = renderCarousel();
+
+    expect(screen.getByText('Full Transactions view')).toBeInTheDocument();
+    expect(screen.getByText('Full Analytics view')).toBeInTheDocument();
+    expect(screen.queryByText(/View all/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: /Transactions|Analytics/ }),
+    ).not.toBeInTheDocument();
+    expect(transactionViewCalls.at(-1)?.history).toBe(analyticsSync.history);
+  });
+
+  it('starts on Transactions and keeps full review controls active while switching', async () => {
+    const { viewport } = renderCarousel();
+    const transactionSlide = screen.getByLabelText('Transactions, slide 1 of 2');
+    const analyticsSlide = screen.getByLabelText('Analytics, slide 2 of 2');
 
     expect(
-      screen.getByRole("button", { name: "Transactions slide" }),
-    ).toHaveAttribute("aria-current", "true");
-    expect(
-      screen.getByLabelText("Transactions, slide 1 of 2"),
-    ).not.toHaveAttribute("aria-hidden", "true");
-    expect(analyticsSlideCalls.at(-1)?.summary).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Analytics slide" }));
+      screen.getByRole('button', { name: 'Transactions slide' }),
+    ).toHaveAttribute('aria-current', 'true');
+    expect(transactionSlide).not.toHaveAttribute('aria-hidden', 'true');
+    expect(analyticsSlide).toHaveAttribute('aria-hidden', 'true');
+    await waitFor(() => expect(analyticsSlide.inert).toBe(true));
+    await openAnalytics();
+    expect(analyticsSlide).not.toHaveAttribute('aria-hidden', 'true');
+    expect(transactionSlide).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Analytics slide" }),
-      ).toHaveAttribute("aria-current", "true"),
-    );
-    expect(
-      screen.getByLabelText("Analytics, slide 2 of 2"),
-    ).not.toHaveAttribute("aria-hidden", "true");
-    await user.click(
-      screen.getByRole("button", { name: "Transactions slide" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Transactions slide" }),
-      ).toHaveAttribute("aria-current", "true"),
+        screen.getByRole('button', { name: 'Transactions slide' }),
+      ).toHaveAttribute('aria-current', 'true'),
     );
     expect(resync).not.toHaveBeenCalled();
   });
 
-  it("supports arrow keys and opens each dedicated sheet flow", async () => {
+  it('keeps one persistent indicator set focused outside inert slides', async () => {
     const user = userEvent.setup();
-    const { onViewAllTransactions, viewport } = renderCarousel();
-    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    renderCarousel();
+    const transactionSlide = screen.getByLabelText('Transactions, slide 1 of 2');
+    const analyticsSlide = screen.getByLabelText('Analytics, slide 2 of 2');
+    const analyticsIndicator = screen.getByRole('button', {
+      name: 'Analytics slide',
+    });
+
+    expect(screen.getAllByRole('button', { name: 'Analytics slide' })).toHaveLength(
+      1,
+    );
+    expect(transactionSlide).not.toContainElement(analyticsIndicator);
+    expect(analyticsSlide).not.toContainElement(analyticsIndicator);
+
+    await user.click(analyticsIndicator);
+    await waitFor(() =>
+      expect(analyticsIndicator).toHaveAttribute('aria-current', 'true'),
+    );
+    expect(analyticsIndicator).toHaveFocus();
+
+    await user.keyboard('{ArrowLeft}');
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Analytics slide" }),
-      ).toHaveAttribute("aria-current", "true"),
+        screen.getByRole('button', { name: 'Transactions slide' }),
+      ).toHaveAttribute('aria-current', 'true'),
     );
-    const analyticsTrigger = screen.getByText("Analytics content");
-    await user.click(analyticsTrigger);
-    await user.click(screen.getByText("Close analytics drawer"));
-    await waitFor(() => expect(analyticsTrigger).toHaveFocus());
-    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Transactions slide" }),
-      ).toHaveAttribute("aria-current", "true"),
-    );
-    await user.click(screen.getByText("Transactions content"));
-    expect(onViewAllTransactions).toHaveBeenCalledTimes(1);
+    expect(analyticsIndicator).toHaveFocus();
   });
 
-  it("opens Analytics from a compact bar and keeps View all unfiltered", async () => {
-    const user = userEvent.setup();
+  it('snaps on touch swipes while leaving nested controls and mouse drags alone', async () => {
     const { viewport } = renderCarousel();
-    fireEvent.keyDown(viewport, { key: "ArrowRight" });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Analytics slide" }),
-      ).toHaveAttribute("aria-current", "true"),
-    );
-
-    const bar = screen.getByRole("button", { name: "Analytics bar" });
-    await user.click(bar);
-    expect(analyticsDrawerCalls.at(-1)?.initialSelectedBucket).toBe("2026-07-01");
-    await user.click(screen.getByText("Close analytics drawer"));
-    await waitFor(() => expect(bar).toHaveFocus());
-
-    await user.click(screen.getByRole("button", { name: "Analytics content" }));
-    expect(analyticsDrawerCalls.at(-1)?.initialSelectedBucket).toBeNull();
-  });
-
-  it("snaps on touch swipes while leaving mouse drags inert", async () => {
-    const { viewport } = renderCarousel();
-    expect(viewport.className).toContain("[touch-action:pan-y]");
-    expect(viewport.className).not.toContain("[touch-action:pan-x_pan-y]");
+    expect(viewport.className).toContain('[touch-action:pan-y]');
 
     fireEvent.pointerDown(viewport, {
-      pointerId: 1,
-      pointerType: "touch",
+      pointerType: 'touch',
       clientX: 260,
       clientY: 90,
     });
     fireEvent.pointerMove(viewport, {
-      pointerId: 1,
-      pointerType: "touch",
+      pointerType: 'touch',
       clientX: 100,
       clientY: 94,
     });
     fireEvent.pointerUp(viewport, {
-      pointerId: 1,
-      pointerType: "touch",
+      pointerType: 'touch',
       clientX: 100,
       clientY: 94,
     });
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Analytics slide" }),
-      ).toHaveAttribute("aria-current", "true"),
+        screen.getByRole('button', { name: 'Analytics slide' }),
+      ).toHaveAttribute('aria-current', 'true'),
     );
 
-    const nestedTarget = screen.getByRole("button", {
-      name: "Nested period swipe target",
+    const nestedTarget = screen.getByRole('button', {
+      name: 'Nested period swipe target',
     });
     fireEvent.pointerDown(nestedTarget, {
-      pointerId: 3,
-      pointerType: "touch",
+      pointerType: 'touch',
       clientX: 100,
       clientY: 90,
     });
     fireEvent.pointerMove(viewport, {
-      pointerId: 3,
-      pointerType: "touch",
+      pointerType: 'touch',
       clientX: 260,
       clientY: 94,
     });
     fireEvent.pointerUp(viewport, {
-      pointerId: 3,
-      pointerType: "touch",
+      pointerType: 'touch',
       clientX: 260,
       clientY: 94,
     });
-    expect(screen.getByRole("button", { name: "Analytics slide" })).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
+    expect(
+      screen.getByRole('button', { name: 'Analytics slide' }),
+    ).toHaveAttribute('aria-current', 'true');
 
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "Transactions slide" }));
+      .click(screen.getByRole('button', { name: 'Transactions slide' }));
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Transactions slide" }),
-      ).toHaveAttribute("aria-current", "true"),
+        screen.getByRole('button', { name: 'Transactions slide' }),
+      ).toHaveAttribute('aria-current', 'true'),
     );
-
     fireEvent.pointerDown(viewport, {
-      pointerId: 2,
-      pointerType: "mouse",
+      pointerType: 'mouse',
       clientX: 260,
       clientY: 90,
     });
     fireEvent.pointerMove(viewport, {
-      pointerId: 2,
-      pointerType: "mouse",
+      pointerType: 'mouse',
       clientX: 100,
       clientY: 94,
     });
     fireEvent.pointerUp(viewport, {
-      pointerId: 2,
-      pointerType: "mouse",
+      pointerType: 'mouse',
       clientX: 100,
       clientY: 94,
     });
-    expect(screen.getByRole("button", { name: "Transactions slide" })).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
+    expect(
+      screen.getByRole('button', { name: 'Transactions slide' }),
+    ).toHaveAttribute('aria-current', 'true');
   });
 
-  it("builds daily month, weekly quarter, monthly year, and shared custom state", async () => {
-    const user = userEvent.setup();
-    renderCarousel();
-    await user.click(screen.getByRole("button", { name: "Analytics slide" }));
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Analytics slide" }),
-      ).toHaveAttribute("aria-current", "true"),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Test month range" }));
-    const monthSummary = analyticsSlideCalls.at(-1)?.summary;
-    expect(monthSummary?.range).toBe("month");
-    expect(monthSummary?.buckets.every((bucket) => !bucket.key.endsWith("-week"))).toBe(true);
-
-    await user.click(screen.getByRole("button", { name: "Test quarter range" }));
-    const quarterSummary = analyticsSlideCalls.at(-1)?.summary;
-    expect(quarterSummary?.range).toBe("quarter");
-    expect(quarterSummary?.buckets.every((bucket) => bucket.key.endsWith("-week"))).toBe(true);
-
-    await user.click(screen.getByRole("button", { name: "Test year range" }));
-    const yearSummary = analyticsSlideCalls.at(-1)?.summary;
-    expect(yearSummary?.range).toBe("year");
-    expect(yearSummary?.periods.current.start.getMonth()).toBe(0);
-    expect(yearSummary?.buckets.every((bucket) => bucket.key.endsWith("-month"))).toBe(true);
-
-    await user.click(screen.getByRole("button", { name: "Test custom range" }));
-    expect(analyticsSlideCalls.at(-1)?.summary?.range).toBe("year");
-    expect(
-      screen.getByRole("dialog", { name: "Custom date range" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Close analytics drawer" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "Apply test custom range" }),
-    );
-    const customSummary = analyticsSlideCalls.at(-1)?.summary;
-    const customDrawer = analyticsDrawerCalls.at(-1);
-    expect(customSummary?.range).toBe("custom");
-    expect(customSummary?.periods.current.start).toEqual(new Date(2026, 7, 5));
-    expect(customSummary?.periods.current.end.getDate()).toBe(12);
-    expect(customDrawer?.customPeriod).toEqual({
-      start: new Date(2026, 7, 5),
-      end: new Date(2026, 7, 12),
-    });
-    expect(analyticsRangeDrawerCalls.at(-1)?.open).toBe(false);
-    expect(
-      screen.queryByRole("button", { name: "Close analytics drawer" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shares the selected period with the sheet and resets it when range changes", async () => {
-    const user = userEvent.setup();
-    renderCarousel();
-    await user.click(screen.getByRole("button", { name: "Analytics slide" }));
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Analytics slide" }),
-      ).toHaveAttribute("aria-current", "true"),
-    );
-
-    expect(analyticsSlideCalls.at(-1)?.periodOptions.length).toBeGreaterThan(1);
-    await user.click(screen.getByRole("button", { name: "Test previous period" }));
-    expect(analyticsSlideCalls.at(-1)?.periodOffset).toBe(-1);
-    expect(analyticsDrawerCalls.at(-1)?.periodOffset).toBe(-1);
-    expect(analyticsSlideCalls.at(-1)?.summary?.periods.current.end).toEqual(
-      analyticsDrawerCalls.at(-1)?.periodOptions.find(({ offset }) => offset === -1)?.period.end,
-    );
-
-    await user.click(screen.getByRole("button", { name: "Test month range" }));
-    expect(analyticsSlideCalls.at(-1)?.range).toBe("month");
-    expect(analyticsSlideCalls.at(-1)?.periodOffset).toBe(0);
-    expect(analyticsDrawerCalls.at(-1)?.periodOffset).toBe(0);
-  });
-
-  it("suppresses an accidental action click after a horizontal touch drag", () => {
-    const { onViewAllTransactions, viewport } = renderCarousel();
-    const trigger = screen.getByText("Transactions content");
+  it('suppresses a transaction action after a committed horizontal drag', () => {
+    const { onEditTransaction, viewport } = renderCarousel();
+    const trigger = screen.getByRole('button', { name: 'Select transaction row' });
 
     fireEvent.pointerDown(trigger, {
       clientX: 250,
       clientY: 80,
-      pointerType: "touch",
+      pointerType: 'touch',
     });
     fireEvent.pointerMove(viewport, {
       clientX: 120,
       clientY: 84,
-      pointerType: "touch",
+      pointerType: 'touch',
     });
     fireEvent.pointerUp(viewport, {
       clientX: 120,
       clientY: 84,
-      pointerType: "touch",
+      pointerType: 'touch',
     });
     fireEvent.click(trigger);
 
-    expect(onViewAllTransactions).not.toHaveBeenCalled();
+    expect(onEditTransaction).not.toHaveBeenCalled();
   });
 
-  it('passes the same converted base-currency summary to both analytics views', () => {
+  it('builds month, quarter, year, custom, and shared period state', async () => {
+    const user = userEvent.setup();
+    renderCarousel();
+    await openAnalytics();
+
+    expect(analyticsViewCalls.at(-1)?.periodOptions.length).toBeGreaterThan(1);
+    await user.click(screen.getByRole('button', { name: 'Test previous period' }));
+    expect(analyticsViewCalls.at(-1)?.periodOffset).toBe(-1);
+
+    await user.click(screen.getByRole('button', { name: 'Test month range' }));
+    expect(analyticsViewCalls.at(-1)?.range).toBe('month');
+    expect(analyticsViewCalls.at(-1)?.periodOffset).toBe(0);
+    expect(
+      analyticsViewCalls
+        .at(-1)
+        ?.summary?.buckets.every((bucket) => !bucket.key.endsWith('-week')),
+    ).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'Test quarter range' }));
+    expect(analyticsViewCalls.at(-1)?.summary?.range).toBe('quarter');
+    expect(
+      analyticsViewCalls
+        .at(-1)
+        ?.summary?.buckets.every((bucket) => bucket.key.endsWith('-week')),
+    ).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'Test year range' }));
+    expect(analyticsViewCalls.at(-1)?.summary?.range).toBe('year');
+    expect(analyticsViewCalls.at(-1)?.summary?.periods.current.start.getMonth()).toBe(0);
+
+    await user.click(screen.getByRole('button', { name: 'Apply test custom range' }));
+    expect(analyticsViewCalls.at(-1)?.summary?.range).toBe('custom');
+    expect(analyticsViewCalls.at(-1)?.customPeriod).toEqual({
+      start: new Date(2026, 7, 5),
+      end: new Date(2026, 7, 12),
+    });
+  });
+
+  it('passes one converted base-currency summary to the detailed Analytics view', () => {
     const date = new Date().toISOString();
     const day = date.slice(0, 10);
     historyData = [
       {
+        ...historyRecords[0],
         id: 'thb',
-        type: 'expense',
-        amount: 100,
-        currency: 'THB',
-        account: 'Cash',
-        for: 'Me',
-        category: 'Dining Out',
         date,
-        status: 'synced',
         createdAt: date,
         updatedAt: date,
       },
       {
+        ...historyRecords[0],
         id: 'usd',
-        type: 'expense',
         amount: 3,
         currency: 'USD',
-        account: 'Cash',
-        for: 'Me',
         category: 'Coffee',
         date,
-        status: 'synced',
         createdAt: date,
         updatedAt: date,
       },
     ];
     rateData = [
-        {
-          id: `THB:USD:${day}`,
-          base: 'THB',
-          quote: 'USD',
-          date: day,
-          rate: 0.03,
-          fetchedAt: date,
-        },
+      {
+        id: `THB:USD:${day}`,
+        base: 'THB',
+        quote: 'USD',
+        date: day,
+        rate: 0.03,
+        fetchedAt: date,
+      },
     ];
 
     renderCarousel();
 
-    const latestSlide = analyticsSlideCalls.at(-1);
-    const latestDrawer = analyticsDrawerCalls.at(-1);
-    expect(latestSlide?.summary?.currency).toBe('THB');
-    expect(latestSlide?.summary?.expenseTotal).toBe(200);
-    expect(latestDrawer?.summary).toBe(latestSlide?.summary);
+    expect(analyticsViewCalls.at(-1)?.summary?.currency).toBe('THB');
+    expect(analyticsViewCalls.at(-1)?.summary?.expenseTotal).toBe(200);
+    expect(transactionViewCalls.at(-1)?.history.records).toBe(historyData);
   });
 
-  it('filters only drawer analytics and resets the mode after close', async () => {
+  it('filters the one detailed summary when no-big-spending mode is active', async () => {
     const user = userEvent.setup();
     const date = new Date().toISOString();
     historyData = [
       {
+        ...historyRecords[0],
         id: 'ordinary',
-        type: 'expense',
-        amount: 100,
-        currency: 'THB',
-        account: 'Cash',
-        for: 'Me',
-        category: 'Dining Out',
         date,
-        status: 'synced',
         createdAt: date,
         updatedAt: date,
       },
       {
+        ...historyRecords[0],
         id: 'large',
-        type: 'expense',
         amount: 10_000,
-        currency: 'THB',
-        account: 'Cash',
-        for: 'Me',
         category: 'Travel',
         date,
-        status: 'synced',
         createdAt: date,
         updatedAt: date,
       },
     ];
     renderCarousel({ bigSpendingThreshold: 10_000 });
+    await openAnalytics();
 
-    await user.click(screen.getByRole('button', { name: 'Analytics slide' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Analytics slide' })).toHaveAttribute(
-        'aria-current',
-        'true',
-      ),
-    );
-    await user.click(screen.getByText('Analytics content'));
+    expect(analyticsViewCalls.at(-1)?.summary?.expenseTotal).toBe(10_100);
     await user.click(screen.getByRole('button', { name: 'Toggle no big spending' }));
-
     await waitFor(() => {
-      expect(analyticsSlideCalls.at(-1)?.summary?.expenseTotal).toBe(10_100);
-      expect(analyticsDrawerCalls.at(-1)?.summary?.expenseTotal).toBe(100);
-      expect(analyticsDrawerCalls.at(-1)?.noBigSpending).toBe(true);
+      expect(analyticsViewCalls.at(-1)?.noBigSpending).toBe(true);
+      expect(analyticsViewCalls.at(-1)?.summary?.expenseTotal).toBe(100);
     });
-
-    await user.click(screen.getByText('Close analytics drawer'));
-    await user.click(screen.getByText('Analytics content'));
-    await waitFor(() => {
-      expect(analyticsDrawerCalls.at(-1)?.noBigSpending).toBe(false);
-      expect(analyticsDrawerCalls.at(-1)?.summary?.expenseTotal).toBe(10_100);
-    });
+    await user.click(screen.getByRole('button', { name: 'Toggle no big spending' }));
+    await waitFor(() =>
+      expect(analyticsViewCalls.at(-1)?.summary?.expenseTotal).toBe(10_100),
+    );
   });
 
-  it('directs an unconfigured mode press to Settings', async () => {
-    const user = userEvent.setup();
+  it('directs an unconfigured no-big-spending press to Settings', async () => {
     const onToast = vi.fn();
     renderCarousel({ onToast });
+    await openAnalytics();
 
-    await user.click(screen.getByRole('button', { name: 'Analytics slide' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Analytics slide' })).toHaveAttribute(
-        'aria-current',
-        'true',
-      ),
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Toggle no big spending' }));
+
+    expect(onToast).toHaveBeenCalledWith(
+      'Set a big spending cutoff in Settings.',
     );
-    await user.click(screen.getByText('Analytics content'));
-    await user.click(screen.getByRole('button', { name: 'Toggle no big spending' }));
+    expect(analyticsViewCalls.at(-1)?.noBigSpending).toBe(false);
+  });
 
-    expect(onToast).toHaveBeenCalledWith('Set a big spending cutoff in Settings.');
-    expect(analyticsDrawerCalls.at(-1)?.noBigSpending).toBe(false);
+  it('routes transaction selections from either full view to the shared editor', async () => {
+    const user = userEvent.setup();
+    const { onEditTransaction } = renderCarousel();
+
+    await user.click(screen.getByRole('button', { name: 'Select transaction row' }));
+    expect(onEditTransaction).toHaveBeenLastCalledWith(historyRecords[0]);
+    await openAnalytics();
+    await user.click(screen.getByRole('button', { name: 'Select analytics row' }));
+    expect(onEditTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes offline and refresh state through without starting another query', () => {
+    const { analyticsSync } = renderCarousel({ status: 'offline' });
+
+    expect(transactionViewCalls.at(-1)?.history).toBe(analyticsSync.history);
+    expect(analyticsViewCalls.at(-1)?.isOffline).toBe(true);
+    expect(analyticsViewCalls.at(-1)?.onRetry).toBe(resync);
+    expect(resync).not.toHaveBeenCalled();
   });
 });

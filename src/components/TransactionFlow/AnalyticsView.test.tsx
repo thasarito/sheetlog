@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,7 +9,7 @@ import {
   type AnalyticsRange,
   type DatePeriod,
 } from './analytics';
-import { AnalyticsDrawer } from './AnalyticsDrawer';
+import { AnalyticsView } from './AnalyticsView';
 
 const customPeriod: DatePeriod = {
   start: new Date(2026, 7, 1),
@@ -113,10 +113,8 @@ function defaultNoBigSpendingProps() {
   } as const;
 }
 
-const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
-  open: true,
+const baseProps: ComponentProps<typeof AnalyticsView> = {
   ...defaultNoBigSpendingProps(),
-  onOpenChange: vi.fn(),
   transactions,
   range: 'week',
   onRangeChange: vi.fn(),
@@ -135,7 +133,7 @@ const baseProps: ComponentProps<typeof AnalyticsDrawer> = {
   now: new Date(2026, 7, 19, 12),
 };
 
-function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>> = {}) {
+function renderView(overrides: Partial<ComponentProps<typeof AnalyticsView>> = {}) {
   const props = { ...baseProps, ...overrides };
   if (!Object.hasOwn(overrides, 'summary')) {
     props.summary = makeSummary(
@@ -146,15 +144,28 @@ function renderDrawer(overrides: Partial<ComponentProps<typeof AnalyticsDrawer>>
       props.now,
     );
   }
-  return render(<AnalyticsDrawer {...props} />);
+  return render(<AnalyticsView {...props} />);
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-describe('AnalyticsDrawer', () => {
+describe('AnalyticsView', () => {
+  it('renders detailed analytics directly without outer modal controls', () => {
+    renderView();
+
+    expect(screen.getByRole('heading', { name: 'Analytics' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Close analytics' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: 'Analytics' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('renders the shared grouped axis for a complete quarter', () => {
-    renderDrawer({
+    renderView({
       range: 'quarter',
       transactions: [],
       now: new Date(2026, 4, 15, 12),
@@ -167,7 +178,7 @@ describe('AnalyticsDrawer', () => {
   });
 
   it('renders the shared dense axis for a complete month', () => {
-    renderDrawer({
+    renderView({
       range: 'month',
       transactions: [],
       now: new Date(2026, 5, 15, 12),
@@ -179,20 +190,11 @@ describe('AnalyticsDrawer', () => {
     expect(labels.slice(0, 8)).toEqual(['1', 'T', 'W', 'T', 'F', 'S', 'S', '8']);
   });
 
-  it('opens with a requested bucket selected and filters matching transactions', async () => {
-    renderDrawer({ initialSelectedBucket: '2026-08-17' });
-
-    const selectedBar = screen.getByRole('option', { name: /Monday, August 17/ });
-    await waitFor(() => expect(selectedBar).toHaveAttribute('aria-selected', 'true'));
-    expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /expense Coffee/ })).not.toBeInTheDocument();
-  });
-
   it('puts the stacked chart first and reacts across Overview, categories, and Transactions', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderView();
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Analytics' })).toHaveFocus());
+    expect(screen.getByRole('heading', { name: 'Analytics' })).toBeVisible();
     const trend = screen.getByRole('region', { name: 'Spending trend' });
     const overview = screen.getByRole('region', { name: 'Overview' });
     expect(trend.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -238,7 +240,7 @@ describe('AnalyticsDrawer', () => {
   });
 
   it('hides transfer helper copy while keeping transfers out of totals', () => {
-    renderDrawer({
+    renderView({
       transactions: [
         ...transactions,
         {
@@ -280,7 +282,7 @@ describe('AnalyticsDrawer', () => {
       convertedAmounts: { 'foreign-expense': 100 },
     };
 
-    renderDrawer({
+    renderView({
       transactions: [foreignExpense, foreignTransfer],
       summary,
     });
@@ -301,7 +303,7 @@ describe('AnalyticsDrawer', () => {
 
   it('intersects category and bucket filters while clearing each independently', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderView();
 
     const selectedBar = screen.getByRole('option', { name: /Monday, August 17/ });
     await user.click(selectedBar);
@@ -319,9 +321,9 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
   });
 
-  it('cancels a nested custom range without closing Analytics or clearing filters', async () => {
+  it('cancels a standalone custom range without clearing filters', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderView();
 
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
     await user.click(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' }));
@@ -332,25 +334,25 @@ describe('AnalyticsDrawer', () => {
 
     const customDialog = screen.getByRole('dialog', { name: 'Custom date range' });
     expect(customDialog).toBeInTheDocument();
-    expect(
-      screen.getByRole('dialog', { name: 'Analytics', hidden: true }),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Analytics' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel custom range' }));
 
     expect(customDialog).toHaveAttribute('data-state', 'closed');
-    expect(screen.getByRole('dialog', { name: 'Analytics' })).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Analytics', hidden: true }),
+    ).toBeInTheDocument();
     expect(screen.getByText('No matching transactions')).toBeInTheDocument();
     await waitFor(() => expect(customTrigger).toHaveFocus());
   });
 
-  it('applies a nested custom range and leaves Analytics open', async () => {
+  it('applies a standalone custom range and keeps the direct view mounted', async () => {
     const user = userEvent.setup();
 
     function CustomRangeHarness() {
       const [selectedRange, setSelectedRange] = useState<AnalyticsRange>('month');
       const [selectedPeriod, setSelectedPeriod] = useState(customPeriod);
       return (
-        <AnalyticsDrawer
+        <AnalyticsView
           {...baseProps}
           summary={makeSummary(transactions, selectedRange, selectedPeriod)}
           range={selectedRange}
@@ -370,7 +372,10 @@ describe('AnalyticsDrawer', () => {
     await user.click(screen.getByRole('button', { name: 'Apply custom range' }));
 
     expect(customDialog).toHaveAttribute('data-state', 'closed');
-    expect(screen.getByRole('dialog', { name: 'Analytics' })).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'Analytics', hidden: true }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Analytics' })).not.toBeInTheDocument();
     expect(
       screen.getByRole('status', { name: 'Analytics summary update' }),
     ).toHaveTextContent(
@@ -381,12 +386,12 @@ describe('AnalyticsDrawer', () => {
 
   it('resets drill-down when the analytics scope changes', async () => {
     const user = userEvent.setup();
-    const { rerender } = renderDrawer();
+    const { rerender } = renderView();
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
 
     rerender(
-      <AnalyticsDrawer
+      <AnalyticsView
         {...baseProps}
         summary={makeSummary(transactions, 'month')}
         range="month"
@@ -408,7 +413,7 @@ describe('AnalyticsDrawer', () => {
   it('shares period changes and clears an active drill-down before changing period', async () => {
     const user = userEvent.setup();
     const onPeriodChange = vi.fn();
-    renderDrawer({ onPeriodChange });
+    renderView({ onPeriodChange });
 
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
@@ -424,45 +429,27 @@ describe('AnalyticsDrawer', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('clears bucket and category filters whenever the sheet closes', async () => {
+  it('preserves bucket and category filters while the direct view remains mounted', async () => {
     const user = userEvent.setup();
-    function Harness() {
-      const [open, setOpen] = useState(true);
-      return (
-        <>
-          <button type="button" onClick={() => setOpen(true)}>
-            Reopen analytics
-          </button>
-          <AnalyticsDrawer {...baseProps} open={open} onOpenChange={setOpen} />
-        </>
-      );
-    }
-    render(<Harness />);
+    const { rerender } = renderView();
 
     await user.click(screen.getByRole('option', { name: /Monday, August 17/ }));
-    await user.click(screen.getByRole('button', { name: /Dining Out,/ }));
+    await user.click(screen.getByRole('button', { name: 'Coffee, ฿0, 0%' }));
     expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Close analytics' }));
-    fireEvent.click(screen.getByText('Reopen analytics'));
+    expect(screen.getByText('No matching transactions')).toBeInTheDocument();
 
-    expect(
-      screen.queryByRole('button', { name: /Clear selected period filter/ }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /expense Dining Out/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /expense Coffee/ })).toBeInTheDocument();
-    expect(
-      screen.getByRole('option', { name: 'August 17, 2026 through August 23, 2026' }),
-    ).toHaveAttribute('aria-selected', 'true');
+    rerender(<AnalyticsView {...baseProps} />);
+
+    expect(screen.getByRole('button', { name: /Clear selected period filter/ })).toBeInTheDocument();
+    expect(screen.getByText('No matching transactions')).toBeInTheDocument();
   });
 
-  it('shares the range control and closes before editing a row', async () => {
+  it('shares the range control and selects a row directly', async () => {
     const user = userEvent.setup();
     const onRangeChange = vi.fn();
-    const onOpenChange = vi.fn();
     const onSelectTransaction = vi.fn();
-    renderDrawer({
+    renderView({
       onRangeChange,
-      onOpenChange,
       onSelectTransaction,
     });
 
@@ -471,7 +458,6 @@ describe('AnalyticsDrawer', () => {
     expect(screen.queryByRole('combobox', { name: 'Analytics currency' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Frankfurter|All currencies/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /expense Dining Out/ }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onSelectTransaction).toHaveBeenCalledWith(transactions[0]);
   });
 
@@ -508,7 +494,7 @@ describe('AnalyticsDrawer', () => {
               ]
             : periodOptions;
       return (
-        <AnalyticsDrawer
+        <AnalyticsView
           {...baseProps}
           summary={makeSummary(transactions, selectedRange)}
           range={selectedRange}
@@ -542,7 +528,7 @@ describe('AnalyticsDrawer', () => {
   });
 
   it('keeps local periods available while complete analytics are loading or unavailable', () => {
-    const { rerender } = renderDrawer({ isLoading: true, hasCompleteHistory: false });
+    const { rerender } = renderView({ isLoading: true, hasCompleteHistory: false });
 
     const status = screen.getByRole('status', { name: 'Analytics summary update' });
     expect(status).toHaveTextContent(
@@ -552,7 +538,7 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
 
     rerender(
-      <AnalyticsDrawer
+      <AnalyticsView
         {...baseProps}
         hasCompleteHistory={false}
         isOffline
@@ -562,7 +548,7 @@ describe('AnalyticsDrawer', () => {
     expect(screen.getByRole('listbox', { name: 'Analytics period' })).toBeInTheDocument();
 
     rerender(
-      <AnalyticsDrawer
+      <AnalyticsView
         {...baseProps}
         hasCompleteHistory={false}
         error={new Error('network')}
@@ -599,7 +585,7 @@ describe('AnalyticsDrawer', () => {
         updatedAt: '2026-08-17T12:00:00',
       }),
     );
-    renderDrawer({ transactions: manyCategories });
+    renderView({ transactions: manyCategories });
 
     await user.click(screen.getByRole('button', { name: /^Other,/ }));
     expect(screen.getByRole('button', { name: /expense Category E/ })).toBeInTheDocument();
@@ -611,7 +597,7 @@ describe('AnalyticsDrawer', () => {
   it('renders one icon-only no big spending toggle with accessible state', async () => {
     const user = userEvent.setup();
     const onToggle = vi.fn();
-    renderDrawer({
+    renderView({
       summary: { ...makeSummary(), excludedBigSpendingCount: 2 },
       baseCurrency: 'THB',
       bigSpendingThreshold: 10_000,
@@ -630,7 +616,7 @@ describe('AnalyticsDrawer', () => {
   });
 
   it('explains through its accessible name when the cutoff is not configured', () => {
-    renderDrawer();
+    renderView();
 
     expect(
       screen.getByRole('button', {

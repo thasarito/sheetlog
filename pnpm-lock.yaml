@@ -66,7 +66,7 @@ importers:
         specifier: ^1.5.0
         version: 1.7.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       vaul:
-        specifier: ^1.0.0
+        specifier: 1.1.2
         version: 1.1.2(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       workbox-window:
         specifier: ^7.3.0

@@ -169,3 +169,7 @@ export function useTransactionHistoryQuery(enabled: boolean) {
     refresh: remoteQuery.refetch,
   };
 }
+
+export type TransactionHistoryQueryResult = ReturnType<
+  typeof useTransactionHistoryQuery
+>;

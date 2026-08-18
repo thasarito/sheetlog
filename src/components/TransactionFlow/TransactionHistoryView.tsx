@@ -1,6 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { format } from "date-fns";
-import { RefreshCw, Search, X } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -13,13 +13,6 @@ import { parseDate } from "../../lib/date-utils";
 import { filterTransactionHistory } from "../../lib/transactionHistory";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "../ui/drawer";
 import { Skeleton } from "../ui/skeleton";
 import type { TransactionBaseAmountState } from "./transactionBaseAmounts";
 import {
@@ -29,12 +22,11 @@ import {
   TransactionHistoryRow,
 } from "./TransactionHistoryItems";
 import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
-import { useTransactionHistoryQuery } from "./useTransactionHistoryQuery";
+import type { TransactionHistoryQueryResult } from "./useTransactionHistoryQuery";
 
-type TransactionHistoryDrawerProps = {
-  open: boolean;
+export type TransactionHistoryViewProps = {
+  history: TransactionHistoryQueryResult;
   baseCurrency: string;
-  onOpenChange: (open: boolean) => void;
   onEditTransaction: (transaction: TransactionRecord) => void;
 };
 
@@ -114,6 +106,9 @@ function TransactionHistoryVirtualList({
           { align: "start" },
         );
       }
+    } else {
+      anchorRef.current = null;
+      virtualizer.scrollToOffset(0, { align: "start" });
     }
   }, [items, virtualizer]);
 
@@ -122,7 +117,13 @@ function TransactionHistoryVirtualList({
       ref={scrollRef}
       aria-label="Transaction history"
       data-virtual-scroll="true"
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-safe"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2"
+      style={{
+        paddingBottom:
+          "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
+        scrollPaddingBottom:
+          "var(--category-sheet-occlusion, env(safe-area-inset-bottom))",
+      }}
       onScroll={() => {
         const scrollTop = scrollRef.current?.scrollTop ?? 0;
         const firstVisible = virtualizer.getVirtualItemForOffset(scrollTop);
@@ -176,19 +177,15 @@ function TransactionHistoryVirtualList({
   );
 }
 
-export function TransactionHistoryDrawer({
-  open,
+export function TransactionHistoryView({
+  history,
   baseCurrency,
-  onOpenChange,
   onEditTransaction,
-}: TransactionHistoryDrawerProps) {
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
-  const history = useTransactionHistoryQuery(open);
+}: TransactionHistoryViewProps) {
   const baseAmounts = useTransactionBaseAmounts(
     history.records,
     baseCurrency,
-    open,
+    true,
   );
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -197,13 +194,6 @@ export function TransactionHistoryDrawer({
     const timeout = window.setTimeout(() => setDebouncedSearch(search), 250);
     return () => window.clearTimeout(timeout);
   }, [search]);
-
-  useEffect(() => {
-    if (!open) {
-      setSearch("");
-      setDebouncedSearch("");
-    }
-  }, [open]);
 
   const filteredTransactions = useMemo(
     () => filterTransactionHistory(history.records, debouncedSearch),
@@ -226,7 +216,6 @@ export function TransactionHistoryDrawer({
       : "Showing local entries while full history loads.";
 
   const handleEdit = (transaction: TransactionRecord) => {
-    onOpenChange(false);
     onEditTransaction(transaction);
   };
   const refresh = () => {
@@ -235,54 +224,32 @@ export function TransactionHistoryDrawer({
   };
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} shouldScaleBackground={false}>
-      <DrawerContent
-        className="h-[94dvh] max-h-[94dvh] overflow-hidden"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          returnFocusRef.current =
-            document.activeElement instanceof HTMLElement
-              ? document.activeElement
-              : null;
-          titleRef.current?.focus();
-        }}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          returnFocusRef.current?.focus();
-          returnFocusRef.current = null;
-        }}
-      >
-        <DrawerHeader className="grid grid-cols-[40px_1fr_40px] items-center gap-2 border-b border-border/70 px-3 pb-3 pt-4 text-center">
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            aria-label="Close transaction history"
-            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <div className="min-w-0">
-            <DrawerTitle ref={titleRef} tabIndex={-1}>
-              Transactions
-            </DrawerTitle>
-            <DrawerDescription className="sr-only">
-              Search and browse the complete transaction history.
-            </DrawerDescription>
-          </div>
-          <button
-            type="button"
-            aria-label="Refresh transaction history"
-            disabled={!history.isOnline || isRefreshing}
-            onClick={refresh}
-            className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-          >
-            <RefreshCw
-              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
-            />
-          </button>
-        </DrawerHeader>
+    <section className="flex h-full min-h-0 flex-col bg-card">
+      <header className="grid h-16 grid-cols-[40px_1fr_40px] items-center gap-2 border-b border-border/70 px-3 text-center">
+        <span aria-hidden="true" />
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-foreground">
+            Transactions
+          </h2>
+          <p className="sr-only">
+            Search and browse the complete transaction history.
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label="Refresh transaction history"
+          disabled={!history.isOnline || isRefreshing}
+          onClick={refresh}
+          className="grid h-10 w-10 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+          />
+        </button>
+      </header>
+      <div className="h-11 shrink-0" aria-hidden="true" />
 
-        <div className="flex min-h-0 flex-1 flex-col bg-card">
+      <div className="flex min-h-0 flex-1 flex-col bg-card">
           <div className="space-y-2 px-4 pb-2 pt-3">
             <label className="relative block">
               <span className="sr-only">Search transaction history</span>
@@ -402,8 +369,7 @@ export function TransactionHistoryDrawer({
               No transactions yet.
             </div>
           )}
-        </div>
-      </DrawerContent>
-    </Drawer>
+      </div>
+    </section>
   );
 }

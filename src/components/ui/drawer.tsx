@@ -34,12 +34,13 @@ type DrawerContentProps = React.ComponentPropsWithoutRef<
   typeof DrawerPrimitive.Content
 > & {
   contained?: boolean;
+  showHandle?: boolean;
 };
 
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
   DrawerContentProps
->(({ className, children, contained, ...props }, ref) => {
+>(({ className, children, contained, showHandle = true, ...props }, ref) => {
   // When contained inside iPhone frame, the drawer is portaled to the screen element
   // which is positioned absolutely within the frame. The drawer should fill the full
   // width of the container without any transform scaling.
@@ -57,7 +58,9 @@ const DrawerContent = React.forwardRef<
         )}
         {...props}
       >
-        <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-border" />
+        {showHandle ? (
+          <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-border" />
+        ) : null}
         {children}
       </DrawerPrimitive.Content>
     </DrawerPortal>

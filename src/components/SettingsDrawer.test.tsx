@@ -20,6 +20,21 @@ const defaultSettingsState = (): SettingsSyncState => ({
 });
 
 const analyticsSync: AnalyticsSyncController = {
+  history: {
+    records: [],
+    meta: null,
+    error: null,
+    hasCompleteCache: true,
+    hasLocalSnapshot: true,
+    isLoading: false,
+    isRefreshing: false,
+    isDownloading: false,
+    isOnline: true,
+    remoteStatus: 'success',
+    remoteFetchedAt: undefined,
+    remoteError: null,
+    refresh: vi.fn(),
+  },
   records: [],
   rates: [],
   hasLocalHistory: true,
