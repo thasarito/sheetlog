@@ -210,6 +210,21 @@ function renderCarousel({
       baseCurrency="THB"
       bigSpendingThreshold={bigSpendingThreshold}
       analyticsSync={{
+        history: {
+          records: historyData,
+          meta: null,
+          error: null,
+          hasCompleteCache: true,
+          hasLocalSnapshot: true,
+          isLoading: false,
+          isRefreshing: false,
+          isDownloading: false,
+          isOnline: true,
+          remoteStatus: 'success',
+          remoteFetchedAt: undefined,
+          remoteError: null,
+          refresh: vi.fn(),
+        },
         records: historyData,
         rates: rateData,
         hasLocalHistory: true,

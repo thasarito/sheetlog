@@ -21,7 +21,10 @@ import {
   readHistoricalRates,
   type HistoricalRateRequest,
 } from './exchangeRates';
-import { useTransactionHistoryQuery } from './useTransactionHistoryQuery';
+import {
+  useTransactionHistoryQuery,
+  type TransactionHistoryQueryResult,
+} from './useTransactionHistoryQuery';
 
 export type AnalyticsSyncStatus =
   | 'syncing'
@@ -30,6 +33,7 @@ export type AnalyticsSyncStatus =
   | 'offline';
 
 export type AnalyticsSyncController = {
+  history: TransactionHistoryQueryResult;
   records: TransactionRecord[];
   rates: ExchangeRateRecord[];
   hasLocalHistory: boolean;
@@ -347,6 +351,7 @@ export function useAnalyticsSync(baseCurrencyValue: string): AnalyticsSyncContro
   }
 
   return {
+    history,
     records: history.records,
     rates,
     hasLocalHistory: history.hasLocalSnapshot,

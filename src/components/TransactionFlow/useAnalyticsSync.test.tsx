@@ -180,6 +180,9 @@ describe('useAnalyticsSync', () => {
 
     await waitFor(() => expect(result.current.rates).toEqual([usdRate()]));
     expect(state.historyEnabled).toHaveBeenCalledWith(true);
+    expect(result.current.history).toBe(state.history);
+    expect(result.current.history.records).toBe(result.current.records);
+    expect(result.current.history.hasCompleteCache).toBe(true);
     expect(result.current.records).toEqual([transaction()]);
     expect(result.current.hasLocalHistory).toBe(true);
     expect(result.current.status).toBe('syncing');
