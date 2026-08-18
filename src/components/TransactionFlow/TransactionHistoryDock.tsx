@@ -43,7 +43,7 @@ export function TransactionHistoryDock({
   motionRef,
 }: TransactionHistoryDockProps) {
   const accessory = useCategoryStepSheetAccessory();
-  const dockRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement | null>(null);
   const portalled = accessory.provided;
 
   const setDockRef = useCallback(
