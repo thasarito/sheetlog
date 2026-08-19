@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 104;
+export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 60;
 export const TRANSACTION_HISTORY_DOCK_GAP = 8;
 
 export type CategoryStepSheetAccessoryContextValue = {

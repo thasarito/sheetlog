@@ -1,53 +1,69 @@
 import { format } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
 import type { AnalyticsSyncStatus } from './TransactionFlow/useAnalyticsSync';
+import {
+  getTransactionHistorySyncDetail,
+  isTransactionHistorySyncBusy,
+} from './transactionHistorySyncPresentation';
 
 type AnalyticsSyncSettingProps = {
+  transactionCount: number;
+  historyCapturedAt?: string;
+  isHistoryLoading: boolean;
+  isHistoryDownloading: boolean;
+  isHistoryRefreshing: boolean;
   status: AnalyticsSyncStatus;
-  lastSyncedAt?: string;
   isResyncing: boolean;
   onResync: () => void;
 };
 
-function statusLabel(status: AnalyticsSyncStatus, lastSyncedAt?: string): string {
-  if (status === 'syncing') return 'Syncing…';
-  if (status === 'offline') return 'Offline · waiting';
-  if (status === 'incomplete') return 'Incomplete';
-  const timestamp = lastSyncedAt ? new Date(lastSyncedAt) : null;
-  return timestamp && Number.isFinite(timestamp.getTime())
-    ? `Synced · ${format(timestamp, 'h:mm a')}`
-    : 'Synced';
-}
-
 export function AnalyticsSyncSetting({
+  transactionCount,
+  historyCapturedAt,
+  isHistoryLoading,
+  isHistoryDownloading,
+  isHistoryRefreshing,
   status,
-  lastSyncedAt,
   isResyncing,
   onResync,
 }: AnalyticsSyncSettingProps) {
+  const presentation = {
+    transactionCount,
+    capturedAt: historyCapturedAt,
+    status,
+    isLoading: isHistoryLoading,
+    isDownloading: isHistoryDownloading,
+    isRefreshing: isHistoryRefreshing,
+    isResyncing,
+  };
+  const busy = isTransactionHistorySyncBusy(presentation);
+  const detail = getTransactionHistorySyncDetail(presentation, (date) =>
+    format(date, 'MMM d, HH:mm'),
+  );
+
   return (
     <div className="flex min-h-14 items-center gap-3 px-4 py-3">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[#5856D6] text-white">
         <RefreshCw
-          className={`h-4 w-4 ${isResyncing ? 'animate-spin motion-reduce:animate-none' : ''}`}
+          className={`h-4 w-4 ${busy ? 'animate-spin motion-reduce:animate-none' : ''}`}
           aria-hidden="true"
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[17px] text-foreground">Analytics sync</p>
+        <p className="truncate text-[17px] text-foreground">Transaction history</p>
         <p
-          className="truncate text-[13px] text-muted-foreground"
+          className="min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
           aria-live="polite"
         >
-          {statusLabel(status, lastSyncedAt)}
+          {detail}
         </p>
       </div>
       <button
         type="button"
         onClick={onResync}
-        disabled={isResyncing || status === 'syncing' || status === 'offline'}
-        aria-label="Resync analytics"
-        aria-busy={isResyncing}
+        disabled={busy || status === 'offline'}
+        aria-label="Resync transaction history"
+        aria-busy={busy}
         className="min-h-11 rounded-[10px] border border-border bg-surface px-3 text-[13px] font-semibold text-primary active:bg-surface-2 disabled:opacity-50"
       >
         Resync

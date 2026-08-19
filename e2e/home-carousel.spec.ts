@@ -217,6 +217,15 @@ test.describe("Home dashboard carousel", () => {
     await page.keyboard.press("ArrowRight");
     await expect(settings).toHaveAttribute("aria-hidden", "false");
     await expect(settings.getByTestId("settings-view")).toBeVisible();
+    await expect(
+      settings.getByText("Transaction history", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      settings.getByText(/^17 transactions · Last saved /),
+    ).toBeVisible();
+    await expect(
+      settings.getByRole("button", { name: "Resync transaction history" }),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: "Close settings" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open settings" })).toHaveCount(0);
     await expect(page.locator('[data-testid="settings-view"] [role="dialog"]')).toHaveCount(0);
@@ -283,7 +292,12 @@ test.describe("Home dashboard carousel", () => {
       name: "Search transaction history",
     });
     await search.fill("lunch");
-    await expect(dock.getByText("1 transaction", { exact: true })).toBeVisible();
+    await expect(
+      transactions.getByText("Food Delivery", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      dock.getByTestId("transaction-history-metadata"),
+    ).toHaveCount(0);
 
     await touchSwipe(page, search, -140, 2);
     await expect(transactions).toHaveAttribute("aria-hidden", "false");
