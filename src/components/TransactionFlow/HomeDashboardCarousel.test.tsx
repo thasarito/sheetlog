@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  afterAll,
   afterEach,
   beforeEach,
   describe,
@@ -88,30 +87,12 @@ vi.mock("../SettingsView", () => ({
   },
 }));
 
-const originalClientWidth = Object.getOwnPropertyDescriptor(
-  HTMLElement.prototype,
-  "clientWidth",
-);
-const originalScrollWidth = Object.getOwnPropertyDescriptor(
-  HTMLElement.prototype,
-  "scrollWidth",
-);
-const originalScrollLeft = Object.getOwnPropertyDescriptor(
-  HTMLElement.prototype,
-  "scrollLeft",
-);
-const originalScrollTo = Object.getOwnPropertyDescriptor(
-  HTMLElement.prototype,
-  "scrollTo",
-);
-
 let viewportWidth = 300;
 let viewportScrollLeft = 0;
 const scrollToMock = vi.fn(function scrollTo(
   this: HTMLElement,
   optionsOrX: ScrollToOptions | number,
 ) {
-  if (this.dataset.testid !== "home-carousel-viewport") return;
   const nextLeft =
     typeof optionsOrX === "number"
       ? optionsOrX
@@ -119,54 +100,29 @@ const scrollToMock = vi.fn(function scrollTo(
   viewportScrollLeft = Number(nextLeft);
 });
 
-Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-  configurable: true,
-  get(this: HTMLElement) {
-    return this.dataset.testid === "home-carousel-viewport"
-      ? viewportWidth
-      : 0;
-  },
-});
-Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
-  configurable: true,
-  get(this: HTMLElement) {
-    return this.dataset.testid === "home-carousel-viewport"
-      ? viewportWidth * 3
-      : 0;
-  },
-});
-Object.defineProperty(HTMLElement.prototype, "scrollLeft", {
-  configurable: true,
-  get(this: HTMLElement) {
-    return this.dataset.testid === "home-carousel-viewport"
-      ? viewportScrollLeft
-      : 0;
-  },
-  set(this: HTMLElement, value: number) {
-    if (this.dataset.testid === "home-carousel-viewport") {
-      viewportScrollLeft = Number(value);
-    }
-  },
-});
-Object.defineProperty(HTMLElement.prototype, "scrollTo", {
-  configurable: true,
-  value: scrollToMock,
-});
-
-function restorePrototypeProperty(
-  name: "clientWidth" | "scrollWidth" | "scrollLeft" | "scrollTo",
-  descriptor: PropertyDescriptor | undefined,
-) {
-  if (descriptor) Object.defineProperty(HTMLElement.prototype, name, descriptor);
-  else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+function installViewportMetrics(viewport: HTMLElement) {
+  Object.defineProperties(viewport, {
+    clientWidth: {
+      configurable: true,
+      get: () => viewportWidth,
+    },
+    scrollWidth: {
+      configurable: true,
+      get: () => viewportWidth * 3,
+    },
+    scrollLeft: {
+      configurable: true,
+      get: () => viewportScrollLeft,
+      set: (value: number) => {
+        viewportScrollLeft = Number(value);
+      },
+    },
+    scrollTo: {
+      configurable: true,
+      value: scrollToMock,
+    },
+  });
 }
-
-afterAll(() => {
-  restorePrototypeProperty("clientWidth", originalClientWidth);
-  restorePrototypeProperty("scrollWidth", originalScrollWidth);
-  restorePrototypeProperty("scrollLeft", originalScrollLeft);
-  restorePrototypeProperty("scrollTo", originalScrollTo);
-});
 
 function renderCarousel({
   status = "synced",
@@ -177,9 +133,8 @@ function renderCarousel({
   onToast?: (message: string) => void;
   reducedMotion?: boolean;
 } = {}) {
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: (query: string): MediaQueryList => ({
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string): MediaQueryList => ({
       matches: reducedMotion && query === "(prefers-reduced-motion: reduce)",
       media: query,
       onchange: null,
@@ -189,33 +144,6 @@ function renderCarousel({
       removeEventListener: () => undefined,
       dispatchEvent: () => false,
     }),
-  });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
-    function mockRect(this: HTMLElement) {
-      const viewportLeft = 40;
-      const slideIndex = Number(this.dataset.homeCarouselSlideIndex);
-      const left = Number.isInteger(slideIndex)
-        ? viewportLeft + slideIndex * viewportWidth - viewportScrollLeft
-        : this.dataset.testid === "home-carousel-viewport"
-          ? viewportLeft
-          : 0;
-      const width =
-        Number.isInteger(slideIndex) ||
-        this.dataset.testid === "home-carousel-viewport"
-          ? viewportWidth
-          : 0;
-      return {
-        bottom: 600,
-        height: 600,
-        left,
-        right: left + width,
-        top: 0,
-        width,
-        x: left,
-        y: 0,
-        toJSON: () => ({}),
-      };
-    },
   );
   const headerMotion: DashboardHeaderMotionHandle = {
     setHorizontalPosition: vi.fn(),
@@ -256,10 +184,14 @@ function renderCarousel({
       onEditTransaction={vi.fn()}
     />,
   );
+  const viewport = screen.getByTestId("home-carousel-viewport");
+  installViewportMetrics(viewport);
+  fireEvent.scroll(viewport);
+  fireEvent(viewport, new Event("scrollend"));
   return {
     analyticsSync,
     headerMotion,
-    viewport: screen.getByTestId("home-carousel-viewport"),
+    viewport,
   };
 }
 
@@ -366,6 +298,58 @@ describe("HomeDashboardCarousel", () => {
       interactive: true,
       moving: false,
     });
+  });
+
+  it("keeps the origin semantic slide active while a touch pauses mid-drag", () => {
+    vi.useFakeTimers();
+    const { viewport } = renderCarousel();
+    const analytics = screen.getByLabelText("Analytics, slide 1 of 3");
+    const transactions = screen.getByLabelText("Transactions, slide 2 of 3");
+
+    fireEvent.touchStart(viewport, {
+      touches: [{ identifier: 1, clientX: 220, clientY: 90 }],
+    });
+    scrollViewport(viewport, 300);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(analytics).not.toHaveAttribute("aria-hidden", "true");
+    expect(transactions).toHaveAttribute("aria-hidden", "true");
+    expect(viewport).toHaveAttribute("data-motion-status", "moving");
+
+    fireEvent.touchEnd(viewport, {
+      changedTouches: [{ identifier: 1, clientX: 80, clientY: 90 }],
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(transactions).not.toHaveAttribute("aria-hidden", "true");
+    expect(viewport).toHaveAttribute("data-selected-snap", "1");
+  });
+
+  it("blocks horizontal wheel paging while preserving vertical wheel scrolling", () => {
+    const { viewport } = renderCarousel();
+    const horizontalWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 120,
+      deltaY: 10,
+    });
+    const verticalWheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 10,
+      deltaY: 120,
+    });
+
+    fireEvent(viewport, horizontalWheel);
+    fireEvent(viewport, verticalWheel);
+
+    expect(horizontalWheel.defaultPrevented).toBe(true);
+    expect(verticalWheel.defaultPrevented).toBe(false);
   });
 
   it("corrects an off-anchor scrollend before committing the destination", () => {
