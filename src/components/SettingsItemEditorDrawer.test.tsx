@@ -22,8 +22,13 @@ vi.mock('./ui/drawer', () => ({
         </button>
       </div>
     ) : null,
-  DrawerContent: ({ children }: { children: React.ReactNode }) => (
-    <div role="dialog">{children}</div>
+  DrawerContent: ({
+    children,
+    ...props
+  }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) => (
+    <div role="dialog" {...props}>
+      {children}
+    </div>
   ),
   DrawerHeader: ({ children }: { children: React.ReactNode }) => <header>{children}</header>,
   DrawerTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
@@ -60,6 +65,7 @@ describe('SettingsItemEditorDrawer', () => {
     renderEditor();
 
     expect(screen.getByTestId('nested-drawer-root')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveStyle({ touchAction: 'pan-y' });
     expect(screen.getByRole('heading', { name: 'Edit Wallet' })).toBeInTheDocument();
     expect(screen.getByText(/Names save when you leave the field/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();

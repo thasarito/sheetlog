@@ -213,6 +213,7 @@ export function SettingsItemEditorDrawer({
       <DrawerContent
         data-home-carousel-swipe-lock="true"
         className="max-h-[96dvh] overflow-hidden"
+        style={{ touchAction: 'pan-y' }}
       >
         <DrawerHeader className="text-left">
           <div className="flex items-start justify-between gap-4">
