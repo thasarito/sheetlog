@@ -1,4 +1,4 @@
-name: Implement transaction sync relocation
+name: Rebase and verify transaction sync relocation
 
 on:
   pull_request:
@@ -23,6 +23,13 @@ jobs:
           ref: refactor/transaction-sync-settings
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rebase onto latest main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git rebase origin/main
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -327,20 +334,65 @@ jobs:
               '      "--transaction-history-dock-height": "60px",',
           )
 
-          remove_lines(
-              'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx',
-              [
-                  '        countLabel="2 transactions"\n',
-                  '        statusLabel="Synced"\n',
-                  '        canRefresh\n',
-                  '        isRefreshing={false}\n',
-                  '        onRefresh={vi.fn()}\n',
-              ],
+          keyboard_test_path = Path(
+              'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx'
           )
-          replace_once(
-              'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx',
-              '      if (this.dataset.testid === "transaction-history-dock") return rect(104);',
-              '      if (this.dataset.testid === "transaction-history-dock") return rect(60);',
+          keyboard_test = keyboard_test_path.read_text()
+          for stale_prop in [
+              '        countLabel="2 transactions"\n',
+              '        statusLabel="Synced"\n',
+              '        canRefresh\n',
+              '        isRefreshing={false}\n',
+              '        onRefresh={vi.fn()}\n',
+          ]:
+              if keyboard_test.count(stale_prop) != 1:
+                  raise SystemExit(f'Expected one stale keyboard prop: {stale_prop!r}')
+              keyboard_test = keyboard_test.replace(stale_prop, '', 1)
+
+          old_motion_setup = '''  const [search, setSearch] = useState("");
+          const motionRef = useRef<TransactionHistoryDockMotionHandle | null>(null);
+
+          useLayoutEffect(() => {
+            motionRef.current?.setMotion({
+              x: 0,
+              viewportWidth: 390,
+              interactive: true,
+              moving: false,
+            });
+          });'''.replace('          ', '')
+          new_motion_setup = '''  const [search, setSearch] = useState("");
+          const [motionReady, setMotionReady] = useState(false);
+          const motionRef = useRef<TransactionHistoryDockMotionHandle | null>(null);
+
+          useLayoutEffect(() => {
+            const handle = motionRef.current;
+            if (!handle) {
+              if (!motionReady) setMotionReady(true);
+              return;
+            }
+            handle.setMotion({
+              x: 0,
+              viewportWidth: 390,
+              interactive: true,
+              moving: false,
+            });
+          }, [motionReady]);'''.replace('          ', '')
+          if keyboard_test.count(old_motion_setup) != 1:
+              raise SystemExit('Keyboard dock motion harness did not match uniquely')
+          keyboard_test = keyboard_test.replace(
+              old_motion_setup, new_motion_setup, 1
+          )
+
+          old_mock_height = (
+              '      if (this.dataset.testid === "transaction-history-dock") return rect(104);'
+          )
+          new_mock_height = (
+              '      if (this.dataset.testid === "transaction-history-dock") return rect(60);'
+          )
+          if keyboard_test.count(old_mock_height) != 1:
+              raise SystemExit('Keyboard dock height mock did not match uniquely')
+          keyboard_test_path.write_text(
+              keyboard_test.replace(old_mock_height, new_mock_height, 1)
           )
           PY
 
@@ -394,8 +446,6 @@ jobs:
 
       - name: Commit and push implementation
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             src/components/AnalyticsSyncSetting.tsx \
             src/components/SettingsView.tsx \
@@ -406,6 +456,4 @@ jobs:
             src/components/TransactionFlow/CategoryStepSheet.test.tsx \
             src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx
           git commit -m "refactor: move transaction sync details to settings"
-          git fetch origin refactor/transaction-sync-settings
-          git rebase origin/refactor/transaction-sync-settings
-          git push origin HEAD:refactor/transaction-sync-settings
+          git push --force-with-lease origin HEAD:refactor/transaction-sync-settings
