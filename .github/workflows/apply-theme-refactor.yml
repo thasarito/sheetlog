@@ -17,14 +17,27 @@ jobs:
         with:
           ref: 5561b67c2cd2ab1a57b6fbf8700d29b1b8634ae3
 
-      - name: Package working tree
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install exact locked dependencies
+        run: npm ci
+
+      - name: Package working tree and dependencies
         shell: bash
-        run: tar --exclude=.git -czf /tmp/sheetlog-base.tar.gz .
+        run: |
+          tar --exclude=.git -czf /tmp/sheetlog-base.tar.gz .
+          tar -czf /tmp/sheetlog-node-modules.tar.gz node_modules
 
       - name: Upload pristine base
         uses: actions/upload-artifact@v4
         with:
-          name: sheetlog-audited-base
-          path: /tmp/sheetlog-base.tar.gz
+          name: sheetlog-audited-base-with-deps
+          path: |
+            /tmp/sheetlog-base.tar.gz
+            /tmp/sheetlog-node-modules.tar.gz
           if-no-files-found: error
           retention-days: 1
