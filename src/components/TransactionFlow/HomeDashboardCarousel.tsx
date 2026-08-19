@@ -217,9 +217,32 @@ export function HomeDashboardCarousel({
     [headerMotionRef, renderTransactionDockMotion],
   );
 
+  const restoreLockedPosition = useCallback(() => {
+    if (!navigationLocked) return false;
+    const viewport = viewportRef.current;
+    if (!viewport || viewport.clientWidth <= 0) return true;
+
+    clearSettleTimer();
+    touchActiveRef.current = false;
+    const index = activeIndexRef.current;
+    const targetLeft = index * viewport.clientWidth;
+    if (Math.abs(viewport.scrollLeft - targetLeft) > SNAP_TOLERANCE_PX) {
+      viewport.scrollTo({ left: targetLeft, behavior: "auto" });
+    }
+    renderHorizontalPosition(false);
+    commitActiveIndex(index);
+    return true;
+  }, [
+    clearSettleTimer,
+    commitActiveIndex,
+    navigationLocked,
+    renderHorizontalPosition,
+  ]);
+
   const settleHorizontalScroll = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport || viewport.clientWidth <= 0) return;
+    if (restoreLockedPosition()) return;
     clearSettleTimer();
     if (touchActiveRef.current) return;
 
@@ -259,12 +282,17 @@ export function HomeDashboardCarousel({
     clearSettleTimer,
     commitActiveIndex,
     renderHorizontalPosition,
+    restoreLockedPosition,
     scheduleHorizontalSettle,
   ]);
 
   useLayoutEffect(() => {
     settleHorizontalScrollRef.current = settleHorizontalScroll;
   }, [settleHorizontalScroll]);
+
+  useLayoutEffect(() => {
+    if (navigationLocked) restoreLockedPosition();
+  }, [navigationLocked, restoreLockedPosition]);
 
   useEffect(() => {
     for (const [index, slide] of slideRefs.current.entries()) {
@@ -361,16 +389,19 @@ export function HomeDashboardCarousel({
   );
 
   const handleViewportScroll = () => {
+    if (restoreLockedPosition()) return;
     renderHorizontalPosition(true);
     if (!touchActiveRef.current) scheduleHorizontalSettle();
   };
 
   const handleTouchStart = () => {
+    if (restoreLockedPosition()) return;
     touchActiveRef.current = true;
     clearSettleTimer();
   };
 
   const releaseTouch = () => {
+    if (restoreLockedPosition()) return;
     touchActiveRef.current = false;
     scheduleHorizontalSettle();
   };

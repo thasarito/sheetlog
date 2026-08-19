@@ -349,7 +349,6 @@ export function SettingsView({
   const [localCategories, setLocalCategories] = useState(categories);
   const [itemEditor, setItemEditor] = useState<ItemEditorState | null>(null);
   const [quickNoteEditor, setQuickNoteEditor] = useState<QuickNoteEditorState | null>(null);
-  const hasOpenEditor = itemEditor !== null || quickNoteEditor !== null;
   const editorOriginRef = useRef<HTMLElement | null>(null);
   const sectionRefs = useRef<Record<ControlSectionId, HTMLDivElement | null>>({
     accounts: null,
@@ -358,12 +357,12 @@ export function SettingsView({
     data: null,
   });
 
-  useEffect(() => {
-    onCarouselNavigationLockChange?.(hasOpenEditor);
-    return () => {
-      if (hasOpenEditor) onCarouselNavigationLockChange?.(false);
-    };
-  }, [hasOpenEditor, onCarouselNavigationLockChange]);
+  useEffect(
+    () => () => {
+      onCarouselNavigationLockChange?.(false);
+    },
+    [onCarouselNavigationLockChange],
+  );
 
   useEffect(() => setLocalAccounts(accounts), [accounts]);
   useEffect(
@@ -500,15 +499,18 @@ export function SettingsView({
 
   const dismissItemEditor = useCallback(() => {
     setItemEditor(null);
+    onCarouselNavigationLockChange?.(false);
     restoreEditorFocus();
-  }, [restoreEditorFocus]);
+  }, [onCarouselNavigationLockChange, restoreEditorFocus]);
 
   const dismissQuickNoteEditor = useCallback(() => {
     setQuickNoteEditor(null);
+    onCarouselNavigationLockChange?.(false);
     restoreEditorFocus();
-  }, [restoreEditorFocus]);
+  }, [onCarouselNavigationLockChange, restoreEditorFocus]);
 
   const openItemEditor = (target: SettingsItemEditorTarget, origin: HTMLElement) => {
+    onCarouselNavigationLockChange?.(true);
     editorOriginRef.current = origin;
     setItemEditor({ target });
   };
@@ -519,6 +521,7 @@ export function SettingsView({
     mode: 'create' | 'edit',
     origin: HTMLElement,
   ) => {
+    onCarouselNavigationLockChange?.(true);
     editorOriginRef.current = origin;
     setQuickNoteEditor({
       groupKey: group.key,
