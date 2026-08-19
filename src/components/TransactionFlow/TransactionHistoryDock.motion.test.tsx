@@ -131,10 +131,7 @@ describe("TransactionHistoryDock carousel motion", () => {
   });
 
   it("defines the scoped scroll timeline and removes live blur during motion", () => {
-    const styles = readFileSync(
-      new URL("../../styles/globals.css", import.meta.url),
-      "utf8",
-    );
+    const styles = readFileSync("src/styles/globals.css", "utf8");
 
     expect(styles).toMatch(
       /timeline-scope:\s*--home-dashboard-carousel;/,
