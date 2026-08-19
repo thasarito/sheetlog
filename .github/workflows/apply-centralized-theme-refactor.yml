@@ -5,7 +5,7 @@ on:
     branches:
       - refactor/centralized-theme-system
     paths:
-      - .theme-bundle/bundle.b64
+      - .theme-bundle/ready
 
 permissions:
   contents: write
@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode .theme-bundle/bundle.b64 > /tmp/theme-refactor.zip
+          cat .theme-bundle/chunk-* | base64 --decode > /tmp/theme-refactor.zip
           rm -rf /tmp/theme-refactor
           mkdir -p /tmp/theme-refactor
           unzip -q /tmp/theme-refactor.zip -d /tmp/theme-refactor
