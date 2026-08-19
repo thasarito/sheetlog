@@ -262,6 +262,8 @@ test.describe("Home dashboard carousel", () => {
     await expect(viewport).toHaveAttribute("data-navigation-locked", "true");
     await accountName.fill("Travel Wallet");
     await touchSwipe(page, accountName, -180, 2);
+    await expect(editor).toBeVisible();
+    await expect(viewport).toHaveAttribute("data-navigation-locked", "true");
     await expect(settings).toHaveAttribute("aria-hidden", "false");
     await expect(accountName).toHaveValue("Travel Wallet");
     await accountName.press("Tab");
