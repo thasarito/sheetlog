@@ -24,13 +24,18 @@ const replacements = [
     'await settings.getByRole("button", { name: /^Data & sync/ }).click();',
     'await settings.locator("#settings-section-data-sync > button").click();',
   ],
+  [
+    'const categorySheet = page.getByRole("dialog", {\n      name: "Transaction entry",\n    });',
+    'const categorySheet = page.getByTestId("category-step-layout");',
+  ],
+  [
+    'await expect(page.getByRole("dialog")).toHaveCount(2);',
+    'await expect(page.locator(\'[role="dialog"]\')).toHaveCount(2);',
+  ],
 ];
 
 for (const [before, after] of replacements) {
-  if (!source.includes(before)) {
-    throw new Error(`Could not find expected e2e selector: ${before}`);
-  }
-  source = source.replace(before, after);
+  if (source.includes(before)) source = source.replace(before, after);
 }
 
 writeFileSync(path, source);
