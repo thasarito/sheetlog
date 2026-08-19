@@ -17,44 +17,6 @@ import { HomeDashboardCarousel } from "./HomeDashboardCarousel";
 import type { TransactionHistoryViewProps } from "./TransactionHistoryView";
 import type { AnalyticsSyncController } from "./useAnalyticsSync";
 
-const legacyEmbla = vi.hoisted(() => ({
-  options: null as null | { loop?: boolean },
-}));
-
-// Compatibility harness for the RED phase. The native implementation no
-// longer imports Embla, so this mock becomes inert after production changes.
-vi.mock("embla-carousel-react", async () => {
-  const React = await import("react");
-  return {
-    default: function useLegacyEmbla(options: { loop?: boolean }) {
-      legacyEmbla.options = options;
-      const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
-      const api = React.useMemo(() => {
-        const listeners = new Map<string, Set<() => void>>();
-        const fakeApi = {
-          canScrollNext: () => true,
-          canScrollPrev: () => false,
-          off(name: string, listener: () => void) {
-            listeners.get(name)?.delete(listener);
-            return fakeApi;
-          },
-          on(name: string, listener: () => void) {
-            const callbacks = listeners.get(name) ?? new Set();
-            callbacks.add(listener);
-            listeners.set(name, callbacks);
-            return fakeApi;
-          },
-          scrollNext: () => undefined,
-          scrollPrev: () => undefined,
-          selectedScrollSnap: () => 0,
-        };
-        return fakeApi;
-      }, []);
-      return [setViewport, viewport ? api : undefined] as const;
-    },
-  };
-});
-
 const transactionViewCalls: TransactionHistoryViewProps[] = [];
 const analyticsViewCalls: AnalyticsViewProps[] = [];
 const settingsViewCalls: SettingsViewProps[] = [];
@@ -331,7 +293,6 @@ describe("HomeDashboardCarousel", () => {
     analyticsViewCalls.splice(0);
     transactionViewCalls.splice(0);
     settingsViewCalls.splice(0);
-    legacyEmbla.options = null;
     vi.mocked(dockMotion.setMotion).mockReset();
     resync.mockReset();
   });
