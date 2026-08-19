@@ -60,17 +60,6 @@ jobs:
                   text = text.replace(line, '', 1)
               file.write_text(text)
 
-          def remove_range(path: str, start_marker: str, end_marker: str) -> None:
-              file = Path(path)
-              text = file.read_text()
-              if text.count(start_marker) != 1 or text.count(end_marker) != 1:
-                  raise SystemExit(
-                      f"Expected unique range markers in {path}: {start_marker!r}, {end_marker!r}"
-                  )
-              start = text.index(start_marker)
-              end = text.index(end_marker, start)
-              file.write_text(text[:start] + text[end:])
-
           Path('src/components/AnalyticsSyncSetting.tsx').write_text(
               textwrap.dedent(
                   '''\
@@ -287,6 +276,28 @@ jobs:
           status_end = history.index('\n\n  return (', status_start)
           history = history[:status_start] + history[status_end:]
           history_path.write_text(history)
+
+          test_path = 'src/components/TransactionFlow/TransactionHistoryView.test.tsx'
+          replace_once(
+              test_path,
+              '  it("converts the complete record set independently of search and refreshes rates", async () => {',
+              '  it("converts the complete record set independently of search", async () => {',
+          )
+          replace_once(
+              test_path,
+              '    expect(await screen.findByText("1 transaction")).toBeInTheDocument();',
+              '    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();',
+          )
+          replace_once(
+              test_path,
+              '''    await user.click(
+                    screen.getByRole("button", { name: "Refresh transaction history" }),
+                  );
+                  expect(mocks.history.refresh).toHaveBeenCalledTimes(1);
+                  expect(mocks.rateRefetch).toHaveBeenCalledTimes(1);
+                  '''.replace('                  ', ''),
+              '',
+          )
           PY
 
       - name: Format changed files
@@ -296,6 +307,7 @@ jobs:
             src/components/SettingsView.tsx \
             src/components/TransactionFlow/TransactionHistoryDock.tsx \
             src/components/TransactionFlow/TransactionHistoryView.tsx \
+            src/components/TransactionFlow/TransactionHistoryView.test.tsx \
             src/components/TransactionFlow/CategoryStepSheetAccessory.tsx
 
       - name: Run focused tests
@@ -326,6 +338,7 @@ jobs:
             src/components/SettingsView.tsx \
             src/components/TransactionFlow/TransactionHistoryDock.tsx \
             src/components/TransactionFlow/TransactionHistoryView.tsx \
+            src/components/TransactionFlow/TransactionHistoryView.test.tsx \
             src/components/TransactionFlow/CategoryStepSheetAccessory.tsx
           git commit -m "refactor: move transaction sync details to settings"
           git fetch origin refactor/transaction-sync-settings
