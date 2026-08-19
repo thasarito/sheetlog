@@ -9,7 +9,6 @@ import {
 import {
   DashboardTitleReel,
   type DashboardTitle,
-  type DashboardTitleDirection,
   type DashboardTitleReelHandle,
 } from "./DashboardTitleReel";
 
@@ -20,12 +19,6 @@ type HeaderProps = {
 
 export type DashboardHeaderMotionHandle = {
   setHorizontalPosition: (position: number) => void;
-  // Kept as a compatibility adapter for any non-dashboard caller. The native
-  // pager publishes absolute position and never uses this path.
-  setHorizontalMotion: (
-    direction: DashboardTitleDirection,
-    progress: number,
-  ) => void;
   syncHorizontalSelection: (title: DashboardTitle) => void;
   setVerticalProgress: (progress: number) => void;
 };
@@ -57,9 +50,6 @@ export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(
       () => ({
         setHorizontalPosition(position) {
           titleReelRef.current?.setHorizontalPosition(position);
-        },
-        setHorizontalMotion(direction, progress) {
-          titleReelRef.current?.setHorizontalMotion(direction, progress);
         },
         syncHorizontalSelection(title) {
           titleReelRef.current?.syncHorizontalSelection(title);
