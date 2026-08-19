@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,21 +21,89 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Add post-touch ownership diagnostics
+      - name: Finalize nested-modal carousel assertions
         run: |
           node scripts/patch-settings-control-center-e2e-diagnostic.mjs
           npx biome check --write e2e/home-carousel.spec.ts
-      - name: Commit diagnostic assertions
+      - name: Commit final browser assertion
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add e2e/home-carousel.spec.ts
-            git commit -m "test: assert editor ownership after horizontal touch"
+            git commit -m "test: assert authoritative carousel state under nested modal"
             git push origin HEAD:feat/settings-control-center-navigation
           fi
-      - run: npx playwright install chromium
-      - name: Mobile Control Center ownership diagnostic
+      - name: Focused behavior and theme tests
+        run: >-
+          npm test --
+          src/lib/settingsControlCenter.test.ts
+          src/components/SettingsControlSection.test.tsx
+          src/components/SettingsItemEditorDrawer.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/hooks/useSettingsCollectionMutations.test.tsx
+          src/hooks/useReplaceQuickNotesConfig.test.tsx
+          src/components/SettingsView.test.tsx
+          src/components/SettingsView.theme.test.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+          src/lib/theme.test.ts
+          src/app/providers/theme/ThemeProvider.test.tsx
+      - name: Changed-file Biome check
+        run: >-
+          npx biome check
+          src/lib/settingsControlCenter.ts
+          src/lib/settingsControlCenter.test.ts
+          src/hooks/useAccountMutations.ts
+          src/hooks/useCategoryMutations.ts
+          src/hooks/useQuickNotes.ts
+          src/hooks/useSettingsCollectionMutations.test.tsx
+          src/hooks/useReplaceQuickNotesConfig.test.tsx
+          src/components/SettingsControlSection.tsx
+          src/components/SettingsControlSection.test.tsx
+          src/components/SettingsItemEditorDrawer.tsx
+          src/components/SettingsItemEditorDrawer.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/components/SettingsView.tsx
+          src/components/SettingsViewContent.tsx
+          src/components/SettingsView.test.tsx
+          src/components/SettingsView.theme.test.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+          e2e/home-carousel.spec.ts
+      - name: TypeScript diagnostics (reject new errors)
+        run: |
+          set +e
+          npx tsc --noEmit 2>&1 | tee /tmp/settings-control-center-tsc.log
+          set -e
+          node <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const output = readFileSync('/tmp/settings-control-center-tsc.log', 'utf8');
+          const diagnostics = output
+            .split('\n')
+            .filter((line) => /error TS\d+:/.test(line));
+          const allowed = [
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx(119,9): error TS2322:',
+            'src/components/TransactionFlow/TransactionHistoryDock.tsx(55,5): error TS2352:',
+          ];
+          const unexpected = diagnostics.filter(
+            (line) => !allowed.some((prefix) => line.startsWith(prefix)),
+          );
+          if (unexpected.length > 0) {
+            console.error('Unexpected TypeScript diagnostics:\n' + unexpected.join('\n'));
+            process.exit(1);
+          }
+          console.log(
+            diagnostics.length === 0
+              ? 'TypeScript passed with no diagnostics.'
+              : `Only documented baseline diagnostics remain (${diagnostics.length}).`,
+          );
+          NODE
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Mobile Control Center regression
         env:
           VITE_DEV_MODE: "true"
           VITE_GOOGLE_MAPS_API_KEY: e2e-key
