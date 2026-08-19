@@ -1,9 +1,6 @@
 name: Transaction search carousel lag
 
 on:
-  push:
-    branches:
-      - fix/transaction-search-carousel-lag
   pull_request:
     branches:
       - main
@@ -12,9 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  focused-and-static:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,10 +25,65 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run transaction dock regression test when present
-        run: |
-          if [ -f src/components/TransactionFlow/TransactionHistoryDock.motion.test.tsx ]; then
-            npx vitest run src/components/TransactionFlow/TransactionHistoryDock.motion.test.tsx
-          else
-            echo "Regression test has not been added yet."
-          fi
+      - name: Run carousel and transaction dock tests
+        run: >-
+          npx vitest run
+          src/components/TransactionFlow/TransactionHistoryDock.motion.test.tsx
+          src/components/TransactionFlow/TransactionHistoryView.test.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+  full-suite-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run full unit suite
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  mobile-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run native carousel browser test
+        env:
+          VITE_DEV_MODE: "true"
+        run: >-
+          npx playwright test
+          e2e/home-carousel-native-scroll.spec.ts
+          --project="Mobile Chrome"
+          --retries=0
