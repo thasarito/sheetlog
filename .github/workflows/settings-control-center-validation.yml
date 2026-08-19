@@ -89,40 +89,34 @@ jobs:
           src/components/TransactionFlow/HomeDashboardCarousel.tsx
           src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
           e2e/home-carousel.spec.ts
-      - name: Settings Control Center typecheck
+      - name: TypeScript diagnostics (reject new errors)
         run: |
-          cat > tsconfig.settings-control-center.tmp.json <<'JSON'
-          {
-            "extends": "./tsconfig.json",
-            "include": [
-              "vite-env.d.ts",
-              "global.d.ts",
-              "src/lib/settingsControlCenter.ts",
-              "src/lib/settingsControlCenter.test.ts",
-              "src/hooks/useAccountMutations.ts",
-              "src/hooks/useCategoryMutations.ts",
-              "src/hooks/useQuickNotes.ts",
-              "src/hooks/useSettingsCollectionMutations.test.tsx",
-              "src/hooks/useReplaceQuickNotesConfig.test.tsx",
-              "src/components/SettingsControlSection.tsx",
-              "src/components/SettingsControlSection.test.tsx",
-              "src/components/SettingsItemEditorDrawer.tsx",
-              "src/components/SettingsItemEditorDrawer.test.tsx",
-              "src/components/SettingsQuickNoteEditorDrawer.tsx",
-              "src/components/SettingsQuickNoteEditorDrawer.test.tsx",
-              "src/components/SettingsView.tsx",
-              "src/components/SettingsViewContent.tsx",
-              "src/components/SettingsView.test.tsx",
-              "src/components/SettingsView.theme.test.tsx",
-              "src/components/TransactionFlow/HomeDashboardCarousel.tsx",
-              "src/components/TransactionFlow/HomeDashboardCarousel.test.tsx",
-              "e2e/home-carousel.spec.ts"
-            ],
-            "exclude": ["node_modules"]
+          set +e
+          npx tsc --noEmit 2>&1 | tee /tmp/settings-control-center-tsc.log
+          set -e
+          node <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const output = readFileSync('/tmp/settings-control-center-tsc.log', 'utf8');
+          const diagnostics = output
+            .split('\n')
+            .filter((line) => /error TS\d+:/.test(line));
+          const allowed = [
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx(119,9): error TS2322:',
+            'src/components/TransactionFlow/TransactionHistoryDock.tsx(55,5): error TS2352:',
+          ];
+          const unexpected = diagnostics.filter(
+            (line) => !allowed.some((prefix) => line.startsWith(prefix)),
+          );
+          if (unexpected.length > 0) {
+            console.error('Unexpected TypeScript diagnostics:\n' + unexpected.join('\n'));
+            process.exit(1);
           }
-          JSON
-          npx tsc -p tsconfig.settings-control-center.tmp.json --noEmit
-          rm tsconfig.settings-control-center.tmp.json
+          console.log(
+            diagnostics.length === 0
+              ? 'TypeScript passed with no diagnostics.'
+              : `Only documented baseline diagnostics remain (${diagnostics.length}).`,
+          );
+          NODE
       - name: Production build
         run: npm run build
       - name: Install Chromium
@@ -136,6 +130,3 @@ jobs:
           --project="Mobile Chrome"
           --grep="expandable Control Center"
           --retries=0
-      - name: Full repository typecheck (baseline visibility)
-        continue-on-error: true
-        run: npx tsc --noEmit
