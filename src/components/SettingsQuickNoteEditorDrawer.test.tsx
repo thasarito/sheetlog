@@ -71,6 +71,7 @@ describe('SettingsQuickNoteEditorDrawer', () => {
 
     expect(screen.getByTestId('quick-note-nested-root')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toHaveStyle({ touchAction: 'pan-y' });
+    expect(screen.getByRole('dialog')).toHaveStyle({ touchAction: 'pan-y' });
     expect(screen.getByRole('heading', { name: 'Edit Quick Note' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Save|Done/ })).not.toBeInTheDocument();
 

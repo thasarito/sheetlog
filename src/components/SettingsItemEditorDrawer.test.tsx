@@ -66,6 +66,7 @@ describe('SettingsItemEditorDrawer', () => {
 
     expect(screen.getByTestId('nested-drawer-root')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toHaveStyle({ touchAction: 'pan-y' });
+    expect(screen.getByRole('dialog')).toHaveStyle({ touchAction: 'pan-y' });
     expect(screen.getByRole('heading', { name: 'Edit Wallet' })).toBeInTheDocument();
     expect(screen.getByText(/Names save when you leave the field/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();

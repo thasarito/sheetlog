@@ -193,8 +193,16 @@ vi.mock('./SettingsQuickNoteEditorDrawer', () => ({
     ) : null,
 }));
 
-function renderView() {
-  return render(<SettingsView onToast={mocks.onToast} analyticsSync={analyticsSync} />);
+function renderView(
+  props: Partial<React.ComponentProps<typeof SettingsView>> = {},
+) {
+  return render(
+    <SettingsView
+      onToast={mocks.onToast}
+      analyticsSync={analyticsSync}
+      {...props}
+    />,
+  );
 }
 
 describe('SettingsView Control Center', () => {

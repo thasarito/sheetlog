@@ -61,6 +61,7 @@ export type SettingsViewProps = {
     AnalyticsSyncController,
     'history' | 'status' | 'isResyncing' | 'resync'
   >;
+  onCarouselNavigationLockChange?: (locked: boolean) => void;
 };
 
 type ControlSectionId = 'accounts' | 'categories' | 'quickNotes' | 'data';
@@ -291,7 +292,11 @@ function SyncActionRow({
   );
 }
 
-export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
+export function SettingsView({
+  onToast,
+  analyticsSync,
+  onCarouselNavigationLockChange,
+}: SettingsViewProps) {
   const { isOnline } = useConnectivity();
   const {
     onboarding,
@@ -344,6 +349,7 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
   const [localCategories, setLocalCategories] = useState(categories);
   const [itemEditor, setItemEditor] = useState<ItemEditorState | null>(null);
   const [quickNoteEditor, setQuickNoteEditor] = useState<QuickNoteEditorState | null>(null);
+  const hasOpenEditor = itemEditor !== null || quickNoteEditor !== null;
   const editorOriginRef = useRef<HTMLElement | null>(null);
   const sectionRefs = useRef<Record<ControlSectionId, HTMLDivElement | null>>({
     accounts: null,
@@ -351,6 +357,13 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
     quickNotes: null,
     data: null,
   });
+
+  useEffect(() => {
+    onCarouselNavigationLockChange?.(hasOpenEditor);
+    return () => {
+      if (hasOpenEditor) onCarouselNavigationLockChange?.(false);
+    };
+  }, [hasOpenEditor, onCarouselNavigationLockChange]);
 
   useEffect(() => setLocalAccounts(accounts), [accounts]);
   useEffect(
