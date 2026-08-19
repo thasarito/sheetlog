@@ -9,7 +9,6 @@ import {
 import {
   DashboardTitleReel,
   type DashboardTitle,
-  type DashboardTitleDirection,
   type DashboardTitleReelHandle,
 } from "./DashboardTitleReel";
 
@@ -19,11 +18,8 @@ type HeaderProps = {
 };
 
 export type DashboardHeaderMotionHandle = {
-  setHorizontalMotion: (
-    direction: DashboardTitleDirection,
-    progress: number,
-  ) => void;
-  syncHorizontalSelection?: (title: DashboardTitle) => void;
+  setHorizontalPosition: (position: number) => void;
+  syncHorizontalSelection: (title: DashboardTitle) => void;
   setVerticalProgress: (progress: number) => void;
 };
 
@@ -52,8 +48,8 @@ export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(
     useImperativeHandle(
       forwardedRef,
       () => ({
-        setHorizontalMotion(direction, progress) {
-          titleReelRef.current?.setHorizontalMotion(direction, progress);
+        setHorizontalPosition(position) {
+          titleReelRef.current?.setHorizontalPosition(position);
         },
         syncHorizontalSelection(title) {
           titleReelRef.current?.syncHorizontalSelection(title);

@@ -1,21 +1,18 @@
 import { endOfDay, startOfMonth } from "date-fns";
-import useEmblaCarousel from "embla-carousel-react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
   type RefObject,
   type UIEvent as ReactUIEvent,
 } from "react";
 import type { TransactionRecord } from "../../lib/types";
 import { DASHBOARD_SLIDES } from "../dashboardSlides";
-import type { DashboardTitleDirection } from "../DashboardTitleReel";
 import type { DashboardHeaderMotionHandle } from "../Header";
 import { SettingsView } from "../SettingsView";
 import {
@@ -37,20 +34,10 @@ type HomeDashboardCarouselProps = {
   headerMotionRef?: RefObject<DashboardHeaderMotionHandle | null>;
 };
 
-type EmblaCarouselApi = NonNullable<ReturnType<typeof useEmblaCarousel>[1]>;
-type EmblaCarouselOptions = NonNullable<
-  Parameters<typeof useEmblaCarousel>[0]
->;
-
-type HorizontalMotion = {
-  active: boolean;
-  originSlide: HTMLElement | null;
-  direction: DashboardTitleDirection | 0;
-};
-
 const SLIDES = DASHBOARD_SLIDES;
 const HEADER_COLLAPSE_DISTANCE = 68;
-const EMBLA_FOCUS_NODE_NAMES = new Set(["INPUT", "SELECT", "TEXTAREA"]);
+const SCROLL_SETTLE_DELAY_MS = 150;
+const SNAP_TOLERANCE_PX = 1.25;
 
 function prefersReducedMotion(): boolean {
   return (
@@ -60,41 +47,8 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-function ownsNestedHorizontalGesture(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest('[data-home-carousel-swipe-lock="true"]') !== null
-  );
-}
-
-function blocksCarouselDrag(target: EventTarget | null): boolean {
-  return (
-    ownsNestedHorizontalGesture(target) ||
-    (target instanceof Element && EMBLA_FOCUS_NODE_NAMES.has(target.nodeName))
-  );
-}
-
-function allowCarouselDrag(
-  _emblaApi: EmblaCarouselApi,
-  event: MouseEvent | TouchEvent,
-): boolean {
-  return !(event instanceof MouseEvent) && !blocksCarouselDrag(event.target);
-}
-
-const EMBLA_OPTIONS: EmblaCarouselOptions = {
-  align: "start",
-  // Pointer handling below suppresses only the click emitted by the active
-  // gesture. Keep Embla's delayed click guard from consuming a later control
-  // click when a touch drag does not emit a compatibility click.
-  dragThreshold: Number.MAX_SAFE_INTEGER,
-  duration: 25,
-  loop: false,
-  skipSnaps: false,
-  watchDrag: allowCarouselDrag,
-};
-
-function clampHorizontalProgress(value: number): number {
-  return Math.min(1, Math.max(0, value));
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
 function headerCollapseProgress(element: HTMLElement): number {
@@ -104,17 +58,14 @@ function headerCollapseProgress(element: HTMLElement): number {
   );
 }
 
-function canNavigate(
-  api: EmblaCarouselApi,
-  direction: DashboardTitleDirection,
-): boolean {
-  return direction > 0 ? api.canScrollNext() : api.canScrollPrev();
+function slideIndexForPosition(position: number): number {
+  return clamp(Math.round(position), 0, SLIDES.length - 1);
 }
 
-function resetHorizontalMotion(motion: HorizontalMotion) {
-  motion.active = false;
-  motion.originSlide = null;
-  motion.direction = 0;
+function settledDirection(fromIndex: number, toIndex: number): string {
+  if (toIndex > fromIndex) return "forward";
+  if (toIndex < fromIndex) return "backward";
+  return "none";
 }
 
 export function HomeDashboardCarousel({
@@ -140,25 +91,10 @@ export function HomeDashboardCarousel({
     useRef<TransactionHistoryDockMotionHandle | null>(null);
   const activeIndexRef = useRef(0);
   const verticalProgressRef = useRef<number[]>(SLIDES.map(() => 0));
-  const horizontalMotionRef = useRef<HorizontalMotion>({
-    active: false,
-    originSlide: null,
-    direction: 0,
-  });
-  const pointerStart = useRef<{
-    startX: number;
-    startY: number;
-    horizontal: boolean;
-  } | null>(null);
-  const suppressClick = useRef(false);
-  const [setEmblaViewport, emblaApi] = useEmblaCarousel(EMBLA_OPTIONS);
-  const setViewportRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      viewportRef.current = node;
-      setEmblaViewport(node);
-    },
-    [setEmblaViewport],
-  );
+  const settleTimerRef = useRef<number | undefined>(undefined);
+  const settleHorizontalScrollRef = useRef<() => void>(() => undefined);
+  const touchActiveRef = useRef(false);
+
   const transactions = analyticsSync.records;
   const periodOptions = useMemo(
     () => buildAnalyticsPeriodOptions(range, transactions, analyticsNow),
@@ -198,23 +134,136 @@ export function HomeDashboardCarousel({
     ? Date.parse(analyticsSync.lastSyncedAt)
     : undefined;
 
+  const clearSettleTimer = useCallback(() => {
+    if (settleTimerRef.current === undefined) return;
+    window.clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = undefined;
+  }, []);
+
+  const scheduleHorizontalSettle = useCallback(() => {
+    clearSettleTimer();
+    settleTimerRef.current = window.setTimeout(() => {
+      settleTimerRef.current = undefined;
+      settleHorizontalScrollRef.current();
+    }, SCROLL_SETTLE_DELAY_MS);
+  }, [clearSettleTimer]);
+
   const renderTransactionDockMotion = useCallback(
     (interactive: boolean, moving: boolean) => {
       const viewport = viewportRef.current;
-      const transactionSlide = slideRefs.current[1];
-      if (!viewport || !transactionSlide) return;
-      const viewportRect = viewport.getBoundingClientRect();
-      if (viewportRect.width === 0) return;
-      const transactionRect = transactionSlide.getBoundingClientRect();
+      if (!viewport || viewport.clientWidth <= 0) return;
+      const viewportWidth = viewport.clientWidth;
+      const position = viewport.scrollLeft / viewportWidth;
       transactionDockMotionRef.current?.setMotion({
-        x: transactionRect.left - viewportRect.left,
-        viewportWidth: viewportRect.width,
+        x: (1 - position) * viewportWidth,
+        viewportWidth,
         interactive,
         moving,
       });
     },
     [],
   );
+
+  const renderHorizontalPosition = useCallback(
+    (moving: boolean) => {
+      const viewport = viewportRef.current;
+      if (!viewport || viewport.clientWidth <= 0) return null;
+      const position = viewport.scrollLeft / viewport.clientWidth;
+      const relativePosition = position - activeIndexRef.current;
+      headerMotionRef?.current?.setHorizontalPosition(position);
+      renderTransactionDockMotion(
+        !moving && activeIndexRef.current === 1,
+        moving,
+      );
+      viewport.dataset.motionPosition = position.toFixed(3);
+      viewport.dataset.motionProgress = relativePosition.toFixed(3);
+      viewport.dataset.inputDirection =
+        relativePosition > 0.001
+          ? "forward"
+          : relativePosition < -0.001
+            ? "backward"
+            : "none";
+      if (moving) viewport.dataset.motionStatus = "moving";
+      return position;
+    },
+    [headerMotionRef, renderTransactionDockMotion],
+  );
+
+  const commitActiveIndex = useCallback(
+    (incomingIndex: number) => {
+      const index = clamp(Math.trunc(incomingIndex), 0, SLIDES.length - 1);
+      activeIndexRef.current = index;
+      setActiveIndex(index);
+      for (const [slideIndex, slide] of slideRefs.current.entries()) {
+        if (slide) slide.inert = slideIndex !== index;
+      }
+      headerMotionRef?.current?.syncHorizontalSelection(
+        SLIDES[index] ?? SLIDES[0],
+      );
+      headerMotionRef?.current?.setVerticalProgress(
+        verticalProgressRef.current[index] ?? 0,
+      );
+      renderTransactionDockMotion(index === 1, false);
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      viewport.dataset.inputDirection = "none";
+      viewport.dataset.motionPosition = index.toFixed(3);
+      viewport.dataset.motionProgress = "0.000";
+      viewport.dataset.motionStatus = "settled";
+      viewport.dataset.selectedSnap = String(index);
+      viewport.dataset.targetSnap = String(index);
+    },
+    [headerMotionRef, renderTransactionDockMotion],
+  );
+
+  const settleHorizontalScroll = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || viewport.clientWidth <= 0) return;
+    clearSettleTimer();
+    if (touchActiveRef.current) return;
+
+    const position = viewport.scrollLeft / viewport.clientWidth;
+    const targetIndex = slideIndexForPosition(position);
+    const targetLeft = targetIndex * viewport.clientWidth;
+    const distance = Math.abs(viewport.scrollLeft - targetLeft);
+    viewport.dataset.targetSnap = String(targetIndex);
+
+    if (distance > SNAP_TOLERANCE_PX) {
+      const jump = prefersReducedMotion();
+      viewport.dataset.motionStatus = "moving";
+      viewport.scrollTo({
+        left: targetLeft,
+        behavior: jump ? "auto" : "smooth",
+      });
+      if (jump) {
+        renderHorizontalPosition(false);
+        viewport.dataset.lastSettledDirection = settledDirection(
+          activeIndexRef.current,
+          targetIndex,
+        );
+        commitActiveIndex(targetIndex);
+      } else {
+        scheduleHorizontalSettle();
+      }
+      return;
+    }
+
+    viewport.dataset.lastSettledDirection = settledDirection(
+      activeIndexRef.current,
+      targetIndex,
+    );
+    renderHorizontalPosition(false);
+    commitActiveIndex(targetIndex);
+  }, [
+    clearSettleTimer,
+    commitActiveIndex,
+    renderHorizontalPosition,
+    scheduleHorizontalSettle,
+  ]);
+
+  useLayoutEffect(() => {
+    settleHorizontalScrollRef.current = settleHorizontalScroll;
+  }, [settleHorizontalScroll]);
 
   useEffect(() => {
     for (const [index, slide] of slideRefs.current.entries()) {
@@ -255,216 +304,74 @@ export function HomeDashboardCarousel({
     };
   }, []);
 
-  const commitActiveIndex = useCallback(
-    (index: number) => {
-      activeIndexRef.current = index;
-      setActiveIndex(index);
-      headerMotionRef?.current?.syncHorizontalSelection?.(
-        SLIDES[index] ?? SLIDES[0],
-      );
-      headerMotionRef?.current?.setVerticalProgress(
-        verticalProgressRef.current[index] ?? 0,
-      );
-      renderTransactionDockMotion(index === 1, false);
-      const viewport = viewportRef.current;
-      if (viewport) viewport.dataset.selectedSnap = String(index);
-    },
-    [headerMotionRef, renderTransactionDockMotion],
-  );
-
-  const beginHorizontalMotion = useCallback(
-    (direction: DashboardTitleDirection) => {
-      const motion = horizontalMotionRef.current;
-      const isStarting = !motion.active;
-      if (isStarting) {
-        motion.active = true;
-        motion.originSlide = slideRefs.current[activeIndexRef.current] ?? null;
-      }
-      motion.direction = direction;
-      const viewport = viewportRef.current;
-      if (viewport) {
-        viewport.dataset.motionStatus = "moving";
-        viewport.dataset.inputDirection =
-          direction > 0 ? "forward" : "backward";
-      }
-      if (isStarting) renderTransactionDockMotion(false, false);
-    },
-    [renderTransactionDockMotion],
-  );
-
-  const renderHorizontalMotion = useCallback(() => {
+  useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    const motion = horizontalMotionRef.current;
-    const origin = motion.originSlide;
-    if (
-      !viewport ||
-      !origin ||
-      !motion.active ||
-      motion.direction === 0
-    ) {
-      return;
-    }
-    const viewportRect = viewport.getBoundingClientRect();
-    if (viewportRect.width === 0) return;
-    const originRect = origin.getBoundingClientRect();
-    const progress = clampHorizontalProgress(
-      Math.abs(originRect.left - viewportRect.left) / viewportRect.width,
-    );
-    headerMotionRef?.current?.setHorizontalMotion(
-      motion.direction,
-      progress,
-    );
-    renderTransactionDockMotion(false, true);
-    viewport.dataset.motionProgress = (
-      motion.direction * progress
-    ).toFixed(3);
-  }, [headerMotionRef, renderTransactionDockMotion]);
+    if (!viewport) return;
 
-  const releasePointerGesture = useCallback(() => {
-    pointerStart.current = null;
-    window.setTimeout(() => {
-      suppressClick.current = false;
-    }, 0);
-  }, []);
-
-  const cancelHorizontalPreview = useCallback(() => {
-    const motion = horizontalMotionRef.current;
-    if (!motion.active) return;
-    resetHorizontalMotion(motion);
-    headerMotionRef?.current?.syncHorizontalSelection?.(
-      SLIDES[activeIndexRef.current] ?? SLIDES[0],
-    );
-    renderTransactionDockMotion(activeIndexRef.current === 1, false);
-    const viewport = viewportRef.current;
-    if (viewport) {
-      viewport.dataset.motionProgress = "0.000";
-      viewport.dataset.motionStatus = "settled";
-    }
-  }, [headerMotionRef, renderTransactionDockMotion]);
-
-  const settleHorizontalMotion = useCallback(
-    (api: EmblaCarouselApi) => {
-      const motion = horizontalMotionRef.current;
-      const direction =
-        motion.direction > 0
-          ? "forward"
-          : motion.direction < 0
-            ? "backward"
-            : "none";
-      resetHorizontalMotion(motion);
-      pointerStart.current = null;
-      const viewport = viewportRef.current;
-      if (viewport) {
-        viewport.dataset.lastSettledDirection = direction;
-        viewport.dataset.motionProgress = "0.000";
-        viewport.dataset.motionStatus = "settled";
-      }
-      commitActiveIndex(api.selectedScrollSnap());
-    },
-    [commitActiveIndex],
-  );
-
-  useEffect(() => {
-    headerMotionRef?.current?.syncHorizontalSelection?.(
-      SLIDES[activeIndexRef.current] ?? SLIDES[0],
-    );
-    headerMotionRef?.current?.setVerticalProgress(
-      verticalProgressRef.current[activeIndexRef.current] ?? 0,
-    );
-  }, [headerMotionRef]);
-
-  useEffect(() => {
-    if (!emblaApi) return;
-    const onScroll = () => {
-      const motion = horizontalMotionRef.current;
-      if (!motion.active || motion.direction === 0) return;
-      renderHorizontalMotion();
-    };
-    const onSelect = () => {
-      const selected = emblaApi.selectedScrollSnap();
-      setActiveIndex(selected);
-      const viewport = viewportRef.current;
-      if (viewport) viewport.dataset.targetSnap = String(selected);
-    };
-    const onSettle = () => settleHorizontalMotion(emblaApi);
-    const onPointerUp = () => releasePointerGesture();
-    const onReInit = () => {
-      resetHorizontalMotion(horizontalMotionRef.current);
-      commitActiveIndex(emblaApi.selectedScrollSnap());
-    };
-    emblaApi.on("scroll", onScroll);
-    emblaApi.on("select", onSelect);
-    emblaApi.on("settle", onSettle);
-    emblaApi.on("pointerUp", onPointerUp);
-    emblaApi.on("reInit", onReInit);
-    commitActiveIndex(emblaApi.selectedScrollSnap());
-    return () => {
-      emblaApi.off("scroll", onScroll);
-      emblaApi.off("select", onSelect);
-      emblaApi.off("settle", onSettle);
-      emblaApi.off("pointerUp", onPointerUp);
-      emblaApi.off("reInit", onReInit);
-      resetHorizontalMotion(horizontalMotionRef.current);
-    };
-  }, [
-    commitActiveIndex,
-    emblaApi,
-    releasePointerGesture,
-    renderHorizontalMotion,
-    settleHorizontalMotion,
-  ]);
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "touch" || blocksCarouselDrag(event.target)) {
-      pointerStart.current = null;
-      suppressClick.current = false;
-      return;
-    }
-    pointerStart.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      horizontal: false,
-    };
-    suppressClick.current = false;
-  };
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const gesture = pointerStart.current;
-    if (!gesture || !emblaApi) return;
-    const x = Math.abs(event.clientX - gesture.startX);
-    const y = Math.abs(event.clientY - gesture.startY);
-    if (x > 8 && x > y) {
-      gesture.horizontal = true;
-      suppressClick.current = true;
-      const direction: DashboardTitleDirection =
-        event.clientX < gesture.startX ? 1 : -1;
-      if (!canNavigate(emblaApi, direction)) {
-        cancelHorizontalPreview();
+    const alignSettledSlide = () => {
+      const width = viewport.clientWidth;
+      if (width <= 0) {
+        headerMotionRef?.current?.syncHorizontalSelection(
+          SLIDES[activeIndexRef.current] ?? SLIDES[0],
+        );
+        headerMotionRef?.current?.setVerticalProgress(
+          verticalProgressRef.current[activeIndexRef.current] ?? 0,
+        );
         return;
       }
-      beginHorizontalMotion(direction);
-      renderHorizontalMotion();
-    }
-  };
-
-  const finishPointerGesture = (cancelled = false) => {
-    const gesture = pointerStart.current;
-    if ((gesture && !gesture.horizontal) || cancelled) {
-      cancelHorizontalPreview();
-      const viewport = viewportRef.current;
-      if (viewport) {
-        viewport.dataset.motionProgress = "0.000";
-        viewport.dataset.motionStatus = "settled";
+      const left = activeIndexRef.current * width;
+      if (Math.abs(viewport.scrollLeft - left) > SNAP_TOLERANCE_PX) {
+        viewport.scrollTo({ left, behavior: "auto" });
       }
-    }
-    releasePointerGesture();
+      renderHorizontalPosition(false);
+      commitActiveIndex(activeIndexRef.current);
+    };
+
+    alignSettledSlide();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(alignSettledSlide);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [commitActiveIndex, headerMotionRef, renderHorizontalPosition]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const handleScrollEnd = () => settleHorizontalScrollRef.current();
+    const handleWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        event.preventDefault();
+      }
+    };
+    viewport.addEventListener("scrollend", handleScrollEnd);
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener("scrollend", handleScrollEnd);
+      viewport.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
+
+  useEffect(
+    () => () => {
+      touchActiveRef.current = false;
+      clearSettleTimer();
+    },
+    [clearSettleTimer],
+  );
+
+  const handleViewportScroll = () => {
+    renderHorizontalPosition(true);
+    if (!touchActiveRef.current) scheduleHorizontalSettle();
   };
 
-  const handleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!suppressClick.current) return;
-    event.preventDefault();
-    event.stopPropagation();
-    suppressClick.current = false;
+  const handleTouchStart = () => {
+    touchActiveRef.current = true;
+    clearSettleTimer();
+  };
+
+  const releaseTouch = () => {
+    touchActiveRef.current = false;
+    scheduleHorizontalSettle();
   };
 
   const handleContentScroll = (event: ReactUIEvent<HTMLElement>) => {
@@ -493,23 +400,44 @@ export function HomeDashboardCarousel({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.target !== viewportRef.current || !emblaApi) return;
-    const direction: DashboardTitleDirection | 0 =
-      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (direction === 0) return;
-    event.preventDefault();
-    if (
-      horizontalMotionRef.current.active ||
-      !canNavigate(emblaApi, direction)
-    ) {
+    const viewport = viewportRef.current;
+    if (event.target !== viewport || !viewport || viewport.clientWidth <= 0) {
       return;
     }
-    beginHorizontalMotion(direction);
+    const direction =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (direction === 0) return;
+
+    const currentPosition = viewport.scrollLeft / viewport.clientWidth;
+    const currentVisualIndex = slideIndexForPosition(currentPosition);
+    const targetIndex = clamp(
+      currentVisualIndex + direction,
+      0,
+      SLIDES.length - 1,
+    );
+    if (targetIndex === currentVisualIndex) return;
+
+    event.preventDefault();
+    touchActiveRef.current = false;
+    clearSettleTimer();
     const jump = prefersReducedMotion();
-    if (direction > 0) emblaApi.scrollNext(jump);
-    else emblaApi.scrollPrev(jump);
-    if (jump && horizontalMotionRef.current.active) {
-      settleHorizontalMotion(emblaApi);
+    viewport.dataset.inputDirection = direction > 0 ? "forward" : "backward";
+    viewport.dataset.motionStatus = "moving";
+    viewport.dataset.targetSnap = String(targetIndex);
+    viewport.scrollTo({
+      left: targetIndex * viewport.clientWidth,
+      behavior: jump ? "auto" : "smooth",
+    });
+    if (jump) {
+      renderHorizontalPosition(false);
+      viewport.dataset.lastSettledDirection = settledDirection(
+        activeIndexRef.current,
+        targetIndex,
+      );
+      commitActiveIndex(targetIndex);
+    } else {
+      renderHorizontalPosition(true);
+      scheduleHorizontalSettle();
     }
   };
 
@@ -535,21 +463,22 @@ export function HomeDashboardCarousel({
       onScrollCapture={handleContentScroll}
     >
       <div
-        ref={setViewportRef}
+        ref={viewportRef}
         data-testid="home-carousel-viewport"
         data-input-direction="none"
         data-last-settled-direction="none"
+        data-motion-position="0.000"
         data-motion-progress="0.000"
         data-motion-status="settled"
         data-selected-snap="0"
+        data-target-snap="0"
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the scroll viewport needs a keyboard target for arrow-key slide navigation
         tabIndex={0}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={() => finishPointerGesture()}
-        onPointerCancel={() => finishPointerGesture(true)}
-        onClickCapture={handleClickCapture}
-        className="h-full min-h-0 overflow-hidden overscroll-x-none [touch-action:pan-y]"
+        onScroll={handleViewportScroll}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={releaseTouch}
+        onTouchCancel={releaseTouch}
+        className="h-full min-h-0 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] [touch-action:pan-x_pan-y] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
       >
         <div
           data-testid="home-carousel-track"
@@ -562,7 +491,7 @@ export function HomeDashboardCarousel({
             aria-label="Analytics, slide 1 of 3"
             aria-hidden={activeIndex !== 0}
             data-home-carousel-slide-index="0"
-            className="h-full min-w-0 flex-[0_0_100%]"
+            className="h-full min-w-0 flex-[0_0_100%] snap-start snap-always"
           >
             <AnalyticsSheetMorph
               rates={analyticsSync.rates}
@@ -596,7 +525,7 @@ export function HomeDashboardCarousel({
             aria-label="Transactions, slide 2 of 3"
             aria-hidden={activeIndex !== 1}
             data-home-carousel-slide-index="1"
-            className="h-full min-w-0 flex-[0_0_100%]"
+            className="h-full min-w-0 flex-[0_0_100%] snap-start snap-always"
             style={
               {
                 "--dashboard-header-space": `${HEADER_COLLAPSE_DISTANCE}px`,
@@ -617,7 +546,7 @@ export function HomeDashboardCarousel({
             aria-label="Settings, slide 3 of 3"
             aria-hidden={activeIndex !== 2}
             data-home-carousel-slide-index="2"
-            className="h-full min-w-0 flex-[0_0_100%]"
+            className="h-full min-w-0 flex-[0_0_100%] snap-start snap-always"
             style={
               {
                 "--dashboard-header-space": `${HEADER_COLLAPSE_DISTANCE}px`,

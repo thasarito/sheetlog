@@ -1,0 +1,74 @@
+name: Native dashboard scroll-snap validation
+
+on:
+  push:
+    branches:
+      - refactor/native-dashboard-scroll-snap
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: HUSKY=0 npm ci
+      - name: Verify Embla is absent
+        run: |
+          if grep -R "embla-carousel" package.json package-lock.json pnpm-lock.yaml src e2e; then
+            echo "Found a stale Embla reference"
+            exit 1
+          fi
+      - name: Focused pager tests
+        run: npx vitest run src/components/Header.test.tsx src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Lint changed implementation files
+        run: >-
+          npx biome check
+          src/components/DashboardTitleReel.tsx
+          src/components/Header.tsx
+          src/components/Header.test.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+          e2e/home-carousel-native-scroll.spec.ts
+      - name: Full unit suite with failure capture
+        run: |
+          set +e
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/full-vitest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            tail -n 800 /tmp/full-vitest.log > .github/native-dashboard-full-test.log
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/native-dashboard-full-test.log
+            git commit -m "ci: capture intermittent native pager test failure"
+            git push origin HEAD:refactor/native-dashboard-scroll-snap
+          fi
+          exit "$status"
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Mobile Chrome carousel coverage
+        run: >-
+          VITE_DEV_MODE=true npx playwright test
+          e2e/home-carousel.spec.ts
+          e2e/home-carousel-native-scroll.spec.ts
+          --project="Mobile Chrome"
+          --retries=0
+      - name: Diff hygiene
+        run: git diff --check origin/main...HEAD

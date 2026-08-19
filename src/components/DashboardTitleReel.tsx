@@ -12,19 +12,10 @@ const ITEM_INDEXES = LABELS.map((_, index) => index);
 const FADED_OPACITY = 0.34;
 
 export type DashboardTitle = (typeof DASHBOARD_SLIDES)[number];
-export type DashboardTitleDirection = -1 | 1;
 
 export type DashboardTitleReelHandle = {
-  setHorizontalMotion: (
-    direction: DashboardTitleDirection,
-    progress: number,
-  ) => void;
+  setHorizontalPosition: (position: number) => void;
   syncHorizontalSelection: (title: DashboardTitle) => void;
-};
-
-type ReelMotion = {
-  direction: DashboardTitleDirection | 0;
-  progress: number;
 };
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -36,11 +27,30 @@ function positionForTitle(title: DashboardTitle): number {
   return position >= 0 ? position : 0;
 }
 
-function trackShiftForSelection(
-  selectedIndex: number,
+function anchorForPosition(
+  position: number,
   positions: Map<number, number>,
 ): number {
-  return -(positions.get(selectedIndex) ?? 0);
+  const lastIndex = LABELS.length - 1;
+  if (lastIndex <= 0) return positions.get(0) ?? 0;
+
+  if (position <= 0) {
+    const first = positions.get(0) ?? 0;
+    const second = positions.get(1) ?? first;
+    return first + position * (second - first);
+  }
+
+  if (position >= lastIndex) {
+    const last = positions.get(lastIndex) ?? 0;
+    const previous = positions.get(lastIndex - 1) ?? last;
+    return last + (position - lastIndex) * (last - previous);
+  }
+
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+  const lower = positions.get(lowerIndex) ?? 0;
+  const upper = positions.get(upperIndex) ?? lower;
+  return lower + (upper - lower) * (position - lowerIndex);
 }
 
 export const DashboardTitleReel = forwardRef<
@@ -50,25 +60,22 @@ export const DashboardTitleReel = forwardRef<
   const reelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef(new Map<number, HTMLSpanElement>());
   const selectedIndexRef = useRef(0);
-  const motionRef = useRef<ReelMotion>({ direction: 0, progress: 0 });
+  const visualPositionRef = useRef(0);
 
-  const renderMotion = useCallback(({ direction, progress }: ReelMotion) => {
+  const renderPosition = useCallback((incomingPosition: number) => {
     const reel = reelRef.current;
     if (!reel) return;
 
     const selectedIndex = selectedIndexRef.current;
-    const requestedTarget = selectedIndex + direction;
-    const targetIndex = clamp(requestedTarget, 0, LABELS.length - 1);
-    const effectiveDirection =
-      direction !== 0 && targetIndex !== selectedIndex ? direction : 0;
-    const boundedProgress =
-      effectiveDirection === 0 ? 0 : clamp(progress, 0, 1);
-    const activePosition =
-      selectedIndex + effectiveDirection * boundedProgress;
-    const activeIndex =
-      effectiveDirection !== 0 && boundedProgress >= 0.5
-        ? targetIndex
-        : selectedIndex;
+    const position = Number.isFinite(incomingPosition)
+      ? incomingPosition
+      : selectedIndex;
+    const emphasisPosition = clamp(position, 0, LABELS.length - 1);
+    const activeIndex = clamp(
+      Math.round(emphasisPosition),
+      0,
+      LABELS.length - 1,
+    );
 
     const gap = clamp(reel.clientWidth * 0.055, 10, 18);
     const widths = new Map<number, number>();
@@ -78,7 +85,7 @@ export const DashboardTitleReel = forwardRef<
       item.style.fontWeight = String(
         Math.round(
           520 +
-            (1 - Math.min(1, Math.abs(index - activePosition))) * 220,
+            (1 - Math.min(1, Math.abs(index - emphasisPosition))) * 220,
         ),
       );
       widths.set(index, item.getBoundingClientRect().width);
@@ -94,24 +101,22 @@ export const DashboardTitleReel = forwardRef<
       );
     }
 
-    const startShift = trackShiftForSelection(selectedIndex, positions);
-    const endShift = trackShiftForSelection(targetIndex, positions);
-    const trackShift =
-      startShift + (endShift - startShift) * boundedProgress;
+    const trackShift = -anchorForPosition(position, positions);
+    const lowerParticipant = Math.floor(emphasisPosition);
+    const upperParticipant = Math.ceil(emphasisPosition);
 
     let visibleCount = 0;
     for (const index of ITEM_INDEXES) {
       const item = itemRefs.current.get(index);
       if (!item) continue;
 
-      const distance = Math.min(1, Math.abs(index - activePosition));
+      const distance = Math.min(1, Math.abs(index - emphasisPosition));
       const x = (positions.get(index) ?? 0) + trackShift;
       const width = widths.get(index) ?? 0;
       const right = x + width;
       const fullyVisible = x >= -0.5 && right <= reel.clientWidth + 0.5;
       const transitionParticipant =
-        effectiveDirection !== 0 &&
-        (index === selectedIndex || index === targetIndex) &&
+        (index === lowerParticipant || index === upperParticipant) &&
         x < reel.clientWidth &&
         right > 0;
       const visible = fullyVisible || transitionParticipant;
@@ -126,7 +131,7 @@ export const DashboardTitleReel = forwardRef<
       if (visible) visibleCount += 1;
     }
 
-    const signedProgress = effectiveDirection * boundedProgress;
+    const signedProgress = position - selectedIndex;
     reel.dataset.direction =
       signedProgress > 0.001
         ? "forward"
@@ -134,6 +139,7 @@ export const DashboardTitleReel = forwardRef<
           ? "backward"
           : "settled";
     reel.dataset.gap = gap.toFixed(2);
+    reel.dataset.position = position.toFixed(3);
     reel.dataset.progress = signedProgress.toFixed(3);
     reel.dataset.selectedLabel = LABELS[selectedIndex];
     reel.dataset.visibleCount = String(visibleCount);
@@ -146,36 +152,36 @@ export const DashboardTitleReel = forwardRef<
         0,
         LABELS.length - 1,
       );
-      const motion: ReelMotion = { direction: 0, progress: 0 };
-      motionRef.current = motion;
-      renderMotion(motion);
+      visualPositionRef.current = selectedIndexRef.current;
+      renderPosition(visualPositionRef.current);
     },
-    [renderMotion],
+    [renderPosition],
   );
 
   useImperativeHandle(
     forwardedRef,
     () => ({
-      setHorizontalMotion(direction, progress) {
-        const motion = { direction, progress };
-        motionRef.current = motion;
-        renderMotion(motion);
+      setHorizontalPosition(position) {
+        visualPositionRef.current = position;
+        renderPosition(position);
       },
       syncHorizontalSelection(title) {
         renderSettledSelection(positionForTitle(title));
       },
     }),
-    [renderMotion, renderSettledSelection],
+    [renderPosition, renderSettledSelection],
   );
 
   useLayoutEffect(() => {
-    renderMotion(motionRef.current);
+    renderPosition(visualPositionRef.current);
     const reel = reelRef.current;
     if (!reel || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => renderMotion(motionRef.current));
+    const observer = new ResizeObserver(() =>
+      renderPosition(visualPositionRef.current),
+    );
     observer.observe(reel);
     return () => observer.disconnect();
-  }, [renderMotion]);
+  }, [renderPosition]);
 
   return (
     <div
@@ -183,6 +189,7 @@ export const DashboardTitleReel = forwardRef<
       data-testid="dashboard-title-reel"
       data-direction="settled"
       data-gap="10.00"
+      data-position="0.000"
       data-progress="0.000"
       data-selected-label={LABELS[0]}
       data-visible-count="2"

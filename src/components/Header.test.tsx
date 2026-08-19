@@ -58,6 +58,7 @@ describe("Header dashboard title reel", () => {
     expect(reel).toHaveClass("pointer-events-none");
     expect(reel).toHaveAttribute("data-selected-label", "Analytics");
     expect(reel).toHaveAttribute("data-anchor", "left");
+    expect(reel).toHaveAttribute("data-position", "0.000");
     expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close settings" })).not.toBeInTheDocument();
 
@@ -71,7 +72,7 @@ describe("Header dashboard title reel", () => {
     expect(items.map((item) => item.dataset.index)).toEqual(["0", "1", "2"]);
   });
 
-  it("keeps every settled selected title at the left anchor", () => {
+  it("projects absolute fractional positions between left anchors", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);
 
@@ -87,9 +88,11 @@ describe("Header dashboard title reel", () => {
       "Settings",
     ]);
 
-    act(() => motionRef.current?.setHorizontalMotion(1, 0.5));
+    act(() => motionRef.current?.setHorizontalPosition(0.5));
     expect(reel).toHaveAttribute("data-direction", "forward");
     expect(reel).toHaveAttribute("data-progress", "0.500");
+    expect(reel).toHaveAttribute("data-position", "0.500");
+    expect(reel).toHaveAttribute("data-selected-label", "Analytics");
     expect(reelX(items[0])).toBeLessThan(0);
     expect(reelX(items[1])).toBeGreaterThan(0);
     expect(Number(items[0].style.opacity)).toBeCloseTo(
@@ -101,10 +104,16 @@ describe("Header dashboard title reel", () => {
     expect(reel).toHaveAttribute("data-selected-label", "Transactions");
     expect(items[1]).toHaveAttribute("data-active", "true");
     expect(reelX(items[1])).toBeCloseTo(0, 5);
-    expect(visibleItems(items).map((item) => item.textContent)).toEqual([
-      "Transactions",
-      "Settings",
-    ]);
+
+    act(() => motionRef.current?.setHorizontalPosition(1.25));
+    expect(reel).toHaveAttribute("data-direction", "forward");
+    expect(reel).toHaveAttribute("data-progress", "0.250");
+    expect(reel).toHaveAttribute("data-position", "1.250");
+    expect(reelX(items[1])).toBeLessThan(0);
+    expect(reelX(items[2])).toBeGreaterThan(0);
+    expect(Number(items[1].style.opacity)).toBeGreaterThan(
+      Number(items[2].style.opacity),
+    );
 
     act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
     expect(reel).toHaveAttribute("data-selected-label", "Settings");
@@ -115,7 +124,7 @@ describe("Header dashboard title reel", () => {
     ]);
   });
 
-  it("moves the rail between left anchors on narrow widths", () => {
+  it("uses the same absolute-position projection on narrow widths", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);
 
@@ -126,7 +135,7 @@ describe("Header dashboard title reel", () => {
     act(() => motionRef.current?.syncHorizontalSelection?.("Analytics"));
     expect(reelX(items[0])).toBeCloseTo(0, 5);
 
-    act(() => motionRef.current?.setHorizontalMotion(1, 0.5));
+    act(() => motionRef.current?.setHorizontalPosition(0.5));
     expect(reelX(items[0])).toBeLessThan(0);
     expect(reelX(items[1])).toBeGreaterThan(0);
 
@@ -138,7 +147,7 @@ describe("Header dashboard title reel", () => {
     ]);
   });
 
-  it("does not preview beyond either end of the bounded title rail", () => {
+  it("extrapolates native edge elasticity without activating an unreachable title", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);
 
@@ -147,21 +156,23 @@ describe("Header dashboard title reel", () => {
     setReelMeasurements(reel, items, 300);
 
     act(() => motionRef.current?.syncHorizontalSelection?.("Analytics"));
-    act(() => motionRef.current?.setHorizontalMotion(-1, 0.8));
+    act(() => motionRef.current?.setHorizontalPosition(-0.08));
     expect(reel).toHaveAttribute("data-selected-label", "Analytics");
-    expect(reel).toHaveAttribute("data-direction", "settled");
-    expect(reel).toHaveAttribute("data-progress", "0.000");
-    expect(reelX(items[0])).toBeCloseTo(0, 5);
+    expect(reel).toHaveAttribute("data-direction", "backward");
+    expect(reel).toHaveAttribute("data-progress", "-0.080");
+    expect(items[0]).toHaveAttribute("data-active", "true");
+    expect(reelX(items[0])).toBeGreaterThan(0);
 
     act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
-    act(() => motionRef.current?.setHorizontalMotion(1, 0.8));
+    act(() => motionRef.current?.setHorizontalPosition(2.08));
     expect(reel).toHaveAttribute("data-selected-label", "Settings");
-    expect(reel).toHaveAttribute("data-direction", "settled");
-    expect(reel).toHaveAttribute("data-progress", "0.000");
-    expect(reelX(items[2])).toBeCloseTo(0, 5);
+    expect(reel).toHaveAttribute("data-direction", "forward");
+    expect(reel).toHaveAttribute("data-progress", "0.080");
+    expect(items[2]).toHaveAttribute("data-active", "true");
+    expect(reelX(items[2])).toBeLessThan(0);
   });
 
-  it("reconciles live motion to the authoritative left-anchored destination", () => {
+  it("reconciles live position to the authoritative left-anchored destination", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);
 
@@ -169,12 +180,13 @@ describe("Header dashboard title reel", () => {
     const items = screen.getAllByTestId("dashboard-title-reel-item");
     setReelMeasurements(reel, items, 390);
 
-    act(() => motionRef.current?.setHorizontalMotion(1, 0.8));
+    act(() => motionRef.current?.setHorizontalPosition(1.8));
     act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
 
     expect(reel).toHaveAttribute("data-selected-label", "Settings");
     expect(reel).toHaveAttribute("data-direction", "settled");
     expect(reel).toHaveAttribute("data-progress", "0.000");
+    expect(reel).toHaveAttribute("data-position", "2.000");
     expect(reelX(items[2])).toBeCloseTo(0, 5);
   });
 
