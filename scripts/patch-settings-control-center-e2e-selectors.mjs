@@ -93,3 +93,24 @@ for (const { path, rootTestId } of testFiles) {
   );
   writeFileSync(path, source);
 }
+
+const carouselTestPath = 'src/components/TransactionFlow/HomeDashboardCarousel.test.tsx';
+let carouselTest = readFileSync(carouselTestPath, 'utf8');
+carouselTest = replaceIfPresent(
+  carouselTest,
+  `  SettingsView: (props: SettingsViewProps) => {\n    settingsViewCalls.push(props);\n    return (`,
+  `  SettingsView: (props: SettingsViewProps) => {\n    settingsViewCalls.push(props);\n    const navigationProps = props as SettingsViewProps & {\n      onCarouselNavigationLockChange?: (locked: boolean) => void;\n    };\n    return (`,
+);
+carouselTest = replaceIfPresent(
+  carouselTest,
+  `        <button type="button" data-home-carousel-swipe-lock="true">\n          Settings-owned swipe target\n        </button>`,
+  `        <button type="button" data-home-carousel-swipe-lock="true">\n          Settings-owned swipe target\n        </button>\n        <button\n          type="button"\n          onClick={() => navigationProps.onCarouselNavigationLockChange?.(true)}\n        >\n          Open Settings editor\n        </button>\n        <button\n          type="button"\n          onClick={() => navigationProps.onCarouselNavigationLockChange?.(false)}\n        >\n          Close Settings editor\n        </button>`,
+);
+const lockTest = `\n  it("locks the native carousel owner while a Settings editor is open", async () => {\n    const user = userEvent.setup();\n    const { viewport } = renderCarousel();\n    await settleAt(viewport, 2);\n\n    await user.click(screen.getByRole("button", { name: "Open Settings editor" }));\n\n    expect(viewport).toHaveAttribute("data-navigation-locked", "true");\n    expect(viewport).toHaveClass("overflow-x-hidden", "[touch-action:pan-y]");\n    viewport.focus();\n    scrollToMock.mockClear();\n    fireEvent.keyDown(viewport, { key: "ArrowLeft" });\n    expect(scrollToMock).not.toHaveBeenCalled();\n\n    await user.click(screen.getByRole("button", { name: "Close Settings editor" }));\n\n    expect(viewport).toHaveAttribute("data-navigation-locked", "false");\n    expect(viewport).toHaveClass("overflow-x-auto", "[touch-action:pan-x_pan-y]");\n  });\n`;
+if (!carouselTest.includes('locks the native carousel owner while a Settings editor is open')) {
+  carouselTest = carouselTest.replace(
+    '\n  it("passes offline state to both Analytics and Settings without resyncing", () => {',
+    `${lockTest}\n  it("passes offline state to both Analytics and Settings without resyncing", () => {`,
+  );
+}
+writeFileSync(carouselTestPath, carouselTest);
