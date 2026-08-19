@@ -245,11 +245,11 @@ describe("TransactionHistoryView", () => {
       "true",
     );
     expect(
-      within(screen.getByTestId("transaction-history-metadata")).getByRole(
-        "button",
-        { name: "Refresh transaction history" },
-      ),
-    ).toBeInTheDocument();
+      screen.queryByTestId("transaction-history-metadata"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Refresh transaction history" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("searchbox", { name: "Search transaction history" }),
     ).toBeVisible();
@@ -323,9 +323,9 @@ describe("TransactionHistoryView", () => {
       screen.getByRole("region", { name: "Transaction history" }),
     ).toHaveStyle({
       paddingBottom:
-        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 60px) + 8px)",
       scrollPaddingBottom:
-        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 60px) + 8px)",
     });
   });
 
@@ -439,7 +439,7 @@ describe("TransactionHistoryView", () => {
     );
 
     expect(await screen.findByText("Ancient travel")).toBeInTheDocument();
-    expect(screen.getByText("1 transaction")).toBeInTheDocument();
+    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();
   });
 
   it("preserves the exact scroll offset when a newer row is prepended", async () => {
@@ -667,9 +667,10 @@ describe("TransactionHistoryView", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Google unavailable");
     await user.click(screen.getByRole("button", { name: "Retry history refresh" }));
     await waitFor(() => expect(mocks.history.refresh).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.rateRefetch).toHaveBeenCalled());
   });
 
-  it("converts the complete record set independently of search and refreshes rates", async () => {
+  it("converts the complete record set independently of search", async () => {
     const foreign = transaction("foreign", {
       amount: 3,
       currency: "USD",
@@ -696,17 +697,12 @@ describe("TransactionHistoryView", () => {
       screen.getByRole("searchbox", { name: "Search transaction history" }),
       "foreign",
     );
-    expect(await screen.findByText("1 transaction")).toBeInTheDocument();
+    expect(await screen.findByText("Foreign coffee")).toBeInTheDocument();
+    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();
     expect(useTransactionBaseAmounts).toHaveBeenLastCalledWith(
       mocks.history.records,
       "THB",
       true,
     );
-
-    await user.click(
-      screen.getByRole("button", { name: "Refresh transaction history" }),
-    );
-    expect(mocks.history.refresh).toHaveBeenCalledTimes(1);
-    expect(mocks.rateRefetch).toHaveBeenCalledTimes(1);
   });
 });
