@@ -65,19 +65,13 @@ export function TransactionHistoryDock({
         return;
       }
 
-      // Prevent the browser's default focus, commit the no-transition keyboard
-      // snap synchronously, and only then focus while the pointer event still
-      // carries mobile user activation.
-      event.preventDefault();
-      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }
+      // Commit the keyboard snap before the browser performs the input's
+      // native focus action. Keeping the tap uncancelled lets iOS complete its
+      // pointerup/click sequence against the moved input instead of focusing
+      // during pointerdown and then immediately blurring it.
       flushSync(requestKeyboard);
-      if (accessory.host?.dataset.categorySheetState === "keyboard") {
-        event.currentTarget.focus({ preventScroll: true });
-      }
     },
-    [accessory.host, accessory.requestKeyboard, portalled],
+    [accessory.requestKeyboard, portalled],
   );
 
   const setDockRef = useCallback(
@@ -168,6 +162,11 @@ export function TransactionHistoryDock({
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           onPointerDown={prepareKeyboardState}
+          onClick={(event) => {
+            if (document.activeElement !== event.currentTarget) {
+              event.currentTarget.focus({ preventScroll: true });
+            }
+          }}
           onFocus={() => accessory.requestKeyboard?.()}
           onBlur={() => accessory.releaseKeyboard?.()}
           placeholder="Search category, note, or account"

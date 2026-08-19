@@ -146,7 +146,7 @@ afterEach(() => {
 });
 
 describe("CategoryStepSheet keyboard state", () => {
-  it("sets the keyboard snap before focusing search and then matches the measured keyboard", async () => {
+  it("commits the keyboard snap before a quick tap focuses search", async () => {
     render(<KeyboardSheetHarness />);
 
     await waitFor(() =>
@@ -170,8 +170,9 @@ describe("CategoryStepSheet keyboard state", () => {
       stateSeenOnFocus.push(layout.dataset.categorySheetState ?? "missing");
     });
 
-    fireEvent.pointerDown(search, { pointerId: 1 });
+    const pointerDownAllowed = fireEvent.pointerDown(search, { pointerId: 1 });
 
+    expect(pointerDownAllowed).toBe(true);
     expect(layout).toHaveAttribute("data-category-sheet-state", "keyboard");
     expect(drawerMock.rootProps?.snapPoints).toEqual([
       "44px",
@@ -181,6 +182,12 @@ describe("CategoryStepSheet keyboard state", () => {
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("300px");
     expect(layout).toHaveStyle({ "--category-sheet-occlusion": "300px" });
     expect(content).toHaveClass("![transition:none]");
+    expect(search).not.toHaveFocus();
+    expect(stateSeenOnFocus).toEqual([]);
+
+    fireEvent.pointerUp(search, { pointerId: 1 });
+    fireEvent.click(search);
+
     expect(search).toHaveFocus();
     expect(stateSeenOnFocus).toEqual(["keyboard"]);
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("300px");
