@@ -5,6 +5,11 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
+import {
+  advanceDashboardCarouselLoopMotion,
+  dashboardCarouselProgressFromTravel,
+  type DashboardCarouselLoopMotionState,
+} from "./dashboardCarouselLoopMotion";
 import { DASHBOARD_SLIDES } from "./dashboardSlides";
 
 const LABELS = DASHBOARD_SLIDES;
@@ -35,11 +40,18 @@ type ReelMotion = {
 
 type VisibleCandidate = {
   offset: number;
+  label: string;
   active: boolean;
   distance: number;
   fullyVisible: boolean;
   transitionParticipant: boolean;
   x: number;
+};
+
+type CarouselTrackMeasurement = {
+  offset: number;
+  loopSpan: number;
+  viewportWidth: number;
 };
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -57,6 +69,33 @@ function labelAt(selectedPosition: number, offset: number): string {
 function positionForTitle(title: DashboardTitle): number {
   const position = LABELS.indexOf(title);
   return position >= 0 ? position : 0;
+}
+
+function measureCarouselTrack(
+  reel: HTMLElement | null,
+): CarouselTrackMeasurement | null {
+  if (typeof document === "undefined") return null;
+  const scope: ParentNode =
+    reel?.closest<HTMLElement>('[data-testid="transaction-canvas"]') ??
+    document;
+  const viewport = scope.querySelector<HTMLElement>(
+    '[data-testid="home-carousel-viewport"]',
+  );
+  const track = scope.querySelector<HTMLElement>(
+    '[data-testid="home-carousel-track"]',
+  );
+  if (!viewport || !track) return null;
+
+  const viewportRect = viewport.getBoundingClientRect();
+  const trackRect = track.getBoundingClientRect();
+  const viewportWidth = viewportRect.width;
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return null;
+
+  return {
+    offset: trackRect.left - viewportRect.left,
+    loopSpan: Math.max(track.scrollWidth, viewportWidth * LABELS.length),
+    viewportWidth,
+  };
 }
 
 function shouldReplaceCandidate(
@@ -94,6 +133,8 @@ export const DashboardTitleReel = forwardRef<
   const itemRefs = useRef(new Map<number, HTMLSpanElement>());
   const selectedPositionRef = useRef(0);
   const motionRef = useRef<ReelMotion>({ direction: 0, progress: 0 });
+  const carouselLoopMotionRef =
+    useRef<DashboardCarouselLoopMotionState | null>(null);
 
   const renderMotion = useCallback(({ direction, progress }: ReelMotion) => {
     const reel = reelRef.current;
@@ -112,6 +153,7 @@ export const DashboardTitleReel = forwardRef<
 
       const distance = Math.min(1, Math.abs(offset - signedProgress));
       item.dataset.active = String(distance < 0.001);
+      item.dataset.loopCopy = "false";
       item.style.fontWeight = String(
         Math.round(520 + (1 - distance) * 220),
       );
@@ -147,10 +189,13 @@ export const DashboardTitleReel = forwardRef<
       );
     }
 
-    const enteringOffset = signedProgress >= 0 ? 1 : -1;
-    const shift = -transition * (positions.get(enteringOffset) ?? 0);
-    const visibleByLabel = new Map<string, VisibleCandidate>();
+    const enteringOffset = direction === 0 ? 0 : direction;
+    const shift =
+      direction === 0
+        ? 0
+        : -transition * (positions.get(enteringOffset) ?? 0);
     const reelWidth = reel.clientWidth;
+    const candidates: VisibleCandidate[] = [];
 
     for (const offset of REEL_OFFSETS) {
       const item = itemRefs.current.get(offset);
@@ -163,44 +208,85 @@ export const DashboardTitleReel = forwardRef<
       const fullyVisible = x >= -0.5 && right <= reelWidth + 0.5;
       const intersects = x < reelWidth && right > 0;
       const transitionParticipant =
-        transition > 0 && (offset === 0 || offset === direction);
+        transition > 0 && (offset === 0 || offset === enteringOffset);
       const canShow =
         active || fullyVisible || (transitionParticipant && intersects);
 
       item.style.transform = `translate3d(${x.toFixed(2)}px, -50%, 0)`;
       if (!canShow) continue;
 
-      const candidate: VisibleCandidate = {
+      candidates.push({
         offset,
+        label: item.dataset.label ?? item.textContent ?? "",
         active,
         distance,
         fullyVisible,
         transitionParticipant,
         x,
-      };
-      const label = item.dataset.label ?? item.textContent ?? "";
-      const current = visibleByLabel.get(label);
-      if (!current || shouldReplaceCandidate(candidate, current)) {
-        visibleByLabel.set(label, candidate);
-      }
+      });
     }
 
-    const visibleOffsets = new Set(
-      Array.from(visibleByLabel.values(), ({ offset }) => offset),
-    );
-    for (const offset of REEL_OFFSETS) {
-      const item = itemRefs.current.get(offset);
-      if (!item || !visibleOffsets.has(offset)) continue;
-      const distance = Math.min(1, Math.abs(offset - signedProgress));
-      item.style.opacity = String(1 - distance * (1 - FADED_OPACITY));
+    const visibleCandidates = new Map<number, VisibleCandidate>();
+    const addCandidate = (candidate: VisibleCandidate | undefined) => {
+      if (candidate) visibleCandidates.set(candidate.offset, candidate);
+    };
+
+    if (direction === 0 || transition <= 0.001) {
+      const bestByLabel = new Map<string, VisibleCandidate>();
+      for (const candidate of candidates) {
+        const current = bestByLabel.get(candidate.label);
+        if (!current || shouldReplaceCandidate(candidate, current)) {
+          bestByLabel.set(candidate.label, candidate);
+        }
+      }
+      for (const candidate of bestByLabel.values()) addCandidate(candidate);
+    } else {
+      const outgoingLabel = labelAt(selectedPosition, 0);
+      addCandidate(candidates.find((candidate) => candidate.offset === 0));
+      addCandidate(
+        candidates.find((candidate) => candidate.offset === enteringOffset),
+      );
+
+      const bestByLabel = new Map<string, VisibleCandidate>();
+      for (const candidate of candidates) {
+        if (candidate.offset === 0 || candidate.offset === enteringOffset) {
+          continue;
+        }
+        if (candidate.label === outgoingLabel) continue;
+        const current = bestByLabel.get(candidate.label);
+        if (!current || shouldReplaceCandidate(candidate, current)) {
+          bestByLabel.set(candidate.label, candidate);
+        }
+      }
+      for (const candidate of bestByLabel.values()) addCandidate(candidate);
+    }
+
+    const enteringLabel =
+      direction === 0 ? null : labelAt(selectedPosition, enteringOffset);
+    let visibleCount = 0;
+    for (const candidate of visibleCandidates.values()) {
+      const item = itemRefs.current.get(candidate.offset);
+      if (!item) continue;
+      let opacity = 1 - candidate.distance * (1 - FADED_OPACITY);
+      const passiveEnteringCopy =
+        transition > 0 &&
+        enteringLabel !== null &&
+        candidate.label === enteringLabel &&
+        candidate.offset !== enteringOffset;
+      if (passiveEnteringCopy) opacity *= 1 - transition;
+      if (opacity <= 0.001) continue;
+
+      item.style.opacity = String(opacity);
       item.style.visibility = "visible";
       item.dataset.visible = "true";
+      item.dataset.loopCopy = String(passiveEnteringCopy);
+      visibleCount += 1;
     }
 
     reel.dataset.gap = gap.toFixed(2);
     reel.dataset.progress = signedProgress.toFixed(3);
     reel.dataset.selectedLabel = labelAt(selectedPosition, 0);
-    reel.dataset.visibleCount = String(visibleOffsets.size);
+    reel.dataset.visibleCount = String(visibleCount);
     reel.dataset.direction =
       signedProgress > 0.001
         ? "forward"
@@ -209,14 +295,54 @@ export const DashboardTitleReel = forwardRef<
           : "settled";
   }, []);
 
+  const captureCarouselTrackBaseline = useCallback(() => {
+    const measurement = measureCarouselTrack(reelRef.current);
+    carouselLoopMotionRef.current = measurement
+      ? { lastOffset: measurement.offset, travel: 0 }
+      : null;
+  }, []);
+
+  const resolveLoopStableProgress = useCallback(
+    (direction: DashboardTitleDirection, incomingProgress: number): number => {
+      const fallbackProgress = clamp(incomingProgress, 0, 1);
+      const measurement = measureCarouselTrack(reelRef.current);
+      if (!measurement) {
+        carouselLoopMotionRef.current = null;
+        return fallbackProgress;
+      }
+
+      const current = carouselLoopMotionRef.current;
+      if (!current) {
+        carouselLoopMotionRef.current = {
+          lastOffset: measurement.offset,
+          travel: -direction * fallbackProgress * measurement.viewportWidth,
+        };
+        return fallbackProgress;
+      }
+
+      const next = advanceDashboardCarouselLoopMotion(
+        current,
+        measurement.offset,
+        measurement.loopSpan,
+      );
+      carouselLoopMotionRef.current = next;
+      return dashboardCarouselProgressFromTravel(
+        next.travel,
+        measurement.viewportWidth,
+      );
+    },
+    [],
+  );
+
   const renderSettledSelection = useCallback(
     (selectedPosition: number) => {
       selectedPositionRef.current = normalizeIndex(selectedPosition);
       const motion: ReelMotion = { direction: 0, progress: 0 };
       motionRef.current = motion;
       renderMotion(motion);
+      captureCarouselTrackBaseline();
     },
-    [renderMotion],
+    [captureCarouselTrackBaseline, renderMotion],
   );
 
   useImperativeHandle(
@@ -226,7 +352,10 @@ export const DashboardTitleReel = forwardRef<
         renderSettledSelection(0);
       },
       setHorizontalMotion(direction, progress) {
-        const motion = { direction, progress };
+        const motion = {
+          direction,
+          progress: resolveLoopStableProgress(direction, progress),
+        };
         motionRef.current = motion;
         renderMotion(motion);
       },
@@ -240,17 +369,21 @@ export const DashboardTitleReel = forwardRef<
         renderSettledSelection(positionForTitle(title));
       },
     }),
-    [renderMotion, renderSettledSelection],
+    [renderMotion, renderSettledSelection, resolveLoopStableProgress],
   );
 
   useLayoutEffect(() => {
     renderMotion(motionRef.current);
+    if (motionRef.current.direction === 0) captureCarouselTrackBaseline();
     const reel = reelRef.current;
     if (!reel || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => renderMotion(motionRef.current));
+    const observer = new ResizeObserver(() => {
+      renderMotion(motionRef.current);
+      if (motionRef.current.direction === 0) captureCarouselTrackBaseline();
+    });
     observer.observe(reel);
     return () => observer.disconnect();
-  }, [renderMotion]);
+  }, [captureCarouselTrackBaseline, renderMotion]);
 
   return (
     <div
@@ -276,6 +409,7 @@ export const DashboardTitleReel = forwardRef<
           data-label={labelAt(0, offset)}
           data-active={String(offset === 0)}
           data-visible={String(offset === 0 || offset === 1)}
+          data-loop-copy="false"
           aria-hidden="true"
           className="pointer-events-none absolute left-0 top-1/2 whitespace-nowrap text-[clamp(18px,6vw,27px)] leading-none tracking-[-0.045em] text-foreground [will-change:transform,opacity]"
           style={{

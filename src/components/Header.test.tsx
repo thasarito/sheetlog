@@ -23,6 +23,81 @@ function visibleItems(items: HTMLElement[]): HTMLElement[] {
     .sort((left, right) => reelX(left) - reelX(right));
 }
 
+function setReelMeasurements(
+  reel: HTMLElement,
+  items: HTMLElement[],
+  width: number,
+) {
+  Object.defineProperty(reel, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  for (const item of items) {
+    item.getBoundingClientRect = () =>
+      ({
+        width: measuredWidth(item),
+        height: 27,
+        x: 0,
+        y: 0,
+        top: 0,
+        right: measuredWidth(item),
+        bottom: 27,
+        left: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+  }
+}
+
+function installCarouselTrack(initialOffset: number) {
+  const root = document.createElement("div");
+  const viewport = document.createElement("div");
+  const track = document.createElement("div");
+  viewport.dataset.testid = "home-carousel-viewport";
+  track.dataset.testid = "home-carousel-track";
+  viewport.append(track);
+  root.append(viewport);
+  document.body.append(root);
+
+  const viewportLeft = 40;
+  const viewportWidth = 300;
+  let trackOffset = initialOffset;
+  viewport.getBoundingClientRect = () =>
+    ({
+      width: viewportWidth,
+      height: 600,
+      x: viewportLeft,
+      y: 0,
+      top: 0,
+      right: viewportLeft + viewportWidth,
+      bottom: 600,
+      left: viewportLeft,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  track.getBoundingClientRect = () =>
+    ({
+      width: viewportWidth * 3,
+      height: 600,
+      x: viewportLeft + trackOffset,
+      y: 0,
+      top: 0,
+      right: viewportLeft + trackOffset + viewportWidth * 3,
+      bottom: 600,
+      left: viewportLeft + trackOffset,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  Object.defineProperty(track, "scrollWidth", {
+    configurable: true,
+    value: viewportWidth * 3,
+  });
+
+  return {
+    remove: () => root.remove(),
+    setOffset: (offset: number) => {
+      trackOffset = offset;
+    },
+  };
+}
+
 describe("Header dashboard title reel", () => {
   it("renders a passive Analytics-first reel without Settings chrome", () => {
     render(<Header showSettings onToast={() => undefined} analyticsSync={{}} />);
@@ -53,25 +128,8 @@ describe("Header dashboard title reel", () => {
     render(<Header ref={motionRef} />);
 
     const reel = screen.getByTestId("dashboard-title-reel");
-    Object.defineProperty(reel, "clientWidth", {
-      configurable: true,
-      value: 300,
-    });
     const items = screen.getAllByTestId("dashboard-title-reel-item");
-    for (const item of items) {
-      item.getBoundingClientRect = () =>
-        ({
-          width: measuredWidth(item),
-          height: 27,
-          x: 0,
-          y: 0,
-          top: 0,
-          right: measuredWidth(item),
-          bottom: 27,
-          left: 0,
-          toJSON: () => ({}),
-        }) as DOMRect;
-    }
+    setReelMeasurements(reel, items, 300);
 
     act(() => motionRef.current?.resetHorizontalSelection?.());
     expect(visibleItems(items).map((item) => item.textContent)).toEqual([
@@ -80,10 +138,7 @@ describe("Header dashboard title reel", () => {
     ]);
     expect(reel).toHaveAttribute("data-visible-count", "2");
 
-    Object.defineProperty(reel, "clientWidth", {
-      configurable: true,
-      value: 390,
-    });
+    setReelMeasurements(reel, items, 390);
     act(() => motionRef.current?.resetHorizontalSelection?.());
     expect(visibleItems(items).map((item) => item.textContent)).toEqual([
       "Analytics",
@@ -131,6 +186,66 @@ describe("Header dashboard title reel", () => {
 
     act(() => motionRef.current?.settleHorizontalMotion?.(-1));
     expect(reel).toHaveAttribute("data-selected-label", "Analytics");
+  });
+
+  it("unwraps Embla track repositioning instead of snapping the reel to completion", () => {
+    const motionRef = createRef<DashboardHeaderMotionHandle>();
+    render(<Header ref={motionRef} />);
+    const track = installCarouselTrack(60);
+
+    try {
+      act(() => motionRef.current?.setHorizontalMotion(-1, 0.2));
+      expect(screen.getByTestId("dashboard-title-reel")).toHaveAttribute(
+        "data-progress",
+        "-0.200",
+      );
+
+      track.setOffset(-820);
+      act(() => motionRef.current?.setHorizontalMotion(-1, 1));
+      expect(
+        Number(screen.getByTestId("dashboard-title-reel").dataset.progress),
+      ).toBeCloseTo(-0.267, 3);
+
+      track.setOffset(-790);
+      act(() => motionRef.current?.setHorizontalMotion(-1, 1));
+      expect(
+        Number(screen.getByTestId("dashboard-title-reel").dataset.progress),
+      ).toBeCloseTo(-0.367, 3);
+    } finally {
+      track.remove();
+    }
+  });
+
+  it("crossfades the repeated edge title during a backward loop", () => {
+    const motionRef = createRef<DashboardHeaderMotionHandle>();
+    render(<Header ref={motionRef} />);
+    const reel = screen.getByTestId("dashboard-title-reel");
+    const items = screen.getAllByTestId("dashboard-title-reel-item");
+    setReelMeasurements(reel, items, 390);
+
+    act(() => motionRef.current?.resetHorizontalSelection?.());
+    act(() => motionRef.current?.setHorizontalMotion(-1, 0.5));
+
+    const settingsCopies = visibleItems(items).filter(
+      (item) => item.textContent === "Settings",
+    );
+    expect(settingsCopies).toHaveLength(2);
+    const entering = settingsCopies.find((item) => item.dataset.offset === "-1");
+    const passive = settingsCopies.find((item) => item.dataset.offset === "2");
+    expect(entering).toBeDefined();
+    expect(passive).toHaveAttribute("data-loop-copy", "true");
+    expect(Number(entering?.style.opacity)).toBeGreaterThan(
+      Number(passive?.style.opacity),
+    );
+    expect(Number(passive?.style.opacity)).toBeLessThan(0.34);
+
+    act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
+    const settledSettings = visibleItems(items).filter(
+      (item) => item.textContent === "Settings",
+    );
+    expect(settledSettings).toHaveLength(1);
+    expect(settledSettings[0]).toHaveAttribute("data-active", "true");
+    expect(settledSettings[0]).toHaveAttribute("data-loop-copy", "false");
   });
 
   it("cancels uncommitted motion without changing the selected title", () => {
