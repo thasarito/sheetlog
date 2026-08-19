@@ -30,3 +30,4 @@ jobs:
           src/components/SettingsQuickNoteEditorDrawer.test.tsx
           src/hooks/useSettingsCollectionMutations.test.tsx
           src/hooks/useReplaceQuickNotesConfig.test.tsx
+          src/components/SettingsView.test.tsx
