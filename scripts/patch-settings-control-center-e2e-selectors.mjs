@@ -32,6 +32,14 @@ const replacements = [
     'await expect(page.getByRole("dialog")).toHaveCount(2);',
     'await expect(page.locator(\'[role="dialog"]\')).toHaveCount(2);',
   ],
+  [
+    'const editor = page.getByRole("dialog", { name: "New Account" });',
+    'const editor = page.locator(\'[role="dialog"]\').filter({\n      has: page.getByRole("textbox", { name: "Account name" }),\n    });',
+  ],
+  [
+    'const invalidEditor = page.getByRole("dialog", { name: "New Account" });',
+    'const invalidEditor = page.locator(\'[role="dialog"]\').filter({\n      has: page.getByRole("textbox", { name: "Account name" }),\n    });',
+  ],
 ];
 
 for (const [before, after] of replacements) {
