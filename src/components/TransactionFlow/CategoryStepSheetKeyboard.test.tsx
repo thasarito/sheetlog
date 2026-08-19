@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { forwardRef, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useState } from "react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CategoryStepSheet } from "./CategoryStepSheet";
@@ -21,6 +21,10 @@ type DrawerRootProps = {
   activeSnapPoint?: number | string | null;
   setActiveSnapPoint?: (point: number | string | null) => void;
   children?: React.ReactNode;
+};
+
+type DockMotionRef = {
+  current: TransactionHistoryDockMotionHandle | null;
 };
 
 const drawerMock = vi.hoisted(() => ({
@@ -89,36 +93,13 @@ function rect(height: number): DOMRect {
 }
 
 function KeyboardSheetHarness({
+  motionRef,
   onUnderlyingTransaction = () => undefined,
 }: {
+  motionRef: DockMotionRef;
   onUnderlyingTransaction?: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const motionRef = useRef<TransactionHistoryDockMotionHandle | null>(null);
-
-  useLayoutEffect(() => {
-    let frame = 0;
-    const makeDockInteractive = () => {
-      const motion = motionRef.current;
-      if (!motion) {
-        frame = window.requestAnimationFrame(makeDockInteractive);
-        return;
-      }
-
-      frame = 0;
-      motion.setMotion({
-        x: 0,
-        viewportWidth: 390,
-        interactive: true,
-        moving: false,
-      });
-    };
-
-    makeDockInteractive();
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-    };
-  }, []);
 
   return (
     <CategoryStepSheet
@@ -135,6 +116,37 @@ function KeyboardSheetHarness({
       />
     </CategoryStepSheet>
   );
+}
+
+async function renderKeyboardSheet({
+  onUnderlyingTransaction,
+}: {
+  onUnderlyingTransaction?: () => void;
+} = {}) {
+  const motionRef: DockMotionRef = { current: null };
+  const result = render(
+    <KeyboardSheetHarness
+      motionRef={motionRef}
+      onUnderlyingTransaction={onUnderlyingTransaction}
+    />,
+  );
+
+  await waitFor(() => expect(motionRef.current).not.toBeNull());
+  act(() => {
+    motionRef.current?.setMotion({
+      x: 0,
+      viewportWidth: 390,
+      interactive: true,
+      moving: false,
+    });
+  });
+  await waitFor(() => {
+    const dock = screen.getByTestId("transaction-history-dock");
+    expect(dock).toHaveAttribute("aria-hidden", "false");
+    expect(dock.inert).toBe(false);
+  });
+
+  return result;
 }
 
 beforeEach(() => {
@@ -165,11 +177,7 @@ afterEach(() => {
 describe("CategoryStepSheet keyboard state", () => {
   it("captures an expanded-sheet search tap instead of selecting the row underneath", async () => {
     const onUnderlyingTransaction = vi.fn();
-    render(
-      <KeyboardSheetHarness
-        onUnderlyingTransaction={onUnderlyingTransaction}
-      />,
-    );
+    await renderKeyboardSheet({ onUnderlyingTransaction });
 
     await waitFor(() =>
       expect(drawerMock.rootProps?.activeSnapPoint).toBe("520px"),
@@ -200,7 +208,7 @@ describe("CategoryStepSheet keyboard state", () => {
   });
 
   it("focuses search on the first tap from collapsed and then matches the measured keyboard", async () => {
-    render(<KeyboardSheetHarness />);
+    await renderKeyboardSheet();
 
     await waitFor(() =>
       expect(drawerMock.rootProps?.activeSnapPoint).toBe("520px"),
@@ -276,7 +284,7 @@ describe("CategoryStepSheet keyboard state", () => {
   });
 
   it("restores the previous state when a captured tap is cancelled", async () => {
-    render(<KeyboardSheetHarness />);
+    await renderKeyboardSheet();
 
     await waitFor(() =>
       expect(drawerMock.rootProps?.activeSnapPoint).toBe("520px"),
