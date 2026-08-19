@@ -45,7 +45,7 @@ export type SettingsViewProps = {
   onToast: (message: string) => void;
   analyticsSync: Pick<
     AnalyticsSyncController,
-    'status' | 'lastSyncedAt' | 'isResyncing' | 'resync'
+    'history' | 'status' | 'isResyncing' | 'resync'
   >;
 };
 
@@ -697,6 +697,17 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
               </span>
             }
           />
+          <div className="ml-[56px] h-px bg-border/70" />
+          <AnalyticsSyncSetting
+            transactionCount={analyticsSync.history.records.length}
+            historyCapturedAt={analyticsSync.history.meta?.capturedAt}
+            isHistoryLoading={analyticsSync.history.isLoading}
+            isHistoryDownloading={analyticsSync.history.isDownloading}
+            isHistoryRefreshing={analyticsSync.history.isRefreshing}
+            status={analyticsSync.status}
+            isResyncing={analyticsSync.isResyncing}
+            onResync={analyticsSync.resync}
+          />
           {hasSettingsDiagnostics ? (
             <>
               <div className="ml-[56px] h-px bg-border/70" />
@@ -772,13 +783,6 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
                 },
               }).catch(() => onToast('Base currency saved locally; sync pending'));
             }}
-          />
-          <div className="ml-[56px] h-px bg-border/70" />
-          <AnalyticsSyncSetting
-            status={analyticsSync.status}
-            lastSyncedAt={analyticsSync.lastSyncedAt}
-            isResyncing={analyticsSync.isResyncing}
-            onResync={analyticsSync.resync}
           />
           <div className="ml-[56px] h-px bg-border/70" />
           <AnalyticsBigSpendingThresholdSetting
