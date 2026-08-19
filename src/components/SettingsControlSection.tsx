@@ -60,14 +60,9 @@ export function SettingsControlSection({
         />
       </button>
       {expanded ? (
-        <div
-          id={contentId}
-          role="region"
-          aria-label={title}
-          className="border-t border-border/70"
-        >
+        <section id={contentId} aria-label={title} className="border-t border-border/70">
           {children}
-        </div>
+        </section>
       ) : null}
     </div>
   );
