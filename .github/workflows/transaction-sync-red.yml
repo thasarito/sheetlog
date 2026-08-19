@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - verify/transaction-sync-settings
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
