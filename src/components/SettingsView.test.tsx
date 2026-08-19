@@ -190,7 +190,7 @@ describe('SettingsView', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
-  it('keeps settings sync diagnostics and manual refresh behavior', async () => {
+  it('keeps settings sync diagnostics and owns transaction history resync', async () => {
     const user = userEvent.setup();
     renderView();
 
@@ -200,8 +200,15 @@ describe('SettingsView', () => {
     await user.click(syncButton);
     expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
 
-    expect(screen.getByText('Synced · 12:34 PM')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Resync analytics' }));
+    const transactionHistory = screen.getByText('Transaction history');
+    expect(syncButton.parentElement).toContainElement(transactionHistory);
+    expect(
+      screen.getByText('Base currency').parentElement?.parentElement,
+    ).not.toContainElement(transactionHistory);
+    expect(screen.getByText('0 transactions · Not downloaded')).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Resync transaction history' }),
+    );
     expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
   });
 
