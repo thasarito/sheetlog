@@ -1,4 +1,4 @@
-name: Implement transaction sync relocation
+name: Diagnose category sheet baseline
 
 on:
   pull_request:
@@ -6,23 +6,18 @@ on:
       - main
 
 concurrency:
-  group: transaction-sync-settings-implementation
+  group: transaction-sync-settings-baseline
   cancel-in-progress: true
 
-permissions:
-  contents: write
-
 jobs:
-  implement:
+  baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
-      - name: Check out feature branch
+      - name: Check out untouched main
         uses: actions/checkout@v4
         with:
-          ref: refactor/transaction-sync-settings
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -33,335 +28,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Implement approved relocation
-        run: |
-          python <<'PY'
-          from pathlib import Path
-          import textwrap
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(
-                      f"Expected one match in {path}, found {count}: {old[:120]!r}"
-                  )
-              file.write_text(text.replace(old, new, 1))
-
-          def remove_lines(path: str, lines: list[str]) -> None:
-              file = Path(path)
-              text = file.read_text()
-              for line in lines:
-                  if text.count(line) != 1:
-                      raise SystemExit(
-                          f"Expected one line in {path}, found {text.count(line)}: {line!r}"
-                      )
-                  text = text.replace(line, '', 1)
-              file.write_text(text)
-
-          Path('src/components/AnalyticsSyncSetting.tsx').write_text(
-              textwrap.dedent(
-                  '''\
-                  import { format } from 'date-fns';
-                  import { RefreshCw } from 'lucide-react';
-                  import { tryParseDate } from '../lib/date-utils';
-                  import type { AnalyticsSyncStatus } from './TransactionFlow/useAnalyticsSync';
-
-                  type AnalyticsSyncSettingProps = {
-                    count: number;
-                    capturedAt?: string;
-                    status: AnalyticsSyncStatus;
-                    isRefreshing: boolean;
-                    isDownloading: boolean;
-                    hasLocalHistory: boolean;
-                    isResyncing: boolean;
-                    onResync: () => void;
-                  };
-
-                  function transactionCountLabel(count: number): string {
-                    return `${count} ${count === 1 ? 'transaction' : 'transactions'}`;
-                  }
-
-                  function lastSavedLabel(capturedAt?: string): string | null {
-                    if (!capturedAt) return null;
-                    const timestamp = tryParseDate(capturedAt);
-                    return timestamp
-                      ? `Last saved ${format(timestamp, 'MMM d, HH:mm')}`
-                      : null;
-                  }
-
-                  function statusLabel({
-                    capturedAt,
-                    status,
-                    isRefreshing,
-                    isDownloading,
-                    hasLocalHistory,
-                    isResyncing,
-                  }: Omit<AnalyticsSyncSettingProps, 'count' | 'onResync'>): string {
-                    const saved = lastSavedLabel(capturedAt);
-                    if (isDownloading) return 'Downloading…';
-                    if (isResyncing || isRefreshing || status === 'syncing') return 'Updating…';
-                    if (status === 'offline') {
-                      return saved ? `Offline · ${saved}` : 'Offline · Not downloaded';
-                    }
-                    if (!hasLocalHistory || !saved) return 'Not downloaded';
-                    return saved;
-                  }
-
-                  export function AnalyticsSyncSetting({
-                    count,
-                    capturedAt,
-                    status,
-                    isRefreshing,
-                    isDownloading,
-                    hasLocalHistory,
-                    isResyncing,
-                    onResync,
-                  }: AnalyticsSyncSettingProps) {
-                    const busy =
-                      isResyncing || isRefreshing || isDownloading || status === 'syncing';
-
-                    return (
-                      <div
-                        data-testid="transaction-history-sync-setting"
-                        className="flex min-h-16 items-center gap-3 px-4 py-3"
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[#5856D6] text-white">
-                          <RefreshCw
-                            className={`h-4 w-4 ${busy ? 'animate-spin motion-reduce:animate-none' : ''}`}
-                            aria-hidden="true"
-                          />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[17px] text-foreground">Transaction history</p>
-                          <p className="truncate text-[13px] text-muted-foreground">
-                            {transactionCountLabel(count)}
-                          </p>
-                          <p
-                            className="truncate text-[13px] text-muted-foreground"
-                            aria-live="polite"
-                          >
-                            {statusLabel({
-                              capturedAt,
-                              status,
-                              isRefreshing,
-                              isDownloading,
-                              hasLocalHistory,
-                              isResyncing,
-                            })}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={onResync}
-                          disabled={busy || status === 'offline'}
-                          aria-label="Resync transaction history"
-                          aria-busy={busy}
-                          className="min-h-11 rounded-[10px] border border-border bg-surface px-3 text-[13px] font-semibold text-primary active:bg-surface-2 disabled:opacity-50"
-                        >
-                          Resync
-                        </button>
-                      </div>
-                    );
-                  }
-                  '''
-              )
-          )
-
-          settings_path = Path('src/components/SettingsView.tsx')
-          settings = settings_path.read_text()
-          old_pick = "    'status' | 'lastSyncedAt' | 'isResyncing' | 'resync'\n"
-          new_pick = (
-              "    'status' | 'isResyncing' | 'resync' | 'records' | "
-              "'hasLocalHistory' | 'history'\n"
-          )
-          if settings.count(old_pick) != 1:
-              raise SystemExit('SettingsView analyticsSync pick did not match uniquely')
-          settings = settings.replace(old_pick, new_pick, 1)
-
-          sync_marker = '            title="Sync Settings"'
-          if settings.count(sync_marker) != 1:
-              raise SystemExit('Sync Settings row marker did not match uniquely')
-          sync_marker_index = settings.index(sync_marker)
-          sync_row_end = settings.index('\n          />', sync_marker_index) + len('\n          />')
-          history_setting = textwrap.dedent(
-              '''\
-
-                        <div className="ml-[56px] h-px bg-border/70" />
-                        <AnalyticsSyncSetting
-                          count={analyticsSync.records.length}
-                          capturedAt={analyticsSync.history.meta?.capturedAt}
-                          status={analyticsSync.status}
-                          isRefreshing={analyticsSync.history.isRefreshing}
-                          isDownloading={analyticsSync.history.isDownloading}
-                          hasLocalHistory={analyticsSync.hasLocalHistory}
-                          isResyncing={analyticsSync.isResyncing}
-                          onResync={analyticsSync.resync}
-                        />'''
-          )
-          settings = settings[:sync_row_end] + history_setting + settings[sync_row_end:]
-
-          analytics_marker = '            lastSyncedAt={analyticsSync.lastSyncedAt}'
-          if settings.count(analytics_marker) != 1:
-              raise SystemExit('Legacy Analytics sync marker did not match uniquely')
-          analytics_marker_index = settings.index(analytics_marker)
-          analytics_start = settings.rfind(
-              '          <AnalyticsSyncSetting\n', 0, analytics_marker_index
-          )
-          analytics_component_end = (
-              settings.index('\n          />', analytics_marker_index) + len('\n          />')
-          )
-          following_divider = '\n          <div className="ml-[56px] h-px bg-border/70" />'
-          divider_start = settings.index(following_divider, analytics_component_end)
-          divider_end = divider_start + len(following_divider)
-          settings = settings[:analytics_start] + settings[divider_end:]
-          settings_path.write_text(settings)
-
-          replace_once(
-              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
-              'import { RefreshCw, Search, X } from "lucide-react";',
-              'import { Search, X } from "lucide-react";',
-          )
-          remove_lines(
-              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
-              [
-                  '  countLabel: string;\n',
-                  '  statusLabel: string;\n',
-                  '  canRefresh: boolean;\n',
-                  '  isRefreshing: boolean;\n',
-                  '  onRefresh: () => void;\n',
-                  '  countLabel,\n',
-                  '  statusLabel,\n',
-                  '  canRefresh,\n',
-                  '  isRefreshing,\n',
-                  '  onRefresh,\n',
-              ],
-          )
-          dock_path = Path('src/components/TransactionFlow/TransactionHistoryDock.tsx')
-          dock = dock_path.read_text()
-          metadata_marker = '        data-testid="transaction-history-metadata"'
-          if dock.count(metadata_marker) != 1:
-              raise SystemExit('Transaction dock metadata marker did not match uniquely')
-          metadata_marker_index = dock.index(metadata_marker)
-          metadata_start = dock.rfind('      <div\n', 0, metadata_marker_index)
-          outer_close = dock.index('\n    </div>\n  );', metadata_marker_index)
-          dock_path.write_text(dock[:metadata_start] + dock[outer_close:])
-
-          replace_once(
-              'src/components/TransactionFlow/CategoryStepSheetAccessory.tsx',
-              'export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 104;',
-              'export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 60;',
-          )
-
-          remove_lines(
-              'src/components/TransactionFlow/TransactionHistoryView.tsx',
-              [
-                  'import { format } from "date-fns";\n',
-                  'import { parseDate } from "../../lib/date-utils";\n',
-                  '  const isRefreshing = history.isRefreshing || baseAmounts.isRefreshing;\n',
-                  '          countLabel={countLabel}\n',
-                  '          statusLabel={statusLabel}\n',
-                  '          canRefresh={history.isOnline && !isRefreshing}\n',
-                  '          isRefreshing={isRefreshing}\n',
-                  '          onRefresh={refresh}\n',
-              ],
-          )
-          history_path = Path('src/components/TransactionFlow/TransactionHistoryView.tsx')
-          history = history_path.read_text()
-          count_start = history.index('  const countLabel =')
-          count_end = history.index('  const hasIncompleteLocalRows', count_start)
-          history = history[:count_start] + history[count_end:]
-          status_start = history.index('  const statusLabel =')
-          status_end = history.index('\n\n  return (', status_start)
-          history = history[:status_start] + history[status_end:]
-          history_path.write_text(history)
-
-          test_path = Path('src/components/TransactionFlow/TransactionHistoryView.test.tsx')
-          test_text = test_path.read_text()
-          old_test_name = (
-              '  it("converts the complete record set independently of search and '
-              'refreshes rates", async () => {'
-          )
-          new_test_name = (
-              '  it("converts the complete record set independently of search", async () => {'
-          )
-          if test_text.count(old_test_name) != 1:
-              raise SystemExit('Expected one stale conversion test name')
-          test_text = test_text.replace(old_test_name, new_test_name, 1)
-
-          old_count_assertion = (
-              '    expect(await screen.findByText("1 transaction")).toBeInTheDocument();'
-          )
-          new_count_assertion = (
-              '    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();'
-          )
-          if test_text.count(old_count_assertion) != 1:
-              raise SystemExit('Expected one stale transaction count assertion')
-          test_text = test_text.replace(
-              old_count_assertion, new_count_assertion, 1
-          )
-
-          test_scope_start = test_text.index(new_test_name)
-          refresh_start_marker = (
-              '    await user.click(\n'
-              '      screen.getByRole("button", { name: "Refresh transaction history" }),\n'
-              '    );\n'
-          )
-          refresh_start = test_text.index(refresh_start_marker, test_scope_start)
-          refresh_end_marker = (
-              '    expect(mocks.rateRefetch).toHaveBeenCalledTimes(1);\n'
-          )
-          refresh_end = (
-              test_text.index(refresh_end_marker, refresh_start)
-              + len(refresh_end_marker)
-          )
-          test_path.write_text(
-              test_text[:refresh_start] + test_text[refresh_end:]
-          )
-          PY
-
-      - name: Format changed files
-        run: |
-          npx biome check --write \
-            src/components/AnalyticsSyncSetting.tsx \
-            src/components/SettingsView.tsx \
-            src/components/TransactionFlow/TransactionHistoryDock.tsx \
-            src/components/TransactionFlow/TransactionHistoryView.tsx \
-            src/components/TransactionFlow/TransactionHistoryView.test.tsx \
-            src/components/TransactionFlow/CategoryStepSheetAccessory.tsx
-
-      - name: Run focused tests
+      - name: Run category sheet files together on main
+        continue-on-error: true
         run: |
           npm test -- \
-            src/components/AnalyticsSyncSetting.test.tsx \
-            src/components/SettingsView.test.tsx \
-            src/components/TransactionFlow/TransactionHistoryView.test.tsx
+            src/components/TransactionFlow/CategoryStepSheet.test.tsx \
+            src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx
 
-      - name: Run full test suite
-        run: npm test
+      - name: Run keyboard file alone on main
+        continue-on-error: true
+        run: npm test -- src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx
 
-      - name: Run lint
-        run: npm run lint
-
-      - name: Run typecheck
-        run: npx tsc --noEmit
-
-      - name: Run production build
-        run: npm run build
-
-      - name: Commit and push implementation
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            src/components/AnalyticsSyncSetting.tsx \
-            src/components/SettingsView.tsx \
-            src/components/TransactionFlow/TransactionHistoryDock.tsx \
-            src/components/TransactionFlow/TransactionHistoryView.tsx \
-            src/components/TransactionFlow/TransactionHistoryView.test.tsx \
-            src/components/TransactionFlow/CategoryStepSheetAccessory.tsx
-          git commit -m "refactor: move transaction sync details to settings"
-          git fetch origin refactor/transaction-sync-settings
-          git rebase origin/refactor/transaction-sync-settings
-          git push origin HEAD:refactor/transaction-sync-settings
+      - name: Run category sheet file alone on main
+        run: npm test -- src/components/TransactionFlow/CategoryStepSheet.test.tsx
