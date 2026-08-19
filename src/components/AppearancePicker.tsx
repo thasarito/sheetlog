@@ -9,7 +9,13 @@ import {
 } from "./ui/drawer";
 import { DynamicIcon } from "./DynamicIcon";
 import { AdvancedColorPicker } from "./AdvancedColorPicker";
-import { ICON_PICKER_LIST, ICON_MAP, COLOR_PALETTE, type IconName } from "../lib/icons";
+import {
+  COLOR_PALETTE,
+  DEFAULT_ACCOUNT_COLOR,
+  ICON_MAP,
+  ICON_PICKER_LIST,
+  type IconName,
+} from "../lib/icons";
 
 type AppearancePickerProps = {
   open: boolean;
@@ -29,7 +35,7 @@ export function AppearancePicker({
   initialColor,
   onSave,
   defaultIcon = "Wallet",
-  defaultColor = "#6366f1",
+  defaultColor = DEFAULT_ACCOUNT_COLOR,
   title = "Choose Appearance",
 }: AppearancePickerProps) {
   // Draft state (changes as user selects, not committed until Save)
