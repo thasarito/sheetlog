@@ -9,7 +9,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -45,25 +45,7 @@ jobs:
           src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
           e2e/home-carousel-native-scroll.spec.ts
       - name: Full unit suite
-        id: full-tests
-        run: |
-          set +e
-          npm test -- --reporter=verbose 2>&1 | tee /tmp/full-vitest.log
-          status=${PIPESTATUS[0]}
-          echo "status=${status}" >> "$GITHUB_OUTPUT"
-          tail -n 400 /tmp/full-vitest.log > .github/native-dashboard-full-test.log
-          exit 0
-      - name: Publish full-suite failure log
-        if: steps.full-tests.outputs.status != '0' && github.event_name == 'push'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/native-dashboard-full-test.log
-          git commit -m "ci: capture native pager full-test failure"
-          git push origin HEAD:refactor/native-dashboard-scroll-snap
-      - name: Stop after full-suite failure
-        if: steps.full-tests.outputs.status != '0'
-        run: exit 1
+        run: npm test
       - name: Production build
         run: npm run build
       - name: Install Chromium
