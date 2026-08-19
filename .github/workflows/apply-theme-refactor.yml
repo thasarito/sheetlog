@@ -28,8 +28,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cat .theme-bundle/chunk-* | base64 -d > /tmp/theme-refactor-bundle.zip
+          echo "78df6277d21f94ee29764805539b6f66c63825dd3bba212f715d6e9b6871d3a9  /tmp/theme-refactor-bundle.zip" | sha256sum -c -
           mkdir -p /tmp/sheetlog-theme-bundle
-          unzip -q .theme-refactor-bundle.zip -d /tmp/sheetlog-theme-bundle
+          unzip -q /tmp/theme-refactor-bundle.zip -d /tmp/sheetlog-theme-bundle
           cd /tmp/sheetlog-theme-bundle/sheetlog-theme-refactor-bundle
           sha256sum -c SHA256SUMS
 
