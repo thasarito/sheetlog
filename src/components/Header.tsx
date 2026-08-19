@@ -26,7 +26,7 @@ export type DashboardHeaderMotionHandle = {
     direction: DashboardTitleDirection,
     progress: number,
   ) => void;
-  syncHorizontalSelection?: (title: DashboardTitle) => void;
+  syncHorizontalSelection: (title: DashboardTitle) => void;
   setVerticalProgress: (progress: number) => void;
 };
 
