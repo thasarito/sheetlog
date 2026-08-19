@@ -23,21 +23,17 @@ jobs:
         with:
           ref: refactor/native-dashboard-scroll-snap
           fetch-depth: 0
-      - name: Remove the obsolete Embla test mock once
+      - name: Remove the obsolete direction-progress test fixture once
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path('src/components/TransactionFlow/HomeDashboardCarousel.test.tsx')
           text = path.read_text()
-          marker = 'const legacyEmbla = vi.hoisted'
-          if marker not in text:
+          obsolete = '    setHorizontalMotion: vi.fn(),\n'
+          if obsolete not in text:
               raise SystemExit(0)
-          start = text.index(marker)
-          end = text.index('const transactionViewCalls')
-          text = text[:start] + text[end:]
-          text = text.replace('    legacyEmbla.options = null;\n', '')
-          path.write_text(text)
+          path.write_text(text.replace(obsolete, '', 1))
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -45,7 +41,7 @@ jobs:
             exit 0
           fi
           git add src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
-          git commit -m "test: remove obsolete Embla harness"
+          git commit -m "test: remove direction-progress fixture"
           git push origin HEAD:refactor/native-dashboard-scroll-snap
 
   focused:
@@ -68,3 +64,4 @@ jobs:
           src/components/Header.test.tsx
           src/components/TransactionFlow/HomeDashboardCarousel.tsx
           src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+          e2e/home-carousel-native-scroll.spec.ts
