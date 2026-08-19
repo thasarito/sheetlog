@@ -1,12 +1,6 @@
 import { format } from 'date-fns';
 import { BadgeDollarSign, X } from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
 import { cn } from '../../lib/utils';
@@ -24,6 +18,7 @@ import {
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsCategories } from './AnalyticsCategories';
 import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
+import { AnalyticsNumber } from './AnalyticsNumber';
 import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
 import { AnalyticsRangeDrawer } from './AnalyticsRangeDrawer';
 import { AnalyticsRangeToggle } from './AnalyticsRangeToggle';
@@ -199,6 +194,15 @@ export function AnalyticsView({
         ? `No big spending mode on; ${excludedCount} ${excludedCount === 1 ? 'expense' : 'expenses'} at or above ${thresholdLabel} excluded`
         : `Turn on no big spending mode; exclude expenses at or above ${thresholdLabel}`;
 
+  const periodPicker =
+    range !== 'custom' ? (
+      <AnalyticsPeriodPicker
+        options={periodOptions}
+        value={periodOffset}
+        onChange={handlePeriodChange}
+      />
+    ) : null;
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-transparent">
       <header className="sr-only">
@@ -220,66 +224,58 @@ export function AnalyticsView({
         data-dashboard-scroll="true"
         className="min-h-0 flex-1 overflow-y-auto px-4"
         style={{
-          paddingTop:
-            'calc(var(--dashboard-header-height, 68px) + 0.75rem)',
-          paddingBottom:
-            'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
+          paddingTop: 'calc(var(--dashboard-header-height, 68px) + 0.75rem)',
+          paddingBottom: 'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
           scrollPaddingTop: 'var(--dashboard-header-height, 68px)',
-          scrollPaddingBottom:
-            'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
+          scrollPaddingBottom: 'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
         }}
       >
-          <div className="space-y-7 pb-8">
-            <div
-              data-testid="analytics-range-controls"
-              className="flex items-center justify-end gap-3"
+        <div className="space-y-7 pb-8">
+          <div
+            data-testid="analytics-range-controls"
+            className="flex items-center justify-between gap-3"
+          >
+            <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
+            <button
+              type="button"
+              aria-label={noBigSpendingLabel}
+              aria-pressed={noBigSpending}
+              onClick={onNoBigSpendingToggle}
+              className={cn(
+                'flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                noBigSpending && 'bg-primary/10 text-primary',
+              )}
             >
-              <AnalyticsRangeToggle value={range} onChange={handleRangeChange} />
+              <BadgeDollarSign className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
+
+          {(!hasCompleteHistory || !summary || !scope) ? periodPicker : null}
+
+          {!hasCompleteHistory && isOffline ? (
+            <div className="flex min-h-48 items-center text-sm text-muted-foreground">
+              Full range unavailable offline
+            </div>
+          ) : !hasCompleteHistory && isLoading ? (
+            <output aria-label="Loading detailed analytics" className="block space-y-4 pt-4">
+              <Skeleton className="h-40 w-full" />
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </output>
+          ) : !hasCompleteHistory ? (
+            <div className="flex min-h-48 items-center justify-between">
+              <span className="text-sm text-muted-foreground">Analytics unavailable</span>
               <button
                 type="button"
-                aria-label={noBigSpendingLabel}
-                aria-pressed={noBigSpending}
-                onClick={onNoBigSpendingToggle}
-                className={cn(
-                  'flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
-                  noBigSpending && 'bg-primary/10 text-primary',
-                )}
+                onClick={onRetry}
+                className="min-h-11 font-semibold text-primary"
               >
-                <BadgeDollarSign className="h-5 w-5" aria-hidden="true" />
+                Retry
               </button>
             </div>
-
-            {range !== 'custom' ? (
-              <AnalyticsPeriodPicker
-                options={periodOptions}
-                value={periodOffset}
-                onChange={handlePeriodChange}
-              />
-            ) : null}
-
-            {!hasCompleteHistory && isOffline ? (
-              <div className="flex min-h-48 items-center text-sm text-muted-foreground">
-                Full range unavailable offline
-              </div>
-            ) : !hasCompleteHistory && isLoading ? (
-              <output aria-label="Loading detailed analytics" className="block space-y-4 pt-4">
-                <Skeleton className="h-40 w-full" />
-                <Skeleton className="h-32 w-full" />
-                <Skeleton className="h-40 w-full" />
-              </output>
-            ) : !hasCompleteHistory ? (
-              <div className="flex min-h-48 items-center justify-between">
-                <span className="text-sm text-muted-foreground">Analytics unavailable</span>
-                <button
-                  type="button"
-                  onClick={onRetry}
-                  className="min-h-11 font-semibold text-primary"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : !summary || !scope ? null : (
-              <>
+          ) : !summary || !scope ? null : (
+            <>
+              <div data-testid="analytics-trend-block" className="space-y-2">
                 <section aria-label="Spending trend">
                   <AnalyticsBarChart
                     buckets={summary.buckets}
@@ -295,21 +291,30 @@ export function AnalyticsView({
                     }
                     className="h-44"
                   />
-                  {selectedBucketDetails ? (
-                    <div className="mt-2 flex justify-center">
-                      <button
-                        type="button"
-                        aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, summary.currency)}`}
-                        onClick={() => setSelectedBucket(null)}
-                        className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                      >
-                        {selectedBucketDetails.accessibleLabel} ·{' '}
-                        {formatAnalyticsAmount(selectedBucketDetails.amount, summary.currency)}
-                        <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  ) : null}
                 </section>
+
+                {periodPicker}
+
+                {selectedBucketDetails ? (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      aria-label={`Clear selected period filter, ${getAnalyticsBucketDescription(selectedBucketDetails, summary.series, summary.currency)}`}
+                      onClick={() => setSelectedBucket(null)}
+                      className="flex min-h-11 items-center rounded-full bg-surface-2 px-3 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    >
+                      {selectedBucketDetails.accessibleLabel} ·{' '}
+                      <AnalyticsNumber
+                        value={selectedBucketDetails.amount}
+                        presentation="currency"
+                        currency={summary.currency}
+                      />
+                      <X className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
               <section aria-labelledby="analytics-overview">
                 <h3
                   id="analytics-overview"
@@ -327,19 +332,31 @@ export function AnalyticsView({
                   <div>
                     <p className="text-[10px] text-muted-foreground">Expenses</p>
                     <p className="text-base font-semibold tabular-nums">
-                      {formatAnalyticsAmount(scope.expenseTotal, summary.currency)}
+                      <AnalyticsNumber
+                        value={scope.expenseTotal}
+                        presentation="currency"
+                        currency={summary.currency}
+                      />
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground">Income</p>
                     <p className="text-base font-semibold tabular-nums text-primary">
-                      {formatAnalyticsAmount(scope.incomeTotal, summary.currency)}
+                      <AnalyticsNumber
+                        value={scope.incomeTotal}
+                        presentation="currency"
+                        currency={summary.currency}
+                      />
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground">Net</p>
                     <p className="text-base font-semibold tabular-nums">
-                      {formatAnalyticsAmount(scope.netTotal, summary.currency)}
+                      <AnalyticsNumber
+                        value={scope.netTotal}
+                        presentation="currency"
+                        currency={summary.currency}
+                      />
                     </p>
                   </div>
                 </div>
@@ -417,13 +434,11 @@ export function AnalyticsView({
                 </p>
               ) : null}
               {!error && isOffline ? (
-                <p className="text-xs text-muted-foreground">
-                  {getOfflineFreshness(updatedAt)}
-                </p>
+                <p className="text-xs text-muted-foreground">{getOfflineFreshness(updatedAt)}</p>
               ) : null}
-              </>
-            )}
-          </div>
+            </>
+          )}
+        </div>
       </div>
       <AnalyticsRangeDrawer
         open={customRangeOpen}

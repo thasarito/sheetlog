@@ -20,6 +20,7 @@
   "dependencies": {
     "@headlessui/react": "^2.2.9",
     "@khmyznikov/pwa-install": "^0.6.1",
+    "@number-flow/react": "^0.6.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@react-spring/web": "^10.0.3",
     "@tanstack/react-form": "^0.35.0",
