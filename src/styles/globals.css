@@ -75,6 +75,53 @@ input[type="date"] {
   -webkit-tap-highlight-color: transparent;
 }
 
+[data-testid="transaction-history-dock"][data-motion="moving"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@keyframes transaction-history-dock-carousel-motion {
+  0% {
+    transform: translate3d(
+      var(--transaction-history-dock-viewport-width),
+      0,
+      0
+    );
+  }
+
+  50% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(
+      calc(-1 * var(--transaction-history-dock-viewport-width)),
+      0,
+      0
+    );
+  }
+}
+
+@supports (animation-timeline: scroll()) and
+  (timeline-scope: --home-dashboard-carousel) {
+  [data-testid="category-step-layout"] {
+    timeline-scope: --home-dashboard-carousel;
+  }
+
+  [data-testid="home-carousel-viewport"] {
+    scroll-timeline-axis: inline;
+    scroll-timeline-name: --home-dashboard-carousel;
+  }
+
+  [data-testid="transaction-history-dock"][data-scroll-linked-motion="true"] {
+    animation-duration: 1ms;
+    animation-fill-mode: both;
+    animation-name: transaction-history-dock-carousel-motion;
+    animation-timing-function: linear;
+    animation-timeline: --home-dashboard-carousel;
+  }
+}
+
 /* Wise-inspired Analytics selection motion: one restrained cue per control. */
 [role="listbox"][aria-label="Analytics period"] {
   isolation: isolate;
