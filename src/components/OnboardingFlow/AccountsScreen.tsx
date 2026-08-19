@@ -85,7 +85,7 @@ export function AccountsScreen({
                 </div>
                 <button
                   type="button"
-                  className="p-2 -mr-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors"
+                  className="p-2 -mr-1 text-muted-foreground/60 hover:text-danger hover:bg-danger/10 rounded-full transition-colors"
                   onClick={() => onRemoveAccount(account.name)}
                   aria-label={`Remove ${account.name}`}
                 >

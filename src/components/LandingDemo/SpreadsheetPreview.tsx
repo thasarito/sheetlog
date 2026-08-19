@@ -68,8 +68,8 @@ export function SpreadsheetPreview({ className, showHeader = false }: Spreadshee
       <div className="relative overflow-hidden rounded-xl border border-border bg-card">
         {/* Google Sheets header bar */}
         {showHeader && (
-          <div className="flex items-center gap-2 border-b border-border bg-[#34A853]/5 px-3 py-2">
-            <Sheet className="h-4 w-4 text-[#34A853]" />
+          <div className="flex items-center gap-2 border-b border-border bg-brand-sheets/5 px-3 py-2">
+            <Sheet className="h-4 w-4 text-brand-sheets" />
             <span className="text-xs font-medium text-foreground">SheetLog Transactions</span>
           </div>
         )}
@@ -118,14 +118,14 @@ export function SpreadsheetPreview({ className, showHeader = false }: Spreadshee
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="absolute -right-1 -top-1 flex items-center gap-1 rounded-full border border-[#34A853]/40 bg-[#34A853]/15 px-2 py-0.5"
+          className="absolute -right-1 -top-1 flex items-center gap-1 rounded-full border border-brand-sheets/40 bg-brand-sheets/15 px-2 py-0.5"
         >
           <motion.div
             animate={{ scale: [1, 1.3, 1] }}
             transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY }}
-            className="h-1.5 w-1.5 rounded-full bg-[#34A853]"
+            className="h-1.5 w-1.5 rounded-full bg-brand-sheets"
           />
-          <span className="text-[9px] font-semibold text-[#34A853]">Synced</span>
+          <span className="text-[9px] font-semibold text-brand-sheets">Synced</span>
         </motion.div>
       </div>
     </div>

@@ -106,7 +106,7 @@ export function SwipeableListItem({
           type="button"
           onClick={handleDeleteClick}
           disabled={disabled || isDeleting}
-          className="flex h-full w-20 items-center justify-center bg-danger text-white transition-opacity disabled:opacity-50"
+          className="flex h-full w-20 items-center justify-center bg-danger text-danger-foreground transition-opacity disabled:opacity-50"
           aria-label="Delete"
         >
           <Trash2 className="h-5 w-5" />

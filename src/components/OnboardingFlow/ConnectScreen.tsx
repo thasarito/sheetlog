@@ -32,14 +32,14 @@ export function ConnectScreen({
           {errorMessage ? (
             <p
               role="alert"
-              className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger"
             >
               {errorMessage}
             </p>
           ) : null}
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-3 rounded-md bg-white border border-slate-200 py-3 px-4 text-base font-medium text-slate-700 hover:bg-slate-50 transition active:scale-95 disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-3 rounded-md border border-border bg-background px-4 py-3 text-base font-medium text-foreground transition hover:bg-surface-2 active:scale-95 disabled:opacity-60"
             onClick={onConnect}
             disabled={isConnecting}
           >

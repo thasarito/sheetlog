@@ -35,10 +35,10 @@ export function CategoriesScreen({
     transfer: "",
   });
 
-  const tabs: { id: TabType; label: string; color: string }[] = [
-    { id: "expense", label: "Expense", color: "text-red-500 bg-red-50" },
-    { id: "income", label: "Income", color: "text-green-500 bg-green-50" },
-    { id: "transfer", label: "Transfer", color: "text-blue-500 bg-blue-50" },
+  const tabs: { id: TabType; label: string }[] = [
+    { id: "expense", label: "Expense" },
+    { id: "income", label: "Income" },
+    { id: "transfer", label: "Transfer" },
   ];
 
   function handleAdd(type: TabType) {
@@ -109,7 +109,7 @@ export function CategoriesScreen({
           />
           <button
             type="button"
-            className="flex items-center justify-center rounded-2xl bg-secondary px-4 font-semibold text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+            className="flex items-center justify-center rounded-2xl bg-primary px-4 font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             onClick={() => handleAdd(activeTab)}
             disabled={!newInputs[activeTab].trim()}
           >
@@ -130,17 +130,17 @@ export function CategoriesScreen({
                     "inline-flex items-center pl-3 pr-2 py-1.5 rounded-full text-sm font-medium border transition-all",
                     "bg-card border-border/50",
                     activeTab === "expense" &&
-                      "hover:border-red-200 hover:bg-red-50/50",
+                      "hover:border-danger/30 hover:bg-danger/10",
                     activeTab === "income" &&
-                      "hover:border-green-200 hover:bg-green-50/50",
+                      "hover:border-success/30 hover:bg-success/10",
                     activeTab === "transfer" &&
-                      "hover:border-blue-200 hover:bg-blue-50/50"
+                      "hover:border-info/30 hover:bg-info/10"
                   )}
                 >
                   {cat.name}
                   <button
                     type="button"
-                    className="ml-1.5 p-0.5 rounded-full text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition"
+                    className="ml-1.5 p-0.5 rounded-full text-muted-foreground/50 hover:text-danger hover:bg-danger/10 transition"
                     onClick={() => handleRemove(activeTab, cat.name)}
                   >
                     <X className="w-3.5 h-3.5" />

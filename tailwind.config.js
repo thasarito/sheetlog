@@ -1,49 +1,75 @@
 import safeArea from "tailwindcss-safe-area";
 
+const color = (name) => `hsl(var(--${name}) / <alpha-value>)`;
+
 export default {
-  darkMode: "media",
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        background: "hsl(var(--background) / <alpha-value>)",
-        foreground: "hsl(var(--foreground) / <alpha-value>)",
+        background: color("background"),
+        foreground: color("foreground"),
         surface: {
-          DEFAULT: "hsl(var(--surface) / <alpha-value>)",
-          2: "hsl(var(--surface-2) / <alpha-value>)",
-          3: "hsl(var(--surface-3) / <alpha-value>)",
+          DEFAULT: color("surface"),
+          2: color("surface-2"),
+          3: color("surface-3"),
         },
         card: {
-          DEFAULT: "hsl(var(--card) / <alpha-value>)",
-          foreground: "hsl(var(--card-foreground) / <alpha-value>)",
+          DEFAULT: color("card"),
+          foreground: color("card-foreground"),
         },
         muted: {
-          DEFAULT: "hsl(var(--muted) / <alpha-value>)",
-          foreground: "hsl(var(--muted-foreground) / <alpha-value>)",
+          DEFAULT: color("muted"),
+          foreground: color("muted-foreground"),
         },
         primary: {
-          DEFAULT: "hsl(var(--primary) / <alpha-value>)",
-          foreground: "hsl(var(--primary-foreground) / <alpha-value>)",
+          DEFAULT: color("primary"),
+          foreground: color("primary-foreground"),
         },
         accent: {
-          DEFAULT: "hsl(var(--accent) / <alpha-value>)",
-          foreground: "hsl(var(--accent-foreground) / <alpha-value>)",
+          DEFAULT: color("accent"),
+          foreground: color("accent-foreground"),
+        },
+        info: {
+          DEFAULT: color("info"),
+          foreground: color("info-foreground"),
         },
         success: {
-          DEFAULT: "hsl(var(--success) / <alpha-value>)",
-          foreground: "hsl(var(--success-foreground) / <alpha-value>)",
+          DEFAULT: color("success"),
+          foreground: color("success-foreground"),
         },
         warning: {
-          DEFAULT: "hsl(var(--warning) / <alpha-value>)",
-          foreground: "hsl(var(--warning-foreground) / <alpha-value>)",
+          DEFAULT: color("warning"),
+          foreground: color("warning-foreground"),
         },
         danger: {
-          DEFAULT: "hsl(var(--danger) / <alpha-value>)",
-          foreground: "hsl(var(--danger-foreground) / <alpha-value>)",
+          DEFAULT: color("danger"),
+          foreground: color("danger-foreground"),
         },
-        overlay: "hsl(var(--overlay) / <alpha-value>)",
-        border: "hsl(var(--border) / <alpha-value>)",
-        ring: "hsl(var(--ring) / <alpha-value>)",
+        // Compatibility aliases for existing shadcn-style utilities.
+        destructive: {
+          DEFAULT: color("danger"),
+          foreground: color("danger-foreground"),
+        },
+        secondary: {
+          DEFAULT: color("surface-2"),
+          foreground: color("foreground"),
+        },
+        chart: {
+          1: color("chart-1"),
+          2: color("chart-2"),
+          3: color("chart-3"),
+          4: color("chart-4"),
+          5: color("chart-5"),
+        },
+        brand: {
+          sheets: color("brand-google-sheets"),
+          "sheets-dark": color("brand-google-sheets-dark"),
+          "google-blue": color("brand-google-blue"),
+        },
+        overlay: color("overlay"),
+        border: color("border"),
+        ring: color("ring"),
       },
       boxShadow: {
         soft: "var(--shadow-soft)",

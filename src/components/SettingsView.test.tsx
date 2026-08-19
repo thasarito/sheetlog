@@ -146,6 +146,7 @@ vi.mock('../hooks/useQuickNotes', () => ({
 }));
 
 vi.mock('./AppearancePicker', () => ({ AppearancePicker: () => null }));
+vi.mock('./ThemeSetting', () => ({ ThemeSetting: () => null }));
 vi.mock('./QuickNotes/QuickNoteFlow', () => ({ QuickNoteFlow: () => null }));
 
 function renderView() {
