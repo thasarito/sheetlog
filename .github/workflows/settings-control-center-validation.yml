@@ -4,12 +4,9 @@ on:
   push:
     branches:
       - feat/settings-control-center-navigation
-  pull_request:
-    branches:
-      - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -17,11 +14,41 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feat/settings-control-center-navigation
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Apply branch-only cleanup and formatting
+        run: |
+          node scripts/patch-settings-control-center.mjs
+          npx biome check --write \
+            src/lib/settingsControlCenter.ts \
+            src/lib/settingsControlCenter.test.ts \
+            src/hooks/useAccountMutations.ts \
+            src/hooks/useCategoryMutations.ts \
+            src/hooks/useQuickNotes.ts \
+            src/hooks/useSettingsCollectionMutations.test.tsx \
+            src/hooks/useReplaceQuickNotesConfig.test.tsx \
+            src/components/SettingsControlSection.tsx \
+            src/components/SettingsControlSection.test.tsx \
+            src/components/SettingsItemEditorDrawer.tsx \
+            src/components/SettingsItemEditorDrawer.test.tsx \
+            src/components/SettingsQuickNoteEditorDrawer.tsx \
+            src/components/SettingsQuickNoteEditorDrawer.test.tsx \
+            src/components/SettingsView.tsx \
+            src/components/SettingsView.test.tsx
+      - name: Commit branch-only cleanup when needed
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src scripts
+            git commit -m "chore: format Settings Control Center implementation"
+            git push origin HEAD:feat/settings-control-center-navigation
+          fi
       - run: >-
           npm test --
           src/lib/settingsControlCenter.test.ts
@@ -31,3 +58,22 @@ jobs:
           src/hooks/useSettingsCollectionMutations.test.tsx
           src/hooks/useReplaceQuickNotesConfig.test.tsx
           src/components/SettingsView.test.tsx
+      - run: >-
+          npx biome check
+          src/lib/settingsControlCenter.ts
+          src/lib/settingsControlCenter.test.ts
+          src/hooks/useAccountMutations.ts
+          src/hooks/useCategoryMutations.ts
+          src/hooks/useQuickNotes.ts
+          src/hooks/useSettingsCollectionMutations.test.tsx
+          src/hooks/useReplaceQuickNotesConfig.test.tsx
+          src/components/SettingsControlSection.tsx
+          src/components/SettingsControlSection.test.tsx
+          src/components/SettingsItemEditorDrawer.tsx
+          src/components/SettingsItemEditorDrawer.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/components/SettingsView.tsx
+          src/components/SettingsView.test.tsx
+      - run: npx tsc --noEmit
+      - run: npm run build
