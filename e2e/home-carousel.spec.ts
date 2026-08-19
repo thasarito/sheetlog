@@ -228,13 +228,11 @@ test.describe("Home dashboard carousel", () => {
       settings.getByText("Transaction history", { exact: true }),
     ).toHaveCount(0);
 
-    await settings.getByRole("button", { name: /^Accounts/ }).click();
-    await settings.getByRole("button", { name: /^Categories/ }).click();
+    await settings.locator("#settings-section-accounts > button").click();
+    await settings.locator("#settings-section-categories > button").click();
 
-    const accountsRegion = settings.getByRole("region", { name: "Accounts" });
-    const categoriesRegion = settings.getByRole("region", {
-      name: "Categories",
-    });
+    const accountsRegion = settings.locator("#settings-section-accounts-content");
+    const categoriesRegion = settings.locator("#settings-section-categories-content");
     await expect(accountsRegion).toBeVisible();
     await expect(categoriesRegion).toBeVisible();
     await expect(
@@ -303,7 +301,7 @@ test.describe("Home dashboard carousel", () => {
     await expect(accountsRegion).toBeVisible();
     await expect(categoriesRegion).toBeVisible();
 
-    await settings.getByRole("button", { name: /^Data & sync/ }).click();
+    await settings.locator("#settings-section-data-sync > button").click();
     await expect(
       settings.getByText("Transaction history", { exact: true }),
     ).toBeVisible();
