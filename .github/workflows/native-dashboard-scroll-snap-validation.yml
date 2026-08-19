@@ -9,12 +9,12 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,21 +44,66 @@ jobs:
           src/components/TransactionFlow/HomeDashboardCarousel.tsx
           src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
           e2e/home-carousel-native-scroll.spec.ts
-      - name: Full unit suite with failure capture
+      - name: Compare unrelated category-sheet failures with main
+        shell: bash
         run: |
           set +e
-          set -o pipefail
-          npm test 2>&1 | tee /tmp/full-vitest.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            tail -n 800 /tmp/full-vitest.log > .github/native-dashboard-full-test.log
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .github/native-dashboard-full-test.log
-            git commit -m "ci: capture intermittent native pager test failure"
-            git push origin HEAD:refactor/native-dashboard-scroll-snap
-          fi
-          exit "$status"
+          NO_COLOR=1 npx vitest run \
+            src/components/TransactionFlow/CategoryStepSheet.test.tsx \
+            src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx \
+            --reporter=json --outputFile=/tmp/pr-category-sheet.json
+          pr_status=$?
+
+          git worktree add --detach /tmp/sheetlog-main origin/main
+          (
+            cd /tmp/sheetlog-main
+            HUSKY=0 npm ci
+            NO_COLOR=1 npx vitest run \
+              src/components/TransactionFlow/CategoryStepSheet.test.tsx \
+              src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx \
+              --reporter=json --outputFile=/tmp/main-category-sheet.json
+          )
+          main_status=$?
+          set -e
+
+          PR_STATUS="$pr_status" MAIN_STATUS="$main_status" node <<'NODE'
+          const fs = require("node:fs");
+
+          function failedTests(path) {
+            const report = JSON.parse(fs.readFileSync(path, "utf8"));
+            return (report.testResults ?? [])
+              .flatMap((file) => file.assertionResults ?? file.testResults ?? [])
+              .filter((test) => test.status === "failed" || test.state === "fail")
+              .map((test) =>
+                [...(test.ancestorTitles ?? []), test.title ?? test.name]
+                  .filter(Boolean)
+                  .join(" > "),
+              )
+              .sort();
+          }
+
+          const prFailures = failedTests("/tmp/pr-category-sheet.json");
+          const mainFailures = failedTests("/tmp/main-category-sheet.json");
+          console.log("PR category-sheet failures:", prFailures);
+          console.log("main category-sheet failures:", mainFailures);
+
+          if (JSON.stringify(prFailures) !== JSON.stringify(mainFailures)) {
+            console.error("The PR changes the category-sheet failure set.");
+            process.exit(1);
+          }
+
+          if (process.env.PR_STATUS !== process.env.MAIN_STATUS) {
+            console.error(
+              `The PR/main exit codes differ: ${process.env.PR_STATUS} vs ${process.env.MAIN_STATUS}`,
+            );
+            process.exit(1);
+          }
+          NODE
+      - name: Full unit suite excluding unchanged baseline failures
+        run: >-
+          npx vitest run
+          --exclude=src/components/TransactionFlow/CategoryStepSheet.test.tsx
+          --exclude=src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx
       - name: Production build
         run: npm run build
       - name: Install Chromium
