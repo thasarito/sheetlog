@@ -21,17 +21,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Stabilize Control Center browser selectors
+      - name: Apply Control Center browser and gesture regressions
         run: |
           node scripts/patch-settings-control-center-e2e-selectors.mjs
-          npx biome check --write e2e/home-carousel.spec.ts
-      - name: Commit selector stabilization
+          npx biome check --write \
+            e2e/home-carousel.spec.ts \
+            src/components/SettingsItemEditorDrawer.tsx \
+            src/components/SettingsItemEditorDrawer.test.tsx \
+            src/components/SettingsQuickNoteEditorDrawer.tsx \
+            src/components/SettingsQuickNoteEditorDrawer.test.tsx
+      - name: Commit gesture ownership fix
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add e2e/home-carousel.spec.ts
-            git commit -m "test: stabilize Control Center browser selectors"
+            git add \
+              e2e/home-carousel.spec.ts \
+              src/components/SettingsItemEditorDrawer.tsx \
+              src/components/SettingsItemEditorDrawer.test.tsx \
+              src/components/SettingsQuickNoteEditorDrawer.tsx \
+              src/components/SettingsQuickNoteEditorDrawer.test.tsx
+            git commit -m "fix: lock nested Settings editors to vertical touch"
             git push origin HEAD:feat/settings-control-center-navigation
           fi
       - name: Focused behavior and theme tests
