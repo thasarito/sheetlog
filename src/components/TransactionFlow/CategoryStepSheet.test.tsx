@@ -427,7 +427,7 @@ describe("CategoryStepSheet", () => {
     );
     expect(body).not.toContainElement(host);
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
-      "--transaction-history-dock-height": "104px",
+      "--transaction-history-dock-height": "60px",
     });
     expect(drawerMock.rootProps?.snapPoints).toEqual(["44px", "164px"]);
     expect(screen.getByTestId("category-sheet-content").className).not.toMatch(
