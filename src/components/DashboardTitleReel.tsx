@@ -8,25 +8,75 @@ import {
 import { DASHBOARD_SLIDES } from "./dashboardSlides";
 
 const LABELS = DASHBOARD_SLIDES;
-const REEL_OFFSETS = [-2, -1, 0, 1, 2] as const;
+const MAX_REEL_OFFSET = LABELS.length;
+const REEL_OFFSETS = Array.from(
+  { length: MAX_REEL_OFFSET * 2 + 1 },
+  (_, index) => index - MAX_REEL_OFFSET,
+);
+const FADED_OPACITY = 0.34;
+
+export type DashboardTitleDirection = -1 | 1;
 
 export type DashboardTitleReelHandle = {
-  setHorizontalMotion: (settledIndex: number, progress: number) => void;
+  resetHorizontalSelection: () => void;
+  setHorizontalMotion: (
+    direction: DashboardTitleDirection,
+    progress: number,
+  ) => void;
+  settleHorizontalMotion: (committedSteps: number) => void;
 };
 
 type ReelMotion = {
-  settledIndex: number;
+  direction: DashboardTitleDirection | 0;
   progress: number;
+};
+
+type VisibleCandidate = {
+  offset: number;
+  active: boolean;
+  distance: number;
+  fullyVisible: boolean;
+  transitionParticipant: boolean;
+  x: number;
 };
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function labelAt(settledIndex: number, offset: number): string {
-  const index =
-    (settledIndex + offset + LABELS.length * 4) % LABELS.length;
-  return LABELS[index];
+function normalizeIndex(index: number): number {
+  return ((index % LABELS.length) + LABELS.length) % LABELS.length;
+}
+
+function labelAt(selectedPosition: number, offset: number): string {
+  return LABELS[normalizeIndex(selectedPosition + offset)];
+}
+
+function shouldReplaceCandidate(
+  candidate: VisibleCandidate,
+  current: VisibleCandidate,
+): boolean {
+  const candidatePriority = [
+    candidate.active ? 0 : 1,
+    candidate.transitionParticipant ? 0 : 1,
+    candidate.fullyVisible ? 0 : 1,
+    candidate.distance,
+    Math.abs(candidate.x),
+  ];
+  const currentPriority = [
+    current.active ? 0 : 1,
+    current.transitionParticipant ? 0 : 1,
+    current.fullyVisible ? 0 : 1,
+    current.distance,
+    Math.abs(current.x),
+  ];
+
+  for (const [index, priority] of candidatePriority.entries()) {
+    const currentValue = currentPriority[index];
+    if (priority === currentValue) continue;
+    return priority < currentValue;
+  }
+  return false;
 }
 
 export const DashboardTitleReel = forwardRef<
@@ -35,95 +85,145 @@ export const DashboardTitleReel = forwardRef<
 >(function DashboardTitleReel(_props, forwardedRef) {
   const reelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef(new Map<number, HTMLSpanElement>());
-  const motionRef = useRef<ReelMotion>({ settledIndex: 0, progress: 0 });
+  const selectedPositionRef = useRef(0);
+  const motionRef = useRef<ReelMotion>({ direction: 0, progress: 0 });
 
-  const renderMotion = useCallback(
-    ({ settledIndex, progress }: ReelMotion) => {
-      const reel = reelRef.current;
-      if (!reel) return;
+  const renderMotion = useCallback(({ direction, progress }: ReelMotion) => {
+    const reel = reelRef.current;
+    if (!reel) return;
 
-      const boundedProgress = clamp(progress, -1, 1);
-      const transition = Math.abs(boundedProgress);
+    const boundedProgress = clamp(progress, 0, 1);
+    const signedProgress = direction * boundedProgress;
+    const transition = Math.abs(signedProgress);
+    const selectedPosition = selectedPositionRef.current;
 
-      for (const offset of REEL_OFFSETS) {
-        const item = itemRefs.current.get(offset);
-        if (!item) continue;
-        item.textContent = labelAt(settledIndex, offset);
-        item.dataset.label = item.textContent;
+    for (const offset of REEL_OFFSETS) {
+      const item = itemRefs.current.get(offset);
+      if (!item) continue;
+      item.textContent = labelAt(selectedPosition, offset);
+      item.dataset.label = item.textContent;
 
-        const distance = Math.min(1, Math.abs(offset - boundedProgress));
-        let opacity = 0;
-        if (boundedProgress >= 0) {
-          if (offset === 0) opacity = 1 - transition * 0.66;
-          if (offset === 1) opacity = 0.34 + transition * 0.66;
-          if (offset === 2) opacity = transition * 0.34;
-        } else {
-          if (offset === -1) opacity = 0.34 + transition * 0.66;
-          if (offset === 0) opacity = 1 - transition * 0.66;
-          if (offset === 1) opacity = (1 - transition) * 0.34;
-        }
+      const distance = Math.min(1, Math.abs(offset - signedProgress));
+      item.dataset.active = String(distance < 0.001);
+      item.style.fontWeight = String(
+        Math.round(520 + (1 - distance) * 220),
+      );
+      item.style.opacity = "0";
+      item.style.visibility = "hidden";
+      item.dataset.visible = "false";
+    }
 
-        item.dataset.active = String(distance < 0.001);
-        item.style.opacity = String(opacity);
-        item.style.visibility = opacity <= 0.001 ? "hidden" : "visible";
-        item.style.fontWeight = String(
-          Math.round(520 + (1 - distance) * 220),
-        );
+    const gap = clamp(reel.clientWidth * 0.055, 10, 18);
+    const widths = new Map<number, number>();
+    for (const offset of REEL_OFFSETS) {
+      widths.set(
+        offset,
+        itemRefs.current.get(offset)?.getBoundingClientRect().width ?? 0,
+      );
+    }
+
+    const positions = new Map<number, number>([[0, 0]]);
+    for (let offset = 1; offset <= MAX_REEL_OFFSET; offset += 1) {
+      positions.set(
+        offset,
+        (positions.get(offset - 1) ?? 0) +
+          (widths.get(offset - 1) ?? 0) +
+          gap,
+      );
+    }
+    for (let offset = -1; offset >= -MAX_REEL_OFFSET; offset -= 1) {
+      positions.set(
+        offset,
+        (positions.get(offset + 1) ?? 0) -
+          (widths.get(offset) ?? 0) -
+          gap,
+      );
+    }
+
+    const enteringOffset = signedProgress >= 0 ? 1 : -1;
+    const shift = -transition * (positions.get(enteringOffset) ?? 0);
+    const visibleByLabel = new Map<string, VisibleCandidate>();
+    const reelWidth = reel.clientWidth;
+
+    for (const offset of REEL_OFFSETS) {
+      const item = itemRefs.current.get(offset);
+      if (!item) continue;
+      const x = (positions.get(offset) ?? 0) + shift;
+      const width = widths.get(offset) ?? 0;
+      const right = x + width;
+      const distance = Math.min(1, Math.abs(offset - signedProgress));
+      const active = distance < 0.001;
+      const fullyVisible = x >= -0.5 && right <= reelWidth + 0.5;
+      const intersects = x < reelWidth && right > 0;
+      const transitionParticipant =
+        transition > 0 && (offset === 0 || offset === direction);
+      const canShow =
+        active || fullyVisible || (transitionParticipant && intersects);
+
+      item.style.transform = `translate3d(${x.toFixed(2)}px, -50%, 0)`;
+      if (!canShow) continue;
+
+      const candidate: VisibleCandidate = {
+        offset,
+        active,
+        distance,
+        fullyVisible,
+        transitionParticipant,
+        x,
+      };
+      const label = item.dataset.label ?? item.textContent ?? "";
+      const current = visibleByLabel.get(label);
+      if (!current || shouldReplaceCandidate(candidate, current)) {
+        visibleByLabel.set(label, candidate);
       }
+    }
 
-      const gap = clamp(reel.clientWidth * 0.055, 10, 18);
-      const widths = new Map<number, number>();
-      for (const offset of REEL_OFFSETS) {
-        widths.set(
-          offset,
-          itemRefs.current.get(offset)?.getBoundingClientRect().width ?? 0,
-        );
-      }
+    const visibleOffsets = new Set(
+      Array.from(visibleByLabel.values(), ({ offset }) => offset),
+    );
+    for (const offset of REEL_OFFSETS) {
+      const item = itemRefs.current.get(offset);
+      if (!item || !visibleOffsets.has(offset)) continue;
+      const distance = Math.min(1, Math.abs(offset - signedProgress));
+      item.style.opacity = String(1 - distance * (1 - FADED_OPACITY));
+      item.style.visibility = "visible";
+      item.dataset.visible = "true";
+    }
 
-      const positions = new Map<number, number>([[0, 0]]);
-      for (let offset = 1; offset <= 2; offset += 1) {
-        positions.set(
-          offset,
-          (positions.get(offset - 1) ?? 0) +
-            (widths.get(offset - 1) ?? 0) +
-            gap,
-        );
-      }
-      for (let offset = -1; offset >= -2; offset -= 1) {
-        positions.set(
-          offset,
-          (positions.get(offset + 1) ?? 0) -
-            (widths.get(offset) ?? 0) -
-            gap,
-        );
-      }
-
-      const enteringOffset = boundedProgress >= 0 ? 1 : -1;
-      const shift = -transition * (positions.get(enteringOffset) ?? 0);
-      for (const offset of REEL_OFFSETS) {
-        const item = itemRefs.current.get(offset);
-        if (!item) continue;
-        const x = (positions.get(offset) ?? 0) + shift;
-        item.style.transform = `translate3d(${x.toFixed(2)}px, -50%, 0)`;
-      }
-
-      reel.dataset.gap = gap.toFixed(2);
-      reel.dataset.progress = boundedProgress.toFixed(3);
-      reel.dataset.direction =
-        boundedProgress > 0.001
-          ? "forward"
-          : boundedProgress < -0.001
-            ? "backward"
-            : "settled";
-    },
-    [],
-  );
+    reel.dataset.gap = gap.toFixed(2);
+    reel.dataset.progress = signedProgress.toFixed(3);
+    reel.dataset.selectedLabel = labelAt(selectedPosition, 0);
+    reel.dataset.visibleCount = String(visibleOffsets.size);
+    reel.dataset.direction =
+      signedProgress > 0.001
+        ? "forward"
+        : signedProgress < -0.001
+          ? "backward"
+          : "settled";
+  }, []);
 
   useImperativeHandle(
     forwardedRef,
     () => ({
-      setHorizontalMotion(settledIndex, progress) {
-        const motion = { settledIndex, progress };
+      resetHorizontalSelection() {
+        selectedPositionRef.current = 0;
+        const motion: ReelMotion = { direction: 0, progress: 0 };
+        motionRef.current = motion;
+        renderMotion(motion);
+      },
+      setHorizontalMotion(direction, progress) {
+        const motion = { direction, progress };
+        motionRef.current = motion;
+        renderMotion(motion);
+      },
+      settleHorizontalMotion(committedSteps) {
+        const steps = Number.isFinite(committedSteps)
+          ? Math.trunc(committedSteps)
+          : 0;
+        selectedPositionRef.current = normalizeIndex(
+          selectedPositionRef.current + steps,
+        );
+        const motion: ReelMotion = { direction: 0, progress: 0 };
         motionRef.current = motion;
         renderMotion(motion);
       },
@@ -147,6 +247,8 @@ export const DashboardTitleReel = forwardRef<
       data-direction="settled"
       data-gap="10.00"
       data-progress="0.000"
+      data-selected-label={LABELS[0]}
+      data-visible-count="2"
       aria-hidden="true"
       className="pointer-events-none absolute inset-y-0 left-3 right-3 min-w-0 select-none overflow-hidden"
     >
@@ -161,11 +263,12 @@ export const DashboardTitleReel = forwardRef<
           data-offset={offset}
           data-label={labelAt(0, offset)}
           data-active={String(offset === 0)}
+          data-visible={String(offset === 0 || offset === 1)}
           aria-hidden="true"
           className="pointer-events-none absolute left-0 top-1/2 whitespace-nowrap text-[clamp(18px,6vw,27px)] leading-none tracking-[-0.045em] text-foreground [will-change:transform,opacity]"
           style={{
             fontWeight: offset === 0 ? 740 : 520,
-            opacity: offset === 0 ? 1 : offset === 1 ? 0.34 : 0,
+            opacity: offset === 0 ? 1 : offset === 1 ? FADED_OPACITY : 0,
             visibility:
               offset === 0 || offset === 1 ? "visible" : "hidden",
           }}
