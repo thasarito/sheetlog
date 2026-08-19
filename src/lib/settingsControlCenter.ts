@@ -79,8 +79,8 @@ export function renameQuickNotesAccountReferences(
     Object.entries(config).map(([key, notes]) => [
       key,
       notes.map((note) => {
-        const account = note.account === previousName ? nextName : note.account;
-        const forValue = note.forValue === previousName ? nextName : note.forValue;
+        const account = note.account === previousName ? nextName || undefined : note.account;
+        const forValue = note.forValue === previousName ? nextName || undefined : note.forValue;
         if (account === note.account && forValue === note.forValue) return note;
         return { ...note, account, forValue };
       }),

@@ -1,7 +1,6 @@
 import { Reorder, useDragControls } from 'framer-motion';
 import {
   AlertCircle,
-  BarChart3,
   Cloud,
   Database,
   GripVertical,
@@ -37,8 +36,6 @@ import {
 } from '../lib/settingsControlCenter';
 import { SETTINGS_SECTIONS, type SettingsSection } from '../lib/settingsSync';
 import type {
-  AccountItem,
-  CategoryItem,
   QuickNote,
   QuickNotesConfig,
   TransactionType,
@@ -407,7 +404,7 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
     Boolean(globalSettingsError) || hasSettingsSectionErrors || settingsConflicts.length > 0;
 
   const historyHasError = Boolean(analyticsSync.history.error);
-  const hasAttention = hasSettingsDiagnostics || historyHasError || analyticsSync.status === 'error';
+  const hasAttention = hasSettingsDiagnostics || historyHasError || analyticsSync.status === 'incomplete';
   const hasPendingWork =
     isSaving ||
     isSettingsSyncBusy ||
@@ -461,19 +458,16 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
 
   const toggleSection = useCallback(
     (id: ControlSectionId) => {
-      let opening = false;
+      const opening = !expandedSections.has(id);
       setExpandedSections((current) => {
         const next = new Set(current);
         if (next.has(id)) next.delete(id);
-        else {
-          next.add(id);
-          opening = true;
-        }
+        else next.add(id);
         return next;
       });
       if (opening) positionSection(id);
     },
-    [positionSection],
+    [expandedSections, positionSection],
   );
 
   const toggleQuickNotesTarget = (key: string) => {
