@@ -1,0 +1,67 @@
+name: Apply centralized theme refactor
+
+on:
+  push:
+    branches:
+      - refactor/centralized-theme-system
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Verify and unpack bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sheetlog-theme-bundle
+          unzip -q .theme-refactor-bundle.zip -d /tmp/sheetlog-theme-bundle
+          cd /tmp/sheetlog-theme-bundle/sheetlog-theme-refactor-bundle
+          sha256sum -c SHA256SUMS
+
+      - name: Apply theme refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          node /tmp/sheetlog-theme-bundle/sheetlog-theme-refactor-bundle/apply-theme-refactor.mjs --force "$GITHUB_WORKSPACE"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html tailwind.config.js vite.config.ts docs src
+          git commit -m "Refactor app theming into centralized theme system"
+          git push origin HEAD:refactor/centralized-theme-system
