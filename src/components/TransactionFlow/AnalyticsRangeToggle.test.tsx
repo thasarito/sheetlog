@@ -19,4 +19,30 @@ describe('AnalyticsRangeToggle', () => {
     await user.click(screen.getByRole('button', { name: 'Custom date range' }));
     expect(onChange).toHaveBeenCalledWith('custom', expect.any(HTMLButtonElement));
   });
+
+  it('moves one shared indicator to the controlled range', () => {
+    const { rerender } = render(
+      <AnalyticsRangeToggle value="week" onChange={vi.fn()} />,
+    );
+
+    expect(screen.getAllByTestId('analytics-range-indicator')).toHaveLength(1);
+    expect(screen.getByTestId('analytics-range-indicator')).toHaveAttribute(
+      'data-analytics-range',
+      'week',
+    );
+    expect(screen.getByRole('button', { name: 'Week' })).toContainElement(
+      screen.getByTestId('analytics-range-indicator'),
+    );
+
+    rerender(<AnalyticsRangeToggle value="quarter" onChange={vi.fn()} />);
+
+    expect(screen.getAllByTestId('analytics-range-indicator')).toHaveLength(1);
+    expect(screen.getByTestId('analytics-range-indicator')).toHaveAttribute(
+      'data-analytics-range',
+      'quarter',
+    );
+    expect(screen.getByRole('button', { name: 'Quarter' })).toContainElement(
+      screen.getByTestId('analytics-range-indicator'),
+    );
+  });
 });
