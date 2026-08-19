@@ -12,11 +12,11 @@ type AnalyticsNumberProps = {
 );
 
 const TRANSFORM_TIMING: EffectTiming = {
-  duration: 350,
-  easing: 'ease-out',
+  duration: 260,
+  easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
 };
 const OPACITY_TIMING: EffectTiming = {
-  duration: 180,
+  duration: 140,
   easing: 'ease-out',
 };
 
