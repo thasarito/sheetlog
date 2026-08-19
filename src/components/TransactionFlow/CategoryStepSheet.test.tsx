@@ -365,7 +365,7 @@ describe("CategoryStepSheet", () => {
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("700px");
   });
 
-  it("reserves the bottom safe area at both snap points", async () => {
+  it("lets the expanded entry consume the bottom safe area", async () => {
     renderSheetWithMeasurements({
       contentHeight: 400,
       layoutHeight: 700,
@@ -376,9 +376,17 @@ describe("CategoryStepSheet", () => {
     const launcher = screen.getByTestId("category-step-launcher");
     const entryRegion = screen.getByTestId("entry").parentElement;
     const safeArea = screen.getByTestId("category-step-safe-area");
-    expect(drawerMock.rootProps?.snapPoints).toEqual(["88px", "424px"]);
+    expect(drawerMock.rootProps?.snapPoints).toEqual(["88px", "400px"]);
+    expect(screen.getByTestId("category-step-sheet-body")).toHaveClass(
+      "relative",
+    );
     expect(entryRegion).toHaveClass("order-2");
-    expect(safeArea).toHaveClass("order-3");
+    expect(safeArea).toHaveClass(
+      "absolute",
+      "inset-x-0",
+      "bottom-0",
+      "invisible",
+    );
 
     await userEvent
       .setup()
@@ -389,6 +397,7 @@ describe("CategoryStepSheet", () => {
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("88px");
     expect(launcher).toHaveClass("order-1");
     expect(safeArea).toHaveClass("order-2");
+    expect(safeArea).not.toHaveClass("absolute", "invisible");
     expect(entryRegion).toHaveClass("order-3");
   });
 
