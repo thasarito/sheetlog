@@ -542,6 +542,17 @@ describe("HomeDashboardCarousel", () => {
     fireEvent.keyDown(viewport, { key: "ArrowLeft" });
     expect(scrollToMock).not.toHaveBeenCalled();
 
+    viewport.scrollLeft = viewportWidth;
+    fireEvent.scroll(viewport);
+
+    expect(scrollToMock).toHaveBeenCalledWith({ left: viewportWidth * 2, behavior: "auto" });
+    expect(viewport.scrollLeft).toBe(viewportWidth * 2);
+    expect(screen.getByLabelText("Settings, slide 3 of 3")).not.toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(viewport).toHaveAttribute("data-selected-snap", "2");
+
     await user.click(screen.getByRole("button", { name: "Close Settings editor" }));
 
     expect(viewport).toHaveAttribute("data-navigation-locked", "false");

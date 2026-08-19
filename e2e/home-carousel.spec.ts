@@ -259,6 +259,7 @@ test.describe("Home dashboard carousel", () => {
     const accountName = editor.getByRole("textbox", {
       name: "Account name",
     });
+    await expect(viewport).toHaveAttribute("data-navigation-locked", "true");
     await accountName.fill("Travel Wallet");
     await touchSwipe(page, accountName, -180, 2);
     await expect(settings).toHaveAttribute("aria-hidden", "false");
