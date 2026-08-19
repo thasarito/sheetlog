@@ -19,12 +19,10 @@ type HeaderProps = {
 };
 
 export type DashboardHeaderMotionHandle = {
-  resetHorizontalSelection?: () => void;
   setHorizontalMotion: (
     direction: DashboardTitleDirection,
     progress: number,
   ) => void;
-  settleHorizontalMotion?: (committedSteps: number) => void;
   syncHorizontalSelection?: (title: DashboardTitle) => void;
   setVerticalProgress: (progress: number) => void;
 };
@@ -54,14 +52,8 @@ export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(
     useImperativeHandle(
       forwardedRef,
       () => ({
-        resetHorizontalSelection() {
-          titleReelRef.current?.resetHorizontalSelection();
-        },
         setHorizontalMotion(direction, progress) {
           titleReelRef.current?.setHorizontalMotion(direction, progress);
-        },
-        settleHorizontalMotion(committedSteps) {
-          titleReelRef.current?.settleHorizontalMotion(committedSteps);
         },
         syncHorizontalSelection(title) {
           titleReelRef.current?.syncHorizontalSelection(title);
