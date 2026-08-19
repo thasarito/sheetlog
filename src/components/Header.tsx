@@ -19,6 +19,9 @@ type HeaderProps = {
 };
 
 export type DashboardHeaderMotionHandle = {
+  setHorizontalPosition: (position: number) => void;
+  // Temporary compatibility for the existing Embla carousel. The native
+  // scroll-snap replacement removes this direction/progress adapter.
   setHorizontalMotion: (
     direction: DashboardTitleDirection,
     progress: number,
@@ -52,6 +55,9 @@ export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(
     useImperativeHandle(
       forwardedRef,
       () => ({
+        setHorizontalPosition(position) {
+          titleReelRef.current?.setHorizontalPosition(position);
+        },
         setHorizontalMotion(direction, progress) {
           titleReelRef.current?.setHorizontalMotion(direction, progress);
         },
