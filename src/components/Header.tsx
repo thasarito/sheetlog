@@ -19,9 +19,9 @@ type HeaderProps = {
 };
 
 export type DashboardHeaderMotionHandle = {
-  // Optional only while callers migrate from direction/progress to absolute
-  // position. The native pager makes this the sole horizontal motion API.
-  setHorizontalPosition?: (position: number) => void;
+  setHorizontalPosition: (position: number) => void;
+  // Kept as a compatibility adapter for any non-dashboard caller. The native
+  // pager publishes absolute position and never uses this path.
   setHorizontalMotion: (
     direction: DashboardTitleDirection,
     progress: number,
