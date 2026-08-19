@@ -47,6 +47,7 @@ function normalizeNote(note: QuickNote): QuickNote {
     ...note,
     label: note.label.trim(),
     note: note.note?.trim() || undefined,
+    amount: note.amount?.trim() || undefined,
     currency: note.currency || undefined,
     account: note.account || undefined,
     forValue: note.forValue?.trim() || undefined,
@@ -67,7 +68,7 @@ export function SettingsQuickNoteEditorDrawer({
   const [activeSnapPoint, setActiveSnapPoint] = useState<string | number | null>('82%');
   const [draft, setDraft] = useState(note);
   const [savedNote, setSavedNote] = useState<QuickNote | null>(mode === 'edit' ? note : null);
-  const [amountDraft, setAmountDraft] = useState(note.amount?.toString() ?? '');
+  const [amountDraft, setAmountDraft] = useState(note.amount ?? '');
   const [labelError, setLabelError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const labelRef = useRef<HTMLInputElement>(null);
@@ -77,7 +78,7 @@ export function SettingsQuickNoteEditorDrawer({
   useEffect(() => {
     setDraft(note);
     setSavedNote(mode === 'edit' ? note : null);
-    setAmountDraft(note.amount?.toString() ?? '');
+    setAmountDraft(note.amount ?? '');
     setLabelError(null);
     setSaveState('idle');
     setActiveSnapPoint('82%');
@@ -116,7 +117,7 @@ export function SettingsQuickNoteEditorDrawer({
         await onCommit(nextNote);
         setSavedNote(nextNote);
         setDraft(nextNote);
-        setAmountDraft(nextNote.amount?.toString() ?? '');
+        setAmountDraft(nextNote.amount ?? '');
         setLabelError(null);
         setSaveState('saved');
         return true;
@@ -155,10 +156,9 @@ export function SettingsQuickNoteEditorDrawer({
 
   const updateAmount = (value: string) => {
     setAmountDraft(value);
-    const parsed = Number(value);
     setDraft((current) => ({
       ...current,
-      amount: value.trim() && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+      amount: value || undefined,
     }));
   };
 
@@ -168,7 +168,7 @@ export function SettingsQuickNoteEditorDrawer({
       return;
     }
     setDraft(savedNote);
-    setAmountDraft(savedNote.amount?.toString() ?? '');
+    setAmountDraft(savedNote.amount ?? '');
     setLabelError(null);
     setSaveState('idle');
     focusInvalidLabel();
