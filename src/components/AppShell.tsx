@@ -54,7 +54,10 @@ function AppContent() {
 export function AppShell() {
   return (
     <AppProviders>
-      <div className="flex h-full w-full flex-col overflow-hidden">
+      <div
+        data-testid="app-shell"
+        className="flex h-full w-full flex-col overflow-visible"
+      >
         <AppContent />
       </div>
     </AppProviders>
