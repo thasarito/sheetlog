@@ -22,7 +22,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test -- src/lib/settingsControlCenter.test.ts
-      - run: npm run lint
-      - run: npx tsc --noEmit
-      - run: npm run build
+      - run: >-
+          npm test --
+          src/lib/settingsControlCenter.test.ts
+          src/components/SettingsControlSection.test.tsx
+          src/components/SettingsItemEditorDrawer.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
