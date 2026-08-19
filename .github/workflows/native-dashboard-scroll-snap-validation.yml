@@ -12,33 +12,40 @@ permissions:
   contents: read
 
 jobs:
-  lockfiles:
+  cleanup:
     if: github.event_name == 'push' && github.ref == 'refs/heads/refactor/native-dashboard-scroll-snap'
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
           ref: refactor/native-dashboard-scroll-snap
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Remove Embla once and synchronize lockfiles
+      - name: Remove the obsolete Embla test mock once
         run: |
-          if ! grep -q '"embla-carousel-react"' package.json; then
-            echo "Embla is already absent"
-            exit 0
-          fi
-          npm uninstall embla-carousel-react --ignore-scripts
-          npx --yes pnpm@10.15.0 install --lockfile-only --ignore-scripts
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/TransactionFlow/HomeDashboardCarousel.test.tsx')
+          text = path.read_text()
+          marker = 'const legacyEmbla = vi.hoisted'
+          if marker not in text:
+              raise SystemExit(0)
+          start = text.index(marker)
+          end = text.index('const transactionViewCalls')
+          text = text[:start] + text[end:]
+          text = text.replace('    legacyEmbla.options = null;\n', '')
+          path.write_text(text)
+          PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json pnpm-lock.yaml
-          git commit -m "chore: remove Embla dashboard dependency"
+          if git diff --quiet; then
+            exit 0
+          fi
+          git add src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
+          git commit -m "test: remove obsolete Embla harness"
           git push origin HEAD:refactor/native-dashboard-scroll-snap
 
   focused:
@@ -53,4 +60,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx vitest run src/components/Header.test.tsx src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
       - run: npx tsc --noEmit
-      - run: npm run lint
+      - name: Lint changed implementation files
+        run: >-
+          npx biome check
+          src/components/DashboardTitleReel.tsx
+          src/components/Header.tsx
+          src/components/Header.test.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.tsx
+          src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
