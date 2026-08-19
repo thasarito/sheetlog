@@ -280,7 +280,7 @@ test.describe("Home dashboard carousel", () => {
     await editor.getByRole("button", { name: "Close" }).click();
     await expect(editor).toHaveCount(0);
     await expect(
-      accountsRegion.getByRole("button", { name: "Travel Wallet" }),
+      accountsRegion.getByRole("button", { name: "Travel Wallet", exact: true }),
     ).toBeVisible();
     await expect(accountsRegion).toBeVisible();
     await expect(categoriesRegion).toBeVisible();
