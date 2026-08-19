@@ -37,26 +37,39 @@ jobs:
         run: |
           python <<'PY'
           from pathlib import Path
-          import re
           import textwrap
 
-          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+          def replace_once(path: str, old: str, new: str) -> None:
               file = Path(path)
               text = file.read_text()
               count = text.count(old)
-              if count != expected:
+              if count != 1:
                   raise SystemExit(
-                      f"Expected {expected} match(es) in {path}, found {count}: {old[:120]!r}"
+                      f"Expected one match in {path}, found {count}: {old[:120]!r}"
                   )
-              file.write_text(text.replace(old, new))
+              file.write_text(text.replace(old, new, 1))
 
-          def replace_regex(path: str, pattern: str, replacement: str) -> None:
+          def remove_lines(path: str, lines: list[str]) -> None:
               file = Path(path)
               text = file.read_text()
-              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
-              if count != 1:
-                  raise SystemExit(f"Expected one regex match in {path}: {pattern!r}")
-              file.write_text(updated)
+              for line in lines:
+                  if text.count(line) != 1:
+                      raise SystemExit(
+                          f"Expected one line in {path}, found {text.count(line)}: {line!r}"
+                      )
+                  text = text.replace(line, '', 1)
+              file.write_text(text)
+
+          def remove_range(path: str, start_marker: str, end_marker: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if text.count(start_marker) != 1 or text.count(end_marker) != 1:
+                  raise SystemExit(
+                      f"Expected unique range markers in {path}: {start_marker!r}, {end_marker!r}"
+                  )
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              file.write_text(text[:start] + text[end:])
 
           Path('src/components/AnalyticsSyncSetting.tsx').write_text(
               textwrap.dedent(
@@ -167,117 +180,113 @@ jobs:
               )
           )
 
-          replace_exact(
-              'src/components/SettingsView.tsx',
-              "    'status' | 'lastSyncedAt' | 'isResyncing' | 'resync'\n",
-              "    'status' | 'isResyncing' | 'resync' | 'records' | 'hasLocalHistory' | 'history'\n",
+          settings_path = Path('src/components/SettingsView.tsx')
+          settings = settings_path.read_text()
+          old_pick = "    'status' | 'lastSyncedAt' | 'isResyncing' | 'resync'\n"
+          new_pick = (
+              "    'status' | 'isResyncing' | 'resync' | 'records' | "
+              "'hasLocalHistory' | 'history'\n"
           )
-          replace_exact(
-              'src/components/SettingsView.tsx',
-              '''          />
-          {hasSettingsDiagnostics ? (''',
-              '''          />
-          <div className="ml-[56px] h-px bg-border/70" />
-          <AnalyticsSyncSetting
-            count={analyticsSync.records.length}
-            capturedAt={analyticsSync.history.meta?.capturedAt}
-            status={analyticsSync.status}
-            isRefreshing={analyticsSync.history.isRefreshing}
-            isDownloading={analyticsSync.history.isDownloading}
-            hasLocalHistory={analyticsSync.hasLocalHistory}
-            isResyncing={analyticsSync.isResyncing}
-            onResync={analyticsSync.resync}
-          />
-          {hasSettingsDiagnostics ? (''',
-          )
-          replace_exact(
-              'src/components/SettingsView.tsx',
-              '''          <div className="ml-[56px] h-px bg-border/70" />
-          <AnalyticsSyncSetting
-            status={analyticsSync.status}
-            lastSyncedAt={analyticsSync.lastSyncedAt}
-            isResyncing={analyticsSync.isResyncing}
-            onResync={analyticsSync.resync}
-          />
-          <div className="ml-[56px] h-px bg-border/70" />''',
-              '''          <div className="ml-[56px] h-px bg-border/70" />''',
-          )
+          if settings.count(old_pick) != 1:
+              raise SystemExit('SettingsView analyticsSync pick did not match uniquely')
+          settings = settings.replace(old_pick, new_pick, 1)
 
-          replace_exact(
+          sync_marker = '            title="Sync Settings"'
+          if settings.count(sync_marker) != 1:
+              raise SystemExit('Sync Settings row marker did not match uniquely')
+          sync_marker_index = settings.index(sync_marker)
+          sync_row_end = settings.index('\n          />', sync_marker_index) + len('\n          />')
+          history_setting = textwrap.dedent(
+              '''\
+
+                        <div className="ml-[56px] h-px bg-border/70" />
+                        <AnalyticsSyncSetting
+                          count={analyticsSync.records.length}
+                          capturedAt={analyticsSync.history.meta?.capturedAt}
+                          status={analyticsSync.status}
+                          isRefreshing={analyticsSync.history.isRefreshing}
+                          isDownloading={analyticsSync.history.isDownloading}
+                          hasLocalHistory={analyticsSync.hasLocalHistory}
+                          isResyncing={analyticsSync.isResyncing}
+                          onResync={analyticsSync.resync}
+                        />'''
+          )
+          settings = settings[:sync_row_end] + history_setting + settings[sync_row_end:]
+
+          analytics_marker = '            lastSyncedAt={analyticsSync.lastSyncedAt}'
+          if settings.count(analytics_marker) != 1:
+              raise SystemExit('Legacy Analytics sync marker did not match uniquely')
+          analytics_marker_index = settings.index(analytics_marker)
+          analytics_start = settings.rfind(
+              '          <AnalyticsSyncSetting\n', 0, analytics_marker_index
+          )
+          analytics_component_end = (
+              settings.index('\n          />', analytics_marker_index) + len('\n          />')
+          )
+          following_divider = '\n          <div className="ml-[56px] h-px bg-border/70" />'
+          divider_start = settings.index(following_divider, analytics_component_end)
+          divider_end = divider_start + len(following_divider)
+          settings = settings[:analytics_start] + settings[divider_end:]
+          settings_path.write_text(settings)
+
+          replace_once(
               'src/components/TransactionFlow/TransactionHistoryDock.tsx',
               'import { RefreshCw, Search, X } from "lucide-react";',
               'import { Search, X } from "lucide-react";',
           )
-          replace_exact(
+          remove_lines(
               'src/components/TransactionFlow/TransactionHistoryDock.tsx',
-              '''  countLabel: string;
-          statusLabel: string;
-          canRefresh: boolean;
-          isRefreshing: boolean;
-          onRefresh: () => void;
-          '''.replace('          ', ''),
-              '',
+              [
+                  '  countLabel: string;\n',
+                  '  statusLabel: string;\n',
+                  '  canRefresh: boolean;\n',
+                  '  isRefreshing: boolean;\n',
+                  '  onRefresh: () => void;\n',
+                  '  countLabel,\n',
+                  '  statusLabel,\n',
+                  '  canRefresh,\n',
+                  '  isRefreshing,\n',
+                  '  onRefresh,\n',
+              ],
           )
-          replace_exact(
-              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
-              '''  countLabel,
-          statusLabel,
-          canRefresh,
-          isRefreshing,
-          onRefresh,
-          '''.replace('          ', ''),
-              '',
-          )
-          replace_regex(
-              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
-              r'''\n      <div\n        data-testid="transaction-history-metadata".*?\n      </div>\n    </div>\n  \);''',
-              '\n    </div>\n  );',
-          )
+          dock_path = Path('src/components/TransactionFlow/TransactionHistoryDock.tsx')
+          dock = dock_path.read_text()
+          metadata_marker = '        data-testid="transaction-history-metadata"'
+          if dock.count(metadata_marker) != 1:
+              raise SystemExit('Transaction dock metadata marker did not match uniquely')
+          metadata_marker_index = dock.index(metadata_marker)
+          metadata_start = dock.rfind('      <div\n', 0, metadata_marker_index)
+          outer_close = dock.index('\n    </div>\n  );', metadata_marker_index)
+          dock_path.write_text(dock[:metadata_start] + dock[outer_close:])
 
-          replace_exact(
+          replace_once(
               'src/components/TransactionFlow/CategoryStepSheetAccessory.tsx',
               'export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 104;',
               'export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 60;',
           )
 
-          replace_exact(
+          remove_lines(
               'src/components/TransactionFlow/TransactionHistoryView.tsx',
-              'import { format } from "date-fns";\n',
-              '',
+              [
+                  'import { format } from "date-fns";\n',
+                  'import { parseDate } from "../../lib/date-utils";\n',
+                  '  const isRefreshing = history.isRefreshing || baseAmounts.isRefreshing;\n',
+                  '          countLabel={countLabel}\n',
+                  '          statusLabel={statusLabel}\n',
+                  '          canRefresh={history.isOnline && !isRefreshing}\n',
+                  '          isRefreshing={isRefreshing}\n',
+                  '          onRefresh={refresh}\n',
+              ],
           )
-          replace_exact(
-              'src/components/TransactionFlow/TransactionHistoryView.tsx',
-              'import { parseDate } from "../../lib/date-utils";\n',
-              '',
-          )
-          replace_exact(
-              'src/components/TransactionFlow/TransactionHistoryView.tsx',
-              '''  const countLabel = `${filteredTransactions.length} ${
-            filteredTransactions.length === 1 ? "transaction" : "transactions"
-          }`;
-          '''.replace('          ', ''),
-              '',
-          )
-          replace_exact(
-              'src/components/TransactionFlow/TransactionHistoryView.tsx',
-              '  const isRefreshing = history.isRefreshing || baseAmounts.isRefreshing;\n',
-              '',
-          )
-          replace_regex(
-              'src/components/TransactionFlow/TransactionHistoryView.tsx',
-              r'''\n  const statusLabel = isRefreshing\n    \? "Updating…"\n    : history\.meta\n      \? `Saved \$\{format\(parseDate\(history\.meta\.capturedAt\), "MMM d, HH:mm"\)\}`\n      : history\.isDownloading\n        \? "Downloading…"\n        : "Not downloaded";''',
-              '',
-          )
-          replace_exact(
-              'src/components/TransactionFlow/TransactionHistoryView.tsx',
-              '''          countLabel={countLabel}
-          statusLabel={statusLabel}
-          canRefresh={history.isOnline && !isRefreshing}
-          isRefreshing={isRefreshing}
-          onRefresh={refresh}
-          '''.replace('          ', ''),
-              '',
-          )
+          history_path = Path('src/components/TransactionFlow/TransactionHistoryView.tsx')
+          history = history_path.read_text()
+          count_start = history.index('  const countLabel =')
+          count_end = history.index('  const hasIncompleteLocalRows', count_start)
+          history = history[:count_start] + history[count_end:]
+          status_start = history.index('  const statusLabel =')
+          status_end = history.index('\n\n  return (', status_start)
+          history = history[:status_start] + history[status_end:]
+          history_path.write_text(history)
           PY
 
       - name: Format changed files
