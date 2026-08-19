@@ -12,16 +12,9 @@ const ITEM_INDEXES = LABELS.map((_, index) => index);
 const FADED_OPACITY = 0.34;
 
 export type DashboardTitle = (typeof DASHBOARD_SLIDES)[number];
-export type DashboardTitleDirection = -1 | 1;
 
 export type DashboardTitleReelHandle = {
   setHorizontalPosition: (position: number) => void;
-  // Temporary compatibility for the existing carousel. The native scroll-snap
-  // replacement removes this direction/progress adapter.
-  setHorizontalMotion: (
-    direction: DashboardTitleDirection,
-    progress: number,
-  ) => void;
   syncHorizontalSelection: (title: DashboardTitle) => void;
 };
 
@@ -169,12 +162,6 @@ export const DashboardTitleReel = forwardRef<
     forwardedRef,
     () => ({
       setHorizontalPosition(position) {
-        visualPositionRef.current = position;
-        renderPosition(position);
-      },
-      setHorizontalMotion(direction, progress) {
-        const position =
-          selectedIndexRef.current + direction * clamp(progress, 0, 1);
         visualPositionRef.current = position;
         renderPosition(position);
       },
