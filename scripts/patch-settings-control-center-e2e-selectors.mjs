@@ -114,3 +114,72 @@ if (!carouselTest.includes('locks the native carousel owner while a Settings edi
   );
 }
 writeFileSync(carouselTestPath, carouselTest);
+
+const settingsContentPath = 'src/components/SettingsViewContent.tsx';
+let settingsContent = readFileSync(settingsContentPath, 'utf8');
+settingsContent = replaceIfPresent(
+  settingsContent,
+  `  >;\n};\n\ntype ControlSectionId`,
+  `  >;\n  onCarouselNavigationLockChange?: (locked: boolean) => void;\n};\n\ntype ControlSectionId`,
+);
+settingsContent = replaceIfPresent(
+  settingsContent,
+  `export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {`,
+  `export function SettingsView({\n  onToast,\n  analyticsSync,\n  onCarouselNavigationLockChange,\n}: SettingsViewProps) {`,
+);
+settingsContent = replaceIfPresent(
+  settingsContent,
+  `  const [quickNoteEditor, setQuickNoteEditor] = useState<QuickNoteEditorState | null>(null);\n  const editorOriginRef`,
+  `  const [quickNoteEditor, setQuickNoteEditor] = useState<QuickNoteEditorState | null>(null);\n  const hasOpenEditor = itemEditor !== null || quickNoteEditor !== null;\n  const editorOriginRef`,
+);
+settingsContent = replaceIfPresent(
+  settingsContent,
+  `  useEffect(() => setLocalAccounts(accounts), [accounts]);`,
+  `  useEffect(() => {\n    onCarouselNavigationLockChange?.(hasOpenEditor);\n    return () => {\n      if (hasOpenEditor) onCarouselNavigationLockChange?.(false);\n    };\n  }, [hasOpenEditor, onCarouselNavigationLockChange]);\n\n  useEffect(() => setLocalAccounts(accounts), [accounts]);`,
+);
+writeFileSync(settingsContentPath, settingsContent);
+
+const carouselPath = 'src/components/TransactionFlow/HomeDashboardCarousel.tsx';
+let carousel = readFileSync(carouselPath, 'utf8');
+carousel = replaceIfPresent(
+  carousel,
+  `  const [activeIndex, setActiveIndex] = useState(0);`,
+  `  const [activeIndex, setActiveIndex] = useState(0);\n  const [navigationLocked, setNavigationLocked] = useState(false);`,
+);
+carousel = replaceIfPresent(
+  carousel,
+  `  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {\n    const viewport = viewportRef.current;`,
+  `  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {\n    if (navigationLocked) return;\n    const viewport = viewportRef.current;`,
+);
+carousel = replaceIfPresent(
+  carousel,
+  `        data-motion-status="settled"\n        data-selected-snap="0"`,
+  `        data-motion-status="settled"\n        data-navigation-locked={navigationLocked ? "true" : "false"}\n        data-selected-snap="0"`,
+);
+carousel = replaceIfPresent(
+  carousel,
+  `        className="h-full min-h-0 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] [touch-action:pan-x_pan-y] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"`,
+  `        className={\`h-full min-h-0 snap-x snap-mandatory overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden \${\n          navigationLocked\n            ? "overflow-x-hidden [touch-action:pan-y]"\n            : "overflow-x-auto [touch-action:pan-x_pan-y]"\n        }\`}`,
+);
+carousel = replaceIfPresent(
+  carousel,
+  `            <SettingsView onToast={onToast} analyticsSync={analyticsSync} />`,
+  `            <SettingsView\n              onToast={onToast}\n              analyticsSync={analyticsSync}\n              onCarouselNavigationLockChange={setNavigationLocked}\n            />`,
+);
+writeFileSync(carouselPath, carousel);
+
+const settingsTestPath = 'src/components/SettingsView.test.tsx';
+let settingsTest = readFileSync(settingsTestPath, 'utf8');
+settingsTest = replaceIfPresent(
+  settingsTest,
+  `function renderView() {\n  return render(<SettingsView onToast={mocks.onToast} analyticsSync={analyticsSync} />);\n}`,
+  `function renderView(\n  props: Partial<React.ComponentProps<typeof SettingsView>> = {},\n) {\n  return render(\n    <SettingsView\n      onToast={mocks.onToast}\n      analyticsSync={analyticsSync}\n      {...props}\n    />,\n  );\n}`,
+);
+const settingsLockTest = `\n  it("reports carousel navigation ownership while a nested editor is open", async () => {\n    const user = userEvent.setup();\n    const onCarouselNavigationLockChange = vi.fn();\n    renderView({ onCarouselNavigationLockChange });\n\n    await user.click(screen.getByRole("button", { name: /Accounts/ }));\n    await user.click(screen.getByRole("button", { name: "Wallet" }));\n    await waitFor(() =>\n      expect(onCarouselNavigationLockChange).toHaveBeenLastCalledWith(true),\n    );\n\n    await user.click(screen.getByRole("button", { name: "Close mock item editor" }));\n    await waitFor(() =>\n      expect(onCarouselNavigationLockChange).toHaveBeenLastCalledWith(false),\n    );\n  });\n`;
+if (!settingsTest.includes('reports carousel navigation ownership while a nested editor is open')) {
+  settingsTest = settingsTest.replace(
+    '\n  it("keeps technical sync details collapsed until Data & sync is opened", async () => {',
+    `${settingsLockTest}\n  it("keeps technical sync details collapsed until Data & sync is opened", async () => {`,
+  );
+}
+writeFileSync(settingsTestPath, settingsTest);
