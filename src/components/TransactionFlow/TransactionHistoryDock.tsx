@@ -33,6 +33,11 @@ export type TransactionHistoryDockMotionHandle = {
   setMotion: (motion: TransactionHistoryDockMotion) => void;
 };
 
+type PendingKeyboardTap = {
+  input: HTMLInputElement;
+  pointerId: number;
+};
+
 export function TransactionHistoryDock({
   search,
   onSearchChange,
@@ -46,7 +51,25 @@ export function TransactionHistoryDock({
   const accessory = useCategoryStepSheetAccessory();
   const dockRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const pendingKeyboardTapRef = useRef<PendingKeyboardTap | null>(null);
+  const documentClickGuardRef = useRef<((event: MouseEvent) => void) | null>(
+    null,
+  );
+  const clickGuardTimeoutRef = useRef<number | null>(null);
   const portalled = accessory.provided;
+
+  const clearPendingKeyboardTap = useCallback(() => {
+    const clickGuard = documentClickGuardRef.current;
+    if (clickGuard) {
+      document.removeEventListener("click", clickGuard, true);
+      documentClickGuardRef.current = null;
+    }
+    if (clickGuardTimeoutRef.current !== null) {
+      window.clearTimeout(clickGuardTimeoutRef.current);
+      clickGuardTimeoutRef.current = null;
+    }
+    pendingKeyboardTapRef.current = null;
+  }, []);
 
   const clearSearch = () => {
     onSearchChange("");
@@ -54,6 +77,7 @@ export function TransactionHistoryDock({
       searchRef.current?.focus({ preventScroll: true }),
     );
   };
+
   const prepareKeyboardState = useCallback(
     (event: ReactPointerEvent<HTMLInputElement>) => {
       const requestKeyboard = accessory.requestKeyboard;
@@ -65,13 +89,84 @@ export function TransactionHistoryDock({
         return;
       }
 
-      // Commit the keyboard snap before the browser performs the input's
-      // native focus action. Keeping the tap uncancelled lets iOS complete its
-      // pointerup/click sequence against the moved input instead of focusing
-      // during pointerdown and then immediately blurring it.
+      clearPendingKeyboardTap();
+      const input = event.currentTarget;
+      pendingKeyboardTapRef.current = {
+        input,
+        pointerId: event.pointerId,
+      };
+
+      const guardRetargetedClick = (clickEvent: MouseEvent) => {
+        const pendingTap = pendingKeyboardTapRef.current;
+        if (!pendingTap || pendingTap.input !== input) return;
+
+        // The dock moves before pointerup. Mobile Safari can therefore retarget
+        // the synthesized click to the transaction row now under the finger.
+        // Consume that click globally and keep Search as the activation target.
+        clickEvent.preventDefault();
+        clickEvent.stopImmediatePropagation();
+        pendingTap.input.focus({ preventScroll: true });
+        clearPendingKeyboardTap();
+      };
+      documentClickGuardRef.current = guardRetargetedClick;
+      document.addEventListener("click", guardRetargetedClick, true);
+
+      // Keep Vaul out of this pointer sequence and retain the original target
+      // while the sheet changes height underneath the stationary finger.
+      event.stopPropagation();
+      try {
+        if (!input.hasPointerCapture(event.pointerId)) {
+          input.setPointerCapture(event.pointerId);
+        }
+      } catch {
+        // Pointer capture is best-effort; the document click guard is the
+        // fallback for browsers that reject capture on form controls.
+      }
+
       flushSync(requestKeyboard);
     },
-    [accessory.requestKeyboard, portalled],
+    [accessory.requestKeyboard, clearPendingKeyboardTap, portalled],
+  );
+
+  const finishKeyboardTap = useCallback(
+    (event: ReactPointerEvent<HTMLInputElement>) => {
+      const pendingTap = pendingKeyboardTapRef.current;
+      if (!pendingTap || pendingTap.pointerId !== event.pointerId) return;
+
+      event.stopPropagation();
+      pendingTap.input.focus({ preventScroll: true });
+      try {
+        if (pendingTap.input.hasPointerCapture(event.pointerId)) {
+          pendingTap.input.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // Pointer capture may already have been released by the browser.
+      }
+
+      // A synthesized click normally follows immediately. Avoid leaving a
+      // one-shot global guard behind if a browser omits it.
+      clickGuardTimeoutRef.current = window.setTimeout(() => {
+        clearPendingKeyboardTap();
+        if (document.activeElement !== pendingTap.input) {
+          accessory.releaseKeyboard?.();
+        }
+      }, 500);
+    },
+    [accessory.releaseKeyboard, clearPendingKeyboardTap],
+  );
+
+  const cancelKeyboardTap = useCallback(
+    (event: ReactPointerEvent<HTMLInputElement>) => {
+      const pendingTap = pendingKeyboardTapRef.current;
+      if (!pendingTap || pendingTap.pointerId !== event.pointerId) return;
+
+      event.stopPropagation();
+      clearPendingKeyboardTap();
+      if (document.activeElement !== pendingTap.input) {
+        accessory.releaseKeyboard?.();
+      }
+    },
+    [accessory.releaseKeyboard, clearPendingKeyboardTap],
   );
 
   const setDockRef = useCallback(
@@ -114,6 +209,8 @@ export function TransactionHistoryDock({
     [],
   );
   useImperativeHandle(motionRef, () => ({ setMotion }), [setMotion]);
+
+  useLayoutEffect(() => clearPendingKeyboardTap, [clearPendingKeyboardTap]);
 
   useLayoutEffect(() => {
     if (!accessory.provided || !accessory.host || !dockRef.current) return;
@@ -162,13 +259,14 @@ export function TransactionHistoryDock({
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           onPointerDown={prepareKeyboardState}
-          onClick={(event) => {
-            if (document.activeElement !== event.currentTarget) {
-              event.currentTarget.focus({ preventScroll: true });
+          onPointerUp={finishKeyboardTap}
+          onPointerCancel={cancelKeyboardTap}
+          onFocus={() => accessory.requestKeyboard?.()}
+          onBlur={() => {
+            if (!pendingKeyboardTapRef.current) {
+              accessory.releaseKeyboard?.();
             }
           }}
-          onFocus={() => accessory.requestKeyboard?.()}
-          onBlur={() => accessory.releaseKeyboard?.()}
           placeholder="Search category, note, or account"
           aria-label="Search transaction history"
           className={cn(

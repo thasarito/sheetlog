@@ -88,7 +88,11 @@ function rect(height: number): DOMRect {
   };
 }
 
-function KeyboardSheetHarness() {
+function KeyboardSheetHarness({
+  onUnderlyingTransaction = () => undefined,
+}: {
+  onUnderlyingTransaction?: () => void;
+}) {
   const [search, setSearch] = useState("");
   const motionRef = useRef<TransactionHistoryDockMotionHandle | null>(null);
 
@@ -106,6 +110,9 @@ function KeyboardSheetHarness() {
       entry={<div data-testid="entry-content">Categories</div>}
       layoutHeight={844}
     >
+      <button type="button" onClick={onUnderlyingTransaction}>
+        Underlying transaction
+      </button>
       <TransactionHistoryDock
         search={search}
         onSearchChange={setSearch}
@@ -146,7 +153,43 @@ afterEach(() => {
 });
 
 describe("CategoryStepSheet keyboard state", () => {
-  it("commits the keyboard snap before a quick tap focuses search", async () => {
+  it("captures an expanded-sheet search tap instead of selecting the row underneath", async () => {
+    const onUnderlyingTransaction = vi.fn();
+    render(
+      <KeyboardSheetHarness
+        onUnderlyingTransaction={onUnderlyingTransaction}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(drawerMock.rootProps?.activeSnapPoint).toBe("520px"),
+    );
+    const layout = screen.getByTestId("category-step-layout");
+    const search = await screen.findByRole("searchbox", {
+      name: "Search transaction history",
+    });
+    const dock = screen.getByTestId("transaction-history-dock");
+    await waitFor(() => expect(dock.inert).toBe(false));
+
+    fireEvent.pointerDown(search, { pointerId: 1 });
+
+    expect(layout).toHaveAttribute("data-category-sheet-state", "keyboard");
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("300px");
+    expect(search).not.toHaveFocus();
+
+    fireEvent.pointerUp(search, { pointerId: 1 });
+
+    expect(search).toHaveFocus();
+    const clickAllowed = fireEvent.click(
+      screen.getByRole("button", { name: "Underlying transaction" }),
+    );
+    expect(clickAllowed).toBe(false);
+    expect(onUnderlyingTransaction).not.toHaveBeenCalled();
+    expect(search).toHaveFocus();
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("300px");
+  });
+
+  it("focuses search on the first tap from collapsed and then matches the measured keyboard", async () => {
     render(<KeyboardSheetHarness />);
 
     await waitFor(() =>
@@ -170,9 +213,8 @@ describe("CategoryStepSheet keyboard state", () => {
       stateSeenOnFocus.push(layout.dataset.categorySheetState ?? "missing");
     });
 
-    const pointerDownAllowed = fireEvent.pointerDown(search, { pointerId: 1 });
+    fireEvent.pointerDown(search, { pointerId: 2 });
 
-    expect(pointerDownAllowed).toBe(true);
     expect(layout).toHaveAttribute("data-category-sheet-state", "keyboard");
     expect(drawerMock.rootProps?.snapPoints).toEqual([
       "44px",
@@ -185,11 +227,13 @@ describe("CategoryStepSheet keyboard state", () => {
     expect(search).not.toHaveFocus();
     expect(stateSeenOnFocus).toEqual([]);
 
-    fireEvent.pointerUp(search, { pointerId: 1 });
-    fireEvent.click(search);
+    fireEvent.pointerUp(search, { pointerId: 2 });
 
     expect(search).toHaveFocus();
     expect(stateSeenOnFocus).toEqual(["keyboard"]);
+    const clickAllowed = fireEvent.click(search);
+    expect(clickAllowed).toBe(false);
+    expect(search).toHaveFocus();
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("300px");
 
     act(() => viewport.setHeight(524));
@@ -219,5 +263,27 @@ describe("CategoryStepSheet keyboard state", () => {
     expect(host).toHaveAttribute("data-keyboard-active", "false");
     expect(host).toHaveAttribute("data-keyboard-height", "0");
     expect(host).toHaveAttribute("data-keyboard-top", "844");
+  });
+
+  it("restores the previous state when a captured tap is cancelled", async () => {
+    render(<KeyboardSheetHarness />);
+
+    await waitFor(() =>
+      expect(drawerMock.rootProps?.activeSnapPoint).toBe("520px"),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse transaction entry" }),
+    );
+    const search = await screen.findByRole("searchbox", {
+      name: "Search transaction history",
+    });
+
+    fireEvent.pointerDown(search, { pointerId: 3 });
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("300px");
+
+    fireEvent.pointerCancel(search, { pointerId: 3 });
+
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("44px");
+    expect(search).not.toHaveFocus();
   });
 });
