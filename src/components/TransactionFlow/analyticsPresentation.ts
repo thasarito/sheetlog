@@ -5,19 +5,19 @@ import type {
 } from './analytics';
 
 export const ANALYTICS_TONE_BACKGROUND_CLASSES: Record<AnalyticsSeriesTone, string> = {
-  emerald: 'bg-emerald-500 dark:bg-emerald-400',
-  cyan: 'bg-cyan-500 dark:bg-cyan-400',
-  violet: 'bg-violet-500 dark:bg-violet-400',
-  rose: 'bg-rose-500 dark:bg-rose-400',
-  slate: 'bg-slate-400 dark:bg-slate-500',
+  emerald: 'bg-chart-1',
+  cyan: 'bg-chart-2',
+  violet: 'bg-chart-3',
+  rose: 'bg-chart-4',
+  slate: 'bg-chart-5',
 };
 
 export const ANALYTICS_TONE_STROKE_CLASSES: Record<AnalyticsSeriesTone, string> = {
-  emerald: 'stroke-emerald-500 dark:stroke-emerald-400',
-  cyan: 'stroke-cyan-500 dark:stroke-cyan-400',
-  violet: 'stroke-violet-500 dark:stroke-violet-400',
-  rose: 'stroke-rose-500 dark:stroke-rose-400',
-  slate: 'stroke-slate-400 dark:stroke-slate-500',
+  emerald: 'stroke-chart-1',
+  cyan: 'stroke-chart-2',
+  violet: 'stroke-chart-3',
+  rose: 'stroke-chart-4',
+  slate: 'stroke-chart-5',
 };
 
 export type AnalyticsSeriesBreakdown = AnalyticsSeries & {

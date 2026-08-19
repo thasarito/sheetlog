@@ -1,8 +1,27 @@
 /// <reference types="vitest/config" />
-import { defineConfig, loadEnv } from "vite";
-import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { createInlineThemeScript } from "./src/theme/inlineThemeScript";
+import {
+  DEFAULT_THEME_ID,
+  THEMES,
+} from "./src/theme/themeConfig";
+
+const DEFAULT_PWA_COLOR = THEMES[DEFAULT_THEME_ID].modes.light.background;
+
+function sheetlogThemeBootstrap(): Plugin {
+  return {
+    name: "sheetlog-theme-bootstrap",
+    enforce: "pre",
+    transformIndexHtml(html) {
+      return html
+        .replaceAll("__SHEETLOG_THEME_COLOR__", DEFAULT_PWA_COLOR)
+        .replace("__SHEETLOG_THEME_BOOTSTRAP__", createInlineThemeScript());
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -12,6 +31,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: normalizedBase,
     plugins: [
+      sheetlogThemeBootstrap(),
       react(),
       tailwindcss(),
       VitePWA({
@@ -25,8 +45,8 @@ export default defineConfig(({ mode }) => {
           short_name: "SheetLog",
           start_url: `${normalizedBase}app`,
           display: "standalone",
-          background_color: "#ffffff",
-          theme_color: "#ffffff",
+          background_color: DEFAULT_PWA_COLOR,
+          theme_color: DEFAULT_PWA_COLOR,
           icons: [
             {
               src: "manifest-icon-192.maskable.png",

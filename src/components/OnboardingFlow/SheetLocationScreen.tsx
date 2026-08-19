@@ -98,7 +98,7 @@ export function SheetLocationScreen({
           )}
         >
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-full">
+            <div className="p-2 bg-info/15 text-info rounded-full">
               <Folder className="w-5 h-5" />
             </div>
             <div>
@@ -137,7 +137,7 @@ export function SheetLocationScreen({
               }}
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-100 text-orange-600 rounded-full">
+                <div className="p-2 bg-warning/15 text-warning rounded-full">
                   <Folder className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
