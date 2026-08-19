@@ -155,7 +155,7 @@ test.describe("Home dashboard carousel", () => {
     await expect(page.getByRole("region", { name: "Home activity" })).toBeVisible();
   });
 
-  test("uses the exact Analytics, Transactions, Settings order and loops with keyboard", async ({
+  test("uses the exact bounded Analytics, Transactions, Settings order with keyboard", async ({
     page,
   }) => {
     const viewport = page.getByTestId("home-carousel-viewport");
@@ -170,23 +170,30 @@ test.describe("Home dashboard carousel", () => {
     await expectActiveTitle(page, "Analytics");
 
     await viewport.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(analytics).toHaveAttribute("aria-hidden", "false");
+    await expectActiveTitle(page, "Analytics");
+    await expect(viewport).toBeFocused();
+
     await page.keyboard.press("ArrowRight");
     await expect(transactions).toHaveAttribute("aria-hidden", "false");
-    await expect(viewport).toBeFocused();
     await expectActiveTitle(page, "Transactions");
 
     await page.keyboard.press("ArrowRight");
     await expect(settings).toHaveAttribute("aria-hidden", "false");
-    await expect(viewport).toBeFocused();
     await expectActiveTitle(page, "Settings");
 
     await page.keyboard.press("ArrowRight");
-    await expect(analytics).toHaveAttribute("aria-hidden", "false");
-    await expectActiveTitle(page, "Analytics");
-
-    await page.keyboard.press("ArrowLeft");
     await expect(settings).toHaveAttribute("aria-hidden", "false");
     await expectActiveTitle(page, "Settings");
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await expectActiveTitle(page, "Transactions");
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(analytics).toHaveAttribute("aria-hidden", "false");
+    await expectActiveTitle(page, "Analytics");
   });
 
   test("keeps Settings inline, mounted, scroll-linked, and free of modal chrome", async ({
@@ -200,11 +207,14 @@ test.describe("Home dashboard carousel", () => {
 
     const viewport = page.getByTestId("home-carousel-viewport");
     const analytics = page.getByLabel("Analytics, slide 1 of 3");
+    const transactions = page.getByLabel("Transactions, slide 2 of 3");
     const settings = page.getByLabel("Settings, slide 3 of 3");
     const dashboardHeader = page.getByTestId("dashboard-header");
 
     await viewport.focus();
-    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowRight");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await page.keyboard.press("ArrowRight");
     await expect(settings).toHaveAttribute("aria-hidden", "false");
     await expect(settings.getByTestId("settings-view")).toBeVisible();
     await expect(page.getByRole("button", { name: "Close settings" })).toHaveCount(0);
@@ -235,11 +245,15 @@ test.describe("Home dashboard carousel", () => {
     await expect(draft).toHaveValue("Travel Wallet");
 
     await viewport.focus();
-    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowLeft");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await page.keyboard.press("ArrowLeft");
     await expect(analytics).toHaveAttribute("aria-hidden", "false");
     await expect(dashboardHeader).toHaveAttribute("data-hide-progress", "0.000");
 
-    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowRight");
+    await expect(transactions).toHaveAttribute("aria-hidden", "false");
+    await page.keyboard.press("ArrowRight");
     await expect(settings).toHaveAttribute("aria-hidden", "false");
     await expect(settings.getByPlaceholder("e.g. Cash")).toHaveValue("Travel Wallet");
   });

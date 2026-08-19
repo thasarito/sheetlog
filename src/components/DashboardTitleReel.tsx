@@ -5,31 +5,20 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import {
-  advanceDashboardCarouselLoopMotion,
-  dashboardCarouselProgressFromTravel,
-  type DashboardCarouselLoopMotionState,
-} from "./dashboardCarouselLoopMotion";
 import { DASHBOARD_SLIDES } from "./dashboardSlides";
 
 const LABELS = DASHBOARD_SLIDES;
-const MAX_REEL_OFFSET = LABELS.length;
-const REEL_OFFSETS = Array.from(
-  { length: MAX_REEL_OFFSET * 2 + 1 },
-  (_, index) => index - MAX_REEL_OFFSET,
-);
+const ITEM_INDEXES = LABELS.map((_, index) => index);
 const FADED_OPACITY = 0.34;
 
 export type DashboardTitle = (typeof DASHBOARD_SLIDES)[number];
 export type DashboardTitleDirection = -1 | 1;
 
 export type DashboardTitleReelHandle = {
-  resetHorizontalSelection: () => void;
   setHorizontalMotion: (
     direction: DashboardTitleDirection,
     progress: number,
   ) => void;
-  settleHorizontalMotion: (committedSteps: number) => void;
   syncHorizontalSelection: (title: DashboardTitle) => void;
 };
 
@@ -38,32 +27,8 @@ type ReelMotion = {
   progress: number;
 };
 
-type VisibleCandidate = {
-  offset: number;
-  label: string;
-  active: boolean;
-  distance: number;
-  fullyVisible: boolean;
-  transitionParticipant: boolean;
-  x: number;
-};
-
-type CarouselTrackMeasurement = {
-  offset: number;
-  loopSpan: number;
-  viewportWidth: number;
-};
-
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
-}
-
-function normalizeIndex(index: number): number {
-  return ((index % LABELS.length) + LABELS.length) % LABELS.length;
-}
-
-function labelAt(selectedPosition: number, offset: number): string {
-  return LABELS[normalizeIndex(selectedPosition + offset)];
 }
 
 function positionForTitle(title: DashboardTitle): number {
@@ -71,58 +36,20 @@ function positionForTitle(title: DashboardTitle): number {
   return position >= 0 ? position : 0;
 }
 
-function measureCarouselTrack(
-  reel: HTMLElement | null,
-): CarouselTrackMeasurement | null {
-  if (typeof document === "undefined") return null;
-  const scope: ParentNode =
-    reel?.closest<HTMLElement>('[data-testid="transaction-canvas"]') ??
-    document;
-  const viewport = scope.querySelector<HTMLElement>(
-    '[data-testid="home-carousel-viewport"]',
-  );
-  const track = scope.querySelector<HTMLElement>(
-    '[data-testid="home-carousel-track"]',
-  );
-  if (!viewport || !track) return null;
+function trackShiftForSelection(
+  selectedIndex: number,
+  positions: Map<number, number>,
+  widths: Map<number, number>,
+  reelWidth: number,
+): number {
+  const lastIndex = LABELS.length - 1;
+  const trackWidth =
+    (positions.get(lastIndex) ?? 0) + (widths.get(lastIndex) ?? 0);
+  if (trackWidth <= reelWidth) return 0;
 
-  const viewportRect = viewport.getBoundingClientRect();
-  const trackRect = track.getBoundingClientRect();
-  const viewportWidth = viewportRect.width;
-  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return null;
-
-  return {
-    offset: trackRect.left - viewportRect.left,
-    loopSpan: Math.max(track.scrollWidth, viewportWidth * LABELS.length),
-    viewportWidth,
-  };
-}
-
-function shouldReplaceCandidate(
-  candidate: VisibleCandidate,
-  current: VisibleCandidate,
-): boolean {
-  const candidatePriority = [
-    candidate.active ? 0 : 1,
-    candidate.transitionParticipant ? 0 : 1,
-    candidate.fullyVisible ? 0 : 1,
-    candidate.distance,
-    Math.abs(candidate.x),
-  ];
-  const currentPriority = [
-    current.active ? 0 : 1,
-    current.transitionParticipant ? 0 : 1,
-    current.fullyVisible ? 0 : 1,
-    current.distance,
-    Math.abs(current.x),
-  ];
-
-  for (const [index, priority] of candidatePriority.entries()) {
-    const currentValue = currentPriority[index];
-    if (priority === currentValue) continue;
-    return priority < currentValue;
-  }
-  return false;
+  const minimumShift = reelWidth - trackWidth;
+  const selectedPosition = positions.get(selectedIndex) ?? 0;
+  return clamp(-selectedPosition, minimumShift, 0);
 }
 
 export const DashboardTitleReel = forwardRef<
@@ -131,259 +58,143 @@ export const DashboardTitleReel = forwardRef<
 >(function DashboardTitleReel(_props, forwardedRef) {
   const reelRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef(new Map<number, HTMLSpanElement>());
-  const selectedPositionRef = useRef(0);
+  const selectedIndexRef = useRef(0);
   const motionRef = useRef<ReelMotion>({ direction: 0, progress: 0 });
-  const carouselLoopMotionRef =
-    useRef<DashboardCarouselLoopMotionState | null>(null);
 
   const renderMotion = useCallback(({ direction, progress }: ReelMotion) => {
     const reel = reelRef.current;
     if (!reel) return;
 
-    const boundedProgress = clamp(progress, 0, 1);
-    const signedProgress = direction * boundedProgress;
-    const transition = Math.abs(signedProgress);
-    const selectedPosition = selectedPositionRef.current;
-
-    for (const offset of REEL_OFFSETS) {
-      const item = itemRefs.current.get(offset);
-      if (!item) continue;
-      item.textContent = labelAt(selectedPosition, offset);
-      item.dataset.label = item.textContent;
-
-      const distance = Math.min(1, Math.abs(offset - signedProgress));
-      item.dataset.active = String(distance < 0.001);
-      item.dataset.loopCopy = "false";
-      item.style.fontWeight = String(
-        Math.round(520 + (1 - distance) * 220),
-      );
-      item.style.opacity = "0";
-      item.style.visibility = "hidden";
-      item.dataset.visible = "false";
-    }
+    const selectedIndex = selectedIndexRef.current;
+    const requestedTarget = selectedIndex + direction;
+    const targetIndex = clamp(requestedTarget, 0, LABELS.length - 1);
+    const effectiveDirection =
+      direction !== 0 && targetIndex !== selectedIndex ? direction : 0;
+    const boundedProgress =
+      effectiveDirection === 0 ? 0 : clamp(progress, 0, 1);
+    const activePosition =
+      selectedIndex + effectiveDirection * boundedProgress;
+    const activeIndex =
+      effectiveDirection !== 0 && boundedProgress >= 0.5
+        ? targetIndex
+        : selectedIndex;
 
     const gap = clamp(reel.clientWidth * 0.055, 10, 18);
     const widths = new Map<number, number>();
-    for (const offset of REEL_OFFSETS) {
-      widths.set(
-        offset,
-        itemRefs.current.get(offset)?.getBoundingClientRect().width ?? 0,
+    for (const index of ITEM_INDEXES) {
+      const item = itemRefs.current.get(index);
+      if (!item) continue;
+      item.style.fontWeight = String(
+        Math.round(
+          520 +
+            (1 - Math.min(1, Math.abs(index - activePosition))) * 220,
+        ),
       );
+      widths.set(index, item.getBoundingClientRect().width);
     }
 
     const positions = new Map<number, number>([[0, 0]]);
-    for (let offset = 1; offset <= MAX_REEL_OFFSET; offset += 1) {
+    for (let index = 1; index < LABELS.length; index += 1) {
       positions.set(
-        offset,
-        (positions.get(offset - 1) ?? 0) +
-          (widths.get(offset - 1) ?? 0) +
-          gap,
-      );
-    }
-    for (let offset = -1; offset >= -MAX_REEL_OFFSET; offset -= 1) {
-      positions.set(
-        offset,
-        (positions.get(offset + 1) ?? 0) -
-          (widths.get(offset) ?? 0) -
+        index,
+        (positions.get(index - 1) ?? 0) +
+          (widths.get(index - 1) ?? 0) +
           gap,
       );
     }
 
-    const enteringOffset = direction === 0 ? 0 : direction;
-    const shift =
-      direction === 0
-        ? 0
-        : -transition * (positions.get(enteringOffset) ?? 0);
-    const reelWidth = reel.clientWidth;
-    const candidates: VisibleCandidate[] = [];
+    const startShift = trackShiftForSelection(
+      selectedIndex,
+      positions,
+      widths,
+      reel.clientWidth,
+    );
+    const endShift = trackShiftForSelection(
+      targetIndex,
+      positions,
+      widths,
+      reel.clientWidth,
+    );
+    const trackShift =
+      startShift + (endShift - startShift) * boundedProgress;
 
-    for (const offset of REEL_OFFSETS) {
-      const item = itemRefs.current.get(offset);
-      if (!item) continue;
-      const x = (positions.get(offset) ?? 0) + shift;
-      const width = widths.get(offset) ?? 0;
-      const right = x + width;
-      const distance = Math.min(1, Math.abs(offset - signedProgress));
-      const active = distance < 0.001;
-      const fullyVisible = x >= -0.5 && right <= reelWidth + 0.5;
-      const intersects = x < reelWidth && right > 0;
-      const transitionParticipant =
-        transition > 0 && (offset === 0 || offset === enteringOffset);
-      const canShow =
-        active || fullyVisible || (transitionParticipant && intersects);
-
-      item.style.transform = `translate3d(${x.toFixed(2)}px, -50%, 0)`;
-      if (!canShow) continue;
-
-      candidates.push({
-        offset,
-        label: item.dataset.label ?? item.textContent ?? "",
-        active,
-        distance,
-        fullyVisible,
-        transitionParticipant,
-        x,
-      });
-    }
-
-    const visibleCandidates = new Map<number, VisibleCandidate>();
-    const addCandidate = (candidate: VisibleCandidate | undefined) => {
-      if (candidate) visibleCandidates.set(candidate.offset, candidate);
-    };
-
-    if (direction === 0 || transition <= 0.001) {
-      const bestByLabel = new Map<string, VisibleCandidate>();
-      for (const candidate of candidates) {
-        const current = bestByLabel.get(candidate.label);
-        if (!current || shouldReplaceCandidate(candidate, current)) {
-          bestByLabel.set(candidate.label, candidate);
-        }
-      }
-      for (const candidate of bestByLabel.values()) addCandidate(candidate);
-    } else {
-      const outgoingLabel = labelAt(selectedPosition, 0);
-      addCandidate(candidates.find((candidate) => candidate.offset === 0));
-      addCandidate(
-        candidates.find((candidate) => candidate.offset === enteringOffset),
-      );
-
-      const bestByLabel = new Map<string, VisibleCandidate>();
-      for (const candidate of candidates) {
-        if (candidate.offset === 0 || candidate.offset === enteringOffset) {
-          continue;
-        }
-        if (candidate.label === outgoingLabel) continue;
-        const current = bestByLabel.get(candidate.label);
-        if (!current || shouldReplaceCandidate(candidate, current)) {
-          bestByLabel.set(candidate.label, candidate);
-        }
-      }
-      for (const candidate of bestByLabel.values()) addCandidate(candidate);
-    }
-
-    const enteringLabel =
-      direction === 0 ? null : labelAt(selectedPosition, enteringOffset);
     let visibleCount = 0;
-    for (const candidate of visibleCandidates.values()) {
-      const item = itemRefs.current.get(candidate.offset);
+    for (const index of ITEM_INDEXES) {
+      const item = itemRefs.current.get(index);
       if (!item) continue;
-      let opacity = 1 - candidate.distance * (1 - FADED_OPACITY);
-      const passiveEnteringCopy =
-        transition > 0 &&
-        enteringLabel !== null &&
-        candidate.label === enteringLabel &&
-        candidate.offset !== enteringOffset;
-      if (passiveEnteringCopy) opacity *= 1 - transition;
-      if (opacity <= 0.001) continue;
 
-      item.style.opacity = String(opacity);
-      item.style.visibility = "visible";
-      item.dataset.visible = "true";
-      item.dataset.loopCopy = String(passiveEnteringCopy);
-      visibleCount += 1;
+      const distance = Math.min(1, Math.abs(index - activePosition));
+      const x = (positions.get(index) ?? 0) + trackShift;
+      const width = widths.get(index) ?? 0;
+      const right = x + width;
+      const fullyVisible = x >= -0.5 && right <= reel.clientWidth + 0.5;
+      const transitionParticipant =
+        effectiveDirection !== 0 &&
+        (index === selectedIndex || index === targetIndex) &&
+        x < reel.clientWidth &&
+        right > 0;
+      const visible = fullyVisible || transitionParticipant;
+
+      item.dataset.active = String(index === activeIndex);
+      item.dataset.visible = String(visible);
+      item.style.opacity = visible
+        ? String(1 - distance * (1 - FADED_OPACITY))
+        : "0";
+      item.style.visibility = visible ? "visible" : "hidden";
+      item.style.transform = `translate3d(${x.toFixed(2)}px, -50%, 0)`;
+      if (visible) visibleCount += 1;
     }
 
-    reel.dataset.gap = gap.toFixed(2);
-    reel.dataset.progress = signedProgress.toFixed(3);
-    reel.dataset.selectedLabel = labelAt(selectedPosition, 0);
-    reel.dataset.visibleCount = String(visibleCount);
+    const signedProgress = effectiveDirection * boundedProgress;
     reel.dataset.direction =
       signedProgress > 0.001
         ? "forward"
         : signedProgress < -0.001
           ? "backward"
           : "settled";
+    reel.dataset.gap = gap.toFixed(2);
+    reel.dataset.progress = signedProgress.toFixed(3);
+    reel.dataset.selectedLabel = LABELS[selectedIndex];
+    reel.dataset.visibleCount = String(visibleCount);
   }, []);
-
-  const captureCarouselTrackBaseline = useCallback(() => {
-    const measurement = measureCarouselTrack(reelRef.current);
-    carouselLoopMotionRef.current = measurement
-      ? { lastOffset: measurement.offset, travel: 0 }
-      : null;
-  }, []);
-
-  const resolveLoopStableProgress = useCallback(
-    (direction: DashboardTitleDirection, incomingProgress: number): number => {
-      const fallbackProgress = clamp(incomingProgress, 0, 1);
-      const measurement = measureCarouselTrack(reelRef.current);
-      if (!measurement) {
-        carouselLoopMotionRef.current = null;
-        return fallbackProgress;
-      }
-
-      const current = carouselLoopMotionRef.current;
-      if (!current) {
-        carouselLoopMotionRef.current = {
-          lastOffset: measurement.offset,
-          travel: -direction * fallbackProgress * measurement.viewportWidth,
-        };
-        return fallbackProgress;
-      }
-
-      const next = advanceDashboardCarouselLoopMotion(
-        current,
-        measurement.offset,
-        measurement.loopSpan,
-      );
-      carouselLoopMotionRef.current = next;
-      return dashboardCarouselProgressFromTravel(
-        next.travel,
-        measurement.viewportWidth,
-      );
-    },
-    [],
-  );
 
   const renderSettledSelection = useCallback(
-    (selectedPosition: number) => {
-      selectedPositionRef.current = normalizeIndex(selectedPosition);
+    (selectedIndex: number) => {
+      selectedIndexRef.current = clamp(
+        Math.trunc(selectedIndex),
+        0,
+        LABELS.length - 1,
+      );
       const motion: ReelMotion = { direction: 0, progress: 0 };
       motionRef.current = motion;
       renderMotion(motion);
-      captureCarouselTrackBaseline();
     },
-    [captureCarouselTrackBaseline, renderMotion],
+    [renderMotion],
   );
 
   useImperativeHandle(
     forwardedRef,
     () => ({
-      resetHorizontalSelection() {
-        renderSettledSelection(0);
-      },
       setHorizontalMotion(direction, progress) {
-        const motion = {
-          direction,
-          progress: resolveLoopStableProgress(direction, progress),
-        };
+        const motion = { direction, progress };
         motionRef.current = motion;
         renderMotion(motion);
-      },
-      settleHorizontalMotion(committedSteps) {
-        const steps = Number.isFinite(committedSteps)
-          ? Math.trunc(committedSteps)
-          : 0;
-        renderSettledSelection(selectedPositionRef.current + steps);
       },
       syncHorizontalSelection(title) {
         renderSettledSelection(positionForTitle(title));
       },
     }),
-    [renderMotion, renderSettledSelection, resolveLoopStableProgress],
+    [renderMotion, renderSettledSelection],
   );
 
   useLayoutEffect(() => {
     renderMotion(motionRef.current);
-    if (motionRef.current.direction === 0) captureCarouselTrackBaseline();
     const reel = reelRef.current;
     if (!reel || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      renderMotion(motionRef.current);
-      if (motionRef.current.direction === 0) captureCarouselTrackBaseline();
-    });
+    const observer = new ResizeObserver(() => renderMotion(motionRef.current));
     observer.observe(reel);
     return () => observer.disconnect();
-  }, [captureCarouselTrackBaseline, renderMotion]);
+  }, [renderMotion]);
 
   return (
     <div
@@ -397,29 +208,27 @@ export const DashboardTitleReel = forwardRef<
       aria-hidden="true"
       className="pointer-events-none absolute inset-y-0 left-3 right-3 min-w-0 select-none overflow-hidden"
     >
-      {REEL_OFFSETS.map((offset) => (
+      {LABELS.map((label, index) => (
         <span
-          key={offset}
+          key={label}
           ref={(element) => {
-            if (element) itemRefs.current.set(offset, element);
-            else itemRefs.current.delete(offset);
+            if (element) itemRefs.current.set(index, element);
+            else itemRefs.current.delete(index);
           }}
           data-testid="dashboard-title-reel-item"
-          data-offset={offset}
-          data-label={labelAt(0, offset)}
-          data-active={String(offset === 0)}
-          data-visible={String(offset === 0 || offset === 1)}
-          data-loop-copy="false"
+          data-index={index}
+          data-label={label}
+          data-active={String(index === 0)}
+          data-visible={String(index < 2)}
           aria-hidden="true"
           className="pointer-events-none absolute left-0 top-1/2 whitespace-nowrap text-[clamp(18px,6vw,27px)] leading-none tracking-[-0.045em] text-foreground [will-change:transform,opacity]"
           style={{
-            fontWeight: offset === 0 ? 740 : 520,
-            opacity: offset === 0 ? 1 : offset === 1 ? FADED_OPACITY : 0,
-            visibility:
-              offset === 0 || offset === 1 ? "visible" : "hidden",
+            fontWeight: index === 0 ? 740 : 520,
+            opacity: index === 0 ? 1 : index === 1 ? FADED_OPACITY : 0,
+            visibility: index < 2 ? "visible" : "hidden",
           }}
         >
-          {labelAt(0, offset)}
+          {label}
         </span>
       ))}
     </div>

@@ -1,13 +1,13 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TransactionRecord } from '../../lib/types';
-import type { DashboardHeaderMotionHandle } from '../Header';
-import type { SettingsViewProps } from '../SettingsView';
-import type { AnalyticsViewProps } from './AnalyticsView';
-import { HomeDashboardCarousel } from './HomeDashboardCarousel';
-import type { TransactionHistoryViewProps } from './TransactionHistoryView';
-import type { AnalyticsSyncController } from './useAnalyticsSync';
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { TransactionRecord } from "../../lib/types";
+import type { DashboardHeaderMotionHandle } from "../Header";
+import type { SettingsViewProps } from "../SettingsView";
+import type { AnalyticsViewProps } from "./AnalyticsView";
+import { HomeDashboardCarousel } from "./HomeDashboardCarousel";
+import type { TransactionHistoryViewProps } from "./TransactionHistoryView";
+import type { AnalyticsSyncController } from "./useAnalyticsSync";
 
 const emblaHarness = vi.hoisted(() => ({
   api: null as null | {
@@ -16,12 +16,14 @@ const emblaHarness = vi.hoisted(() => ({
     scrollPrev: () => void;
   },
   slideOffsets: [0, 300, 600] as [number, number, number],
+  options: null as null | { loop?: boolean },
 }));
 
-vi.mock('embla-carousel-react', async () => {
-  const React = await import('react');
+vi.mock("embla-carousel-react", async () => {
+  const React = await import("react");
   return {
-    default: function useFakeEmbla() {
+    default: function useFakeEmbla(options: { loop?: boolean }) {
+      emblaHarness.options = options;
       const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
       const api = React.useMemo(() => {
         const listeners = new Map<string, Set<(api: unknown) => void>>();
@@ -31,20 +33,22 @@ vi.mock('embla-carousel-react', async () => {
           for (const listener of listeners.get(name) ?? []) listener(fakeApi);
         };
         const select = (next: number) => {
-          selected = ((next % 3) + 3) % 3;
+          const bounded = Math.max(0, Math.min(2, next));
+          if (bounded === selected) return;
+          selected = bounded;
           emblaHarness.slideOffsets =
             selected === 0
               ? [0, 300, 600]
               : selected === 1
                 ? [-300, 0, 300]
                 : [-600, -300, 0];
-          emit('scroll');
-          emit('select');
-          emit('settle');
+          emit("scroll");
+          emit("select");
+          emit("settle");
         };
         const fakeApi = {
-          canScrollNext: () => true,
-          canScrollPrev: () => true,
+          canScrollNext: () => selected < 2,
+          canScrollPrev: () => selected > 0,
           containerNode: () => root?.firstElementChild as HTMLElement,
           destroy: () => undefined,
           emit(name: string) {
@@ -63,8 +67,8 @@ vi.mock('embla-carousel-react', async () => {
             return fakeApi;
           },
           plugins: () => ({}),
-          previousScrollSnap: () => (selected + 2) % 3,
-          reInit: () => emit('reInit'),
+          previousScrollSnap: () => Math.max(0, selected - 1),
+          reInit: () => emit("reInit"),
           rootNode: () => root as HTMLElement,
           scrollNext: () => select(selected + 1),
           scrollPrev: () => select(selected - 1),
@@ -74,10 +78,13 @@ vi.mock('embla-carousel-react', async () => {
           selectedScrollSnap: () => selected,
           slideNodes: () =>
             Array.from(
-              root?.querySelectorAll<HTMLElement>('[data-home-carousel-slide-index]') ?? [],
+              root?.querySelectorAll<HTMLElement>(
+                "[data-home-carousel-slide-index]",
+              ) ?? [],
             ),
           slidesInView: () => [selected],
-          slidesNotInView: () => [0, 1, 2].filter((index) => index !== selected),
+          slidesNotInView: () =>
+            [0, 1, 2].filter((index) => index !== selected),
           setRoot(nextRoot: HTMLElement) {
             root = nextRoot;
           },
@@ -104,24 +111,26 @@ const dockMotion = { setMotion: vi.fn() };
 const resync = vi.fn();
 
 const historyRecord: TransactionRecord = {
-  id: 'expense',
-  type: 'expense',
+  id: "expense",
+  type: "expense",
   amount: 100,
-  currency: 'THB',
-  account: 'Cash',
-  for: 'Me',
-  category: 'Dining Out',
-  date: '2026-07-01T12:00:00',
-  status: 'synced',
+  currency: "THB",
+  account: "Cash",
+  for: "Me",
+  category: "Dining Out",
+  date: "2026-07-01T12:00:00",
+  status: "synced",
   sheetRowValid: true,
-  createdAt: '2026-07-01T12:00:00',
-  updatedAt: '2026-07-01T12:00:00',
+  createdAt: "2026-07-01T12:00:00",
+  updatedAt: "2026-07-01T12:00:00",
 };
 
-vi.mock('./TransactionHistoryView', () => ({
+vi.mock("./TransactionHistoryView", () => ({
   TransactionHistoryView: (props: TransactionHistoryViewProps) => {
     transactionViewCalls.push(props);
-    const motionRef = props.dockMotionRef as { current: typeof dockMotion | null } | undefined;
+    const motionRef = props.dockMotionRef as
+      | { current: typeof dockMotion | null }
+      | undefined;
     if (motionRef) motionRef.current = dockMotion;
     return (
       <section data-testid="transaction-history-scroll" data-dashboard-scroll="true">
@@ -131,7 +140,7 @@ vi.mock('./TransactionHistoryView', () => ({
   },
 }));
 
-vi.mock('./AnalyticsView', () => ({
+vi.mock("./AnalyticsView", () => ({
   AnalyticsView: (props: AnalyticsViewProps) => {
     analyticsViewCalls.push(props);
     return (
@@ -148,7 +157,7 @@ vi.mock('./AnalyticsView', () => ({
   },
 }));
 
-vi.mock('../SettingsView', () => ({
+vi.mock("../SettingsView", () => ({
   SettingsView: (props: SettingsViewProps) => {
     settingsViewCalls.push(props);
     return (
@@ -164,23 +173,24 @@ vi.mock('../SettingsView', () => ({
 }));
 
 function renderCarousel({
-  status = 'synced',
+  status = "synced",
   onToast = vi.fn(),
 }: {
-  status?: AnalyticsSyncController['status'];
+  status?: AnalyticsSyncController["status"];
   onToast?: (message: string) => void;
 } = {}) {
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function mockRect(this: HTMLElement) {
       const viewportLeft = 40;
       const slideIndex = Number(this.dataset.homeCarouselSlideIndex);
       const left = Number.isInteger(slideIndex)
         ? viewportLeft + emblaHarness.slideOffsets[slideIndex]
-        : this.dataset.testid === 'home-carousel-viewport'
+        : this.dataset.testid === "home-carousel-viewport"
           ? viewportLeft
           : 0;
       const width =
-        Number.isInteger(slideIndex) || this.dataset.testid === 'home-carousel-viewport'
+        Number.isInteger(slideIndex) ||
+        this.dataset.testid === "home-carousel-viewport"
           ? 300
           : 0;
       return {
@@ -198,6 +208,7 @@ function renderCarousel({
   );
   const headerMotion: DashboardHeaderMotionHandle = {
     setHorizontalMotion: vi.fn(),
+    syncHorizontalSelection: vi.fn(),
     setVerticalProgress: vi.fn(),
   };
   const analyticsSync: AnalyticsSyncController = {
@@ -210,8 +221,8 @@ function renderCarousel({
       isLoading: false,
       isRefreshing: false,
       isDownloading: false,
-      isOnline: status !== 'offline',
-      remoteStatus: 'success',
+      isOnline: status !== "offline",
+      remoteStatus: "success",
       remoteFetchedAt: undefined,
       remoteError: null,
       refresh: vi.fn(),
@@ -220,7 +231,7 @@ function renderCarousel({
     rates: [],
     hasLocalHistory: true,
     status,
-    lastSyncedAt: '2026-08-17T12:00:00.000Z',
+    lastSyncedAt: "2026-08-17T12:00:00.000Z",
     isResyncing: false,
     resync,
   };
@@ -237,17 +248,18 @@ function renderCarousel({
   return {
     analyticsSync,
     headerMotion,
-    viewport: screen.getByTestId('home-carousel-viewport'),
+    viewport: screen.getByTestId("home-carousel-viewport"),
   };
 }
 
 async function openSettings() {
-  const viewport = screen.getByTestId('home-carousel-viewport');
-  fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
+  const viewport = screen.getByTestId("home-carousel-viewport");
+  fireEvent.keyDown(viewport, { key: "ArrowRight" });
+  fireEvent.keyDown(viewport, { key: "ArrowRight" });
   await waitFor(() =>
-    expect(screen.getByLabelText('Settings, slide 3 of 3')).not.toHaveAttribute(
-      'aria-hidden',
-      'true',
+    expect(screen.getByLabelText("Settings, slide 3 of 3")).not.toHaveAttribute(
+      "aria-hidden",
+      "true",
     ),
   );
 }
@@ -258,9 +270,21 @@ function touchDrag(
   startX: number,
   endX: number,
 ) {
-  fireEvent.pointerDown(target, { pointerType: 'touch', clientX: startX, clientY: 90 });
-  fireEvent.pointerMove(viewport, { pointerType: 'touch', clientX: endX, clientY: 94 });
-  fireEvent.pointerUp(viewport, { pointerType: 'touch', clientX: endX, clientY: 94 });
+  fireEvent.pointerDown(target, {
+    pointerType: "touch",
+    clientX: startX,
+    clientY: 90,
+  });
+  fireEvent.pointerMove(viewport, {
+    pointerType: "touch",
+    clientX: endX,
+    clientY: 94,
+  });
+  fireEvent.pointerUp(viewport, {
+    pointerType: "touch",
+    clientX: endX,
+    clientY: 94,
+  });
   if (!target.closest('[data-home-carousel-swipe-lock="true"]')) {
     act(() => {
       if (endX < startX) emblaHarness.api?.scrollNext();
@@ -269,53 +293,80 @@ function touchDrag(
   }
 }
 
-describe('HomeDashboardCarousel', () => {
+describe("HomeDashboardCarousel", () => {
   beforeEach(() => {
     analyticsViewCalls.splice(0);
     transactionViewCalls.splice(0);
     settingsViewCalls.splice(0);
     emblaHarness.slideOffsets = [0, 300, 600];
+    emblaHarness.options = null;
     vi.mocked(dockMotion.setMotion).mockReset();
     resync.mockReset();
   });
 
-  it('renders the exact Analytics, Transactions, Settings order and exposes only Analytics initially', async () => {
+  it("renders the exact bounded order and exposes only Analytics initially", async () => {
     const { analyticsSync } = renderCarousel();
-    const analytics = screen.getByLabelText('Analytics, slide 1 of 3');
-    const transactions = screen.getByLabelText('Transactions, slide 2 of 3');
-    const settings = screen.getByLabelText('Settings, slide 3 of 3');
+    const analytics = screen.getByLabelText("Analytics, slide 1 of 3");
+    const transactions = screen.getByLabelText("Transactions, slide 2 of 3");
+    const settings = screen.getByLabelText("Settings, slide 3 of 3");
 
-    expect(analytics).not.toHaveAttribute('aria-hidden', 'true');
-    expect(transactions).toHaveAttribute('aria-hidden', 'true');
-    expect(settings).toHaveAttribute('aria-hidden', 'true');
+    expect(analytics).not.toHaveAttribute("aria-hidden", "true");
+    expect(transactions).toHaveAttribute("aria-hidden", "true");
+    expect(settings).toHaveAttribute("aria-hidden", "true");
     await waitFor(() => {
       expect(transactions.inert).toBe(true);
       expect(settings.inert).toBe(true);
     });
     expect(transactionViewCalls.at(-1)?.history).toBe(analyticsSync.history);
     expect(settingsViewCalls.at(-1)?.analyticsSync).toBe(analyticsSync);
+    expect(emblaHarness.options?.loop).toBe(false);
   });
 
-  it('loops all three slides with Left and Right Arrow without moving focus', async () => {
-    const { viewport } = renderCarousel();
-    const analytics = screen.getByLabelText('Analytics, slide 1 of 3');
-    const transactions = screen.getByLabelText('Transactions, slide 2 of 3');
-    const settings = screen.getByLabelText('Settings, slide 3 of 3');
+  it("moves within bounded ends with Left and Right Arrow without moving focus", async () => {
+    const { headerMotion, viewport } = renderCarousel();
+    const analytics = screen.getByLabelText("Analytics, slide 1 of 3");
+    const transactions = screen.getByLabelText("Transactions, slide 2 of 3");
+    const settings = screen.getByLabelText("Settings, slide 3 of 3");
 
     viewport.focus();
-    fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
-    await waitFor(() => expect(settings).not.toHaveAttribute('aria-hidden', 'true'));
+    vi.mocked(headerMotion.setHorizontalMotion).mockClear();
+    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
+    expect(analytics).not.toHaveAttribute("aria-hidden", "true");
+    expect(headerMotion.setHorizontalMotion).not.toHaveBeenCalled();
     expect(viewport).toHaveFocus();
 
-    fireEvent.keyDown(viewport, { key: 'ArrowRight' });
-    await waitFor(() => expect(analytics).not.toHaveAttribute('aria-hidden', 'true'));
-    fireEvent.keyDown(viewport, { key: 'ArrowRight' });
-    await waitFor(() => expect(transactions).not.toHaveAttribute('aria-hidden', 'true'));
-    fireEvent.keyDown(viewport, { key: 'ArrowRight' });
-    await waitFor(() => expect(settings).not.toHaveAttribute('aria-hidden', 'true'));
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(transactions).not.toHaveAttribute("aria-hidden", "true"),
+    );
+    expect(headerMotion.syncHorizontalSelection).toHaveBeenLastCalledWith(
+      "Transactions",
+    );
+
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(settings).not.toHaveAttribute("aria-hidden", "true"),
+    );
+    expect(headerMotion.syncHorizontalSelection).toHaveBeenLastCalledWith(
+      "Settings",
+    );
+
+    vi.mocked(headerMotion.setHorizontalMotion).mockClear();
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    expect(settings).not.toHaveAttribute("aria-hidden", "true");
+    expect(headerMotion.setHorizontalMotion).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
+    await waitFor(() =>
+      expect(transactions).not.toHaveAttribute("aria-hidden", "true"),
+    );
+    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
+    await waitFor(() =>
+      expect(analytics).not.toHaveAttribute("aria-hidden", "true"),
+    );
   });
 
-  it('keeps the transaction dock associated with slide index 1', async () => {
+  it("keeps the transaction dock associated with slide index 1", async () => {
     renderCarousel();
     await waitFor(() =>
       expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
@@ -326,12 +377,13 @@ describe('HomeDashboardCarousel', () => {
       }),
     );
 
-    fireEvent.keyDown(screen.getByTestId('home-carousel-viewport'), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByTestId("home-carousel-viewport"), {
+      key: "ArrowRight",
+    });
     await waitFor(() =>
-      expect(screen.getByLabelText('Transactions, slide 2 of 3')).not.toHaveAttribute(
-        'aria-hidden',
-        'true',
-      ),
+      expect(
+        screen.getByLabelText("Transactions, slide 2 of 3"),
+      ).not.toHaveAttribute("aria-hidden", "true"),
     );
     expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
       x: 0,
@@ -340,11 +392,13 @@ describe('HomeDashboardCarousel', () => {
       moving: false,
     });
 
-    fireEvent.keyDown(screen.getByTestId('home-carousel-viewport'), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByTestId("home-carousel-viewport"), {
+      key: "ArrowRight",
+    });
     await waitFor(() =>
-      expect(screen.getByLabelText('Settings, slide 3 of 3')).not.toHaveAttribute(
-        'aria-hidden',
-        'true',
+      expect(screen.getByLabelText("Settings, slide 3 of 3")).not.toHaveAttribute(
+        "aria-hidden",
+        "true",
       ),
     );
     expect(dockMotion.setMotion).toHaveBeenLastCalledWith({
@@ -355,15 +409,15 @@ describe('HomeDashboardCarousel', () => {
     });
   });
 
-  it('retains Settings vertical header progress and mounted draft state across slide changes', async () => {
+  it("retains Settings vertical header progress and mounted draft state across slide changes", async () => {
     const user = userEvent.setup();
     const { headerMotion, viewport } = renderCarousel();
     await openSettings();
-    const settings = screen.getByLabelText('Settings, slide 3 of 3');
-    const scroll = screen.getByTestId('settings-scroll');
-    const draft = screen.getByRole('textbox', { name: 'Settings draft' });
-    await user.type(draft, 'Travel wallet');
-    Object.defineProperty(scroll, 'scrollTop', {
+    const settings = screen.getByLabelText("Settings, slide 3 of 3");
+    const scroll = screen.getByTestId("settings-scroll");
+    const draft = screen.getByRole("textbox", { name: "Settings draft" });
+    await user.type(draft, "Travel wallet");
+    Object.defineProperty(scroll, "scrollTop", {
       configurable: true,
       writable: true,
       value: 34,
@@ -371,62 +425,82 @@ describe('HomeDashboardCarousel', () => {
     vi.mocked(headerMotion.setVerticalProgress).mockClear();
     fireEvent.scroll(scroll);
     expect(headerMotion.setVerticalProgress).toHaveBeenLastCalledWith(0.5);
-    expect(settings).toHaveStyle({ '--dashboard-header-space': '34px' });
+    expect(settings).toHaveStyle({ "--dashboard-header-space": "34px" });
 
-    fireEvent.keyDown(viewport, { key: 'ArrowRight' });
+    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
+    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
     await waitFor(() =>
-      expect(screen.getByLabelText('Analytics, slide 1 of 3')).not.toHaveAttribute(
-        'aria-hidden',
-        'true',
-      ),
+      expect(
+        screen.getByLabelText("Analytics, slide 1 of 3"),
+      ).not.toHaveAttribute("aria-hidden", "true"),
     );
     expect(headerMotion.setVerticalProgress).toHaveBeenLastCalledWith(0);
 
-    fireEvent.keyDown(viewport, { key: 'ArrowLeft' });
-    await waitFor(() => expect(settings).not.toHaveAttribute('aria-hidden', 'true'));
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(settings).not.toHaveAttribute("aria-hidden", "true"),
+    );
     expect(headerMotion.setVerticalProgress).toHaveBeenLastCalledWith(0.5);
-    expect(draft).toHaveValue('Travel wallet');
+    expect(draft).toHaveValue("Travel wallet");
   });
 
-  it('lets ordinary touch gestures move the carousel but isolates nested Settings gestures', async () => {
-    const { viewport } = renderCarousel();
+  it("moves with ordinary touch gestures, resists edge gestures, and isolates nested Settings gestures", async () => {
+    const { headerMotion, viewport } = renderCarousel();
+
+    vi.mocked(headerMotion.setHorizontalMotion).mockClear();
+    touchDrag(viewport, viewport, 100, 260);
+    expect(
+      screen.getByLabelText("Analytics, slide 1 of 3"),
+    ).not.toHaveAttribute("aria-hidden", "true");
+    expect(headerMotion.setHorizontalMotion).not.toHaveBeenCalled();
 
     touchDrag(viewport, viewport, 260, 100);
     await waitFor(() =>
-      expect(screen.getByLabelText('Transactions, slide 2 of 3')).not.toHaveAttribute(
-        'aria-hidden',
-        'true',
-      ),
+      expect(
+        screen.getByLabelText("Transactions, slide 2 of 3"),
+      ).not.toHaveAttribute("aria-hidden", "true"),
     );
     touchDrag(viewport, viewport, 100, 260);
     await waitFor(() =>
-      expect(screen.getByLabelText('Analytics, slide 1 of 3')).not.toHaveAttribute(
-        'aria-hidden',
-        'true',
-      ),
+      expect(
+        screen.getByLabelText("Analytics, slide 1 of 3"),
+      ).not.toHaveAttribute("aria-hidden", "true"),
     );
 
     await openSettings();
-    const locked = screen.getByRole('button', { name: 'Settings-owned swipe target' });
-    touchDrag(viewport, locked, 260, 100);
-    expect(screen.getByLabelText('Settings, slide 3 of 3')).not.toHaveAttribute(
-      'aria-hidden',
-      'true',
-    );
+    vi.mocked(headerMotion.setHorizontalMotion).mockClear();
+    touchDrag(viewport, viewport, 260, 100);
+    expect(
+      screen.getByLabelText("Settings, slide 3 of 3"),
+    ).not.toHaveAttribute("aria-hidden", "true");
+    expect(headerMotion.setHorizontalMotion).not.toHaveBeenCalled();
+
+    const locked = screen.getByRole("button", {
+      name: "Settings-owned swipe target",
+    });
+    touchDrag(viewport, locked, 100, 260);
+    expect(
+      screen.getByLabelText("Settings, slide 3 of 3"),
+    ).not.toHaveAttribute("aria-hidden", "true");
   });
 
-  it('passes offline state to both Analytics and Settings without resyncing', () => {
-    const { analyticsSync } = renderCarousel({ status: 'offline' });
+  it("passes offline state to both Analytics and Settings without resyncing", () => {
+    const { analyticsSync } = renderCarousel({ status: "offline" });
     expect(analyticsViewCalls.at(-1)?.isOffline).toBe(true);
-    expect(settingsViewCalls.at(-1)?.analyticsSync.status).toBe('offline');
+    expect(settingsViewCalls.at(-1)?.analyticsSync.status).toBe("offline");
     expect(transactionViewCalls.at(-1)?.history).toBe(analyticsSync.history);
     expect(resync).not.toHaveBeenCalled();
   });
 
-  it('keeps the existing no-big-spending Settings prompt behavior', async () => {
+  it("keeps the existing no-big-spending Settings prompt behavior", async () => {
     const onToast = vi.fn();
     renderCarousel({ onToast });
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Toggle no big spending' }));
-    expect(onToast).toHaveBeenCalledWith('Set a big spending cutoff in Settings.');
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Toggle no big spending" }));
+    expect(onToast).toHaveBeenCalledWith(
+      "Set a big spending cutoff in Settings.",
+    );
   });
 });

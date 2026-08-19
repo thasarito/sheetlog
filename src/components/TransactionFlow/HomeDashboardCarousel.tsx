@@ -23,11 +23,7 @@ import {
   buildAnalyticsSummary,
   type AnalyticsRange,
 } from "./analytics";
-import { AnalyticsSheetMorph } from "./AnalyticsSheetMorph";
-import {
-  resolveDashboardTitleSelection,
-  resolveDashboardTitleSteps,
-} from "./dashboardTitleMotion";
+import { AnalyticsView } from "./AnalyticsView";
 import type { TransactionHistoryDockMotionHandle } from "./TransactionHistoryDock";
 import { TransactionHistoryView } from "./TransactionHistoryView";
 import type { AnalyticsSyncController } from "./useAnalyticsSync";
@@ -50,9 +46,6 @@ type HorizontalMotion = {
   active: boolean;
   originSlide: HTMLElement | null;
   direction: DashboardTitleDirection | 0;
-  stepDirection: DashboardTitleDirection | 0;
-  committedSteps: number;
-  pendingSelections: number;
 };
 
 const SLIDES = DASHBOARD_SLIDES;
@@ -95,7 +88,7 @@ const EMBLA_OPTIONS: EmblaCarouselOptions = {
   // click when a touch drag does not emit a compatibility click.
   dragThreshold: Number.MAX_SAFE_INTEGER,
   duration: 25,
-  loop: true,
+  loop: false,
   skipSnaps: false,
   watchDrag: allowCarouselDrag,
 };
@@ -111,13 +104,17 @@ function headerCollapseProgress(element: HTMLElement): number {
   );
 }
 
+function canNavigate(
+  api: EmblaCarouselApi,
+  direction: DashboardTitleDirection,
+): boolean {
+  return direction > 0 ? api.canScrollNext() : api.canScrollPrev();
+}
+
 function resetHorizontalMotion(motion: HorizontalMotion) {
   motion.active = false;
   motion.originSlide = null;
   motion.direction = 0;
-  motion.stepDirection = 0;
-  motion.committedSteps = 0;
-  motion.pendingSelections = 0;
 }
 
 export function HomeDashboardCarousel({
@@ -147,16 +144,10 @@ export function HomeDashboardCarousel({
     active: false,
     originSlide: null,
     direction: 0,
-    stepDirection: 0,
-    committedSteps: 0,
-    pendingSelections: 0,
   });
   const pointerStart = useRef<{
     startX: number;
     startY: number;
-    lastX: number;
-    lastY: number;
-    pointerType: string;
     horizontal: boolean;
   } | null>(null);
   const suppressClick = useRef(false);
@@ -269,7 +260,7 @@ export function HomeDashboardCarousel({
       activeIndexRef.current = index;
       setActiveIndex(index);
       headerMotionRef?.current?.syncHorizontalSelection?.(
-        resolveDashboardTitleSelection(index),
+        SLIDES[index] ?? SLIDES[0],
       );
       headerMotionRef?.current?.setVerticalProgress(
         verticalProgressRef.current[index] ?? 0,
@@ -282,38 +273,19 @@ export function HomeDashboardCarousel({
   );
 
   const beginHorizontalMotion = useCallback(
-    (
-      direction: DashboardTitleDirection | 0 = 0,
-      stepDirection: DashboardTitleDirection | 0 = direction,
-    ) => {
+    (direction: DashboardTitleDirection) => {
       const motion = horizontalMotionRef.current;
       const isStarting = !motion.active;
       if (isStarting) {
         motion.active = true;
-        motion.originSlide =
-          slideRefs.current.find(
-            (slide) => slide?.getAttribute("aria-hidden") !== "true",
-          ) ?? null;
-        motion.direction = 0;
-        motion.stepDirection = 0;
-        motion.committedSteps = 0;
-        motion.pendingSelections = 0;
+        motion.originSlide = slideRefs.current[activeIndexRef.current] ?? null;
       }
-      if (direction !== 0) motion.direction = direction;
-      if (stepDirection !== 0) {
-        if (motion.stepDirection === 0 && motion.pendingSelections > 0) {
-          motion.committedSteps += stepDirection * motion.pendingSelections;
-          motion.pendingSelections = 0;
-        }
-        motion.stepDirection = stepDirection;
-      }
+      motion.direction = direction;
       const viewport = viewportRef.current;
       if (viewport) {
         viewport.dataset.motionStatus = "moving";
-        if (direction !== 0) {
-          viewport.dataset.inputDirection =
-            direction > 0 ? "forward" : "backward";
-        }
+        viewport.dataset.inputDirection =
+          direction > 0 ? "forward" : "backward";
       }
       if (isStarting) renderTransactionDockMotion(false, false);
     },
@@ -335,10 +307,9 @@ export function HomeDashboardCarousel({
     const viewportRect = viewport.getBoundingClientRect();
     if (viewportRect.width === 0) return;
     const originRect = origin.getBoundingClientRect();
-    const measured = Math.abs(
-      (originRect.left - viewportRect.left) / viewportRect.width,
+    const progress = clampHorizontalProgress(
+      Math.abs(originRect.left - viewportRect.left) / viewportRect.width,
     );
-    const progress = clampHorizontalProgress(measured);
     headerMotionRef?.current?.setHorizontalMotion(
       motion.direction,
       progress,
@@ -356,44 +327,33 @@ export function HomeDashboardCarousel({
     }, 0);
   }, []);
 
+  const cancelHorizontalPreview = useCallback(() => {
+    const motion = horizontalMotionRef.current;
+    if (!motion.active) return;
+    resetHorizontalMotion(motion);
+    headerMotionRef?.current?.syncHorizontalSelection?.(
+      SLIDES[activeIndexRef.current] ?? SLIDES[0],
+    );
+    renderTransactionDockMotion(activeIndexRef.current === 1, false);
+    const viewport = viewportRef.current;
+    if (viewport) {
+      viewport.dataset.motionProgress = "0.000";
+      viewport.dataset.motionStatus = "settled";
+    }
+  }, [headerMotionRef, renderTransactionDockMotion]);
+
   const settleHorizontalMotion = useCallback(
     (api: EmblaCarouselApi) => {
       const motion = horizontalMotionRef.current;
-      if (!motion.active) {
-        commitActiveIndex(api.selectedScrollSnap());
-        return;
-      }
-      const viewport = viewportRef.current;
-      const origin = motion.originSlide;
-      const viewportRect = viewport?.getBoundingClientRect();
-      const originRect = origin?.getBoundingClientRect();
-      const returnedToOrigin = Boolean(
-        viewportRect &&
-          originRect &&
-          Math.abs(originRect.left - viewportRect.left) < 1,
-      );
-      const committedSteps = resolveDashboardTitleSteps({
-        direction: motion.direction,
-        stepDirection: motion.stepDirection,
-        committedSteps: motion.committedSteps,
-        pendingSelections: motion.pendingSelections,
-        returnedToOrigin,
-      });
       const direction =
-        committedSteps > 0
+        motion.direction > 0
           ? "forward"
-          : committedSteps < 0
+          : motion.direction < 0
             ? "backward"
-            : motion.direction > 0
-              ? "forward"
-              : motion.direction < 0
-                ? "backward"
-                : "none";
-      if (motion.active && motion.direction !== 0) {
-        headerMotionRef?.current?.settleHorizontalMotion?.(committedSteps);
-      }
+            : "none";
       resetHorizontalMotion(motion);
       pointerStart.current = null;
+      const viewport = viewportRef.current;
       if (viewport) {
         viewport.dataset.lastSettledDirection = direction;
         viewport.dataset.motionProgress = "0.000";
@@ -401,12 +361,12 @@ export function HomeDashboardCarousel({
       }
       commitActiveIndex(api.selectedScrollSnap());
     },
-    [commitActiveIndex, headerMotionRef],
+    [commitActiveIndex],
   );
 
   useEffect(() => {
     headerMotionRef?.current?.syncHorizontalSelection?.(
-      resolveDashboardTitleSelection(activeIndexRef.current),
+      SLIDES[activeIndexRef.current] ?? SLIDES[0],
     );
     headerMotionRef?.current?.setVerticalProgress(
       verticalProgressRef.current[activeIndexRef.current] ?? 0,
@@ -421,11 +381,6 @@ export function HomeDashboardCarousel({
       renderHorizontalMotion();
     };
     const onSelect = () => {
-      const motion = horizontalMotionRef.current;
-      if (motion.active) {
-        if (motion.stepDirection === 0) motion.pendingSelections += 1;
-        else motion.committedSteps += motion.stepDirection;
-      }
       const selected = emblaApi.selectedScrollSnap();
       setActiveIndex(selected);
       const viewport = viewportRef.current;
@@ -434,11 +389,7 @@ export function HomeDashboardCarousel({
     const onSettle = () => settleHorizontalMotion(emblaApi);
     const onPointerUp = () => releasePointerGesture();
     const onReInit = () => {
-      const motion = horizontalMotionRef.current;
-      if (motion.active && motion.direction !== 0) {
-        headerMotionRef?.current?.settleHorizontalMotion?.(0);
-      }
-      resetHorizontalMotion(motion);
+      resetHorizontalMotion(horizontalMotionRef.current);
       commitActiveIndex(emblaApi.selectedScrollSnap());
     };
     emblaApi.on("scroll", onScroll);
@@ -453,16 +404,11 @@ export function HomeDashboardCarousel({
       emblaApi.off("settle", onSettle);
       emblaApi.off("pointerUp", onPointerUp);
       emblaApi.off("reInit", onReInit);
-      const motion = horizontalMotionRef.current;
-      if (motion.active && motion.direction !== 0) {
-        headerMotionRef?.current?.settleHorizontalMotion?.(0);
-      }
-      resetHorizontalMotion(motion);
+      resetHorizontalMotion(horizontalMotionRef.current);
     };
   }, [
     commitActiveIndex,
     emblaApi,
-    headerMotionRef,
     releasePointerGesture,
     renderHorizontalMotion,
     settleHorizontalMotion,
@@ -477,21 +423,14 @@ export function HomeDashboardCarousel({
     pointerStart.current = {
       startX: event.clientX,
       startY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      pointerType: event.pointerType,
       horizontal: false,
     };
-    beginHorizontalMotion();
     suppressClick.current = false;
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const gesture = pointerStart.current;
-    if (!gesture) return;
-    const movementX = event.clientX - gesture.lastX;
-    gesture.lastX = event.clientX;
-    gesture.lastY = event.clientY;
+    if (!gesture || !emblaApi) return;
     const x = Math.abs(event.clientX - gesture.startX);
     const y = Math.abs(event.clientY - gesture.startY);
     if (x > 8 && x > y) {
@@ -499,26 +438,19 @@ export function HomeDashboardCarousel({
       suppressClick.current = true;
       const direction: DashboardTitleDirection =
         event.clientX < gesture.startX ? 1 : -1;
-      const stepDirection: DashboardTitleDirection =
-        movementX === 0
-          ? horizontalMotionRef.current.stepDirection || direction
-          : movementX < 0
-            ? 1
-            : -1;
-      beginHorizontalMotion(direction, stepDirection);
+      if (!canNavigate(emblaApi, direction)) {
+        cancelHorizontalPreview();
+        return;
+      }
+      beginHorizontalMotion(direction);
       renderHorizontalMotion();
     }
   };
 
-  const finishPointerGesture = (end?: { x: number; y: number }) => {
+  const finishPointerGesture = (cancelled = false) => {
     const gesture = pointerStart.current;
-    if (gesture && end) {
-      gesture.lastX = end.x;
-      gesture.lastY = end.y;
-    }
-    if (gesture && !gesture.horizontal) {
-      resetHorizontalMotion(horizontalMotionRef.current);
-      renderTransactionDockMotion(activeIndexRef.current === 1, false);
+    if ((gesture && !gesture.horizontal) || cancelled) {
+      cancelHorizontalPreview();
       const viewport = viewportRef.current;
       if (viewport) {
         viewport.dataset.motionProgress = "0.000";
@@ -526,10 +458,6 @@ export function HomeDashboardCarousel({
       }
     }
     releasePointerGesture();
-  };
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    finishPointerGesture({ x: event.clientX, y: event.clientY });
   };
 
   const handleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -570,11 +498,19 @@ export function HomeDashboardCarousel({
       event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (direction === 0) return;
     event.preventDefault();
+    if (
+      horizontalMotionRef.current.active ||
+      !canNavigate(emblaApi, direction)
+    ) {
+      return;
+    }
     beginHorizontalMotion(direction);
     const jump = prefersReducedMotion();
     if (direction > 0) emblaApi.scrollNext(jump);
     else emblaApi.scrollPrev(jump);
-    if (jump) settleHorizontalMotion(emblaApi);
+    if (jump && horizontalMotionRef.current.active) {
+      settleHorizontalMotion(emblaApi);
+    }
   };
 
   const handleRangeChange = (nextRange: AnalyticsRange) => {
@@ -610,8 +546,8 @@ export function HomeDashboardCarousel({
         tabIndex={0}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={() => finishPointerGesture()}
+        onPointerUp={() => finishPointerGesture()}
+        onPointerCancel={() => finishPointerGesture(true)}
         onClickCapture={handleClickCapture}
         className="h-full min-h-0 overflow-hidden overscroll-x-none [touch-action:pan-y]"
       >
@@ -628,8 +564,7 @@ export function HomeDashboardCarousel({
             data-home-carousel-slide-index="0"
             className="h-full min-w-0 flex-[0_0_100%]"
           >
-            <AnalyticsSheetMorph
-              rates={analyticsSync.rates}
+            <AnalyticsView
               transactions={transactions}
               summary={summary}
               baseCurrency={baseCurrency}
