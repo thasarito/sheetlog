@@ -120,13 +120,13 @@ export function CategoryStepSheet({
         ),
       );
       const collapsedContentHeight = collapsedHeight + safeAreaHeight;
-      const contentHeight = collapsedContentHeight + entryHeight;
+      const expandedContentHeight = collapsedHeight + entryHeight;
 
       const nextHeights = {
         collapsed: collapsedContentHeight,
         expanded: Math.max(
           collapsedContentHeight + 1,
-          Math.min(contentHeight, measuredLayoutHeight),
+          Math.min(expandedContentHeight, measuredLayoutHeight),
         ),
       };
       setHeights((current) =>
@@ -331,7 +331,7 @@ export function CategoryStepSheet({
             <div
               ref={sheetBodyRef}
               data-testid="category-step-sheet-body"
-              className="flex min-h-0 flex-col overflow-hidden"
+              className="relative flex min-h-0 flex-col overflow-hidden"
               style={{ height: expandedPoint }}
             >
               <div
@@ -385,7 +385,14 @@ export function CategoryStepSheet({
                 ref={setSafeAreaElement}
                 aria-hidden="true"
                 data-testid="category-step-safe-area"
-                className={`${collapsed ? "order-2" : "order-3"} shrink-0`}
+                className={cn(
+                  "shrink-0",
+                  entryVisible
+                    ? "pointer-events-none invisible absolute inset-x-0 bottom-0"
+                    : collapsed
+                      ? "order-2"
+                      : "order-3",
+                )}
                 style={{ height: "var(--category-sheet-safe-area)" }}
               />
             </div>
