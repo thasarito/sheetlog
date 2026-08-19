@@ -1,20 +1,21 @@
-name: Transaction sync relocation red phase
+name: Implement transaction sync relocation
 
 on:
-  push:
-    branches:
-      - verify/transaction-sync-settings
   pull_request:
     branches:
       - main
+
+concurrency:
+  group: transaction-sync-settings-implementation
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
-  red:
+  implement:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out feature branch
         uses: actions/checkout@v4
@@ -32,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Add approved behavior tests
+      - name: Implement approved relocation
         run: |
           python <<'PY'
           from pathlib import Path
@@ -45,7 +46,7 @@ jobs:
               count = text.count(old)
               if count != expected:
                   raise SystemExit(
-                      f"Expected {expected} match(es) in {path}, found {count}: {old[:100]!r}"
+                      f"Expected {expected} match(es) in {path}, found {count}: {old[:120]!r}"
                   )
               file.write_text(text.replace(old, new))
 
@@ -57,220 +58,267 @@ jobs:
                   raise SystemExit(f"Expected one regex match in {path}: {pattern!r}")
               file.write_text(updated)
 
-          Path('src/components/AnalyticsSyncSetting.test.tsx').write_text(
+          Path('src/components/AnalyticsSyncSetting.tsx').write_text(
               textwrap.dedent(
                   '''\
-                  import { render, screen } from '@testing-library/react';
-                  import userEvent from '@testing-library/user-event';
-                  import { describe, expect, it, vi } from 'vitest';
-                  import { AnalyticsSyncSetting } from './AnalyticsSyncSetting';
+                  import { format } from 'date-fns';
+                  import { RefreshCw } from 'lucide-react';
+                  import { tryParseDate } from '../lib/date-utils';
+                  import type { AnalyticsSyncStatus } from './TransactionFlow/useAnalyticsSync';
 
-                  const baseProps = {
-                    count: 3,
-                    capturedAt: '2026-08-19T13:42:00.000Z',
-                    status: 'synced' as const,
-                    isRefreshing: false,
-                    isDownloading: false,
-                    hasLocalHistory: true,
-                    isResyncing: false,
-                    onResync: vi.fn(),
+                  type AnalyticsSyncSettingProps = {
+                    count: number;
+                    capturedAt?: string;
+                    status: AnalyticsSyncStatus;
+                    isRefreshing: boolean;
+                    isDownloading: boolean;
+                    hasLocalHistory: boolean;
+                    isResyncing: boolean;
+                    onResync: () => void;
                   };
 
-                  describe('AnalyticsSyncSetting', () => {
-                    it('renders the unfiltered transaction count and last-saved timestamp', () => {
-                      render(<AnalyticsSyncSetting {...baseProps} />);
+                  function transactionCountLabel(count: number): string {
+                    return `${count} ${count === 1 ? 'transaction' : 'transactions'}`;
+                  }
 
-                      expect(screen.getByText('Transaction history')).toBeInTheDocument();
-                      expect(screen.getByText('3 transactions')).toBeInTheDocument();
-                      expect(screen.getByText('Last saved Aug 19, 13:42')).toBeInTheDocument();
-                      expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
-                    });
+                  function lastSavedLabel(capturedAt?: string): string | null {
+                    if (!capturedAt) return null;
+                    const timestamp = tryParseDate(capturedAt);
+                    return timestamp
+                      ? `Last saved ${format(timestamp, 'MMM d, HH:mm')}`
+                      : null;
+                  }
 
-                    it('uses the singular transaction label', () => {
-                      render(<AnalyticsSyncSetting {...baseProps} count={1} />);
+                  function statusLabel({
+                    capturedAt,
+                    status,
+                    isRefreshing,
+                    isDownloading,
+                    hasLocalHistory,
+                    isResyncing,
+                  }: Omit<AnalyticsSyncSettingProps, 'count' | 'onResync'>): string {
+                    const saved = lastSavedLabel(capturedAt);
+                    if (isDownloading) return 'Downloading…';
+                    if (isResyncing || isRefreshing || status === 'syncing') return 'Updating…';
+                    if (status === 'offline') {
+                      return saved ? `Offline · ${saved}` : 'Offline · Not downloaded';
+                    }
+                    if (!hasLocalHistory || !saved) return 'Not downloaded';
+                    return saved;
+                  }
 
-                      expect(screen.getByText('1 transaction')).toBeInTheDocument();
-                    });
+                  export function AnalyticsSyncSetting({
+                    count,
+                    capturedAt,
+                    status,
+                    isRefreshing,
+                    isDownloading,
+                    hasLocalHistory,
+                    isResyncing,
+                    onResync,
+                  }: AnalyticsSyncSettingProps) {
+                    const busy =
+                      isResyncing || isRefreshing || isDownloading || status === 'syncing';
 
-                    it('renders downloading, updating, offline, and not-downloaded states', () => {
-                      const rendered = render(
-                        <AnalyticsSyncSetting {...baseProps} isDownloading />,
-                      );
-                      expect(screen.getByText('Downloading…')).toBeInTheDocument();
-
-                      rendered.rerender(
-                        <AnalyticsSyncSetting {...baseProps} isResyncing />,
-                      );
-                      expect(screen.getByText('Updating…')).toBeInTheDocument();
-
-                      rendered.rerender(
-                        <AnalyticsSyncSetting {...baseProps} status="offline" />,
-                      );
-                      expect(
-                        screen.getByText('Offline · Last saved Aug 19, 13:42'),
-                      ).toBeInTheDocument();
-
-                      rendered.rerender(
-                        <AnalyticsSyncSetting
-                          {...baseProps}
-                          capturedAt={undefined}
-                          hasLocalHistory={false}
-                        />,
-                      );
-                      expect(screen.getByText('Not downloaded')).toBeInTheDocument();
-                    });
-
-                    it('starts one resync and disables the action while sync work is active', async () => {
-                      const user = userEvent.setup();
-                      const onResync = vi.fn();
-                      const rendered = render(
-                        <AnalyticsSyncSetting {...baseProps} onResync={onResync} />,
-                      );
-
-                      const button = screen.getByRole('button', {
-                        name: 'Resync transaction history',
-                      });
-                      await user.click(button);
-                      expect(onResync).toHaveBeenCalledTimes(1);
-
-                      rendered.rerender(
-                        <AnalyticsSyncSetting
-                          {...baseProps}
-                          status="syncing"
-                          isResyncing
-                          onResync={onResync}
-                        />,
-                      );
-                      expect(button).toBeDisabled();
-                      expect(button).toHaveAttribute('aria-busy', 'true');
-                      expect(rendered.container.innerHTML).not.toContain('shadow');
-                    });
-
-                    it('disables resync while offline or history is refreshing', () => {
-                      const rendered = render(
-                        <AnalyticsSyncSetting {...baseProps} status="offline" />,
-                      );
-                      expect(
-                        screen.getByRole('button', { name: 'Resync transaction history' }),
-                      ).toBeDisabled();
-
-                      rendered.rerender(
-                        <AnalyticsSyncSetting {...baseProps} isRefreshing />,
-                      );
-                      expect(
-                        screen.getByRole('button', { name: 'Resync transaction history' }),
-                      ).toBeDisabled();
-                    });
-                  });
+                    return (
+                      <div
+                        data-testid="transaction-history-sync-setting"
+                        className="flex min-h-16 items-center gap-3 px-4 py-3"
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[#5856D6] text-white">
+                          <RefreshCw
+                            className={`h-4 w-4 ${busy ? 'animate-spin motion-reduce:animate-none' : ''}`}
+                            aria-hidden="true"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[17px] text-foreground">Transaction history</p>
+                          <p className="truncate text-[13px] text-muted-foreground">
+                            {transactionCountLabel(count)}
+                          </p>
+                          <p
+                            className="truncate text-[13px] text-muted-foreground"
+                            aria-live="polite"
+                          >
+                            {statusLabel({
+                              capturedAt,
+                              status,
+                              isRefreshing,
+                              isDownloading,
+                              hasLocalHistory,
+                              isResyncing,
+                            })}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={onResync}
+                          disabled={busy || status === 'offline'}
+                          aria-label="Resync transaction history"
+                          aria-busy={busy}
+                          className="min-h-11 rounded-[10px] border border-border bg-surface px-3 text-[13px] font-semibold text-primary active:bg-surface-2 disabled:opacity-50"
+                        >
+                          Resync
+                        </button>
+                      </div>
+                    );
+                  }
                   '''
               )
           )
 
           replace_exact(
-              'src/components/SettingsView.test.tsx',
-              "import { fireEvent, render, screen, waitFor } from '@testing-library/react';",
-              "import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';",
+              'src/components/SettingsView.tsx',
+              "    'status' | 'lastSyncedAt' | 'isResyncing' | 'resync'\n",
+              "    'status' | 'isResyncing' | 'resync' | 'records' | 'hasLocalHistory' | 'history'\n",
           )
           replace_exact(
-              'src/components/SettingsView.test.tsx',
-              "import type { OnboardingState } from '../lib/types';",
-              "import type { OnboardingState, TransactionRecord } from '../lib/types';",
+              'src/components/SettingsView.tsx',
+              '''          />
+          {hasSettingsDiagnostics ? (''',
+              '''          />
+          <div className="ml-[56px] h-px bg-border/70" />
+          <AnalyticsSyncSetting
+            count={analyticsSync.records.length}
+            capturedAt={analyticsSync.history.meta?.capturedAt}
+            status={analyticsSync.status}
+            isRefreshing={analyticsSync.history.isRefreshing}
+            isDownloading={analyticsSync.history.isDownloading}
+            hasLocalHistory={analyticsSync.hasLocalHistory}
+            isResyncing={analyticsSync.isResyncing}
+            onResync={analyticsSync.resync}
+          />
+          {hasSettingsDiagnostics ? (''',
           )
           replace_exact(
-              'src/components/SettingsView.test.tsx',
-              "    records: [],\n    meta: null,",
-              "    records: [{}, {}, {}] as TransactionRecord[],\n    meta: {\n      sheetId: 'sheet-a',\n      capturedAt: '2026-08-19T13:42:00.000Z',\n      sourceLastRow: 4,\n      rowCount: 3,\n    },",
+              'src/components/SettingsView.tsx',
+              '''          <div className="ml-[56px] h-px bg-border/70" />
+          <AnalyticsSyncSetting
+            status={analyticsSync.status}
+            lastSyncedAt={analyticsSync.lastSyncedAt}
+            isResyncing={analyticsSync.isResyncing}
+            onResync={analyticsSync.resync}
+          />
+          <div className="ml-[56px] h-px bg-border/70" />''',
+              '''          <div className="ml-[56px] h-px bg-border/70" />''',
+          )
+
+          replace_exact(
+              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
+              'import { RefreshCw, Search, X } from "lucide-react";',
+              'import { Search, X } from "lucide-react";',
           )
           replace_exact(
-              'src/components/SettingsView.test.tsx',
-              "  records: [],\n  rates: [],",
-              "  records: [{}, {}, {}] as TransactionRecord[],\n  rates: [],",
+              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
+              '''  countLabel: string;
+          statusLabel: string;
+          canRefresh: boolean;
+          isRefreshing: boolean;
+          onRefresh: () => void;
+          '''.replace('          ', ''),
+              '',
+          )
+          replace_exact(
+              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
+              '''  countLabel,
+          statusLabel,
+          canRefresh,
+          isRefreshing,
+          onRefresh,
+          '''.replace('          ', ''),
+              '',
           )
           replace_regex(
-              'src/components/SettingsView.test.tsx',
-              r"  it\('keeps settings sync diagnostics and manual refresh behavior', async \(\) => \{.*?\n  \}\);",
-              textwrap.dedent(
-                  '''\
-                    it('keeps settings sync diagnostics and moves transaction history sync into Sync', async () => {
-                      const user = userEvent.setup();
-                      renderView();
-
-                      const syncButton = screen.getByRole('button', { name: /Sync Settings/i });
-                      expect(syncButton).toHaveTextContent('Synced');
-                      expect(screen.getByText('Synced')).toHaveAttribute('aria-live', 'polite');
-                      await user.click(syncButton);
-                      expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
-
-                      const historySync = screen.getByTestId('transaction-history-sync-setting');
-                      expect(syncButton.parentElement).toContainElement(historySync);
-                      expect(within(historySync).getByText('3 transactions')).toBeInTheDocument();
-                      expect(
-                        within(historySync).getByText('Last saved Aug 19, 13:42'),
-                      ).toBeInTheDocument();
-                      expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
-
-                      await user.click(
-                        within(historySync).getByRole('button', {
-                          name: 'Resync transaction history',
-                        }),
-                      );
-                      expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
-                    });
-                  '''
-              ).rstrip(),
+              'src/components/TransactionFlow/TransactionHistoryDock.tsx',
+              r'''\n      <div\n        data-testid="transaction-history-metadata".*?\n      </div>\n    </div>\n  \);''',
+              '\n    </div>\n  );',
           )
 
+          replace_exact(
+              'src/components/TransactionFlow/CategoryStepSheetAccessory.tsx',
+              'export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 104;',
+              'export const DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT = 60;',
+          )
+
+          replace_exact(
+              'src/components/TransactionFlow/TransactionHistoryView.tsx',
+              'import { format } from "date-fns";\n',
+              '',
+          )
+          replace_exact(
+              'src/components/TransactionFlow/TransactionHistoryView.tsx',
+              'import { parseDate } from "../../lib/date-utils";\n',
+              '',
+          )
+          replace_exact(
+              'src/components/TransactionFlow/TransactionHistoryView.tsx',
+              '''  const countLabel = `${filteredTransactions.length} ${
+            filteredTransactions.length === 1 ? "transaction" : "transactions"
+          }`;
+          '''.replace('          ', ''),
+              '',
+          )
+          replace_exact(
+              'src/components/TransactionFlow/TransactionHistoryView.tsx',
+              '  const isRefreshing = history.isRefreshing || baseAmounts.isRefreshing;\n',
+              '',
+          )
           replace_regex(
-              'src/components/TransactionFlow/TransactionHistoryView.test.tsx',
-              r'''    expect\(\n      within\(screen\.getByTestId\("transaction-history-metadata"\)\)\.getByRole\(\n        "button",\n        \{ name: "Refresh transaction history" \},\n      \),\n    \)\.toBeInTheDocument\(\);''',
-              textwrap.dedent(
-                  '''\
-                      expect(
-                        screen.queryByTestId("transaction-history-metadata"),
-                      ).not.toBeInTheDocument();
-                      expect(
-                        screen.queryByRole("button", { name: "Refresh transaction history" }),
-                      ).not.toBeInTheDocument();
-                  '''
-              ).rstrip(),
+              'src/components/TransactionFlow/TransactionHistoryView.tsx',
+              r'''\n  const statusLabel = isRefreshing\n    \? "Updating…"\n    : history\.meta\n      \? `Saved \$\{format\(parseDate\(history\.meta\.capturedAt\), "MMM d, HH:mm"\)\}`\n      : history\.isDownloading\n        \? "Downloading…"\n        : "Not downloaded";''',
+              '',
           )
           replace_exact(
-              'src/components/TransactionFlow/TransactionHistoryView.test.tsx',
-              'var(--transaction-history-dock-height, 104px)',
-              'var(--transaction-history-dock-height, 60px)',
-              expected=2,
-          )
-          replace_exact(
-              'src/components/TransactionFlow/TransactionHistoryView.test.tsx',
-              '    expect(screen.getByText("1 transaction")).toBeInTheDocument();',
-              '    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();',
+              'src/components/TransactionFlow/TransactionHistoryView.tsx',
+              '''          countLabel={countLabel}
+          statusLabel={statusLabel}
+          canRefresh={history.isOnline && !isRefreshing}
+          isRefreshing={isRefreshing}
+          onRefresh={refresh}
+          '''.replace('          ', ''),
+              '',
           )
           PY
 
-      - name: Commit behavior tests to feature branch
+      - name: Format changed files
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/AnalyticsSyncSetting.test.tsx \
-            src/components/SettingsView.test.tsx \
-            src/components/TransactionFlow/TransactionHistoryView.test.tsx
-          git commit -m "test: specify transaction sync relocation"
-          git push origin HEAD:refactor/transaction-sync-settings
+          npx biome check --write \
+            src/components/AnalyticsSyncSetting.tsx \
+            src/components/SettingsView.tsx \
+            src/components/TransactionFlow/TransactionHistoryDock.tsx \
+            src/components/TransactionFlow/TransactionHistoryView.tsx \
+            src/components/TransactionFlow/CategoryStepSheetAccessory.tsx
 
-      - name: Verify tests fail for the missing behavior
-        shell: bash
+      - name: Run focused tests
         run: |
-          set +e
           npm test -- \
             src/components/AnalyticsSyncSetting.test.tsx \
             src/components/SettingsView.test.tsx \
-            src/components/TransactionFlow/TransactionHistoryView.test.tsx \
-            2>&1 | tee /tmp/red.log
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -eq 0 ]; then
-            echo "Expected focused tests to fail before implementation."
-            exit 1
-          fi
-          grep -q "unfiltered transaction count" /tmp/red.log
-          echo "RED verified: focused tests fail on the approved missing behavior."
+            src/components/TransactionFlow/TransactionHistoryView.test.tsx
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run typecheck
+        run: npx tsc --noEmit
+
+      - name: Run production build
+        run: npm run build
+
+      - name: Commit and push implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/components/AnalyticsSyncSetting.tsx \
+            src/components/SettingsView.tsx \
+            src/components/TransactionFlow/TransactionHistoryDock.tsx \
+            src/components/TransactionFlow/TransactionHistoryView.tsx \
+            src/components/TransactionFlow/CategoryStepSheetAccessory.tsx
+          git commit -m "refactor: move transaction sync details to settings"
+          git fetch origin refactor/transaction-sync-settings
+          git rebase origin/refactor/transaction-sync-settings
+          git push origin HEAD:refactor/transaction-sync-settings
