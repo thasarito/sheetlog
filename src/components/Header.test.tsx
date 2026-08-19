@@ -146,6 +146,30 @@ describe("Header dashboard title reel", () => {
     );
   });
 
+  it("reconciles an inferred title to the authoritative carousel destination", () => {
+    const motionRef = createRef<DashboardHeaderMotionHandle>();
+    render(<Header ref={motionRef} />);
+
+    act(() => motionRef.current?.setHorizontalMotion(1, 0.8));
+    act(() => motionRef.current?.settleHorizontalMotion?.(1));
+    expect(screen.getByTestId("dashboard-title-reel")).toHaveAttribute(
+      "data-selected-label",
+      "Transactions",
+    );
+
+    act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
+
+    const reel = screen.getByTestId("dashboard-title-reel");
+    expect(reel).toHaveAttribute("data-selected-label", "Settings");
+    expect(reel).toHaveAttribute("data-direction", "settled");
+    expect(reel).toHaveAttribute("data-progress", "0.000");
+    expect(
+      screen
+        .getAllByTestId("dashboard-title-reel-item")
+        .find((item) => item.dataset.offset === "0"),
+    ).toHaveTextContent("Settings");
+  });
+
   it("hides the complete top bar in proportion to active content scroll", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);

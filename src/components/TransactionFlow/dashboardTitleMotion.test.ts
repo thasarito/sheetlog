@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { resolveDashboardTitleSteps } from "./dashboardTitleMotion";
+import {
+  resolveDashboardTitleSelection,
+  resolveDashboardTitleSteps,
+} from "./dashboardTitleMotion";
+
+describe("resolveDashboardTitleSelection", () => {
+  it("maps the settled carousel destination to its exact title", () => {
+    expect(resolveDashboardTitleSelection(0)).toBe("Analytics");
+    expect(resolveDashboardTitleSelection(1)).toBe("Transactions");
+    expect(resolveDashboardTitleSelection(2)).toBe("Settings");
+  });
+
+  it("falls back to the default title for an invalid destination", () => {
+    expect(resolveDashboardTitleSelection(-1)).toBe("Analytics");
+    expect(resolveDashboardTitleSelection(99)).toBe("Analytics");
+  });
+});
 
 describe("resolveDashboardTitleSteps", () => {
   it("commits one title from explicit forward and backward input", () => {

@@ -15,6 +15,7 @@ const REEL_OFFSETS = Array.from(
 );
 const FADED_OPACITY = 0.34;
 
+export type DashboardTitle = (typeof DASHBOARD_SLIDES)[number];
 export type DashboardTitleDirection = -1 | 1;
 
 export type DashboardTitleReelHandle = {
@@ -24,6 +25,7 @@ export type DashboardTitleReelHandle = {
     progress: number,
   ) => void;
   settleHorizontalMotion: (committedSteps: number) => void;
+  syncHorizontalSelection: (title: DashboardTitle) => void;
 };
 
 type ReelMotion = {
@@ -50,6 +52,11 @@ function normalizeIndex(index: number): number {
 
 function labelAt(selectedPosition: number, offset: number): string {
   return LABELS[normalizeIndex(selectedPosition + offset)];
+}
+
+function positionForTitle(title: DashboardTitle): number {
+  const position = LABELS.indexOf(title);
+  return position >= 0 ? position : 0;
 }
 
 function shouldReplaceCandidate(
@@ -202,14 +209,21 @@ export const DashboardTitleReel = forwardRef<
           : "settled";
   }, []);
 
+  const renderSettledSelection = useCallback(
+    (selectedPosition: number) => {
+      selectedPositionRef.current = normalizeIndex(selectedPosition);
+      const motion: ReelMotion = { direction: 0, progress: 0 };
+      motionRef.current = motion;
+      renderMotion(motion);
+    },
+    [renderMotion],
+  );
+
   useImperativeHandle(
     forwardedRef,
     () => ({
       resetHorizontalSelection() {
-        selectedPositionRef.current = 0;
-        const motion: ReelMotion = { direction: 0, progress: 0 };
-        motionRef.current = motion;
-        renderMotion(motion);
+        renderSettledSelection(0);
       },
       setHorizontalMotion(direction, progress) {
         const motion = { direction, progress };
@@ -220,15 +234,13 @@ export const DashboardTitleReel = forwardRef<
         const steps = Number.isFinite(committedSteps)
           ? Math.trunc(committedSteps)
           : 0;
-        selectedPositionRef.current = normalizeIndex(
-          selectedPositionRef.current + steps,
-        );
-        const motion: ReelMotion = { direction: 0, progress: 0 };
-        motionRef.current = motion;
-        renderMotion(motion);
+        renderSettledSelection(selectedPositionRef.current + steps);
+      },
+      syncHorizontalSelection(title) {
+        renderSettledSelection(positionForTitle(title));
       },
     }),
-    [renderMotion],
+    [renderMotion, renderSettledSelection],
   );
 
   useLayoutEffect(() => {
