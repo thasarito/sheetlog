@@ -44,7 +44,7 @@ test.describe("Native dashboard scroll snap", () => {
     ).toBeVisible();
   });
 
-  test("projects fractional native scroll into the title before semantic settle", async ({
+  test("projects fractional native scroll without committing during an active touch", async ({
     page,
   }) => {
     const viewport = page.getByTestId("home-carousel-viewport");
@@ -61,13 +61,41 @@ test.describe("Native dashboard scroll snap", () => {
       )
       .toEqual({ overflowX: "auto", scrollSnapType: "x mandatory" });
 
+    const wheelOwnership = await viewport.evaluate((element) => {
+      const horizontal = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaX: 120,
+        deltaY: 10,
+      });
+      const vertical = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaX: 10,
+        deltaY: 120,
+      });
+      element.dispatchEvent(horizontal);
+      element.dispatchEvent(vertical);
+      return {
+        horizontalPrevented: horizontal.defaultPrevented,
+        verticalPrevented: vertical.defaultPrevented,
+      };
+    });
+    expect(wheelOwnership).toEqual({
+      horizontalPrevented: true,
+      verticalPrevented: false,
+    });
+
     await viewport.evaluate(async (element) => {
       const viewportElement = element as HTMLElement;
       viewportElement.style.scrollSnapType = "none";
       viewportElement.style.scrollBehavior = "auto";
+      viewportElement.dispatchEvent(
+        new Event("touchstart", { bubbles: true, cancelable: true }),
+      );
       viewportElement.scrollLeft = viewportElement.clientWidth / 2;
       viewportElement.dispatchEvent(new Event("scroll", { bubbles: true }));
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
     });
 
     await expect(viewport).toHaveAttribute("data-motion-position", "0.500");
@@ -81,6 +109,9 @@ test.describe("Native dashboard scroll snap", () => {
       const viewportElement = element as HTMLElement;
       viewportElement.scrollLeft = viewportElement.clientWidth;
       viewportElement.dispatchEvent(new Event("scroll", { bubbles: true }));
+      viewportElement.dispatchEvent(
+        new Event("touchend", { bubbles: true, cancelable: true }),
+      );
       viewportElement.dispatchEvent(new Event("scrollend"));
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
