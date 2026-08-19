@@ -85,7 +85,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   motion: {
-    div: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    div: ({
+      children,
+      className,
+    }: {
+      children: React.ReactNode;
+      className?: string;
+    }) => <div className={className}>{children}</div>,
     span: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   },
   Reorder: {
@@ -170,7 +176,11 @@ describe('SettingsView', () => {
   it('renders inline without modal ownership or a main Done action', () => {
     renderView();
 
-    expect(screen.getByTestId('settings-view')).toBeInTheDocument();
+    const settingsView = screen.getByTestId('settings-view');
+    expect(settingsView).toBeInTheDocument();
+    expect(settingsView.querySelector('.absolute.inset-0')).toHaveClass('bg-transparent');
+    expect(settingsView.querySelector('.absolute.inset-0')).not.toHaveClass('bg-surface');
+    expect(screen.queryByRole('heading', { name: 'Settings' })).not.toBeInTheDocument();
     expect(screen.getByTestId('settings-scroll-main')).toHaveAttribute(
       'data-dashboard-scroll',
       'true',
