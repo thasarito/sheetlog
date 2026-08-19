@@ -1,9 +1,9 @@
 name: Apply centralized theme refactor
 
 on:
-  push:
+  pull_request:
     branches:
-      - refactor/centralized-theme-system
+      - main
 
 permissions:
   contents: write
@@ -12,9 +12,10 @@ jobs:
   apply-and-verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out PR branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -64,4 +65,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html tailwind.config.js vite.config.ts docs src
           git commit -m "Refactor app theming into centralized theme system"
-          git push origin HEAD:refactor/centralized-theme-system
+          git push origin HEAD:${{ github.head_ref }}
