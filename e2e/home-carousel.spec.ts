@@ -264,7 +264,16 @@ test.describe("Home dashboard carousel", () => {
     await touchSwipe(page, accountName, -180, 2);
     await expect(editor).toBeVisible();
     await expect(viewport).toHaveAttribute("data-navigation-locked", "true");
-    await expect(settings).toHaveAttribute("aria-hidden", "false");
+    await expect(viewport).toHaveAttribute("data-selected-snap", "2");
+    await expect(viewport).toHaveAttribute("data-target-snap", "2");
+    await expect
+      .poll(() =>
+        viewport.evaluate((element) =>
+          Math.round(element.scrollLeft / element.clientWidth),
+        ),
+      )
+      .toBe(2);
+    await expectActiveTitle(page, "Settings");
     await expect(accountName).toHaveValue("Travel Wallet");
     await accountName.press("Tab");
     await expect(editor.getByText("Saved", { exact: true })).toBeVisible();
