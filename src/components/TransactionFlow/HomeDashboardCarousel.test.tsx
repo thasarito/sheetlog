@@ -219,7 +219,6 @@ function renderCarousel({
   );
   const headerMotion: DashboardHeaderMotionHandle = {
     setHorizontalPosition: vi.fn(),
-    setHorizontalMotion: vi.fn(),
     syncHorizontalSelection: vi.fn(),
     setVerticalProgress: vi.fn(),
   };
