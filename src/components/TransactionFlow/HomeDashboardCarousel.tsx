@@ -23,7 +23,7 @@ import {
   buildAnalyticsSummary,
   type AnalyticsRange,
 } from "./analytics";
-import { AnalyticsView } from "./AnalyticsView";
+import { AnalyticsSheetMorph } from "./AnalyticsSheetMorph";
 import type { TransactionHistoryDockMotionHandle } from "./TransactionHistoryDock";
 import { TransactionHistoryView } from "./TransactionHistoryView";
 import type { AnalyticsSyncController } from "./useAnalyticsSync";
@@ -564,7 +564,8 @@ export function HomeDashboardCarousel({
             data-home-carousel-slide-index="0"
             className="h-full min-w-0 flex-[0_0_100%]"
           >
-            <AnalyticsView
+            <AnalyticsSheetMorph
+              rates={analyticsSync.rates}
               transactions={transactions}
               summary={summary}
               baseCurrency={baseCurrency}

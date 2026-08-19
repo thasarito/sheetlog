@@ -39,17 +39,8 @@ function positionForTitle(title: DashboardTitle): number {
 function trackShiftForSelection(
   selectedIndex: number,
   positions: Map<number, number>,
-  widths: Map<number, number>,
-  reelWidth: number,
 ): number {
-  const lastIndex = LABELS.length - 1;
-  const trackWidth =
-    (positions.get(lastIndex) ?? 0) + (widths.get(lastIndex) ?? 0);
-  if (trackWidth <= reelWidth) return 0;
-
-  const minimumShift = reelWidth - trackWidth;
-  const selectedPosition = positions.get(selectedIndex) ?? 0;
-  return clamp(-selectedPosition, minimumShift, 0);
+  return -(positions.get(selectedIndex) ?? 0);
 }
 
 export const DashboardTitleReel = forwardRef<
@@ -103,18 +94,8 @@ export const DashboardTitleReel = forwardRef<
       );
     }
 
-    const startShift = trackShiftForSelection(
-      selectedIndex,
-      positions,
-      widths,
-      reel.clientWidth,
-    );
-    const endShift = trackShiftForSelection(
-      targetIndex,
-      positions,
-      widths,
-      reel.clientWidth,
-    );
+    const startShift = trackShiftForSelection(selectedIndex, positions);
+    const endShift = trackShiftForSelection(targetIndex, positions);
     const trackShift =
       startShift + (endShift - startShift) * boundedProgress;
 
@@ -205,6 +186,7 @@ export const DashboardTitleReel = forwardRef<
       data-progress="0.000"
       data-selected-label={LABELS[0]}
       data-visible-count="2"
+      data-anchor="left"
       aria-hidden="true"
       className="pointer-events-none absolute inset-y-0 left-3 right-3 min-w-0 select-none overflow-hidden"
     >

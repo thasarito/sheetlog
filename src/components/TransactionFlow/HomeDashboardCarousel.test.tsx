@@ -313,6 +313,9 @@ describe("HomeDashboardCarousel", () => {
     expect(analytics).not.toHaveAttribute("aria-hidden", "true");
     expect(transactions).toHaveAttribute("aria-hidden", "true");
     expect(settings).toHaveAttribute("aria-hidden", "true");
+    expect(
+      document.querySelector("[data-analytics-sheet-morph]"),
+    ).toBeInTheDocument();
     await waitFor(() => {
       expect(transactions.inert).toBe(true);
       expect(settings.inert).toBe(true);
