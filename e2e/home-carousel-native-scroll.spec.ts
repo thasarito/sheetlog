@@ -1,4 +1,9 @@
-import { expect, test } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { format, subDays } from "date-fns";
 import type { TransactionRecord } from "../src/lib/types";
 
@@ -15,6 +20,53 @@ const seededTransaction: TransactionRecord = {
   createdAt: format(new Date(), "yyyy-MM-dd'T'12:00:00"),
   updatedAt: format(new Date(), "yyyy-MM-dd'T'12:00:00"),
 };
+
+type SwipeDirection = "left" | "right";
+
+async function swipeHorizontally(
+  page: Page,
+  target: Locator,
+  direction: SwipeDirection,
+) {
+  const box = await target.boundingBox();
+  if (!box) {
+    throw new Error("Cannot swipe a target without a visible bounding box");
+  }
+
+  const session = await page.context().newCDPSession(page);
+  const startX = box.x + box.width * (direction === "left" ? 0.78 : 0.22);
+  const endX = box.x + box.width * (direction === "left" ? 0.22 : 0.78);
+  const y = box.y + Math.min(Math.max(box.height * 0.45, 80), box.height - 80);
+  const touchPoint = (x: number) => ({
+    x,
+    y,
+    radiusX: 2,
+    radiusY: 2,
+    force: 1,
+    id: 1,
+  });
+
+  try {
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [touchPoint(startX)],
+    });
+    for (let step = 1; step <= 12; step += 1) {
+      const progress = step / 12;
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [touchPoint(startX + (endX - startX) * progress)],
+      });
+      await page.waitForTimeout(16);
+    }
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await session.detach();
+  }
+}
 
 test.describe("Native dashboard scroll snap", () => {
   test.beforeEach(async ({ page }) => {
@@ -122,5 +174,31 @@ test.describe("Native dashboard scroll snap", () => {
     await expect(viewport).toHaveAttribute("data-motion-status", "settled");
     await expect(reel).toHaveAttribute("data-position", "1.000");
     await expect(reel).toHaveAttribute("data-selected-label", "Transactions");
+  });
+
+  test("chains horizontal touch from nested vertical screens to the pager", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "Mobile Chrome",
+      "Real touch dispatch covers the Android Chromium project",
+    );
+
+    const viewport = page.getByTestId("home-carousel-viewport");
+    await viewport.press("ArrowRight");
+    await expect(viewport).toHaveAttribute("data-selected-snap", "1");
+
+    const transactionHistory = page.getByLabel("Transaction history");
+    await expect(transactionHistory).toBeVisible();
+    await swipeHorizontally(page, transactionHistory, "left");
+    await expect(viewport).toHaveAttribute("data-selected-snap", "2");
+
+    const settings = page.getByTestId("settings-scroll-main");
+    await expect(settings).toBeVisible();
+    await swipeHorizontally(page, settings, "right");
+    await expect(viewport).toHaveAttribute("data-selected-snap", "1");
+
+    await swipeHorizontally(page, transactionHistory, "right");
+    await expect(viewport).toHaveAttribute("data-selected-snap", "0");
   });
 });
