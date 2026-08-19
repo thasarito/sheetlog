@@ -1,5 +1,4 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { format } from "date-fns";
 import {
   useCallback,
   useEffect,
@@ -9,7 +8,6 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { parseDate } from "../../lib/date-utils";
 import { filterTransactionHistory } from "../../lib/transactionHistory";
 import type { TransactionRecord } from "../../lib/types";
 import { cn } from "../../lib/utils";
@@ -219,12 +217,8 @@ export function TransactionHistoryView({
     () => flattenTransactionHistory(filteredTransactions),
     [filteredTransactions],
   );
-  const countLabel = `${filteredTransactions.length} ${
-    filteredTransactions.length === 1 ? "transaction" : "transactions"
-  }`;
   const hasIncompleteLocalRows =
     !history.hasCompleteCache && history.records.length > 0;
-  const isRefreshing = history.isRefreshing || baseAmounts.isRefreshing;
   const incompleteHistoryMessage = history.isLoading || history.isDownloading
     ? "Showing local entries while full history downloads."
     : !history.isOnline
@@ -238,13 +232,6 @@ export function TransactionHistoryView({
     void history.refresh();
     void baseAmounts.refetch();
   };
-  const statusLabel = isRefreshing
-    ? "Updating…"
-    : history.meta
-      ? `Saved ${format(parseDate(history.meta.capturedAt), "MMM d, HH:mm")}`
-      : history.isDownloading
-        ? "Downloading…"
-        : "Not downloaded";
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-transparent">
@@ -264,11 +251,6 @@ export function TransactionHistoryView({
         <TransactionHistoryDock
           search={search}
           onSearchChange={setSearch}
-          countLabel={countLabel}
-          statusLabel={statusLabel}
-          canRefresh={history.isOnline && !isRefreshing}
-          isRefreshing={isRefreshing}
-          onRefresh={refresh}
           motionRef={dockMotionRef}
         />
 

@@ -1,4 +1,4 @@
-import { RefreshCw, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import {
   useCallback,
   useImperativeHandle,
@@ -14,11 +14,6 @@ import { useCategoryStepSheetAccessory } from "./CategoryStepSheetAccessory";
 export type TransactionHistoryDockProps = {
   search: string;
   onSearchChange: (value: string) => void;
-  countLabel: string;
-  statusLabel: string;
-  canRefresh: boolean;
-  isRefreshing: boolean;
-  onRefresh: () => void;
   motionRef?: RefObject<TransactionHistoryDockMotionHandle | null>;
 };
 
@@ -41,11 +36,6 @@ type PendingKeyboardTap = {
 export function TransactionHistoryDock({
   search,
   onSearchChange,
-  countLabel,
-  statusLabel,
-  canRefresh,
-  isRefreshing,
-  onRefresh,
   motionRef,
 }: TransactionHistoryDockProps) {
   const accessory = useCategoryStepSheetAccessory();
@@ -285,26 +275,6 @@ export function TransactionHistoryDock({
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         ) : null}
-      </div>
-      <div
-        data-testid="transaction-history-metadata"
-        className="flex min-h-11 items-center justify-between gap-3 px-1 text-[11px] text-muted-foreground"
-      >
-        <span>{countLabel}</span>
-        <div className="flex min-w-0 items-center gap-1">
-          <span className="truncate text-right">{statusLabel}</span>
-          <button
-            type="button"
-            aria-label="Refresh transaction history"
-            disabled={!canRefresh}
-            onClick={onRefresh}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors active:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-          >
-            <RefreshCw
-              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
-            />
-          </button>
-        </div>
       </div>
     </div>
   );
