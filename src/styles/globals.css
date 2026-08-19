@@ -96,7 +96,7 @@ input[type="date"] {
 }
 
 [role="listbox"][aria-label="Analytics period"] [role="option"] {
-  opacity: 0.46;
+  opacity: 0.72;
   transform: translate3d(0, 0, 0) scale(0.94);
   transform-origin: center;
   transition:
@@ -134,7 +134,7 @@ figure[data-chart-scene-key] .pointer-events-none.absolute.inset-0.rounded-md {
 @media (hover: hover) {
   [role="listbox"][aria-label="Analytics period"]
     [role="option"][aria-selected="false"]:hover {
-    opacity: 0.68;
+    opacity: 0.88;
     transform: translate3d(0, 0, 0) scale(0.97);
   }
 }
