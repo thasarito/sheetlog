@@ -97,30 +97,6 @@ vi.mock("../SettingsView", () => ({
         >
           Close Settings editor
         </button>
-        <button
-          type="button"
-          onClick={() => navigationProps.onCarouselNavigationLockChange?.(true)}
-        >
-          Open Settings editor
-        </button>
-        <button
-          type="button"
-          onClick={() => navigationProps.onCarouselNavigationLockChange?.(false)}
-        >
-          Close Settings editor
-        </button>
-        <button
-          type="button"
-          onClick={() => navigationProps.onCarouselNavigationLockChange?.(true)}
-        >
-          Open Settings editor
-        </button>
-        <button
-          type="button"
-          onClick={() => navigationProps.onCarouselNavigationLockChange?.(false)}
-        >
-          Close Settings editor
-        </button>
       </section>
     );
   },
