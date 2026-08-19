@@ -75,6 +75,11 @@ input[type="date"] {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Keep vertical containment while handing horizontal touch panning to the dashboard carousel. */
+[data-home-carousel-slide-index] [data-dashboard-scroll="true"] {
+  overscroll-behavior-x: auto;
+}
+
 /* Wise-inspired Analytics selection motion: one restrained cue per control. */
 [role="listbox"][aria-label="Analytics period"] {
   isolation: isolate;
