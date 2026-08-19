@@ -1,15 +1,7 @@
 import { act, createRef } from "react";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { Header, type DashboardHeaderMotionHandle } from "./Header";
-
-vi.mock("./AuthUserProfile", () => ({
-  AuthUserProfile: () => <span data-testid="auth-user-profile">Profile</span>,
-}));
-
-vi.mock("./SettingsDrawer", () => ({
-  SettingsDrawer: () => <div data-testid="settings-drawer" />,
-}));
 
 function reelX(element: HTMLElement): number {
   const match = element.style.transform.match(
@@ -20,28 +12,21 @@ function reelX(element: HTMLElement): number {
 }
 
 function measuredWidth(element: HTMLElement): number {
-  return element.textContent === "Transactions" ? 118 : 82;
+  if (element.textContent === "Transactions") return 118;
+  if (element.textContent === "Settings") return 78;
+  return 82;
 }
 
 describe("Header dashboard title reel", () => {
-  it("replaces the Sheetlog identity and profile with a passive Analytics-first reel", () => {
-    render(
-      <Header showSettings onToast={vi.fn()} analyticsSync={{} as never} />,
-    );
+  it("renders a passive Analytics-first three-label reel without Settings chrome", () => {
+    render(<Header showSettings onToast={() => undefined} analyticsSync={{}} />);
 
     const reel = screen.getByTestId("dashboard-title-reel");
     expect(reel).toHaveAttribute("aria-hidden", "true");
     expect(reel).not.toHaveAttribute("tabindex");
     expect(reel).toHaveClass("pointer-events-none");
-    expect(screen.queryByAltText("Sheetlog logo")).not.toBeInTheDocument();
-    expect(screen.queryByText("Sheetlog", { exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByTestId("auth-user-profile")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open settings" })).toBeVisible();
-    expect(
-      screen
-        .getByTestId("settings-drawer")
-        .closest('[data-testid="dashboard-header"]'),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close settings" })).not.toBeInTheDocument();
 
     const items = screen.getAllByTestId("dashboard-title-reel-item");
     expect(items).toHaveLength(5);
@@ -51,11 +36,14 @@ describe("Header dashboard title reel", () => {
     expect(items.find((item) => item.dataset.offset === "1")).toHaveTextContent(
       "Transactions",
     );
+    expect(items.find((item) => item.dataset.offset === "2")).toHaveTextContent(
+      "Settings",
+    );
   });
 
-  it("keeps one measured gap while the reel follows signed motion", () => {
+  it("keeps one measured gap while the three-label reel follows signed motion", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
-    render(<Header ref={motionRef} showSettings />);
+    render(<Header ref={motionRef} />);
 
     const reel = screen.getByTestId("dashboard-title-reel");
     Object.defineProperty(reel, "clientWidth", {
@@ -88,7 +76,7 @@ describe("Header dashboard title reel", () => {
     expect(forwardItems.map((item) => item.textContent)).toEqual([
       "Analytics",
       "Transactions",
-      "Analytics",
+      "Settings",
     ]);
     const forwardGaps = forwardItems.slice(1).map((item, index) => {
       const previous = forwardItems[index];
@@ -97,14 +85,25 @@ describe("Header dashboard title reel", () => {
     expect(forwardGaps[0]).toBeCloseTo(forwardGaps[1], 2);
     expect(forwardGaps[0]).toBeCloseTo(Number(reel.dataset.gap), 2);
 
+    act(() => motionRef.current?.setHorizontalMotion(2, 0.4));
+    expect(
+      items.find((item) => item.dataset.offset === "0"),
+    ).toHaveTextContent("Settings");
+    expect(
+      items.find((item) => item.dataset.offset === "1"),
+    ).toHaveTextContent("Analytics");
+
     act(() => motionRef.current?.setHorizontalMotion(0, -0.4));
     expect(reel).toHaveAttribute("data-direction", "backward");
     expect(Number(reel.dataset.progress)).toBeCloseTo(-0.4, 3);
+    expect(
+      items.find((item) => item.dataset.offset === "-1"),
+    ).toHaveTextContent("Settings");
   });
 
   it("hides the complete top bar in proportion to active content scroll", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
-    render(<Header ref={motionRef} showSettings />);
+    render(<Header ref={motionRef} />);
     const header = screen.getByTestId("dashboard-header");
     header.getBoundingClientRect = () =>
       ({

@@ -1,4 +1,3 @@
-import { Settings } from 'lucide-react';
 import {
   forwardRef,
   useCallback,
@@ -6,20 +5,15 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
-  useState,
 } from 'react';
 import {
   DashboardTitleReel,
   type DashboardTitleReelHandle,
 } from './DashboardTitleReel';
-import { SettingsDrawer } from './SettingsDrawer';
-import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 
 type HeaderProps = {
-  showSettings?: boolean;
-  onToast?: (message: string) => void;
-  analyticsSync?: AnalyticsSyncController;
   overlayDashboard?: boolean;
+  [key: string]: unknown;
 };
 
 export type DashboardHeaderMotionHandle = {
@@ -31,13 +25,10 @@ function clampProgress(progress: number): number {
   return Math.min(1, Math.max(0, progress));
 }
 
-export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(function Header({
-  showSettings = false,
-  onToast,
-  analyticsSync,
-  overlayDashboard = false,
-}, forwardedRef) {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(function Header(
+  { overlayDashboard = false },
+  forwardedRef,
+) {
   const headerRef = useRef<HTMLDivElement>(null);
   const titleReelRef = useRef<DashboardTitleReelHandle>(null);
   const verticalProgressRef = useRef(0);
@@ -92,29 +83,7 @@ export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(funct
         style={{ transform: 'translate3d(0, 0.00px, 0)', opacity: 1 }}
       >
         <DashboardTitleReel ref={titleReelRef} />
-
-        {showSettings && (
-          <button
-            type="button"
-            onClick={() => setIsDrawerOpen(true)}
-            className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            aria-label="Open settings"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
-        )}
       </div>
-
-      {showSettings && onToast && analyticsSync && (
-        <div className="pointer-events-auto">
-          <SettingsDrawer
-            open={isDrawerOpen}
-            onOpenChange={setIsDrawerOpen}
-            onToast={onToast}
-            analyticsSync={analyticsSync}
-          />
-        </div>
-      )}
     </header>
   );
 });

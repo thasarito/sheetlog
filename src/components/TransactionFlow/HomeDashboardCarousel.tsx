@@ -6,15 +6,17 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
-  type CSSProperties,
   type UIEvent as ReactUIEvent,
 } from "react";
 import type { TransactionRecord } from "../../lib/types";
+import { DASHBOARD_SLIDES } from "../dashboardSlides";
 import type { DashboardHeaderMotionHandle } from "../Header";
+import { SettingsView } from "../SettingsView";
 import {
   buildAnalyticsPeriodOptions,
   buildAnalyticsSummary,
@@ -39,7 +41,7 @@ type EmblaCarouselOptions = NonNullable<
   Parameters<typeof useEmblaCarousel>[0]
 >;
 
-const SLIDES = ["Analytics", "Transactions"] as const;
+const SLIDES = DASHBOARD_SLIDES;
 const HEADER_COLLAPSE_DISTANCE = 68;
 const EMBLA_FOCUS_NODE_NAMES = new Set(["INPUT", "SELECT", "TEXTAREA"]);
 
@@ -69,10 +71,7 @@ function allowCarouselDrag(
   _emblaApi: EmblaCarouselApi,
   event: MouseEvent | TouchEvent,
 ): boolean {
-  return (
-    !(event instanceof MouseEvent) &&
-    !blocksCarouselDrag(event.target)
-  );
+  return !(event instanceof MouseEvent) && !blocksCarouselDrag(event.target);
 }
 
 const EMBLA_OPTIONS: EmblaCarouselOptions = {
@@ -120,7 +119,7 @@ export function HomeDashboardCarousel({
   const transactionDockMotionRef =
     useRef<TransactionHistoryDockMotionHandle | null>(null);
   const activeIndexRef = useRef(0);
-  const verticalProgressRef = useRef([0, 0]);
+  const verticalProgressRef = useRef<number[]>(SLIDES.map(() => 0));
   const horizontalMotionRef = useRef({
     active: false,
     origin: 0,
@@ -341,9 +340,7 @@ export function HomeDashboardCarousel({
       const selected = emblaApi.selectedScrollSnap();
       setActiveIndex(selected);
       const viewport = viewportRef.current;
-      if (viewport) {
-        viewport.dataset.targetSnap = String(selected);
-      }
+      if (viewport) viewport.dataset.targetSnap = String(selected);
     };
     const onSettle = () => settleHorizontalMotion(emblaApi);
     const onPointerUp = () => releasePointerGesture();
@@ -374,10 +371,7 @@ export function HomeDashboardCarousel({
   ]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (
-      event.pointerType !== "touch" ||
-      blocksCarouselDrag(event.target)
-    ) {
+    if (event.pointerType !== "touch" || blocksCarouselDrag(event.target)) {
       pointerStart.current = null;
       suppressClick.current = false;
       return;
@@ -408,8 +402,7 @@ export function HomeDashboardCarousel({
       horizontalMotionRef.current.direction = direction;
       const viewport = viewportRef.current;
       if (viewport) {
-        viewport.dataset.inputDirection =
-          direction > 0 ? "forward" : "backward";
+        viewport.dataset.inputDirection = direction > 0 ? "forward" : "backward";
       }
     }
   };
@@ -530,7 +523,7 @@ export function HomeDashboardCarousel({
             ref={(node) => {
               slideRefs.current[0] = node;
             }}
-            aria-label="Analytics, slide 1 of 2"
+            aria-label="Analytics, slide 1 of 3"
             aria-hidden={activeIndex !== 0}
             data-home-carousel-slide-index="0"
             className="h-full min-w-0 flex-[0_0_100%]"
@@ -563,7 +556,7 @@ export function HomeDashboardCarousel({
             ref={(node) => {
               slideRefs.current[1] = node;
             }}
-            aria-label="Transactions, slide 2 of 2"
+            aria-label="Transactions, slide 2 of 3"
             aria-hidden={activeIndex !== 1}
             data-home-carousel-slide-index="1"
             className="h-full min-w-0 flex-[0_0_100%]"
@@ -579,6 +572,22 @@ export function HomeDashboardCarousel({
               onEditTransaction={onEditTransaction}
               dockMotionRef={transactionDockMotionRef}
             />
+          </section>
+          <section
+            ref={(node) => {
+              slideRefs.current[2] = node;
+            }}
+            aria-label="Settings, slide 3 of 3"
+            aria-hidden={activeIndex !== 2}
+            data-home-carousel-slide-index="2"
+            className="h-full min-w-0 flex-[0_0_100%]"
+            style={
+              {
+                "--dashboard-header-space": `${HEADER_COLLAPSE_DISTANCE}px`,
+              } as CSSProperties
+            }
+          >
+            <SettingsView onToast={onToast} analyticsSync={analyticsSync} />
           </section>
         </div>
       </div>

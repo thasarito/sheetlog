@@ -5,8 +5,9 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
+import { DASHBOARD_SLIDES } from "./dashboardSlides";
 
-const LABELS = ["Analytics", "Transactions"] as const;
+const LABELS = DASHBOARD_SLIDES;
 const REEL_OFFSETS = [-2, -1, 0, 1, 2] as const;
 
 export type DashboardTitleReelHandle = {
@@ -98,8 +99,7 @@ export const DashboardTitleReel = forwardRef<
       }
 
       const enteringOffset = boundedProgress >= 0 ? 1 : -1;
-      const shift =
-        -transition * (positions.get(enteringOffset) ?? 0);
+      const shift = -transition * (positions.get(enteringOffset) ?? 0);
       for (const offset of REEL_OFFSETS) {
         const item = itemRefs.current.get(offset);
         if (!item) continue;
@@ -148,7 +148,7 @@ export const DashboardTitleReel = forwardRef<
       data-gap="10.00"
       data-progress="0.000"
       aria-hidden="true"
-      className="pointer-events-none absolute inset-y-0 left-3 right-[66px] min-w-0 select-none overflow-hidden"
+      className="pointer-events-none absolute inset-y-0 left-3 right-3 min-w-0 select-none overflow-hidden"
     >
       {REEL_OFFSETS.map((offset) => (
         <span
