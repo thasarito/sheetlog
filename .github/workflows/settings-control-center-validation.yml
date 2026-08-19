@@ -28,3 +28,5 @@ jobs:
           src/components/SettingsControlSection.test.tsx
           src/components/SettingsItemEditorDrawer.test.tsx
           src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/hooks/useSettingsCollectionMutations.test.tsx
+          src/hooks/useReplaceQuickNotesConfig.test.tsx
