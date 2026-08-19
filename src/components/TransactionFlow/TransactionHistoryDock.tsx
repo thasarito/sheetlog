@@ -4,9 +4,10 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { cn } from "../../lib/utils";
 import { useCategoryStepSheetAccessory } from "./CategoryStepSheetAccessory";
 
@@ -49,8 +50,35 @@ export function TransactionHistoryDock({
 
   const clearSearch = () => {
     onSearchChange("");
-    window.requestAnimationFrame(() => searchRef.current?.focus());
+    window.requestAnimationFrame(() =>
+      searchRef.current?.focus({ preventScroll: true }),
+    );
   };
+  const prepareKeyboardState = useCallback(
+    (event: ReactPointerEvent<HTMLInputElement>) => {
+      const requestKeyboard = accessory.requestKeyboard;
+      if (
+        !portalled ||
+        !requestKeyboard ||
+        document.activeElement === event.currentTarget
+      ) {
+        return;
+      }
+
+      // Prevent the browser's default focus, commit the no-transition keyboard
+      // snap synchronously, and only then focus while the pointer event still
+      // carries mobile user activation.
+      event.preventDefault();
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      flushSync(requestKeyboard);
+      if (accessory.host?.dataset.categorySheetState === "keyboard") {
+        event.currentTarget.focus({ preventScroll: true });
+      }
+    },
+    [accessory.host, accessory.requestKeyboard, portalled],
+  );
 
   const setDockRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -139,7 +167,9 @@ export function TransactionHistoryDock({
           type="search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
-          onFocus={accessory.requestExpanded}
+          onPointerDown={prepareKeyboardState}
+          onFocus={() => accessory.requestKeyboard?.()}
+          onBlur={() => accessory.releaseKeyboard?.()}
           placeholder="Search category, note, or account"
           aria-label="Search transaction history"
           className={cn(
@@ -151,6 +181,7 @@ export function TransactionHistoryDock({
           <button
             type="button"
             aria-label="Clear transaction search"
+            onPointerDown={(event) => event.preventDefault()}
             onClick={clearSearch}
             className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
