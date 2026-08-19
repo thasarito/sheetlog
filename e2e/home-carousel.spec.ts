@@ -245,7 +245,9 @@ test.describe("Home dashboard carousel", () => {
     });
     await addAccount.click();
 
-    const editor = page.getByRole("dialog", { name: "New Account" });
+    const editor = page.locator('[role="dialog"]').filter({
+      has: page.getByRole("textbox", { name: "Account name" }),
+    });
     await expect(editor).toBeVisible();
     await expect(categorySheet).toBeVisible();
     await expect(categorySheet).toHaveAttribute(
@@ -272,7 +274,9 @@ test.describe("Home dashboard carousel", () => {
     await expect(categoriesRegion).toBeVisible();
 
     await addAccount.click();
-    const invalidEditor = page.getByRole("dialog", { name: "New Account" });
+    const invalidEditor = page.locator('[role="dialog"]').filter({
+      has: page.getByRole("textbox", { name: "Account name" }),
+    });
     const invalidName = invalidEditor.getByRole("textbox", {
       name: "Account name",
     });
