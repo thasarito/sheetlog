@@ -93,6 +93,7 @@ export function HomeDashboardCarousel({
   const verticalProgressRef = useRef<number[]>(SLIDES.map(() => 0));
   const settleTimerRef = useRef<number | undefined>(undefined);
   const settleHorizontalScrollRef = useRef<() => void>(() => undefined);
+  const touchActiveRef = useRef(false);
 
   const transactions = analyticsSync.records;
   const periodOptions = useMemo(
@@ -169,7 +170,7 @@ export function HomeDashboardCarousel({
       if (!viewport || viewport.clientWidth <= 0) return null;
       const position = viewport.scrollLeft / viewport.clientWidth;
       const relativePosition = position - activeIndexRef.current;
-      headerMotionRef?.current?.setHorizontalPosition?.(position);
+      headerMotionRef?.current?.setHorizontalPosition(position);
       renderTransactionDockMotion(
         !moving && activeIndexRef.current === 1,
         moving,
@@ -196,7 +197,7 @@ export function HomeDashboardCarousel({
       for (const [slideIndex, slide] of slideRefs.current.entries()) {
         if (slide) slide.inert = slideIndex !== index;
       }
-      headerMotionRef?.current?.syncHorizontalSelection?.(
+      headerMotionRef?.current?.syncHorizontalSelection(
         SLIDES[index] ?? SLIDES[0],
       );
       headerMotionRef?.current?.setVerticalProgress(
@@ -219,6 +220,7 @@ export function HomeDashboardCarousel({
     const viewport = viewportRef.current;
     if (!viewport || viewport.clientWidth <= 0) return;
     clearSettleTimer();
+    if (touchActiveRef.current) return;
 
     const position = viewport.scrollLeft / viewport.clientWidth;
     const targetIndex = slideIndexForPosition(position);
@@ -309,7 +311,7 @@ export function HomeDashboardCarousel({
     const alignSettledSlide = () => {
       const width = viewport.clientWidth;
       if (width <= 0) {
-        headerMotionRef?.current?.syncHorizontalSelection?.(
+        headerMotionRef?.current?.syncHorizontalSelection(
           SLIDES[activeIndexRef.current] ?? SLIDES[0],
         );
         headerMotionRef?.current?.setVerticalProgress(
@@ -336,14 +338,39 @@ export function HomeDashboardCarousel({
     const viewport = viewportRef.current;
     if (!viewport) return;
     const handleScrollEnd = () => settleHorizontalScrollRef.current();
+    const handleWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        event.preventDefault();
+      }
+    };
     viewport.addEventListener("scrollend", handleScrollEnd);
-    return () => viewport.removeEventListener("scrollend", handleScrollEnd);
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener("scrollend", handleScrollEnd);
+      viewport.removeEventListener("wheel", handleWheel);
+    };
   }, []);
 
-  useEffect(() => clearSettleTimer, [clearSettleTimer]);
+  useEffect(
+    () => () => {
+      touchActiveRef.current = false;
+      clearSettleTimer();
+    },
+    [clearSettleTimer],
+  );
 
   const handleViewportScroll = () => {
     renderHorizontalPosition(true);
+    if (!touchActiveRef.current) scheduleHorizontalSettle();
+  };
+
+  const handleTouchStart = () => {
+    touchActiveRef.current = true;
+    clearSettleTimer();
+  };
+
+  const releaseTouch = () => {
+    touchActiveRef.current = false;
     scheduleHorizontalSettle();
   };
 
@@ -391,6 +418,8 @@ export function HomeDashboardCarousel({
     if (targetIndex === currentVisualIndex) return;
 
     event.preventDefault();
+    touchActiveRef.current = false;
+    clearSettleTimer();
     const jump = prefersReducedMotion();
     viewport.dataset.inputDirection = direction > 0 ? "forward" : "backward";
     viewport.dataset.motionStatus = "moving";
@@ -446,6 +475,9 @@ export function HomeDashboardCarousel({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the scroll viewport needs a keyboard target for arrow-key slide navigation
         tabIndex={0}
         onScroll={handleViewportScroll}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={releaseTouch}
+        onTouchCancel={releaseTouch}
         className="h-full min-h-0 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] [touch-action:pan-x_pan-y] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
       >
         <div
