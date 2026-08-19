@@ -1,21 +1,110 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
-function replaceIfPresent(source, before, after) {
-  return source.includes(before) ? source.replace(before, after) : source;
+function replaceOnce(source, before, after, label) {
+  if (source.includes(after)) return source;
+  if (!source.includes(before)) {
+    throw new Error(`Could not find ${label}`);
+  }
+  return source.replace(before, after);
 }
 
-const e2ePath = 'e2e/home-carousel.spec.ts';
-let e2e = readFileSync(e2ePath, 'utf8');
-e2e = replaceIfPresent(
-  e2e,
-  `    const accountName = editor.getByRole("textbox", {\n      name: "Account name",\n    });\n    await accountName.fill("Travel Wallet");`,
-  `    const accountName = editor.getByRole("textbox", {\n      name: "Account name",\n    });\n    await expect(viewport).toHaveAttribute("data-navigation-locked", "true");\n    await accountName.fill("Travel Wallet");`,
-);
-writeFileSync(e2ePath, e2e);
+const carouselPath = 'src/components/TransactionFlow/HomeDashboardCarousel.tsx';
+let carousel = readFileSync(carouselPath, 'utf8');
 
-const carouselTestPath = 'src/components/TransactionFlow/HomeDashboardCarousel.test.tsx';
-let carouselTest = readFileSync(carouselTestPath, 'utf8');
-const before = `    expect(viewport).toHaveAttribute("data-navigation-locked", "true");\n    expect(viewport).toHaveClass("overflow-x-hidden", "[touch-action:pan-y]");\n    viewport.focus();\n    scrollToMock.mockClear();\n    fireEvent.keyDown(viewport, { key: "ArrowLeft" });\n    expect(scrollToMock).not.toHaveBeenCalled();`;
-const after = `    expect(viewport).toHaveAttribute("data-navigation-locked", "true");\n    expect(viewport).toHaveClass("overflow-x-hidden", "[touch-action:pan-y]");\n    viewport.focus();\n    scrollToMock.mockClear();\n    fireEvent.keyDown(viewport, { key: "ArrowLeft" });\n    expect(scrollToMock).not.toHaveBeenCalled();\n\n    viewport.scrollLeft = viewportWidth;\n    fireEvent.scroll(viewport);\n\n    expect(scrollToMock).toHaveBeenCalledWith({ left: viewportWidth * 2, behavior: "auto" });\n    expect(viewport.scrollLeft).toBe(viewportWidth * 2);\n    expect(screen.getByLabelText("Settings, slide 3 of 3")).not.toHaveAttribute(\n      "aria-hidden",\n      "true",\n    );\n    expect(viewport).toHaveAttribute("data-selected-snap", "2");`;
-carouselTest = replaceIfPresent(carouselTest, before, after);
-writeFileSync(carouselTestPath, carouselTest);
+carousel = replaceOnce(
+  carousel,
+  `  );\n\n  const settleHorizontalScroll = useCallback(() => {`,
+  `  );\n\n  const restoreLockedPosition = useCallback(() => {\n    if (!navigationLocked) return false;\n    const viewport = viewportRef.current;\n    if (!viewport || viewport.clientWidth <= 0) return true;\n\n    clearSettleTimer();\n    touchActiveRef.current = false;\n    const index = activeIndexRef.current;\n    const targetLeft = index * viewport.clientWidth;\n    if (Math.abs(viewport.scrollLeft - targetLeft) > SNAP_TOLERANCE_PX) {\n      viewport.scrollTo({ left: targetLeft, behavior: \"auto\" });\n    }\n    renderHorizontalPosition(false);\n    commitActiveIndex(index);\n    return true;\n  }, [\n    clearSettleTimer,\n    commitActiveIndex,\n    navigationLocked,\n    renderHorizontalPosition,\n  ]);\n\n  const settleHorizontalScroll = useCallback(() => {`,
+  'locked-position restore callback',
+);
+
+carousel = replaceOnce(
+  carousel,
+  `  const settleHorizontalScroll = useCallback(() => {\n    const viewport = viewportRef.current;\n    if (!viewport || viewport.clientWidth <= 0) return;\n    clearSettleTimer();`,
+  `  const settleHorizontalScroll = useCallback(() => {\n    const viewport = viewportRef.current;\n    if (!viewport || viewport.clientWidth <= 0) return;\n    if (restoreLockedPosition()) return;\n    clearSettleTimer();`,
+  'locked settle guard',
+);
+
+carousel = replaceOnce(
+  carousel,
+  `    renderHorizontalPosition,\n    scheduleHorizontalSettle,\n  ]);`,
+  `    renderHorizontalPosition,\n    restoreLockedPosition,\n    scheduleHorizontalSettle,\n  ]);`,
+  'settle callback dependencies',
+);
+
+carousel = replaceOnce(
+  carousel,
+  `  useLayoutEffect(() => {\n    settleHorizontalScrollRef.current = settleHorizontalScroll;\n  }, [settleHorizontalScroll]);\n\n  useEffect(() => {`,
+  `  useLayoutEffect(() => {\n    settleHorizontalScrollRef.current = settleHorizontalScroll;\n  }, [settleHorizontalScroll]);\n\n  useLayoutEffect(() => {\n    if (navigationLocked) restoreLockedPosition();\n  }, [navigationLocked, restoreLockedPosition]);\n\n  useEffect(() => {`,
+  'lock activation alignment effect',
+);
+
+carousel = replaceOnce(
+  carousel,
+  `  const handleViewportScroll = () => {\n    renderHorizontalPosition(true);`,
+  `  const handleViewportScroll = () => {\n    if (restoreLockedPosition()) return;\n    renderHorizontalPosition(true);`,
+  'locked scroll rejection',
+);
+
+carousel = replaceOnce(
+  carousel,
+  `  const handleTouchStart = () => {\n    touchActiveRef.current = true;`,
+  `  const handleTouchStart = () => {\n    if (restoreLockedPosition()) return;\n    touchActiveRef.current = true;`,
+  'locked touch-start rejection',
+);
+
+carousel = replaceOnce(
+  carousel,
+  `  const releaseTouch = () => {\n    touchActiveRef.current = false;`,
+  `  const releaseTouch = () => {\n    if (restoreLockedPosition()) return;\n    touchActiveRef.current = false;`,
+  'locked touch-release rejection',
+);
+
+writeFileSync(carouselPath, carousel);
+
+const settingsPath = 'src/components/SettingsViewContent.tsx';
+let settings = readFileSync(settingsPath, 'utf8');
+
+settings = replaceOnce(
+  settings,
+  `  const [quickNoteEditor, setQuickNoteEditor] = useState<QuickNoteEditorState | null>(null);\n  const hasOpenEditor = itemEditor !== null || quickNoteEditor !== null;\n  const editorOriginRef`,
+  `  const [quickNoteEditor, setQuickNoteEditor] = useState<QuickNoteEditorState | null>(null);\n  const editorOriginRef`,
+  'derived editor-open state removal',
+);
+
+settings = replaceOnce(
+  settings,
+  `  useEffect(() => {\n    onCarouselNavigationLockChange?.(hasOpenEditor);\n    return () => {\n      if (hasOpenEditor) onCarouselNavigationLockChange?.(false);\n    };\n  }, [hasOpenEditor, onCarouselNavigationLockChange]);`,
+  `  useEffect(\n    () => () => {\n      onCarouselNavigationLockChange?.(false);\n    },\n    [onCarouselNavigationLockChange],\n  );`,
+  'editor lock effect replacement',
+);
+
+settings = replaceOnce(
+  settings,
+  `  const dismissItemEditor = useCallback(() => {\n    setItemEditor(null);\n    restoreEditorFocus();\n  }, [restoreEditorFocus]);`,
+  `  const dismissItemEditor = useCallback(() => {\n    setItemEditor(null);\n    onCarouselNavigationLockChange?.(false);\n    restoreEditorFocus();\n  }, [onCarouselNavigationLockChange, restoreEditorFocus]);`,
+  'item editor synchronous unlock',
+);
+
+settings = replaceOnce(
+  settings,
+  `  const dismissQuickNoteEditor = useCallback(() => {\n    setQuickNoteEditor(null);\n    restoreEditorFocus();\n  }, [restoreEditorFocus]);`,
+  `  const dismissQuickNoteEditor = useCallback(() => {\n    setQuickNoteEditor(null);\n    onCarouselNavigationLockChange?.(false);\n    restoreEditorFocus();\n  }, [onCarouselNavigationLockChange, restoreEditorFocus]);`,
+  'Quick Note editor synchronous unlock',
+);
+
+settings = replaceOnce(
+  settings,
+  `  const openItemEditor = (target: SettingsItemEditorTarget, origin: HTMLElement) => {\n    editorOriginRef.current = origin;`,
+  `  const openItemEditor = (target: SettingsItemEditorTarget, origin: HTMLElement) => {\n    onCarouselNavigationLockChange?.(true);\n    editorOriginRef.current = origin;`,
+  'item editor synchronous lock',
+);
+
+settings = replaceOnce(
+  settings,
+  `  ) => {\n    editorOriginRef.current = origin;\n    setQuickNoteEditor({`,
+  `  ) => {\n    onCarouselNavigationLockChange?.(true);\n    editorOriginRef.current = origin;\n    setQuickNoteEditor({`,
+  'Quick Note editor synchronous lock',
+);
+
+writeFileSync(settingsPath, settings);
