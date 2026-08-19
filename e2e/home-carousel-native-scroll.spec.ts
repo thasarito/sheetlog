@@ -49,6 +49,7 @@ test.describe("Native dashboard scroll snap", () => {
   }) => {
     const viewport = page.getByTestId("home-carousel-viewport");
     const reel = page.getByTestId("dashboard-title-reel");
+    const dock = page.getByTestId("transaction-history-dock");
     const analytics = page.getByLabel("Analytics, slide 1 of 3");
     const transactions = page.getByLabel("Transactions, slide 2 of 3");
 
@@ -104,6 +105,27 @@ test.describe("Native dashboard scroll snap", () => {
     await expect(reel).toHaveAttribute("data-selected-label", "Analytics");
     await expect(analytics).toHaveAttribute("aria-hidden", "false");
     await expect(transactions).toHaveAttribute("aria-hidden", "true");
+    await expect(dock).toHaveAttribute("data-scroll-linked-motion", "true");
+    await expect(dock).toHaveAttribute("data-motion", "moving");
+    await expect
+      .poll(async () => {
+        const [dockX, viewportWidth] = await Promise.all([
+          dock.evaluate((element) => {
+            const matrix = new DOMMatrixReadOnly(
+              getComputedStyle(element).transform,
+            );
+            return matrix.m41;
+          }),
+          viewport.evaluate((element) => element.clientWidth),
+        ]);
+        return Math.abs(dockX - viewportWidth / 2);
+      })
+      .toBeLessThan(1);
+    await expect
+      .poll(() =>
+        dock.evaluate((element) => getComputedStyle(element).backdropFilter),
+      )
+      .toBe("none");
 
     await viewport.evaluate(async (element) => {
       const viewportElement = element as HTMLElement;
@@ -122,5 +144,17 @@ test.describe("Native dashboard scroll snap", () => {
     await expect(viewport).toHaveAttribute("data-motion-status", "settled");
     await expect(reel).toHaveAttribute("data-position", "1.000");
     await expect(reel).toHaveAttribute("data-selected-label", "Transactions");
+    await expect(dock).toHaveAttribute("data-motion", "settled");
+    await expect(dock).toHaveCSS("pointer-events", "auto");
+    await expect
+      .poll(() =>
+        dock.evaluate((element) => {
+          const matrix = new DOMMatrixReadOnly(
+            getComputedStyle(element).transform,
+          );
+          return Math.abs(matrix.m41);
+        }),
+      )
+      .toBeLessThan(1);
   });
 });
