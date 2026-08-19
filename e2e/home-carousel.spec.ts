@@ -209,9 +209,7 @@ test.describe("Home dashboard carousel", () => {
     const analytics = page.getByLabel("Analytics, slide 1 of 3");
     const transactions = page.getByLabel("Transactions, slide 2 of 3");
     const settings = page.getByLabel("Settings, slide 3 of 3");
-    const categorySheet = page.getByRole("dialog", {
-      name: "Transaction entry",
-    });
+    const categorySheet = page.getByTestId("category-step-layout");
     const dashboardHeader = page.getByTestId("dashboard-header");
 
     await viewport.focus();
@@ -254,7 +252,7 @@ test.describe("Home dashboard carousel", () => {
       "data-category-sheet-state",
       "collapsed",
     );
-    await expect(page.getByRole("dialog")).toHaveCount(2);
+    await expect(page.locator('[role="dialog"]')).toHaveCount(2);
 
     const accountName = editor.getByRole("textbox", {
       name: "Account name",
