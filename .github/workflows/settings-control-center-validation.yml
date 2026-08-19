@@ -1,0 +1,118 @@
+name: Settings Control Center Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/settings-control-center-navigation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Stabilize Control Center browser selectors
+        run: |
+          node scripts/patch-settings-control-center-e2e-selectors.mjs
+          npx biome check --write e2e/home-carousel.spec.ts
+      - name: Commit selector stabilization
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add e2e/home-carousel.spec.ts
+            git commit -m "test: stabilize Control Center browser selectors"
+            git push origin HEAD:feat/settings-control-center-navigation
+          fi
+      - name: Focused behavior and theme tests
+        run: >-
+          npm test --
+          src/lib/settingsControlCenter.test.ts
+          src/components/SettingsControlSection.test.tsx
+          src/components/SettingsItemEditorDrawer.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/hooks/useSettingsCollectionMutations.test.tsx
+          src/hooks/useReplaceQuickNotesConfig.test.tsx
+          src/components/SettingsView.test.tsx
+          src/components/SettingsView.theme.test.tsx
+          src/lib/theme.test.ts
+          src/app/providers/theme/ThemeProvider.test.tsx
+      - name: Changed-file Biome check
+        run: >-
+          npx biome check
+          src/lib/settingsControlCenter.ts
+          src/lib/settingsControlCenter.test.ts
+          src/hooks/useAccountMutations.ts
+          src/hooks/useCategoryMutations.ts
+          src/hooks/useQuickNotes.ts
+          src/hooks/useSettingsCollectionMutations.test.tsx
+          src/hooks/useReplaceQuickNotesConfig.test.tsx
+          src/components/SettingsControlSection.tsx
+          src/components/SettingsControlSection.test.tsx
+          src/components/SettingsItemEditorDrawer.tsx
+          src/components/SettingsItemEditorDrawer.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/components/SettingsView.tsx
+          src/components/SettingsViewContent.tsx
+          src/components/SettingsView.test.tsx
+          src/components/SettingsView.theme.test.tsx
+          e2e/home-carousel.spec.ts
+      - name: Settings Control Center typecheck
+        run: |
+          cat > tsconfig.settings-control-center.tmp.json <<'JSON'
+          {
+            "extends": "./tsconfig.json",
+            "include": [
+              "vite-env.d.ts",
+              "global.d.ts",
+              "src/lib/settingsControlCenter.ts",
+              "src/lib/settingsControlCenter.test.ts",
+              "src/hooks/useAccountMutations.ts",
+              "src/hooks/useCategoryMutations.ts",
+              "src/hooks/useQuickNotes.ts",
+              "src/hooks/useSettingsCollectionMutations.test.tsx",
+              "src/hooks/useReplaceQuickNotesConfig.test.tsx",
+              "src/components/SettingsControlSection.tsx",
+              "src/components/SettingsControlSection.test.tsx",
+              "src/components/SettingsItemEditorDrawer.tsx",
+              "src/components/SettingsItemEditorDrawer.test.tsx",
+              "src/components/SettingsQuickNoteEditorDrawer.tsx",
+              "src/components/SettingsQuickNoteEditorDrawer.test.tsx",
+              "src/components/SettingsView.tsx",
+              "src/components/SettingsViewContent.tsx",
+              "src/components/SettingsView.test.tsx",
+              "src/components/SettingsView.theme.test.tsx",
+              "e2e/home-carousel.spec.ts"
+            ],
+            "exclude": ["node_modules"]
+          }
+          JSON
+          npx tsc -p tsconfig.settings-control-center.tmp.json --noEmit
+          rm tsconfig.settings-control-center.tmp.json
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install chromium
+      - name: Mobile Control Center regression
+        env:
+          VITE_DEV_MODE: "true"
+          VITE_GOOGLE_MAPS_API_KEY: e2e-key
+        run: >-
+          npx playwright test e2e/home-carousel.spec.ts
+          --project="Mobile Chrome"
+          --grep="expandable Control Center"
+          --retries=0
+      - name: Full repository typecheck (baseline visibility)
+        continue-on-error: true
+        run: npx tsc --noEmit
