@@ -1,5 +1,9 @@
 import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'framer-motion';
 import { formatAnalyticsAmount, type AnalyticsCategory, type AnalyticsSeries } from './analytics';
+import {
+  DEFAULT_ANALYTICS_MOTION_INTENT,
+  type AnalyticsMotionIntent,
+} from './analyticsMotion';
 import { AnalyticsNumber } from './AnalyticsNumber';
 import {
   ANALYTICS_TONE_STROKE_CLASSES,
@@ -12,6 +16,7 @@ type AnalyticsHalfDonutProps = {
   categories: AnalyticsCategory[];
   expenseTotal: number;
   currency: string;
+  motionIntent?: AnalyticsMotionIntent;
 };
 
 type DonutArc = AnalyticsSeriesBreakdown & {
@@ -19,21 +24,41 @@ type DonutArc = AnalyticsSeriesBreakdown & {
   visibleShare: number;
 };
 
-const ARC_PATH = 'M 12 96 A 88 88 0 0 1 188 96';
+type AnalyticsDonutSceneProps = {
+  arcs: DonutArc[];
+  reducedMotion: boolean | null;
+  sceneKey: string;
+};
 
-function AnalyticsDonutArc({ item }: { item: DonutArc }) {
+const ARC_PATH = 'M 12 96 A 88 88 0 0 1 188 96';
+const CALM_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+function getSeriesSignature(series: AnalyticsSeries[]): string {
+  return series.map((item) => `${item.label}\u0000${item.tone}`).join('\u0001');
+}
+
+function AnalyticsDonutArc({
+  item,
+  scenePresent,
+}: {
+  item: DonutArc;
+  scenePresent: boolean;
+}) {
   const isPresent = useIsPresent();
   const reducedMotion = useReducedMotion();
-  const transition = reducedMotion
+  const geometryTransition = reducedMotion
     ? { duration: 0 }
-    : { duration: 0.32, ease: 'easeOut' as const };
+    : { duration: 0.24, ease: CALM_EASE };
+  const opacityTransition = reducedMotion
+    ? { duration: 0 }
+    : { duration: 0.14, ease: CALM_EASE };
 
   return (
     <motion.path
-      data-testid={`donut-segment-${item.key}`}
+      data-testid={scenePresent && isPresent ? `donut-segment-${item.key}` : undefined}
       data-semantic-key={item.label}
       data-tone={item.tone}
-      aria-hidden={isPresent ? undefined : true}
+      aria-hidden={scenePresent && isPresent ? undefined : true}
       d={ARC_PATH}
       pathLength="100"
       fill="none"
@@ -47,8 +72,41 @@ function AnalyticsDonutArc({ item }: { item: DonutArc }) {
         strokeDashoffset: -item.offset,
       }}
       exit={{ opacity: 0, strokeDasharray: '0 100' }}
-      transition={transition}
+      transition={{
+        opacity: opacityTransition,
+        strokeDasharray: geometryTransition,
+        strokeDashoffset: geometryTransition,
+      }}
     />
+  );
+}
+
+function AnalyticsDonutScene({
+  arcs,
+  reducedMotion,
+  sceneKey,
+}: AnalyticsDonutSceneProps) {
+  const isPresent = useIsPresent();
+  const transition = reducedMotion
+    ? { duration: 0 }
+    : { duration: 0.16, ease: CALM_EASE };
+
+  return (
+    <motion.g
+      data-testid={isPresent ? 'analytics-donut-scene' : undefined}
+      data-donut-scene-key={sceneKey}
+      aria-hidden={isPresent ? undefined : true}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={transition}
+    >
+      <AnimatePresence initial={false}>
+        {arcs.map((item) => (
+          <AnalyticsDonutArc key={item.label} item={item} scenePresent={isPresent} />
+        ))}
+      </AnimatePresence>
+    </motion.g>
   );
 }
 
@@ -57,7 +115,9 @@ export function AnalyticsHalfDonut({
   categories,
   expenseTotal,
   currency,
+  motionIntent = DEFAULT_ANALYTICS_MOTION_INTENT,
 }: AnalyticsHalfDonutProps) {
+  const reducedMotion = useReducedMotion();
   const breakdown = getAnalyticsSeriesBreakdown(series, categories);
   const accessibleBreakdown = breakdown
     .map((item) => `${item.label} ${item.share}%`)
@@ -74,11 +134,14 @@ export function AnalyticsHalfDonut({
       visibleShare: Math.max(0.75, item.share - 1.1),
     });
   }
+  const sceneKey = `${motionIntent.transitionKey}:${getSeriesSignature(series)}`;
 
   return (
     <figure
       aria-label={`Spending by category: ${accessibleBreakdown}. Expenses ${formatAnalyticsAmount(expenseTotal, currency)}`}
       className="relative mx-auto w-full max-w-60"
+      data-motion-reason={motionIntent.reason}
+      data-donut-scene-key={sceneKey}
     >
       <svg viewBox="0 -3 200 112" aria-hidden="true" className="block w-full overflow-visible">
         <path
@@ -90,9 +153,12 @@ export function AnalyticsHalfDonut({
           className="stroke-surface-3"
         />
         <AnimatePresence initial={false}>
-          {arcs.map((item) => (
-            <AnalyticsDonutArc key={item.label} item={item} />
-          ))}
+          <AnalyticsDonutScene
+            key={sceneKey}
+            arcs={arcs}
+            reducedMotion={reducedMotion}
+            sceneKey={sceneKey}
+          />
         </AnimatePresence>
         <text
           x="100"

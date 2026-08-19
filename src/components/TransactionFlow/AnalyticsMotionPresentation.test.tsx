@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AnalyticsCategory, AnalyticsSeries } from './analytics';
 import { AnalyticsCategories } from './AnalyticsCategories';
 import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
+import type { AnalyticsMotionIntent } from './analyticsMotion';
 
 const series: AnalyticsSeries[] = [
   { key: 'category-0', label: 'Food', tone: 'emerald', categoryNames: ['Food'] },
@@ -12,15 +13,21 @@ const categories: AnalyticsCategory[] = [
   { category: 'Food', amount: 75, share: 75 },
   { category: 'Travel', amount: 25, share: 25 },
 ];
+const periodIntent: AnalyticsMotionIntent = {
+  reason: 'period',
+  direction: 1,
+  transitionKey: 'week:0',
+};
 
 describe('analytics motion presentation', () => {
-  it('expands the donut viewport and keeps semantic arc identity with animated metrics', () => {
+  it('crossfades donut scenes while keeping semantic arc identity and animated totals', () => {
     const { container } = render(
       <AnalyticsHalfDonut
         series={series}
         categories={categories}
         expenseTotal={100}
         currency="THB"
+        motionIntent={periodIntent}
       />,
     );
 
@@ -30,11 +37,14 @@ describe('analytics motion presentation', () => {
       'data-semantic-key',
       'Food',
     );
+    expect(
+      screen.getByTestId('analytics-donut-scene').getAttribute('data-donut-scene-key'),
+    ).toContain('week:0');
     expect(screen.getByLabelText(/Expenses ฿100/)).toBeInTheDocument();
     expect(screen.getByTestId('analytics-number')).toBeInTheDocument();
   });
 
-  it('keeps semantic category rows while updating NumberFlow values and track endpoints', () => {
+  it('keeps category values quiet and animates one clipped track layer per row', () => {
     const { rerender } = render(
       <AnalyticsCategories
         series={series}
@@ -46,12 +56,14 @@ describe('analytics motion presentation', () => {
 
     const food = screen.getByRole('button', { name: 'Food, ฿75, 75%' });
     expect(food).toHaveAttribute('data-semantic-key', 'Food');
-    expect(within(food).getAllByTestId('analytics-number')).toHaveLength(2);
-    expect(
-      within(screen.getByTestId('category-track-category-0'))
-        .getAllByTestId('category-track-segment')
-        .filter((segment) => segment.dataset.filled === 'true'),
-    ).toHaveLength(12);
+    expect(within(food).queryByTestId('analytics-number')).not.toBeInTheDocument();
+    expect(within(food).getByText('฿75')).toBeInTheDocument();
+    expect(within(food).getByText('75%')).toBeInTheDocument();
+    expect(within(food).getAllByTestId('category-track-fill')).toHaveLength(1);
+    expect(screen.getByTestId('category-track-category-0')).toHaveAttribute(
+      'data-filled-segments',
+      '12',
+    );
 
     rerender(
       <AnalyticsCategories
@@ -69,10 +81,9 @@ describe('analytics motion presentation', () => {
       'data-semantic-key',
       'Food',
     );
-    expect(
-      within(screen.getByTestId('category-track-category-0'))
-        .getAllByTestId('category-track-segment')
-        .filter((segment) => segment.dataset.filled === 'true'),
-    ).toHaveLength(4);
+    expect(screen.getByTestId('category-track-category-0')).toHaveAttribute(
+      'data-filled-segments',
+      '4',
+    );
   });
 });

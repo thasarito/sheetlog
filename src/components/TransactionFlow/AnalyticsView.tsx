@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { BadgeDollarSign, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { tryParseDate } from '../../lib/date-utils';
 import type { TransactionRecord } from '../../lib/types';
 import { cn } from '../../lib/utils';
@@ -18,6 +18,10 @@ import {
 import { AnalyticsBarChart } from './AnalyticsBarChart';
 import { AnalyticsCategories } from './AnalyticsCategories';
 import { AnalyticsHalfDonut } from './AnalyticsHalfDonut';
+import {
+  resolveAnalyticsMotionIntent,
+  type AnalyticsMotionSnapshot,
+} from './analyticsMotion';
 import { AnalyticsNumber } from './AnalyticsNumber';
 import { AnalyticsPeriodPicker } from './AnalyticsPeriodPicker';
 import { AnalyticsRangeDrawer } from './AnalyticsRangeDrawer';
@@ -77,11 +81,46 @@ export function AnalyticsView({
   now = new Date(),
 }: AnalyticsViewProps) {
   const customRangeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const previousMotionSnapshotRef = useRef<AnalyticsMotionSnapshot | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const customStart = customPeriod.start.getTime();
   const customEnd = customPeriod.end.getTime();
+  const motionSnapshot: AnalyticsMotionSnapshot = {
+    range,
+    periodOffset,
+    customStart,
+    customEnd,
+    noBigSpending,
+    selectedBucket,
+    selectedCategory,
+  };
+  const motionIntent = resolveAnalyticsMotionIntent(
+    previousMotionSnapshotRef.current,
+    motionSnapshot,
+  );
+
+  useLayoutEffect(() => {
+    previousMotionSnapshotRef.current = {
+      range,
+      periodOffset,
+      customStart,
+      customEnd,
+      noBigSpending,
+      selectedBucket,
+      selectedCategory,
+    };
+  }, [
+    customEnd,
+    customStart,
+    noBigSpending,
+    periodOffset,
+    range,
+    selectedBucket,
+    selectedCategory,
+  ]);
+
   const summary = useMemo(
     () => (hasCompleteHistory ? incomingSummary ?? null : null),
     [hasCompleteHistory, incomingSummary],
@@ -158,9 +197,11 @@ export function AnalyticsView({
       setCustomRangeOpen(true);
       return;
     }
+    clearFilters();
     onRangeChange(nextRange);
   };
   const applyCustomPeriod = (period: DatePeriod) => {
+    clearFilters();
     onCustomPeriodChange(period);
     onRangeChange('custom');
   };
@@ -168,6 +209,13 @@ export function AnalyticsView({
     clearFilters();
     onPeriodChange(nextOffset);
   };
+  const handleNoBigSpendingToggle = () => {
+    clearFilters();
+    onNoBigSpendingToggle();
+  };
+  const handleBucketSelect = useCallback((key: string | null) => {
+    setSelectedBucket((current) => (key === null || current === key ? null : key));
+  }, []);
   const selectedPeriod = periodOptions.find((option) => option.offset === periodOffset);
   const rangeAnnouncement =
     range === 'custom'
@@ -222,6 +270,8 @@ export function AnalyticsView({
       <div
         data-testid="analytics-dashboard-scroll"
         data-dashboard-scroll="true"
+        data-analytics-motion-reason={motionIntent.reason}
+        data-analytics-motion-direction={motionIntent.direction}
         className="min-h-0 flex-1 overflow-y-auto px-4"
         style={{
           paddingTop: 'calc(var(--dashboard-header-height, 68px) + 0.75rem)',
@@ -240,7 +290,7 @@ export function AnalyticsView({
               type="button"
               aria-label={noBigSpendingLabel}
               aria-pressed={noBigSpending}
-              onClick={onNoBigSpendingToggle}
+              onClick={handleNoBigSpendingToggle}
               className={cn(
                 'flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
                 noBigSpending && 'bg-primary/10 text-primary',
@@ -250,7 +300,7 @@ export function AnalyticsView({
             </button>
           </div>
 
-          {(!hasCompleteHistory || !summary || !scope) ? periodPicker : null}
+          {!hasCompleteHistory || !summary || !scope ? periodPicker : null}
 
           {!hasCompleteHistory && isOffline ? (
             <div className="flex min-h-48 items-center text-sm text-muted-foreground">
@@ -275,7 +325,11 @@ export function AnalyticsView({
             </div>
           ) : !summary || !scope ? null : (
             <>
-              <div data-testid="analytics-trend-block" className="space-y-2">
+              <div
+                data-testid="analytics-trend-block"
+                data-motion-reason={motionIntent.reason}
+                className="space-y-2"
+              >
                 <section aria-label="Spending trend">
                   <AnalyticsBarChart
                     buckets={summary.buckets}
@@ -284,11 +338,8 @@ export function AnalyticsView({
                     currency={summary.currency}
                     range={summary.range}
                     selectedKey={selectedBucket}
-                    onSelect={(key) =>
-                      setSelectedBucket((current) =>
-                        key === null || current === key ? null : key,
-                      )
-                    }
+                    onSelect={handleBucketSelect}
+                    motionIntent={motionIntent}
                     className="h-44"
                   />
                 </section>
@@ -327,6 +378,7 @@ export function AnalyticsView({
                   categories={scope.categories}
                   expenseTotal={scope.expenseTotal}
                   currency={summary.currency}
+                  motionIntent={motionIntent}
                 />
                 <div className="grid grid-cols-3 gap-2">
                   <div>
@@ -376,6 +428,7 @@ export function AnalyticsView({
                     currency={summary.currency}
                     selectedKey={selectedCategory}
                     onSelect={setSelectedCategory}
+                    motionIntent={motionIntent}
                   />
                   {summary.series.length === 0 ? (
                     <p className="py-3 text-sm text-muted-foreground">
