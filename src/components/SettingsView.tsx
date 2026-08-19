@@ -676,10 +676,6 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
   function renderMain() {
     return (
       <ScreenScroll screenKey="main" scrollPositions={scrollPositionsRef}>
-        <div className="px-4 pb-2 pt-4">
-          <h1 className="text-[34px] font-bold leading-tight text-foreground">Settings</h1>
-        </div>
-
         <SettingsSectionLabel>SYNC</SettingsSectionLabel>
         <SettingsGroup>
           <SettingsRow
@@ -1473,7 +1469,7 @@ export function SettingsView({ onToast, analyticsSync }: SettingsViewProps) {
             animate="center"
             exit="exit"
             transition={screenTransition}
-            className="absolute inset-0 h-full bg-surface"
+            className="absolute inset-0 h-full bg-transparent"
           >
             {renderScreen()}
           </motion.div>
