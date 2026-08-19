@@ -1,0 +1,70 @@
+name: Apply centralized theme refactor
+
+on:
+  push:
+    branches:
+      - refactor/centralized-theme-system
+    paths:
+      - .theme-bundle/bundle.b64
+
+permissions:
+  contents: write
+
+concurrency:
+  group: centralized-theme-refactor
+  cancel-in-progress: false
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out refactor branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/centralized-theme-system
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Decode and apply the audited bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .theme-bundle/bundle.b64 > /tmp/theme-refactor.zip
+          rm -rf /tmp/theme-refactor
+          mkdir -p /tmp/theme-refactor
+          unzip -q /tmp/theme-refactor.zip -d /tmp/theme-refactor
+          node /tmp/theme-refactor/sheetlog-theme-refactor-bundle/apply-theme-refactor.mjs "$GITHUB_WORKSPACE" --force
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run TypeScript checks
+        run: npx tsc --noEmit
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Validate patch whitespace
+        run: git diff --check
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "refactor: centralize app theming"
+          git push origin HEAD:refactor/centralized-theme-system
