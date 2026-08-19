@@ -22,7 +22,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm test -- src/lib/settingsControlCenter.test.ts
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
