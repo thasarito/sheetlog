@@ -8,7 +8,7 @@ type Props = ComponentProps<typeof AnalyticsSyncSetting>;
 
 const defaultProps: Props = {
   transactionCount: 327,
-  historyCapturedAt: '2026-08-19T13:42:00.000Z',
+  historyCapturedAt: '2026-08-19T13:42:00.000',
   isHistoryLoading: false,
   isHistoryDownloading: false,
   isHistoryRefreshing: false,
