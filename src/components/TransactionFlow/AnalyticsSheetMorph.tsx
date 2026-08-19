@@ -122,12 +122,10 @@ function categorySheetState(element: HTMLElement): CategorySheetState {
 }
 
 function findSheetElements(layout: HTMLElement): SheetElements {
-  const drawer = layout.querySelector<HTMLElement>(
-    '[role="dialog"][data-category-sheet-state]',
-  );
-
   return {
-    drawer,
+    drawer: layout.querySelector<HTMLElement>(
+      '[role="dialog"][data-category-sheet-state]',
+    ),
     launcher: layout.querySelector<HTMLElement>(
       '[data-testid="category-step-launcher"]',
     ),
@@ -222,7 +220,9 @@ function useCategorySheetMorph(rootRef: RefObject<HTMLElement>) {
       ) ?? null;
 
     if (!layout || !scroll || !detailedContent) {
-      root.dataset.categorySheetState = "collapsed";
+      if (root.dataset.categorySheetState !== "collapsed") {
+        root.dataset.categorySheetState = "collapsed";
+      }
       setProgressVariables(root, 0);
       setScrollVariables(root, 0);
       return;
@@ -263,7 +263,9 @@ function useCategorySheetMorph(rootRef: RefObject<HTMLElement>) {
         setDetailScrollTop(preservedDetailScrollTop);
       }
       previousState = state;
-      root.dataset.categorySheetState = state;
+      if (root.dataset.categorySheetState !== state) {
+        root.dataset.categorySheetState = state;
+      }
       setDetailedContentAvailability(
         detailedContent,
         detailedLiveRegion,
@@ -331,25 +333,30 @@ function useCategorySheetMorph(rootRef: RefObject<HTMLElement>) {
     };
 
     const startTracking = () => {
-      if (trackingFrame !== 0) return;
       trackingStartedAt = performance.now();
       stableFrames = 0;
       previousProgress = Number.NaN;
-      trackingFrame = window.requestAnimationFrame(trackFrame);
+      if (trackingFrame === 0) {
+        trackingFrame = window.requestAnimationFrame(trackFrame);
+      }
     };
 
     const drawerObserver = new MutationObserver(startTracking);
-    let resizeObserver: ResizeObserver | null = null;
-    const observeDrawer = () => {
+    const resizeObserver = new ResizeObserver(startTracking);
+
+    const observeElements = () => {
       elements = findSheetElements(layout);
+      resizeObserver.disconnect();
+      resizeObserver.observe(layout);
       for (const element of [
         elements.drawer,
         elements.launcher,
         elements.body,
         elements.safeArea,
       ]) {
-        if (element) resizeObserver?.observe(element);
+        if (element) resizeObserver.observe(element);
       }
+
       if (elements.drawer === observedDrawer) return;
       drawerObserver.disconnect();
       observedDrawer?.removeEventListener("pointerdown", startTracking);
@@ -363,26 +370,27 @@ function useCategorySheetMorph(rootRef: RefObject<HTMLElement>) {
       }
     };
 
-    const layoutObserver = new MutationObserver(() => {
-      observeDrawer();
+    const stateObserver = new MutationObserver((records) => {
+      const layoutStateChanged = records.some(
+        (record) =>
+          record.type === "attributes" && record.target === layout,
+      );
+      if (!layoutStateChanged) return;
       applySheetState();
       startTracking();
     });
-    layoutObserver.observe(layout, {
+    stateObserver.observe(layout, {
       attributes: true,
       attributeFilter: ["data-category-sheet-state"],
-      childList: true,
-      subtree: true,
     });
 
-    resizeObserver = new ResizeObserver(() => {
-      observeDrawer();
+    const childrenObserver = new MutationObserver(() => {
+      observeElements();
       startTracking();
     });
-    resizeObserver.observe(layout);
+    childrenObserver.observe(layout, { childList: true, subtree: true });
 
-    observeDrawer();
-
+    observeElements();
     applySheetState();
     measureProgress();
     startTracking();
@@ -393,8 +401,9 @@ function useCategorySheetMorph(rootRef: RefObject<HTMLElement>) {
       scroll.removeEventListener("scroll", updateScrollVariables);
       observedDrawer?.removeEventListener("pointerdown", startTracking);
       drawerObserver.disconnect();
-      layoutObserver.disconnect();
-      resizeObserver?.disconnect();
+      stateObserver.disconnect();
+      childrenObserver.disconnect();
+      resizeObserver.disconnect();
       detailedContent.inert = false;
       detailedContent.removeAttribute("aria-hidden");
       detailedLiveRegion?.removeAttribute("aria-hidden");
