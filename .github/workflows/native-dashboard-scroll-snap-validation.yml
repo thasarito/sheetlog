@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - refactor/native-dashboard-scroll-snap
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
