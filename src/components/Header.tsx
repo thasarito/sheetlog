@@ -19,9 +19,9 @@ type HeaderProps = {
 };
 
 export type DashboardHeaderMotionHandle = {
-  setHorizontalPosition: (position: number) => void;
-  // Temporary compatibility for the existing Embla carousel. The native
-  // scroll-snap replacement removes this direction/progress adapter.
+  // Optional only while callers migrate from direction/progress to absolute
+  // position. The native pager makes this the sole horizontal motion API.
+  setHorizontalPosition?: (position: number) => void;
   setHorizontalMotion: (
     direction: DashboardTitleDirection,
     progress: number,
