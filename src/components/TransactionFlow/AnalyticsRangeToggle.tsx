@@ -1,3 +1,5 @@
+import { motion, useReducedMotion } from 'framer-motion';
+import { useId } from 'react';
 import { cn } from '../../lib/utils';
 import type { AnalyticsRange } from './analytics';
 
@@ -14,29 +16,54 @@ const OPTIONS: Array<{ value: AnalyticsRange; short: string; label: string }> = 
   { value: 'custom', short: 'C', label: 'Custom date range' },
 ];
 
+const RANGE_INDICATOR_SPRING = {
+  type: 'spring' as const,
+  stiffness: 520,
+  damping: 44,
+  mass: 0.6,
+};
+
 export function AnalyticsRangeToggle({ value, onChange }: AnalyticsRangeToggleProps) {
+  const reducedMotion = useReducedMotion();
+  const indicatorLayoutId = useId().replaceAll(':', '');
+  const indicatorTransition = reducedMotion
+    ? { duration: 0 }
+    : RANGE_INDICATOR_SPRING;
+
   return (
     <fieldset
       className="grid h-11 w-44 grid-cols-5 rounded-xl bg-surface-2 p-1"
       aria-label="Analytics range"
     >
-      {OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-label={option.label}
-          aria-pressed={value === option.value}
-          onClick={(event) => onChange(option.value, event.currentTarget)}
-          className={cn(
-            'rounded-lg text-xs font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
-            value === option.value
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground',
-          )}
-        >
-          {option.short}
-        </button>
-      ))}
+      {OPTIONS.map((option) => {
+        const selected = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-label={option.label}
+            aria-pressed={selected}
+            onClick={(event) => onChange(option.value, event.currentTarget)}
+            className={cn(
+              'relative isolate overflow-hidden rounded-lg text-xs font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+              selected ? 'text-accent-foreground' : 'text-muted-foreground',
+            )}
+          >
+            {selected ? (
+              <motion.span
+                layoutId={`analytics-range-indicator-${indicatorLayoutId}`}
+                data-testid="analytics-range-indicator"
+                data-analytics-range={option.value}
+                className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-accent"
+                initial={false}
+                transition={indicatorTransition}
+                aria-hidden="true"
+              />
+            ) : null}
+            <span className="relative z-10">{option.short}</span>
+          </button>
+        );
+      })}
     </fieldset>
   );
 }

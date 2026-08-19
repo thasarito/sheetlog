@@ -26,6 +26,7 @@
   --border: 214 32% 91%;
   --ring: 160 84% 39%;
   --ring: 160 84% 39%;
+  --analytics-control-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 body {
@@ -72,6 +73,77 @@ input[type="date"] {
 
 .no-tap-highlight {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Wise-inspired Analytics selection motion: one restrained cue per control. */
+[role="listbox"][aria-label="Analytics period"] {
+  isolation: isolate;
+  position: relative;
+}
+
+[role="listbox"][aria-label="Analytics period"]::after {
+  background: hsl(var(--primary) / 0.82);
+  border-radius: 9999px;
+  bottom: 0.2rem;
+  content: "";
+  height: 0.1875rem;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 1.5rem;
+  z-index: 2;
+}
+
+[role="listbox"][aria-label="Analytics period"] [role="option"] {
+  opacity: 0.46;
+  transform: translate3d(0, 0, 0) scale(0.94);
+  transform-origin: center;
+  transition:
+    color 160ms var(--analytics-control-ease),
+    opacity 200ms var(--analytics-control-ease),
+    transform 260ms var(--analytics-control-ease);
+}
+
+[role="listbox"][aria-label="Analytics period"] [role="option"][aria-selected="true"] {
+  opacity: 1;
+  transform: translate3d(0, -1px, 0) scale(1.025);
+}
+
+figure[data-chart-scene-key] [aria-label="Select analytics period"] [role="option"] {
+  transform-origin: center bottom;
+  transition: transform 260ms var(--analytics-control-ease);
+}
+
+figure[data-chart-scene-key]
+  [aria-label="Select analytics period"]
+  [role="option"][aria-selected="true"] {
+  transform: translate3d(0, -2px, 0);
+}
+
+figure[data-chart-scene-key] .pointer-events-none.absolute.inset-0.rounded-md {
+  background: hsl(var(--primary) / 0.86) !important;
+  border-radius: 9999px !important;
+  bottom: 2px !important;
+  height: 3px !important;
+  left: 24% !important;
+  right: 24% !important;
+  top: auto !important;
+}
+
+@media (hover: hover) {
+  [role="listbox"][aria-label="Analytics period"]
+    [role="option"][aria-selected="false"]:hover {
+    opacity: 0.68;
+    transform: translate3d(0, 0, 0) scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [role="listbox"][aria-label="Analytics period"] [role="option"],
+  figure[data-chart-scene-key] [aria-label="Select analytics period"] [role="option"] {
+    transition: none;
+  }
 }
 
 .analytics-calendar {
