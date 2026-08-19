@@ -1,16 +1,22 @@
 import { useMutation } from '@tanstack/react-query';
-import { useUpdateOnboarding } from './useOnboardingQuery';
-import type { CategoryItem, TransactionType } from '../lib/types';
 import {
-  DEFAULT_CATEGORY_ICONS,
   DEFAULT_CATEGORY_COLORS,
-  SUGGESTED_CATEGORY_ICONS,
+  DEFAULT_CATEGORY_ICONS,
   SUGGESTED_CATEGORY_COLORS,
+  SUGGESTED_CATEGORY_ICONS,
 } from '../lib/icons';
+import type { CategoryItem, TransactionType } from '../lib/types';
+import { useUpdateOnboarding } from './useOnboardingQuery';
 
-type AddCategoryParams = { name: string; categoryType: TransactionType };
+type AddCategoryParams = {
+  name: string;
+  categoryType: TransactionType;
+  icon?: string;
+  color?: string;
+};
 type RemoveCategoryParams = { name: string; categoryType: TransactionType };
 type UpdateCategoryMetaParams = {
+  previousName?: string;
   name: string;
   categoryType: TransactionType;
   icon?: string;
@@ -25,14 +31,21 @@ export function useCategoryMutations(onToast: (message: string) => void) {
   const { mutateAsync: updateOnboarding } = useUpdateOnboarding();
 
   const addCategory = useMutation({
-    mutationFn: async ({ name, categoryType }: AddCategoryParams) => {
+    mutationFn: async ({
+      name,
+      categoryType,
+      icon,
+      color,
+    }: AddCategoryParams) => {
       const newCategory: CategoryItem = {
         name,
         icon:
-          SUGGESTED_CATEGORY_ICONS[name] ||
+          icon ??
+          SUGGESTED_CATEGORY_ICONS[name] ??
           DEFAULT_CATEGORY_ICONS[categoryType],
         color:
-          SUGGESTED_CATEGORY_COLORS[name] ||
+          color ??
+          SUGGESTED_CATEGORY_COLORS[name] ??
           DEFAULT_CATEGORY_COLORS[categoryType],
       };
       return updateOnboarding((current) => ({
@@ -43,7 +56,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       }));
     },
-    onError: () => onToast("Failed to add category"),
+    onError: () => onToast('Failed to add category'),
   });
 
   const removeCategory = useMutation({
@@ -58,23 +71,26 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       }));
     },
-    onError: () => onToast("Failed to remove category"),
+    onError: () => onToast('Failed to remove category'),
   });
 
   const updateCategoryMeta = useMutation({
     mutationFn: async ({
+      previousName,
       name,
       categoryType,
       icon,
       color,
     }: UpdateCategoryMetaParams) => {
+      const identity = previousName ?? name;
       return updateOnboarding((current) => ({
         categories: {
           ...current.categories,
           [categoryType]: current.categories[categoryType].map((category) =>
-            category.name === name
+            category.name === identity
               ? {
                   ...category,
+                  name,
                   ...(icon !== undefined && { icon }),
                   ...(color !== undefined && { color }),
                 }
@@ -84,7 +100,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       }));
     },
-    onError: () => onToast("Failed to update category"),
+    onError: () => onToast('Failed to update category'),
   });
 
   const reorderCategories = useMutation({
@@ -100,7 +116,7 @@ export function useCategoryMutations(onToast: (message: string) => void) {
         categoriesConfirmed: true,
       }));
     },
-    onError: () => onToast("Failed to reorder categories"),
+    onError: () => onToast('Failed to reorder categories'),
   });
 
   const isSaving =
