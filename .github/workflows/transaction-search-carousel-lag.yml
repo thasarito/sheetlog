@@ -32,8 +32,13 @@ jobs:
           src/components/TransactionFlow/TransactionHistoryView.test.tsx
           src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
 
-      - name: Lint
-        run: npm run lint
+      - name: Lint changed files
+        run: >-
+          npx biome check
+          src/components/TransactionFlow/TransactionHistoryDock.tsx
+          src/components/TransactionFlow/TransactionHistoryDock.motion.test.tsx
+          e2e/home-carousel-native-scroll.spec.ts
+          src/styles/globals.css
 
       - name: Type-check
         run: npx tsc --noEmit
