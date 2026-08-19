@@ -277,26 +277,47 @@ jobs:
           history = history[:status_start] + history[status_end:]
           history_path.write_text(history)
 
-          test_path = 'src/components/TransactionFlow/TransactionHistoryView.test.tsx'
-          replace_once(
-              test_path,
-              '  it("converts the complete record set independently of search and refreshes rates", async () => {',
-              '  it("converts the complete record set independently of search", async () => {',
+          test_path = Path('src/components/TransactionFlow/TransactionHistoryView.test.tsx')
+          test_text = test_path.read_text()
+          old_test_name = (
+              '  it("converts the complete record set independently of search and '
+              'refreshes rates", async () => {'
           )
-          replace_once(
-              test_path,
-              '    expect(await screen.findByText("1 transaction")).toBeInTheDocument();',
-              '    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();',
+          new_test_name = (
+              '  it("converts the complete record set independently of search", async () => {'
           )
-          replace_once(
-              test_path,
-              '''    await user.click(
-                    screen.getByRole("button", { name: "Refresh transaction history" }),
-                  );
-                  expect(mocks.history.refresh).toHaveBeenCalledTimes(1);
-                  expect(mocks.rateRefetch).toHaveBeenCalledTimes(1);
-                  '''.replace('                  ', ''),
-              '',
+          if test_text.count(old_test_name) != 1:
+              raise SystemExit('Expected one stale conversion test name')
+          test_text = test_text.replace(old_test_name, new_test_name, 1)
+
+          old_count_assertion = (
+              '    expect(await screen.findByText("1 transaction")).toBeInTheDocument();'
+          )
+          new_count_assertion = (
+              '    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();'
+          )
+          if test_text.count(old_count_assertion) != 1:
+              raise SystemExit('Expected one stale transaction count assertion')
+          test_text = test_text.replace(
+              old_count_assertion, new_count_assertion, 1
+          )
+
+          test_scope_start = test_text.index(new_test_name)
+          refresh_start_marker = (
+              '    await user.click(\n'
+              '      screen.getByRole("button", { name: "Refresh transaction history" }),\n'
+              '    );\n'
+          )
+          refresh_start = test_text.index(refresh_start_marker, test_scope_start)
+          refresh_end_marker = (
+              '    expect(mocks.rateRefetch).toHaveBeenCalledTimes(1);\n'
+          )
+          refresh_end = (
+              test_text.index(refresh_end_marker, refresh_start)
+              + len(refresh_end_marker)
+          )
+          test_path.write_text(
+              test_text[:refresh_start] + test_text[refresh_end:]
           )
           PY
 
