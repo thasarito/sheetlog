@@ -195,6 +195,9 @@ export function CategoryStepSheet({
   const collapsed = sheetState === "collapsed";
   const entryVisible = sheetState === "expanded";
   const keyboardState = sheetState === "keyboard";
+  const sheetBodyHeight = entryVisible
+    ? `calc(${expandedPoint} + var(--category-sheet-safe-area))`
+    : expandedPoint;
 
   const reportAccessoryHeight = useCallback((height: number) => {
     const value =
@@ -332,7 +335,7 @@ export function CategoryStepSheet({
               ref={sheetBodyRef}
               data-testid="category-step-sheet-body"
               className="relative flex min-h-0 flex-col overflow-hidden"
-              style={{ height: expandedPoint }}
+              style={{ height: sheetBodyHeight }}
             >
               <div
                 ref={setLauncherElement}
