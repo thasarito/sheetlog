@@ -36,208 +36,211 @@ jobs:
         run: |
           python <<'PY'
           from pathlib import Path
+          import re
+          import textwrap
 
-          def replace_once(path: str, old: str, new: str) -> None:
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
               file = Path(path)
               text = file.read_text()
               count = text.count(old)
+              if count != expected:
+                  raise SystemExit(
+                      f"Expected {expected} match(es) in {path}, found {count}: {old[:100]!r}"
+                  )
+              file.write_text(text.replace(old, new))
+
+          def replace_regex(path: str, pattern: str, replacement: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
               if count != 1:
-                  raise SystemExit(f"Expected one match in {path}, found {count}: {old[:80]!r}")
-              file.write_text(text.replace(old, new, 1))
+                  raise SystemExit(f"Expected one regex match in {path}: {pattern!r}")
+              file.write_text(updated)
 
-          Path('src/components/AnalyticsSyncSetting.test.tsx').write_text('''import { render, screen } from '@testing-library/react';
-          import userEvent from '@testing-library/user-event';
-          import { describe, expect, it, vi } from 'vitest';
-          import { AnalyticsSyncSetting } from './AnalyticsSyncSetting';
+          Path('src/components/AnalyticsSyncSetting.test.tsx').write_text(
+              textwrap.dedent(
+                  '''\
+                  import { render, screen } from '@testing-library/react';
+                  import userEvent from '@testing-library/user-event';
+                  import { describe, expect, it, vi } from 'vitest';
+                  import { AnalyticsSyncSetting } from './AnalyticsSyncSetting';
 
-          const baseProps = {
-            count: 3,
-            capturedAt: '2026-08-19T13:42:00.000Z',
-            status: 'synced' as const,
-            isRefreshing: false,
-            isDownloading: false,
-            hasLocalHistory: true,
-            isResyncing: false,
-            onResync: vi.fn(),
-          };
+                  const baseProps = {
+                    count: 3,
+                    capturedAt: '2026-08-19T13:42:00.000Z',
+                    status: 'synced' as const,
+                    isRefreshing: false,
+                    isDownloading: false,
+                    hasLocalHistory: true,
+                    isResyncing: false,
+                    onResync: vi.fn(),
+                  };
 
-          describe('AnalyticsSyncSetting', () => {
-            it('renders the unfiltered transaction count and last-saved timestamp', () => {
-              render(<AnalyticsSyncSetting {...baseProps} />);
+                  describe('AnalyticsSyncSetting', () => {
+                    it('renders the unfiltered transaction count and last-saved timestamp', () => {
+                      render(<AnalyticsSyncSetting {...baseProps} />);
 
-              expect(screen.getByText('Transaction history')).toBeInTheDocument();
-              expect(screen.getByText('3 transactions')).toBeInTheDocument();
-              expect(screen.getByText('Last saved Aug 19, 13:42')).toBeInTheDocument();
-              expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
-            });
+                      expect(screen.getByText('Transaction history')).toBeInTheDocument();
+                      expect(screen.getByText('3 transactions')).toBeInTheDocument();
+                      expect(screen.getByText('Last saved Aug 19, 13:42')).toBeInTheDocument();
+                      expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
+                    });
 
-            it('uses the singular transaction label', () => {
-              render(<AnalyticsSyncSetting {...baseProps} count={1} />);
+                    it('uses the singular transaction label', () => {
+                      render(<AnalyticsSyncSetting {...baseProps} count={1} />);
 
-              expect(screen.getByText('1 transaction')).toBeInTheDocument();
-            });
+                      expect(screen.getByText('1 transaction')).toBeInTheDocument();
+                    });
 
-            it('renders downloading, updating, offline, and not-downloaded states', () => {
-              const rendered = render(
-                <AnalyticsSyncSetting {...baseProps} isDownloading />,
-              );
-              expect(screen.getByText('Downloading…')).toBeInTheDocument();
+                    it('renders downloading, updating, offline, and not-downloaded states', () => {
+                      const rendered = render(
+                        <AnalyticsSyncSetting {...baseProps} isDownloading />,
+                      );
+                      expect(screen.getByText('Downloading…')).toBeInTheDocument();
 
-              rendered.rerender(
-                <AnalyticsSyncSetting {...baseProps} isResyncing />,
-              );
-              expect(screen.getByText('Updating…')).toBeInTheDocument();
+                      rendered.rerender(
+                        <AnalyticsSyncSetting {...baseProps} isResyncing />,
+                      );
+                      expect(screen.getByText('Updating…')).toBeInTheDocument();
 
-              rendered.rerender(
-                <AnalyticsSyncSetting {...baseProps} status="offline" />,
-              );
-              expect(
-                screen.getByText('Offline · Last saved Aug 19, 13:42'),
-              ).toBeInTheDocument();
+                      rendered.rerender(
+                        <AnalyticsSyncSetting {...baseProps} status="offline" />,
+                      );
+                      expect(
+                        screen.getByText('Offline · Last saved Aug 19, 13:42'),
+                      ).toBeInTheDocument();
 
-              rendered.rerender(
-                <AnalyticsSyncSetting
-                  {...baseProps}
-                  capturedAt={undefined}
-                  hasLocalHistory={false}
-                />,
-              );
-              expect(screen.getByText('Not downloaded')).toBeInTheDocument();
-            });
+                      rendered.rerender(
+                        <AnalyticsSyncSetting
+                          {...baseProps}
+                          capturedAt={undefined}
+                          hasLocalHistory={false}
+                        />,
+                      );
+                      expect(screen.getByText('Not downloaded')).toBeInTheDocument();
+                    });
 
-            it('starts one resync and disables the action while sync work is active', async () => {
-              const user = userEvent.setup();
-              const onResync = vi.fn();
-              const rendered = render(
-                <AnalyticsSyncSetting {...baseProps} onResync={onResync} />,
-              );
+                    it('starts one resync and disables the action while sync work is active', async () => {
+                      const user = userEvent.setup();
+                      const onResync = vi.fn();
+                      const rendered = render(
+                        <AnalyticsSyncSetting {...baseProps} onResync={onResync} />,
+                      );
 
-              const button = screen.getByRole('button', {
-                name: 'Resync transaction history',
-              });
-              await user.click(button);
-              expect(onResync).toHaveBeenCalledTimes(1);
+                      const button = screen.getByRole('button', {
+                        name: 'Resync transaction history',
+                      });
+                      await user.click(button);
+                      expect(onResync).toHaveBeenCalledTimes(1);
 
-              rendered.rerender(
-                <AnalyticsSyncSetting
-                  {...baseProps}
-                  status="syncing"
-                  isResyncing
-                  onResync={onResync}
-                />,
-              );
-              expect(button).toBeDisabled();
-              expect(button).toHaveAttribute('aria-busy', 'true');
-              expect(rendered.container.innerHTML).not.toContain('shadow');
-            });
+                      rendered.rerender(
+                        <AnalyticsSyncSetting
+                          {...baseProps}
+                          status="syncing"
+                          isResyncing
+                          onResync={onResync}
+                        />,
+                      );
+                      expect(button).toBeDisabled();
+                      expect(button).toHaveAttribute('aria-busy', 'true');
+                      expect(rendered.container.innerHTML).not.toContain('shadow');
+                    });
 
-            it('disables resync while offline or history is refreshing', () => {
-              const rendered = render(
-                <AnalyticsSyncSetting {...baseProps} status="offline" />,
-              );
-              expect(
-                screen.getByRole('button', { name: 'Resync transaction history' }),
-              ).toBeDisabled();
+                    it('disables resync while offline or history is refreshing', () => {
+                      const rendered = render(
+                        <AnalyticsSyncSetting {...baseProps} status="offline" />,
+                      );
+                      expect(
+                        screen.getByRole('button', { name: 'Resync transaction history' }),
+                      ).toBeDisabled();
 
-              rendered.rerender(
-                <AnalyticsSyncSetting {...baseProps} isRefreshing />,
-              );
-              expect(
-                screen.getByRole('button', { name: 'Resync transaction history' }),
-              ).toBeDisabled();
-            });
-          });
-          '''.replace('          ', ''))
+                      rendered.rerender(
+                        <AnalyticsSyncSetting {...baseProps} isRefreshing />,
+                      );
+                      expect(
+                        screen.getByRole('button', { name: 'Resync transaction history' }),
+                      ).toBeDisabled();
+                    });
+                  });
+                  '''
+              )
+          )
 
-          replace_once(
+          replace_exact(
               'src/components/SettingsView.test.tsx',
               "import { fireEvent, render, screen, waitFor } from '@testing-library/react';",
               "import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';",
           )
-          replace_once(
+          replace_exact(
               'src/components/SettingsView.test.tsx',
               "import type { OnboardingState } from '../lib/types';",
               "import type { OnboardingState, TransactionRecord } from '../lib/types';",
           )
-          replace_once(
+          replace_exact(
               'src/components/SettingsView.test.tsx',
               "    records: [],\n    meta: null,",
               "    records: [{}, {}, {}] as TransactionRecord[],\n    meta: {\n      sheetId: 'sheet-a',\n      capturedAt: '2026-08-19T13:42:00.000Z',\n      sourceLastRow: 4,\n      rowCount: 3,\n    },",
           )
-          replace_once(
+          replace_exact(
               'src/components/SettingsView.test.tsx',
               "  records: [],\n  rates: [],",
               "  records: [{}, {}, {}] as TransactionRecord[],\n  rates: [],",
           )
-          replace_once(
+          replace_regex(
               'src/components/SettingsView.test.tsx',
-              '''  it('keeps settings sync diagnostics and manual refresh behavior', async () => {
-            const user = userEvent.setup();
-            renderView();
+              r"  it\('keeps settings sync diagnostics and manual refresh behavior', async \(\) => \{.*?\n  \}\);",
+              textwrap.dedent(
+                  '''\
+                    it('keeps settings sync diagnostics and moves transaction history sync into Sync', async () => {
+                      const user = userEvent.setup();
+                      renderView();
 
-            const syncButton = screen.getByRole('button', { name: /Sync Settings/i });
-            expect(syncButton).toHaveTextContent('Synced');
-            expect(screen.getByText('Synced')).toHaveAttribute('aria-live', 'polite');
-            await user.click(syncButton);
-            expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
+                      const syncButton = screen.getByRole('button', { name: /Sync Settings/i });
+                      expect(syncButton).toHaveTextContent('Synced');
+                      expect(screen.getByText('Synced')).toHaveAttribute('aria-live', 'polite');
+                      await user.click(syncButton);
+                      expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
 
-            expect(screen.getByText('Synced · 12:34 PM')).toBeInTheDocument();
-            await user.click(screen.getByRole('button', { name: 'Resync analytics' }));
-            expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
-          });'''.replace('          ', ''),
-              '''  it('keeps settings sync diagnostics and moves transaction history sync into Sync', async () => {
-            const user = userEvent.setup();
-            renderView();
+                      const historySync = screen.getByTestId('transaction-history-sync-setting');
+                      expect(syncButton.parentElement).toContainElement(historySync);
+                      expect(within(historySync).getByText('3 transactions')).toBeInTheDocument();
+                      expect(
+                        within(historySync).getByText('Last saved Aug 19, 13:42'),
+                      ).toBeInTheDocument();
+                      expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
 
-            const syncButton = screen.getByRole('button', { name: /Sync Settings/i });
-            expect(syncButton).toHaveTextContent('Synced');
-            expect(screen.getByText('Synced')).toHaveAttribute('aria-live', 'polite');
-            await user.click(syncButton);
-            expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
-
-            const historySync = screen.getByTestId('transaction-history-sync-setting');
-            expect(syncButton.parentElement).toContainElement(historySync);
-            expect(within(historySync).getByText('3 transactions')).toBeInTheDocument();
-            expect(
-              within(historySync).getByText('Last saved Aug 19, 13:42'),
-            ).toBeInTheDocument();
-            expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
-
-            await user.click(
-              within(historySync).getByRole('button', {
-                name: 'Resync transaction history',
-              }),
-            );
-            expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
-          });'''.replace('          ', ''),
+                      await user.click(
+                        within(historySync).getByRole('button', {
+                          name: 'Resync transaction history',
+                        }),
+                      );
+                      expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
+                    });
+                  '''
+              ).rstrip(),
           )
 
-          replace_once(
+          replace_regex(
               'src/components/TransactionFlow/TransactionHistoryView.test.tsx',
-              '''    expect(
-                within(screen.getByTestId("transaction-history-metadata")).getByRole(
-                  "button",
-                  { name: "Refresh transaction history" },
-                ),
-              ).toBeInTheDocument();'''.replace('              ', ''),
-              '''    expect(
-                screen.queryByTestId("transaction-history-metadata"),
-              ).not.toBeInTheDocument();
-              expect(
-                screen.queryByRole("button", { name: "Refresh transaction history" }),
-              ).not.toBeInTheDocument();'''.replace('              ', ''),
+              r'''    expect\(\n      within\(screen\.getByTestId\("transaction-history-metadata"\)\)\.getByRole\(\n        "button",\n        \{ name: "Refresh transaction history" \},\n      \),\n    \)\.toBeInTheDocument\(\);''',
+              textwrap.dedent(
+                  '''\
+                      expect(
+                        screen.queryByTestId("transaction-history-metadata"),
+                      ).not.toBeInTheDocument();
+                      expect(
+                        screen.queryByRole("button", { name: "Refresh transaction history" }),
+                      ).not.toBeInTheDocument();
+                  '''
+              ).rstrip(),
           )
-          replace_once(
+          replace_exact(
               'src/components/TransactionFlow/TransactionHistoryView.test.tsx',
               'var(--transaction-history-dock-height, 104px)',
               'var(--transaction-history-dock-height, 60px)',
+              expected=2,
           )
-          replace_once(
-              'src/components/TransactionFlow/TransactionHistoryView.test.tsx',
-              'var(--transaction-history-dock-height, 104px)',
-              'var(--transaction-history-dock-height, 60px)',
-          )
-          replace_once(
+          replace_exact(
               'src/components/TransactionFlow/TransactionHistoryView.test.tsx',
               '    expect(screen.getByText("1 transaction")).toBeInTheDocument();',
               '    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();',
