@@ -33,12 +33,30 @@ type PendingKeyboardTap = {
   pointerId: number;
 };
 
+type DockPresentationState = {
+  hidden: boolean;
+  interactive: boolean;
+  moving: boolean;
+  viewportWidth: number;
+};
+
+function supportsScrollLinkedDockMotion(): boolean {
+  return (
+    typeof CSS !== "undefined" &&
+    typeof CSS.supports === "function" &&
+    CSS.supports("animation-timeline: scroll()") &&
+    CSS.supports("timeline-scope: --home-dashboard-carousel")
+  );
+}
+
 export function TransactionHistoryDock({
   search,
   onSearchChange,
   motionRef,
 }: TransactionHistoryDockProps) {
   const accessory = useCategoryStepSheetAccessory();
+  const portalled = accessory.provided;
+  const scrollLinkedMotion = portalled && supportsScrollLinkedDockMotion();
   const dockRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const pendingKeyboardTapRef = useRef<PendingKeyboardTap | null>(null);
@@ -46,7 +64,12 @@ export function TransactionHistoryDock({
     null,
   );
   const clickGuardTimeoutRef = useRef<number | null>(null);
-  const portalled = accessory.provided;
+  const presentationRef = useRef<DockPresentationState>({
+    hidden: portalled,
+    interactive: !portalled,
+    moving: false,
+    viewportWidth: 0,
+  });
 
   const clearPendingKeyboardTap = useCallback(() => {
     const clickGuard = documentClickGuardRef.current;
@@ -179,24 +202,50 @@ export function TransactionHistoryDock({
         !interactive &&
         safeViewportWidth > 0 &&
         Math.abs(safeX) >= safeViewportWidth - 1;
+      const previous = presentationRef.current;
 
       if (
         !moving &&
         !interactive &&
+        (previous.interactive || previous.moving) &&
         document.activeElement instanceof HTMLElement &&
         element.contains(document.activeElement)
       ) {
         document.activeElement.blur();
       }
-      element.style.transform = `translate3d(${safeX}px, 0, 0)`;
-      element.style.pointerEvents = interactive ? "auto" : "none";
-      element.style.visibility = hidden ? "hidden" : "visible";
-      element.inert = !interactive;
-      element.setAttribute("aria-hidden", interactive ? "false" : "true");
-      element.dataset.motion = moving ? "moving" : "settled";
-      element.dataset.offsetX = String(safeX);
+
+      if (scrollLinkedMotion) {
+        if (previous.viewportWidth !== safeViewportWidth) {
+          element.style.setProperty(
+            "--transaction-history-dock-viewport-width",
+            `${safeViewportWidth}px`,
+          );
+        }
+      } else {
+        element.style.transform = `translate3d(${safeX}px, 0, 0)`;
+        element.dataset.offsetX = String(safeX);
+      }
+
+      if (previous.interactive !== interactive) {
+        element.style.pointerEvents = interactive ? "auto" : "none";
+        element.inert = !interactive;
+        element.setAttribute("aria-hidden", interactive ? "false" : "true");
+      }
+      if (previous.hidden !== hidden) {
+        element.style.visibility = hidden ? "hidden" : "visible";
+      }
+      if (previous.moving !== moving) {
+        element.dataset.motion = moving ? "moving" : "settled";
+      }
+
+      presentationRef.current = {
+        hidden,
+        interactive,
+        moving,
+        viewportWidth: safeViewportWidth,
+      };
     },
-    [],
+    [scrollLinkedMotion],
   );
   useImperativeHandle(motionRef, () => ({ setMotion }), [setMotion]);
 
@@ -225,13 +274,16 @@ export function TransactionHistoryDock({
       data-vaul-no-drag
       data-motion="settled"
       data-offset-x="0"
+      data-scroll-linked-motion={scrollLinkedMotion ? "true" : "false"}
       aria-hidden={portalled}
-      className="pointer-events-auto relative mx-3 rounded-2xl border border-border/70 bg-background/95 p-2 backdrop-blur-md"
+      className="pointer-events-auto relative mx-3 rounded-2xl border border-border/70 bg-background/95 p-2 backdrop-blur-md will-change-transform"
       style={
         portalled
           ? {
               pointerEvents: "none",
-              transform: "translate3d(100%, 0, 0)",
+              transform: scrollLinkedMotion
+                ? undefined
+                : "translate3d(100%, 0, 0)",
               visibility: "hidden",
             }
           : undefined
