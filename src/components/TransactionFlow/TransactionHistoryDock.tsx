@@ -33,6 +33,30 @@ type PendingKeyboardTap = {
   pointerId: number;
 };
 
+type ScrollTimelineConstructor = new (options: {
+  source: Element;
+  axis: "x";
+}) => AnimationTimeline;
+
+type ScrollDrivenAnimation = {
+  source: HTMLElement;
+  viewportWidth: number;
+  animation: Animation;
+};
+
+type DockSemanticState = {
+  interactive: boolean;
+  moving: boolean;
+  hidden: boolean;
+};
+
+function scrollTimelineConstructor(): ScrollTimelineConstructor | null {
+  const constructor = (
+    window as Window & { ScrollTimeline?: ScrollTimelineConstructor }
+  ).ScrollTimeline;
+  return typeof constructor === "function" ? constructor : null;
+}
+
 export function TransactionHistoryDock({
   search,
   onSearchChange,
@@ -46,6 +70,9 @@ export function TransactionHistoryDock({
     null,
   );
   const clickGuardTimeoutRef = useRef<number | null>(null);
+  const scrollDrivenAnimationRef = useRef<ScrollDrivenAnimation | null>(null);
+  const scrollTimelineSupportedRef = useRef<boolean | null>(null);
+  const semanticStateRef = useRef<DockSemanticState | null>(null);
   const portalled = accessory.provided;
 
   const clearPendingKeyboardTap = useCallback(() => {
@@ -166,6 +193,60 @@ export function TransactionHistoryDock({
     },
     [portalled],
   );
+
+  const ensureScrollDrivenMotion = useCallback(
+    (element: HTMLDivElement, viewportWidth: number): boolean => {
+      if (scrollTimelineSupportedRef.current === false) return false;
+
+      const existing = scrollDrivenAnimationRef.current;
+      if (existing && existing.viewportWidth === viewportWidth) {
+        return true;
+      }
+
+      const ScrollTimeline = scrollTimelineConstructor();
+      if (!ScrollTimeline || typeof element.animate !== "function") {
+        scrollTimelineSupportedRef.current = false;
+        element.dataset.horizontalTracking = "script";
+        return false;
+      }
+
+      const source = document.querySelector<HTMLElement>(
+        '[data-testid="home-carousel-viewport"]',
+      );
+      if (!source || viewportWidth <= 0) return false;
+
+      if (existing) existing.animation.cancel();
+      try {
+        const timeline = new ScrollTimeline({ source, axis: "x" });
+        const animation = element.animate(
+          [
+            { transform: `translate3d(${viewportWidth}px, 0, 0)` },
+            { transform: `translate3d(${-viewportWidth}px, 0, 0)` },
+          ],
+          {
+            duration: 1,
+            fill: "both",
+            timeline,
+          } as KeyframeAnimationOptions & { timeline: AnimationTimeline },
+        );
+        scrollDrivenAnimationRef.current = {
+          source,
+          viewportWidth,
+          animation,
+        };
+        scrollTimelineSupportedRef.current = true;
+        element.style.removeProperty("transform");
+        element.dataset.horizontalTracking = "scroll-timeline";
+        return true;
+      } catch {
+        scrollTimelineSupportedRef.current = false;
+        element.dataset.horizontalTracking = "script";
+        return false;
+      }
+    },
+    [],
+  );
+
   const setMotion = useCallback(
     ({ x, viewportWidth, interactive, moving }: TransactionHistoryDockMotion) => {
       const element = dockRef.current;
@@ -179,6 +260,7 @@ export function TransactionHistoryDock({
         !interactive &&
         safeViewportWidth > 0 &&
         Math.abs(safeX) >= safeViewportWidth - 1;
+      const scrollDriven = ensureScrollDrivenMotion(element, safeViewportWidth);
 
       if (
         !moving &&
@@ -188,19 +270,40 @@ export function TransactionHistoryDock({
       ) {
         document.activeElement.blur();
       }
-      element.style.transform = `translate3d(${safeX}px, 0, 0)`;
-      element.style.pointerEvents = interactive ? "auto" : "none";
-      element.style.visibility = hidden ? "hidden" : "visible";
-      element.inert = !interactive;
-      element.setAttribute("aria-hidden", interactive ? "false" : "true");
-      element.dataset.motion = moving ? "moving" : "settled";
-      element.dataset.offsetX = String(safeX);
+
+      if (!scrollDriven) {
+        element.style.transform = `translate3d(${safeX}px, 0, 0)`;
+        element.dataset.offsetX = String(safeX);
+      }
+
+      const previous = semanticStateRef.current;
+      if (
+        !previous ||
+        previous.interactive !== interactive ||
+        previous.moving !== moving ||
+        previous.hidden !== hidden
+      ) {
+        element.style.pointerEvents = interactive ? "auto" : "none";
+        element.style.visibility = hidden ? "hidden" : "visible";
+        element.inert = !interactive;
+        element.setAttribute("aria-hidden", interactive ? "false" : "true");
+        element.dataset.motion = moving ? "moving" : "settled";
+        semanticStateRef.current = { interactive, moving, hidden };
+      }
     },
-    [],
+    [ensureScrollDrivenMotion],
   );
   useImperativeHandle(motionRef, () => ({ setMotion }), [setMotion]);
 
   useLayoutEffect(() => clearPendingKeyboardTap, [clearPendingKeyboardTap]);
+
+  useLayoutEffect(
+    () => () => {
+      scrollDrivenAnimationRef.current?.animation.cancel();
+      scrollDrivenAnimationRef.current = null;
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     if (!accessory.provided || !accessory.host || !dockRef.current) return;
@@ -224,6 +327,7 @@ export function TransactionHistoryDock({
       data-home-carousel-swipe-lock="true"
       data-vaul-no-drag
       data-motion="settled"
+      data-horizontal-tracking="script"
       data-offset-x="0"
       aria-hidden={portalled}
       className="pointer-events-auto relative mx-3 rounded-2xl border border-border/70 bg-background/95 p-2 backdrop-blur-md"
