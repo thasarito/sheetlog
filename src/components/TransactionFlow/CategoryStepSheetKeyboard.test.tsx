@@ -97,13 +97,28 @@ function KeyboardSheetHarness({
   const motionRef = useRef<TransactionHistoryDockMotionHandle | null>(null);
 
   useLayoutEffect(() => {
-    motionRef.current?.setMotion({
-      x: 0,
-      viewportWidth: 390,
-      interactive: true,
-      moving: false,
-    });
-  });
+    let frame = 0;
+    const makeDockInteractive = () => {
+      const motion = motionRef.current;
+      if (!motion) {
+        frame = window.requestAnimationFrame(makeDockInteractive);
+        return;
+      }
+
+      frame = 0;
+      motion.setMotion({
+        x: 0,
+        viewportWidth: 390,
+        interactive: true,
+        moving: false,
+      });
+    };
+
+    makeDockInteractive();
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
 
   return (
     <CategoryStepSheet
@@ -116,11 +131,6 @@ function KeyboardSheetHarness({
       <TransactionHistoryDock
         search={search}
         onSearchChange={setSearch}
-        countLabel="2 transactions"
-        statusLabel="Synced"
-        canRefresh
-        isRefreshing={false}
-        onRefresh={vi.fn()}
         motionRef={motionRef}
       />
     </CategoryStepSheet>
