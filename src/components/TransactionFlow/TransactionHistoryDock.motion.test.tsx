@@ -8,10 +8,20 @@ type ScrollTimelineOptions = {
   axis: "x";
 };
 
+const originalAnimate = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "animate",
+);
+
 describe("TransactionHistoryDock horizontal motion", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     Reflect.deleteProperty(window, "ScrollTimeline");
+    if (originalAnimate) {
+      Object.defineProperty(HTMLElement.prototype, "animate", originalAnimate);
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    }
   });
 
   it("uses the carousel scroll timeline instead of rewriting transform on every scroll", () => {
@@ -26,9 +36,11 @@ describe("TransactionHistoryDock horizontal motion", () => {
       value: ScrollTimelineMock,
     });
     const cancel = vi.fn();
-    const animate = vi
-      .spyOn(HTMLElement.prototype, "animate")
-      .mockReturnValue({ cancel } as unknown as Animation);
+    const animate = vi.fn(() => ({ cancel }) as unknown as Animation);
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: animate,
+    });
     const motionRef = {
       current: null as TransactionHistoryDockMotionHandle | null,
     };
