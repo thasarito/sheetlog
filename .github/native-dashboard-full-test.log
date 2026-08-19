@@ -394,7 +394,7 @@ Ignored nodes: comments, script, style
 
 
 [2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m102 passed[39m[22m[90m (104)[39m
-[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m1261 passed[39m[22m[90m (1265)[39m
-[2m   Start at [22m 09:22:13
-[2m   Duration [22m 78.71s[2m (transform 6.90s, setup 10.92s, import 36.24s, tests 71.53s, environment 96.87s)[22m
+[2m      Tests [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m1263 passed[39m[22m[90m (1267)[39m
+[2m   Start at [22m 09:37:54
+[2m   Duration [22m 83.99s[2m (transform 7.16s, setup 11.85s, import 38.52s, tests 73.03s, environment 105.93s)[22m
 
