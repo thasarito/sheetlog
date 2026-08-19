@@ -57,6 +57,7 @@ describe("Header dashboard title reel", () => {
     expect(reel).not.toHaveAttribute("tabindex");
     expect(reel).toHaveClass("pointer-events-none");
     expect(reel).toHaveAttribute("data-selected-label", "Analytics");
+    expect(reel).toHaveAttribute("data-anchor", "left");
     expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close settings" })).not.toBeInTheDocument();
 
@@ -70,7 +71,7 @@ describe("Header dashboard title reel", () => {
     expect(items.map((item) => item.dataset.index)).toEqual(["0", "1", "2"]);
   });
 
-  it("keeps all titles fixed when they fit and transfers selection emphasis", () => {
+  it("keeps every settled selected title at the left anchor", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);
 
@@ -79,18 +80,18 @@ describe("Header dashboard title reel", () => {
     setReelMeasurements(reel, items, 390);
 
     act(() => motionRef.current?.syncHorizontalSelection?.("Analytics"));
-    const settledPositions = items.map(reelX);
+    expect(reelX(items[0])).toBeCloseTo(0, 5);
     expect(visibleItems(items).map((item) => item.textContent)).toEqual([
       "Analytics",
       "Transactions",
       "Settings",
     ]);
-    expect(reel).toHaveAttribute("data-visible-count", "3");
 
     act(() => motionRef.current?.setHorizontalMotion(1, 0.5));
     expect(reel).toHaveAttribute("data-direction", "forward");
     expect(reel).toHaveAttribute("data-progress", "0.500");
-    expect(items.map(reelX)).toEqual(settledPositions);
+    expect(reelX(items[0])).toBeLessThan(0);
+    expect(reelX(items[1])).toBeGreaterThan(0);
     expect(Number(items[0].style.opacity)).toBeCloseTo(
       Number(items[1].style.opacity),
       5,
@@ -99,11 +100,22 @@ describe("Header dashboard title reel", () => {
     act(() => motionRef.current?.syncHorizontalSelection?.("Transactions"));
     expect(reel).toHaveAttribute("data-selected-label", "Transactions");
     expect(items[1]).toHaveAttribute("data-active", "true");
-    expect(items[0]).toHaveAttribute("data-active", "false");
-    expect(items.map(reelX)).toEqual(settledPositions);
+    expect(reelX(items[1])).toBeCloseTo(0, 5);
+    expect(visibleItems(items).map((item) => item.textContent)).toEqual([
+      "Transactions",
+      "Settings",
+    ]);
+
+    act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
+    expect(reel).toHaveAttribute("data-selected-label", "Settings");
+    expect(items[2]).toHaveAttribute("data-active", "true");
+    expect(reelX(items[2])).toBeCloseTo(0, 5);
+    expect(visibleItems(items).map((item) => item.textContent)).toEqual([
+      "Settings",
+    ]);
   });
 
-  it("slides the fixed rail only as needed on narrow widths", () => {
+  it("moves the rail between left anchors on narrow widths", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);
 
@@ -112,17 +124,18 @@ describe("Header dashboard title reel", () => {
     setReelMeasurements(reel, items, 190);
 
     act(() => motionRef.current?.syncHorizontalSelection?.("Analytics"));
-    const analyticsX = reelX(items[0]);
-    const transactionsX = reelX(items[1]);
+    expect(reelX(items[0])).toBeCloseTo(0, 5);
 
     act(() => motionRef.current?.setHorizontalMotion(1, 0.5));
-    expect(reelX(items[0])).toBeLessThan(analyticsX);
-    expect(reelX(items[1])).toBeLessThan(transactionsX);
+    expect(reelX(items[0])).toBeLessThan(0);
+    expect(reelX(items[1])).toBeGreaterThan(0);
 
     act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
     expect(reel).toHaveAttribute("data-selected-label", "Settings");
-    expect(items[2]).toHaveAttribute("data-active", "true");
-    expect(reelX(items[2]) + measuredWidth(items[2])).toBeLessThanOrEqual(190.5);
+    expect(reelX(items[2])).toBeCloseTo(0, 5);
+    expect(visibleItems(items).map((item) => item.textContent)).toEqual([
+      "Settings",
+    ]);
   });
 
   it("does not preview beyond either end of the bounded title rail", () => {
@@ -138,25 +151,31 @@ describe("Header dashboard title reel", () => {
     expect(reel).toHaveAttribute("data-selected-label", "Analytics");
     expect(reel).toHaveAttribute("data-direction", "settled");
     expect(reel).toHaveAttribute("data-progress", "0.000");
+    expect(reelX(items[0])).toBeCloseTo(0, 5);
 
     act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
     act(() => motionRef.current?.setHorizontalMotion(1, 0.8));
     expect(reel).toHaveAttribute("data-selected-label", "Settings");
     expect(reel).toHaveAttribute("data-direction", "settled");
     expect(reel).toHaveAttribute("data-progress", "0.000");
+    expect(reelX(items[2])).toBeCloseTo(0, 5);
   });
 
-  it("reconciles live motion to the authoritative carousel destination", () => {
+  it("reconciles live motion to the authoritative left-anchored destination", () => {
     const motionRef = createRef<DashboardHeaderMotionHandle>();
     render(<Header ref={motionRef} />);
 
+    const reel = screen.getByTestId("dashboard-title-reel");
+    const items = screen.getAllByTestId("dashboard-title-reel-item");
+    setReelMeasurements(reel, items, 390);
+
     act(() => motionRef.current?.setHorizontalMotion(1, 0.8));
     act(() => motionRef.current?.syncHorizontalSelection?.("Settings"));
 
-    const reel = screen.getByTestId("dashboard-title-reel");
     expect(reel).toHaveAttribute("data-selected-label", "Settings");
     expect(reel).toHaveAttribute("data-direction", "settled");
     expect(reel).toHaveAttribute("data-progress", "0.000");
+    expect(reelX(items[2])).toBeCloseTo(0, 5);
   });
 
   it("hides the complete top bar in proportion to active content scroll", () => {
