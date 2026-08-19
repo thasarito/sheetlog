@@ -1,4 +1,8 @@
-import type { DashboardTitleDirection } from "../DashboardTitleReel";
+import { DASHBOARD_SLIDES } from "../dashboardSlides";
+import type {
+  DashboardTitle,
+  DashboardTitleDirection,
+} from "../DashboardTitleReel";
 
 type ResolveDashboardTitleStepsOptions = {
   direction: DashboardTitleDirection | 0;
@@ -7,6 +11,12 @@ type ResolveDashboardTitleStepsOptions = {
   pendingSelections: number;
   returnedToOrigin: boolean;
 };
+
+export function resolveDashboardTitleSelection(
+  selectedIndex: number,
+): DashboardTitle {
+  return DASHBOARD_SLIDES[selectedIndex] ?? DASHBOARD_SLIDES[0];
+}
 
 export function resolveDashboardTitleSteps({
   direction,

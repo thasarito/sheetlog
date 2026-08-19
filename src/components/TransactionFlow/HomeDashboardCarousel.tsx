@@ -24,10 +24,13 @@ import {
   type AnalyticsRange,
 } from "./analytics";
 import { AnalyticsView } from "./AnalyticsView";
+import {
+  resolveDashboardTitleSelection,
+  resolveDashboardTitleSteps,
+} from "./dashboardTitleMotion";
 import type { TransactionHistoryDockMotionHandle } from "./TransactionHistoryDock";
 import { TransactionHistoryView } from "./TransactionHistoryView";
 import type { AnalyticsSyncController } from "./useAnalyticsSync";
-import { resolveDashboardTitleSteps } from "./dashboardTitleMotion";
 
 type HomeDashboardCarouselProps = {
   baseCurrency: string;
@@ -265,6 +268,9 @@ export function HomeDashboardCarousel({
     (index: number) => {
       activeIndexRef.current = index;
       setActiveIndex(index);
+      headerMotionRef?.current?.syncHorizontalSelection?.(
+        resolveDashboardTitleSelection(index),
+      );
       headerMotionRef?.current?.setVerticalProgress(
         verticalProgressRef.current[index] ?? 0,
       );
@@ -399,7 +405,9 @@ export function HomeDashboardCarousel({
   );
 
   useEffect(() => {
-    headerMotionRef?.current?.resetHorizontalSelection?.();
+    headerMotionRef?.current?.syncHorizontalSelection?.(
+      resolveDashboardTitleSelection(activeIndexRef.current),
+    );
     headerMotionRef?.current?.setVerticalProgress(
       verticalProgressRef.current[activeIndexRef.current] ?? 0,
     );

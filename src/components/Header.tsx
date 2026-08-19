@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   DashboardTitleReel,
+  type DashboardTitle,
   type DashboardTitleDirection,
   type DashboardTitleReelHandle,
 } from "./DashboardTitleReel";
@@ -24,6 +25,7 @@ export type DashboardHeaderMotionHandle = {
     progress: number,
   ) => void;
   settleHorizontalMotion?: (committedSteps: number) => void;
+  syncHorizontalSelection?: (title: DashboardTitle) => void;
   setVerticalProgress: (progress: number) => void;
 };
 
@@ -60,6 +62,9 @@ export const Header = forwardRef<DashboardHeaderMotionHandle, HeaderProps>(
         },
         settleHorizontalMotion(committedSteps) {
           titleReelRef.current?.settleHorizontalMotion(committedSteps);
+        },
+        syncHorizontalSelection(title) {
+          titleReelRef.current?.syncHorizontalSelection(title);
         },
         setVerticalProgress,
       }),
