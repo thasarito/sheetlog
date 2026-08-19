@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,7 @@ import type {
   SettingsReconciliationStatus,
 } from '../lib/settingsReconciliation';
 import type { SettingsSyncState } from '../lib/settingsSync';
-import type { OnboardingState } from '../lib/types';
+import type { OnboardingState, TransactionRecord } from '../lib/types';
 import { SettingsView } from './SettingsView';
 import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 
@@ -21,8 +21,13 @@ const defaultSettingsState = (): SettingsSyncState => ({
 
 const analyticsSync: AnalyticsSyncController = {
   history: {
-    records: [],
-    meta: null,
+    records: [{}, {}, {}] as TransactionRecord[],
+    meta: {
+      sheetId: 'sheet-a',
+      capturedAt: '2026-08-19T13:42:00.000Z',
+      sourceLastRow: 4,
+      rowCount: 3,
+    },
     error: null,
     hasCompleteCache: true,
     hasLocalSnapshot: true,
@@ -35,7 +40,7 @@ const analyticsSync: AnalyticsSyncController = {
     remoteError: null,
     refresh: vi.fn(),
   },
-  records: [],
+  records: [{}, {}, {}] as TransactionRecord[],
   rates: [],
   hasLocalHistory: true,
   status: 'synced',
@@ -190,20 +195,31 @@ describe('SettingsView', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
-  it('keeps settings sync diagnostics and manual refresh behavior', async () => {
-    const user = userEvent.setup();
-    renderView();
+it('keeps settings sync diagnostics and moves transaction history sync into Sync', async () => {
+  const user = userEvent.setup();
+  renderView();
 
-    const syncButton = screen.getByRole('button', { name: /Sync Settings/i });
-    expect(syncButton).toHaveTextContent('Synced');
-    expect(screen.getByText('Synced')).toHaveAttribute('aria-live', 'polite');
-    await user.click(syncButton);
-    expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
+  const syncButton = screen.getByRole('button', { name: /Sync Settings/i });
+  expect(syncButton).toHaveTextContent('Synced');
+  expect(screen.getByText('Synced')).toHaveAttribute('aria-live', 'polite');
+  await user.click(syncButton);
+  expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
 
-    expect(screen.getByText('Synced · 12:34 PM')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Resync analytics' }));
-    expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
-  });
+  const historySync = screen.getByTestId('transaction-history-sync-setting');
+  expect(syncButton.parentElement).toContainElement(historySync);
+  expect(within(historySync).getByText('3 transactions')).toBeInTheDocument();
+  expect(
+    within(historySync).getByText('Last saved Aug 19, 13:42'),
+  ).toBeInTheDocument();
+  expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
+
+  await user.click(
+    within(historySync).getByRole('button', {
+      name: 'Resync transaction history',
+    }),
+  );
+  expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
+});
 
   it('navigates nested screens with Back/Edit/Add actions while preserving local drafts', async () => {
     const user = userEvent.setup();

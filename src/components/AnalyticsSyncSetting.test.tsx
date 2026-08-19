@@ -3,43 +3,77 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { AnalyticsSyncSetting } from './AnalyticsSyncSetting';
 
-describe('AnalyticsSyncSetting', () => {
-  it.each([
-    ['syncing', undefined, 'Syncing…'],
-    ['synced', '2026-08-17T12:34:00.000Z', 'Synced · 12:34 PM'],
-    ['incomplete', undefined, 'Incomplete'],
-    ['offline', undefined, 'Offline · waiting'],
-  ] as const)('renders %s status', (status, lastSyncedAt, label) => {
-    render(
-      <AnalyticsSyncSetting
-        status={status}
-        lastSyncedAt={lastSyncedAt}
-        isResyncing={false}
-        onResync={vi.fn()}
-      />,
-    );
+const baseProps = {
+  count: 3,
+  capturedAt: '2026-08-19T13:42:00.000Z',
+  status: 'synced' as const,
+  isRefreshing: false,
+  isDownloading: false,
+  hasLocalHistory: true,
+  isResyncing: false,
+  onResync: vi.fn(),
+};
 
-    expect(screen.getByText(label)).toBeInTheDocument();
-    expect(screen.queryByText(/rate unavailable|excluded/i)).not.toBeInTheDocument();
+describe('AnalyticsSyncSetting', () => {
+  it('renders the unfiltered transaction count and last-saved timestamp', () => {
+    render(<AnalyticsSyncSetting {...baseProps} />);
+
+    expect(screen.getByText('Transaction history')).toBeInTheDocument();
+    expect(screen.getByText('3 transactions')).toBeInTheDocument();
+    expect(screen.getByText('Last saved Aug 19, 13:42')).toBeInTheDocument();
+    expect(screen.queryByText('Analytics sync')).not.toBeInTheDocument();
   });
 
-  it('starts a non-blocking resync and disables only its own action while pending', async () => {
+  it('uses the singular transaction label', () => {
+    render(<AnalyticsSyncSetting {...baseProps} count={1} />);
+
+    expect(screen.getByText('1 transaction')).toBeInTheDocument();
+  });
+
+  it('renders downloading, updating, offline, and not-downloaded states', () => {
+    const rendered = render(
+      <AnalyticsSyncSetting {...baseProps} isDownloading />,
+    );
+    expect(screen.getByText('Downloading…')).toBeInTheDocument();
+
+    rendered.rerender(
+      <AnalyticsSyncSetting {...baseProps} isResyncing />,
+    );
+    expect(screen.getByText('Updating…')).toBeInTheDocument();
+
+    rendered.rerender(
+      <AnalyticsSyncSetting {...baseProps} status="offline" />,
+    );
+    expect(
+      screen.getByText('Offline · Last saved Aug 19, 13:42'),
+    ).toBeInTheDocument();
+
+    rendered.rerender(
+      <AnalyticsSyncSetting
+        {...baseProps}
+        capturedAt={undefined}
+        hasLocalHistory={false}
+      />,
+    );
+    expect(screen.getByText('Not downloaded')).toBeInTheDocument();
+  });
+
+  it('starts one resync and disables the action while sync work is active', async () => {
     const user = userEvent.setup();
     const onResync = vi.fn();
     const rendered = render(
-      <AnalyticsSyncSetting
-        status="incomplete"
-        isResyncing={false}
-        onResync={onResync}
-      />,
+      <AnalyticsSyncSetting {...baseProps} onResync={onResync} />,
     );
 
-    const button = screen.getByRole('button', { name: 'Resync analytics' });
+    const button = screen.getByRole('button', {
+      name: 'Resync transaction history',
+    });
     await user.click(button);
     expect(onResync).toHaveBeenCalledTimes(1);
 
     rendered.rerender(
       <AnalyticsSyncSetting
+        {...baseProps}
         status="syncing"
         isResyncing
         onResync={onResync}
@@ -50,31 +84,19 @@ describe('AnalyticsSyncSetting', () => {
     expect(rendered.container.innerHTML).not.toContain('shadow');
   });
 
-  it('disables resync while offline', () => {
-    render(
-      <AnalyticsSyncSetting
-        status="offline"
-        isResyncing={false}
-        onResync={vi.fn()}
-      />,
+  it('disables resync while offline or history is refreshing', () => {
+    const rendered = render(
+      <AnalyticsSyncSetting {...baseProps} status="offline" />,
     );
-
     expect(
-      screen.getByRole('button', { name: 'Resync analytics' }),
+      screen.getByRole('button', { name: 'Resync transaction history' }),
     ).toBeDisabled();
-  });
 
-  it('prevents a second sync while automatic work is active', () => {
-    render(
-      <AnalyticsSyncSetting
-        status="syncing"
-        isResyncing={false}
-        onResync={vi.fn()}
-      />,
+    rendered.rerender(
+      <AnalyticsSyncSetting {...baseProps} isRefreshing />,
     );
-
     expect(
-      screen.getByRole('button', { name: 'Resync analytics' }),
+      screen.getByRole('button', { name: 'Resync transaction history' }),
     ).toBeDisabled();
   });
 });

@@ -244,12 +244,12 @@ describe("TransactionHistoryView", () => {
       "data-dashboard-scroll",
       "true",
     );
-    expect(
-      within(screen.getByTestId("transaction-history-metadata")).getByRole(
-        "button",
-        { name: "Refresh transaction history" },
-      ),
-    ).toBeInTheDocument();
+expect(
+  screen.queryByTestId("transaction-history-metadata"),
+).not.toBeInTheDocument();
+expect(
+  screen.queryByRole("button", { name: "Refresh transaction history" }),
+).not.toBeInTheDocument();
     expect(
       screen.getByRole("searchbox", { name: "Search transaction history" }),
     ).toBeVisible();
@@ -323,9 +323,9 @@ describe("TransactionHistoryView", () => {
       screen.getByRole("region", { name: "Transaction history" }),
     ).toHaveStyle({
       paddingBottom:
-        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 60px) + 8px)",
       scrollPaddingBottom:
-        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 104px) + 8px)",
+        "calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, 60px) + 8px)",
     });
   });
 
@@ -439,7 +439,7 @@ describe("TransactionHistoryView", () => {
     );
 
     expect(await screen.findByText("Ancient travel")).toBeInTheDocument();
-    expect(screen.getByText("1 transaction")).toBeInTheDocument();
+    expect(screen.queryByText("1 transaction")).not.toBeInTheDocument();
   });
 
   it("preserves the exact scroll offset when a newer row is prepended", async () => {
