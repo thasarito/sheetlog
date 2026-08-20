@@ -1,0 +1,14 @@
+[data-testid="category-grid"],
+[data-testid="category-grid"] * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html[data-category-gesture-selection-locked="true"],
+html[data-category-gesture-selection-locked="true"] body,
+html[data-category-gesture-selection-locked="true"] body * {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
