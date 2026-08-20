@@ -17,13 +17,13 @@ body {
 }
 
 /* The amount step owns the full transaction canvas instead of sharing the title reel. */
-main[data-testid="transaction-canvas"]:has([data-testid="step-amount"])
+main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
   > div
   > header {
   display: none;
 }
 
-main[data-testid="transaction-canvas"]:has([data-testid="step-amount"])
+main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
   > div
   > header
   + div {
@@ -32,7 +32,7 @@ main[data-testid="transaction-canvas"]:has([data-testid="step-amount"])
 }
 
 /* Keep note entry geometry stable while nearby chips and autocomplete change. */
-[data-testid="step-amount"] [data-testid="nearby-place-slot"] {
+[data-transaction-step="amount"] [data-testid="nearby-place-slot"] {
   height: 2.75rem;
   min-height: 2.75rem;
   overflow: hidden;
