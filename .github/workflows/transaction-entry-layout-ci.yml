@@ -21,7 +21,7 @@ jobs:
       - name: Apply focused hardening patch
         run: |
           python - <<'PY'
-          from pathlib import Path
+          from pathlib import import Path
 
           def replace_once(path: str, old: str, new: str) -> None:
               file = Path(path)
@@ -77,6 +77,29 @@ jobs:
               "e2e/transaction-amount-layout.spec.ts",
               'await expect(page.getByTestId("dashboard-header")).toHaveCount(0);',
               'await expect(page.getByTestId("dashboard-header")).toBeHidden();',
+          )
+          replace_once(
+              "e2e/transaction-amount-layout.spec.ts",
+              '''  await page.setViewportSize({ width: 390, height: 844 });
+          await page.goto("/app");''',
+              '''  await page.setViewportSize({ width: 390, height: 844 });
+          await page.addInitScript(() => {
+            window.localStorage.clear();
+            window.localStorage.setItem("sheetlog.mock.transactions", "[]");
+          });
+          await page.emulateMedia({ reducedMotion: "reduce" });
+          await page.goto("/app");
+          await page.addStyleTag({
+            content: `
+              *, *::before, *::after {
+                animation-delay: 0s !important;
+                animation-duration: 0s !important;
+                caret-color: transparent !important;
+                transition-delay: 0s !important;
+                transition-duration: 0s !important;
+              }
+            `,
+          });''',
           )
 
           css = Path("src/styles/globals.css")
