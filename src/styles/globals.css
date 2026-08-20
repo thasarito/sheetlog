@@ -29,6 +29,25 @@ input[type="date"] {
   overscroll-behavior-x: auto;
 }
 
+/* Standard Settings leading icons share one theme-aware accent treatment. */
+.settings-icon-badge,
+[data-testid="settings-view"]
+  section[aria-label="Workspace health"]
+  > div
+  > span:first-child,
+[data-testid="settings-view"]
+  #settings-section-data-sync-content
+  > div
+  > button:first-child
+  > span:first-child,
+[data-testid="settings-view"]
+  #settings-section-quick-notes-content
+  button
+  > span[class*="h-8"][class*="w-8"] {
+  background-color: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+}
+
 /* Wise-inspired Analytics selection motion: one restrained cue per control. */
 [role="listbox"][aria-label="Analytics period"] {
   isolation: isolate;

@@ -1,5 +1,6 @@
 import { CircleDollarSign } from 'lucide-react';
 import { CURRENCIES, type Currency } from '../lib/currencies';
+import { SettingsIconBadge } from './SettingsIconBadge';
 
 type Props = {
   value: Currency;
@@ -10,9 +11,9 @@ type Props = {
 export function AnalyticsBaseCurrencySetting({ value, disabled, onChange }: Props) {
   return (
     <div className="flex min-h-14 items-center gap-3 bg-card px-4 py-2">
-      <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#007AFF] text-white">
+      <SettingsIconBadge>
         <CircleDollarSign className="h-4 w-4" />
-      </div>
+      </SettingsIconBadge>
       <label htmlFor="analytics-base-currency" className="min-w-0 flex-1 text-[17px]">
         Base currency
       </label>

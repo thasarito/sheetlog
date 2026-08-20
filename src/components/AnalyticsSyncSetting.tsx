@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
 import type { AnalyticsSyncStatus } from './TransactionFlow/useAnalyticsSync';
+import { SettingsIconBadge } from './SettingsIconBadge';
 import {
   getTransactionHistorySyncDetail,
   isTransactionHistorySyncBusy,
@@ -43,12 +44,12 @@ export function AnalyticsSyncSetting({
 
   return (
     <div className="flex min-h-14 items-center gap-3 px-4 py-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[#5856D6] text-white">
+      <SettingsIconBadge>
         <RefreshCw
           className={`h-4 w-4 ${busy ? 'animate-spin motion-reduce:animate-none' : ''}`}
           aria-hidden="true"
         />
-      </div>
+      </SettingsIconBadge>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[17px] text-foreground">Transaction history</p>
         <p

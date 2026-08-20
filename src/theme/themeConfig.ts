@@ -427,10 +427,115 @@ const monokai = defineEditorTheme({
   },
 });
 
+const wise = defineEditorTheme({
+  id: "wise",
+  label: "Wise",
+  description: "Fresh lime, deep green, and warm neutral surfaces inspired by Wise.",
+  palettes: {
+    light: {
+      background: "#F5F7F3",
+      foreground: "#0E0F0C",
+      selection: "#DFF7C4",
+      comment: "#52614A",
+      cyan: "#006A70",
+      green: "#2F5711",
+      orange: "#A23E00",
+      pink: "#9A2E61",
+      purple: "#163300",
+      red: "#B3261E",
+      yellow: "#735C00",
+    },
+    dark: {
+      background: "#0E0F0C",
+      foreground: "#F5F7F3",
+      selection: "#233315",
+      comment: "#ABB7A4",
+      cyan: "#5FE1E8",
+      green: "#9FE870",
+      orange: "#FF9F5A",
+      pink: "#FF8BC4",
+      purple: "#9FE870",
+      red: "#FF7B75",
+      yellow: "#E7D85A",
+    },
+  },
+});
+
+const x = defineEditorTheme({
+  id: "x",
+  label: "X",
+  description: "High-contrast monochrome surfaces with cool supporting colors inspired by X.",
+  palettes: {
+    light: {
+      background: "#FFFFFF",
+      foreground: "#0F1419",
+      selection: "#E7E9EA",
+      comment: "#536471",
+      cyan: "#0077A8",
+      green: "#147A47",
+      orange: "#A94B00",
+      pink: "#A80F5B",
+      purple: "#0F1419",
+      red: "#C5162E",
+      yellow: "#7A6100",
+    },
+    dark: {
+      background: "#000000",
+      foreground: "#F2F2F2",
+      selection: "#202327",
+      comment: "#8B98A5",
+      cyan: "#1D9BF0",
+      green: "#00BA7C",
+      orange: "#FF7A00",
+      pink: "#F91880",
+      purple: "#FFFFFF",
+      red: "#F4212E",
+      yellow: "#FFD400",
+    },
+  },
+});
+
+const pinterest = defineEditorTheme({
+  id: "pinterest",
+  label: "Pinterest",
+  description: "Clean neutral surfaces with a bold red accent inspired by Pinterest.",
+  palettes: {
+    light: {
+      background: "#FFFFFF",
+      foreground: "#111111",
+      selection: "#FCE8EC",
+      comment: "#6B5A5D",
+      cyan: "#006C7A",
+      green: "#1F6B3B",
+      orange: "#A84400",
+      pink: "#B0005A",
+      purple: "#E60023",
+      red: "#E60023",
+      yellow: "#7A5D00",
+    },
+    dark: {
+      background: "#111111",
+      foreground: "#F5F5F5",
+      selection: "#3A171D",
+      comment: "#B9A8AB",
+      cyan: "#58D6E7",
+      green: "#67D58A",
+      orange: "#FF9A52",
+      pink: "#FF72B6",
+      purple: "#FF4D64",
+      red: "#FF4D64",
+      yellow: "#EFCE5B",
+    },
+  },
+});
+
 export const THEMES = {
   sheetlog,
   dracula,
   monokai,
+  wise,
+  x,
+  pinterest,
 } as const;
 
 export type ThemeId = keyof typeof THEMES;

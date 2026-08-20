@@ -1,5 +1,6 @@
 import { Monitor, Moon, Palette, Sun } from "lucide-react";
 import { useTheme, type ThemeId, type ThemeModePreference } from "../theme";
+import { SettingsIconBadge } from "./SettingsIconBadge";
 
 const MODE_OPTIONS: {
   value: ThemeModePreference;
@@ -17,9 +18,9 @@ export function ThemeSetting() {
   return (
     <div className="divide-y divide-border/70">
       <label className="flex min-h-14 items-center gap-3 px-4 py-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-primary text-primary-foreground">
+        <SettingsIconBadge>
           <Palette className="h-[18px] w-[18px]" strokeWidth={2.25} />
-        </span>
+        </SettingsIconBadge>
         <span className="min-w-0 flex-1">
           <span className="block text-[15px] font-medium text-foreground">Theme</span>
           <span className="block truncate text-[12px] text-muted-foreground">
@@ -41,7 +42,7 @@ export function ThemeSetting() {
       </label>
 
       <div className="flex min-h-14 items-center gap-3 px-4 py-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-surface-2 text-foreground">
+        <SettingsIconBadge>
           {mode === "dark" ? (
             <Moon className="h-[18px] w-[18px]" strokeWidth={2.25} />
           ) : mode === "light" ? (
@@ -49,7 +50,7 @@ export function ThemeSetting() {
           ) : (
             <Monitor className="h-[18px] w-[18px]" strokeWidth={2.25} />
           )}
-        </span>
+        </SettingsIconBadge>
         <span className="text-[15px] font-medium text-foreground">Appearance</span>
         <div
           role="radiogroup"
