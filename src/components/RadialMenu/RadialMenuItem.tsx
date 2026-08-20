@@ -50,12 +50,24 @@ function estimateTextWidth(text: string): number {
   return text.length * 6.5;
 }
 
-function getLabelOffsetX(angle: number, textWidth: number): number {
-  const normalizedAngle = ((angle % 360) + 360) % 360;
-  const inset = textWidth / 2 + 7;
-  if (normalizedAngle > 110 && normalizedAngle < 250) return inset;
-  if (normalizedAngle < 70 || normalizedAngle > 290) return -inset;
-  return 0;
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+export function getRadialMenuLabelPosition(
+  nodePosition: { x: number; y: number },
+  outerRadius: number,
+  labelWidth: number,
+  labelHeight: number,
+) {
+  const labelHorizontalLimit = Math.max(0, outerRadius - labelWidth / 2);
+  return {
+    x: clamp(nodePosition.x, -labelHorizontalLimit, labelHorizontalLimit),
+    y: Math.min(
+      nodePosition.y + NODE_RADIUS + 8,
+      outerRadius - labelHeight / 2,
+    ),
+  };
 }
 
 export function RadialMenuSegment({
@@ -72,16 +84,15 @@ export function RadialMenuSegment({
 }: RadialMenuSegmentProps) {
   const midAngle = (startAngle + endAngle) / 2;
   const nodePosition = polarToCartesian(midAngle, ringRadius);
-  const availableLabelGutter = Math.max(12, outerRadius - ringRadius);
-  const labelRadius = ringRadius + Math.min(32, availableLabelGutter - 6);
-  const baseLabelPosition = polarToCartesian(midAngle, labelRadius);
   const textWidth = estimateTextWidth(label);
-  const labelPosition = {
-    x: baseLabelPosition.x + getLabelOffsetX(midAngle, textWidth),
-    y: baseLabelPosition.y,
-  };
   const labelHeight = 22;
   const labelWidth = textWidth + 20;
+  const labelPosition = getRadialMenuLabelPosition(
+    nodePosition,
+    outerRadius,
+    labelWidth,
+    labelHeight,
+  );
   const highlightPath = createHighlightArc(startAngle, endAngle, ringRadius, 20);
 
   return (

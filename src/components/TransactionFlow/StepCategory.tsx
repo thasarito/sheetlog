@@ -274,6 +274,7 @@ export function StepCategory({
       items={menuItems}
       anchorPosition={radialMenuState?.anchorPosition ?? null}
       dragPosition={radialMenuState?.dragPosition ?? null}
+      bounds={radialMenuState?.bounds ?? null}
       categoryPresentation={radialMenuState?.categoryPresentation ?? null}
       isOpen={radialMenuState?.isOpen ?? false}
       onCancel={radialHandlers.onCancel}
@@ -346,7 +347,16 @@ export function StepCategory({
             <CategoryGrid
               categories={categoryGroups[typeOption] ?? []}
               onSelect={handleCategorySelect}
-              onLongPress={radialHandlers.onLongPressStart}
+              onLongPress={(category, position) => {
+                const bounds = viewportRef.current?.getBoundingClientRect();
+                if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+                radialHandlers.onLongPressStart(category, position, {
+                  left: bounds.left,
+                  top: bounds.top,
+                  width: bounds.width,
+                  height: bounds.height,
+                });
+              }}
               onDrag={radialHandlers.onDrag}
               onRelease={radialHandlers.onRelease}
               onCancel={radialHandlers.onCancel}

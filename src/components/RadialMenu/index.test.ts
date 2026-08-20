@@ -2,50 +2,90 @@ import { describe, expect, it } from 'vitest';
 import {
   findHoveredItem,
   getRadialMenuGeometry,
-  projectDragPositionToCenter,
+  isRadialMenuDragArmed,
+  resolveRadialMenuReleaseTarget,
+  type RadialMenuBounds,
   type RadialMenuItemData,
 } from './index';
 
-describe('centered radial menu geometry', () => {
-  it('preserves drag displacement when projecting to the screen center', () => {
+const items: RadialMenuItemData[] = [
+  { id: 'top', icon: 'Utensils', label: 'Top' },
+  { id: 'right', icon: 'Car', label: 'Right' },
+  { id: 'bottom', icon: 'Wallet', label: 'Bottom' },
+  { id: 'left', icon: 'House', label: 'Left' },
+];
+
+const stepCategoryBounds: RadialMenuBounds = {
+  left: 12,
+  top: 244,
+  width: 351,
+  height: 351,
+};
+
+describe('StepCategory-centered absolute radial menu geometry', () => {
+  it('centers the wheel inside the StepCategory carousel bounds', () => {
+    const geometry = getRadialMenuGeometry(stepCategoryBounds);
+
+    expect(geometry.center).toEqual({ x: 187.5, y: 419.5 });
+    expect(geometry.ringRadius).toBeGreaterThan(100);
+    expect(geometry.outerRadius).toBeLessThanOrEqual(stepCategoryBounds.width / 2);
+  });
+
+  it('does not arm a selection when the long press first activates', () => {
+    const anchor = { x: 40, y: 550 };
+
+    expect(isRadialMenuDragArmed(anchor, anchor)).toBe(false);
     expect(
-      projectDragPositionToCenter(
-        { x: 80, y: 620 },
-        { x: 125, y: 560 },
-        { x: 187.5, y: 406 },
-      ),
-    ).toEqual({ x: 232.5, y: 346 });
-  });
-
-  it('enlarges the ring while keeping it inside a compact viewport', () => {
-    const geometry = getRadialMenuGeometry({ width: 375, height: 812 });
-
-    expect(geometry.ringRadius).toBeGreaterThanOrEqual(125);
-    expect(geometry.outerRadius).toBeLessThanOrEqual(375 / 2);
-    expect(geometry.maxDragDistance).toBeGreaterThan(geometry.ringRadius);
-  });
-
-  it('selects by projected direction independently of the pressed category position', () => {
-    const items: RadialMenuItemData[] = [
-      { id: 'top', icon: 'Utensils', label: 'Top' },
-      { id: 'right', icon: 'Car', label: 'Right' },
-      { id: 'bottom', icon: 'Wallet', label: 'Bottom' },
-      { id: 'left', icon: 'House', label: 'Left' },
-    ];
-    const geometry = getRadialMenuGeometry({ width: 375, height: 812 });
-    const arc = { startAngle: -90, sweepAngle: 360 };
-
-    for (const anchor of [
-      { x: 44, y: 690 },
-      { x: 326, y: 148 },
-    ]) {
-      const projected = projectDragPositionToCenter(
+      resolveRadialMenuReleaseTarget(
+        items,
+        getRadialMenuGeometry(stepCategoryBounds),
         anchor,
-        { x: anchor.x, y: anchor.y - geometry.ringRadius },
-        geometry.center,
-      );
+        anchor,
+      ),
+    ).toEqual({ type: 'cancel' });
+  });
 
-      expect(findHoveredItem(items, geometry.center, projected, arc, geometry)).toBe('top');
-    }
+  it('uses the pointer absolute position and requires the visible ring band', () => {
+    const geometry = getRadialMenuGeometry(stepCategoryBounds);
+    const anchor = { x: 40, y: 650 };
+    const relative-onlyTopDrag = {
+      x: anchor.x,
+      y: anchor.y - geometry.ringRadius,
+    };
+    const actualTopSegment = {
+      x: geometry.center.x,
+      y: geometry.center.y - geometry.ringRadius,
+    };
+
+    expect(
+      resolveRadialMenuReleaseTarget(items, geometry, anchor, relative-onlyTopDrag),
+    ).toEqual({ type: 'cancel' });
+    expect(
+      resolveRadialMenuReleaseTarget(items, geometry, anchor, actualTopSegment),
+    ).toEqual({ type: 'item', itemId: 'top' });
+    expect(
+      findHoveredItem(items, geometry.center, actualTopSegment, undefined, geometry),
+    ).toBe('top');
+  });
+
+  it('uses the center control for the default action and cancels other misses', () => {
+    const geometry = getRadialMenuGeometry(stepCategoryBounds);
+    const anchor = { x: 40, y: 550 };
+
+    expect(
+      resolveRadialMenuReleaseTarget(items, geometry, anchor, geometry.center),
+    ).toEqual({ type: 'default' });
+    expect(
+      resolveRadialMenuReleaseTarget(items, geometry, anchor, {
+        x: geometry.center.x,
+        y: geometry.center.y + geometry.maxDragDistance + 1,
+      }),
+    ).toEqual({ type: 'cancel' });
+    expect(
+      resolveRadialMenuReleaseTarget(items, geometry, anchor, {
+        x: geometry.center.x,
+        y: geometry.center.y + geometry.minDragDistance - 1,
+      }),
+    ).toEqual({ type: 'cancel' });
   });
 });

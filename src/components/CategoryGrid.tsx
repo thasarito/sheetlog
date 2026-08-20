@@ -45,6 +45,7 @@ function resolveCategoryColor(
 
 const LONG_PRESS_THRESHOLD = 400;
 const MOVEMENT_TOLERANCE = 10;
+const LONG_PRESS_CLICK_SUPPRESSION_MS = 1000;
 
 type GesturePosition = { x: number; y: number };
 type GestureOwner = "touch" | "pointer" | null;
@@ -139,7 +140,7 @@ function CategoryButton({
     clickResetTimerRef.current = setTimeout(() => {
       wasLongPressRef.current = false;
       clickResetTimerRef.current = null;
-    }, 0);
+    }, LONG_PRESS_CLICK_SUPPRESSION_MS);
   }, [clearClickResetTimer]);
 
   const finishGesture = useCallback(
@@ -327,6 +328,9 @@ function CategoryButton({
         if (!endedTouch) {
           finishUnexpectedTouch();
           return;
+        }
+        if (isLongPressRef.current && touchEvent.cancelable) {
+          touchEvent.preventDefault();
         }
         finishGesture("release", touchPosition(endedTouch));
       };

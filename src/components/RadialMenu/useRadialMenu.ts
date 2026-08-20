@@ -1,10 +1,9 @@
 import { useCallback, useState } from 'react';
 import {
   CANCEL_ITEM_ID,
-  findHoveredItem,
-  FULL_CIRCLE_ARC,
   getRadialMenuGeometry,
-  projectDragPositionToCenter,
+  resolveRadialMenuReleaseTarget,
+  type RadialMenuBounds,
   type RadialMenuCategoryPresentation,
   type RadialMenuItemData,
   type RadialMenuPoint,
@@ -15,6 +14,7 @@ export interface RadialMenuState {
   category: string;
   anchorPosition: RadialMenuPoint;
   dragPosition: RadialMenuPoint | null;
+  bounds: RadialMenuBounds;
   categoryPresentation: RadialMenuCategoryPresentation;
 }
 
@@ -31,7 +31,11 @@ export interface UseRadialMenuOptions<T> {
 export interface UseRadialMenuReturn {
   state: RadialMenuState | null;
   handlers: {
-    onLongPressStart: (category: string, position: RadialMenuPoint) => void;
+    onLongPressStart: (
+      category: string,
+      position: RadialMenuPoint,
+      bounds: RadialMenuBounds,
+    ) => void;
     onDrag: (position: RadialMenuPoint) => void;
     onRelease: (position: RadialMenuPoint) => void;
     onCancel: () => void;
@@ -52,7 +56,11 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
   const [state, setState] = useState<RadialMenuState | null>(null);
 
   const handleLongPressStart = useCallback(
-    (category: string, position: RadialMenuPoint) => {
+    (
+      category: string,
+      position: RadialMenuPoint,
+      bounds: RadialMenuBounds,
+    ) => {
       const items = getItems(category);
       if (items.length === 0) return;
 
@@ -61,6 +69,7 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
         category,
         anchorPosition: position,
         dragPosition: position,
+        bounds,
         categoryPresentation: getCategoryPresentation?.(category) ?? {
           label: category,
           icon: 'Wallet',
@@ -82,20 +91,6 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       if (!state) return;
 
       const items = getItems(state.category);
-      const geometry = getRadialMenuGeometry({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-      const distance = Math.hypot(
-        position.x - state.anchorPosition.x,
-        position.y - state.anchorPosition.y,
-      );
-
-      if (distance > geometry.maxDragDistance) {
-        setState(null);
-        return;
-      }
-
       const menuItems: RadialMenuItemData[] = [
         ...items.map((item) => ({
           id: getItemId(item),
@@ -104,32 +99,29 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
         })),
         { id: CANCEL_ITEM_ID, icon: '×', label: 'Cancel' },
       ];
-      const projectedPosition = projectDragPositionToCenter(
+      const target = resolveRadialMenuReleaseTarget(
+        menuItems,
+        getRadialMenuGeometry(state.bounds),
         state.anchorPosition,
         position,
-        geometry.center,
-      );
-      const selectedId = findHoveredItem(
-        menuItems,
-        geometry.center,
-        projectedPosition,
-        FULL_CIRCLE_ARC,
-        geometry,
       );
 
-      if (selectedId === CANCEL_ITEM_ID) {
+      if (target.type === 'cancel') {
         setState(null);
         return;
       }
-
-      if (selectedId === null) {
+      if (target.type === 'default') {
         onDefault?.(state.category);
+        setState(null);
+        return;
+      }
+      if (target.itemId === CANCEL_ITEM_ID) {
         setState(null);
         return;
       }
 
       const selectedItem =
-        items.find((item) => getItemId(item) === selectedId) ?? null;
+        items.find((item) => getItemId(item) === target.itemId) ?? null;
       onSelect?.(selectedItem, state.category);
       setState(null);
     },
