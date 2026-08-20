@@ -1,6 +1,7 @@
 import { BadgeDollarSign } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Currency } from '../lib/currencies';
+import { SettingsIconBadge } from './SettingsIconBadge';
 
 type Props = {
   currency: Currency;
@@ -48,9 +49,9 @@ export function AnalyticsBigSpendingThresholdSetting({
 
   return (
     <div className="flex min-h-14 items-center gap-3 bg-card px-4 py-2">
-      <div className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#FF9500] text-white">
+      <SettingsIconBadge>
         <BadgeDollarSign className="h-4 w-4" aria-hidden="true" />
-      </div>
+      </SettingsIconBadge>
       <label htmlFor="analytics-big-spending-threshold" className="min-w-0 flex-1 text-[17px]">
         Big spending cutoff
       </label>

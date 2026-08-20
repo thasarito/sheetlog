@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 import type { ReactNode, Ref } from 'react';
+import { SettingsIconBadge } from './SettingsIconBadge';
 
 export type SettingsControlSectionProps = {
   id: string;
@@ -40,9 +41,7 @@ export function SettingsControlSection({
         onClick={onToggle}
         className="flex min-h-[76px] w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-2"
       >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-surface-2 text-primary">
-          {icon}
-        </span>
+        <SettingsIconBadge size="prominent">{icon}</SettingsIconBadge>
         <span className="min-w-0 flex-1">
           <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             {eyebrow}
