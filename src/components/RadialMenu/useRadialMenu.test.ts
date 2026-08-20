@@ -7,14 +7,30 @@ import {
 } from './equalAreaSectors';
 import { useRadialMenu } from './useRadialMenu';
 
+const spotlightMocks = vi.hoisted(() => ({
+  activate: vi.fn(),
+  clear: vi.fn(),
+}));
+
+vi.mock('../categoryRadialSpotlight', () => ({
+  activateCategoryRadialSpotlight: spotlightMocks.activate,
+  clearCategoryRadialSpotlight: spotlightMocks.clear,
+}));
+
 type Note = {
   id: string;
   icon: string;
   label: string;
+  color?: string;
 };
 
 const notes: Note[] = [
-  { id: 'apple-pay', icon: 'WalletCards', label: 'Apple Pay' },
+  {
+    id: 'apple-pay',
+    icon: 'WalletCards',
+    label: 'Apple Pay',
+    color: '#123456',
+  },
   { id: 'privileges', icon: 'Gem', label: 'Privileges' },
   { id: 'promptpay', icon: 'ScanLine', label: 'PromptPay' },
 ];
@@ -39,6 +55,8 @@ function setViewport(width: number, height: number) {
 
 beforeEach(() => {
   setViewport(fullscreenBounds.width, fullscreenBounds.height);
+  spotlightMocks.activate.mockReset();
+  spotlightMocks.clear.mockReset();
 });
 
 afterAll(() => {
@@ -46,7 +64,7 @@ afterAll(() => {
 });
 
 describe('useRadialMenu equal-area relative drag', () => {
-  it('uses the full screen and selects the territory reached from the press point', () => {
+  it('uses the full screen, resolves distinct colors, and spotlights the pressed category', () => {
     const onSelect = vi.fn();
     const onDefault = vi.fn();
     const hook = renderHook(() =>
@@ -55,6 +73,11 @@ describe('useRadialMenu equal-area relative drag', () => {
         getItemId: (note) => note.id,
         getItemIcon: (note) => note.icon,
         getItemLabel: (note) => note.label,
+        getCategoryPresentation: () => ({
+          label: 'Food',
+          icon: 'Utensils',
+          color: '#f97316',
+        }),
         onSelect,
         onDefault,
       }),
@@ -71,10 +94,15 @@ describe('useRadialMenu equal-area relative drag', () => {
     });
 
     expect(hook.result.current.state?.bounds).toEqual(fullscreenBounds);
+    expect(spotlightMocks.activate).toHaveBeenCalledWith(anchor, '#f97316');
+    expect(hook.result.current.menuItems[0]?.color).toBe('#123456');
+    expect(
+      new Set(hook.result.current.menuItems.map(({ color }) => color)),
+    ).toHaveSize(notes.length);
 
     const menuItems: RadialMenuItemData[] = [
-      ...notes,
-      { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel' },
+      ...hook.result.current.menuItems,
+      { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel', color: '#ef4444' },
     ];
     const layout = createEqualAreaRadialLayout(
       menuItems,
@@ -88,9 +116,10 @@ describe('useRadialMenu equal-area relative drag', () => {
 
     expect(onSelect).toHaveBeenCalledWith(notes[1], 'Food');
     expect(onDefault).not.toHaveBeenCalled();
+    expect(spotlightMocks.clear).toHaveBeenCalledOnce();
   });
 
-  it('does not commit anything when released inside the anchor dead zone', () => {
+  it('does not commit anything inside the anchor zone and removes the spotlight', () => {
     const onSelect = vi.fn();
     const onDefault = vi.fn();
     const hook = renderHook(() =>
@@ -114,5 +143,6 @@ describe('useRadialMenu equal-area relative drag', () => {
 
     expect(onSelect).not.toHaveBeenCalled();
     expect(onDefault).not.toHaveBeenCalled();
+    expect(spotlightMocks.clear).toHaveBeenCalledOnce();
   });
 });
