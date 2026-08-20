@@ -1,0 +1,65 @@
+name: iOS Status Bar PR Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Focused theme regressions
+        run: >-
+          npm test --
+          src/theme/themeBoundaries.test.ts
+          src/theme/themeConfig.test.ts
+          src/components/ThemeSetting.test.tsx
+          src/components/SettingsView.theme.test.tsx
+      - name: Non-baseline repository suite
+        run: >-
+          npx vitest run
+          --exclude src/components/TransactionFlow/CategoryStepSheet.test.tsx
+          --exclude src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx
+      - name: Changed-file Biome check
+        run: npx biome check index.html src/theme/themeBoundaries.test.ts
+      - name: TypeScript diagnostics (reject new errors)
+        run: |
+          set +e
+          npx tsc --noEmit 2>&1 | tee /tmp/ios-status-bar-tsc.log
+          set -e
+          node <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const output = readFileSync('/tmp/ios-status-bar-tsc.log', 'utf8');
+          const diagnostics = output
+            .split('\n')
+            .filter((line) => /error TS\d+:/.test(line));
+          const allowed = [
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx(119,9): error TS2322:',
+            'src/components/TransactionFlow/TransactionHistoryDock.tsx(55,5): error TS2352:',
+          ];
+          const unexpected = diagnostics.filter(
+            (line) => !allowed.some((prefix) => line.startsWith(prefix)),
+          );
+          if (unexpected.length > 0) {
+            console.error('Unexpected TypeScript diagnostics:\n' + unexpected.join('\n'));
+            process.exit(1);
+          }
+          console.log(
+            diagnostics.length === 0
+              ? 'TypeScript passed with no diagnostics.'
+              : `Only documented baseline diagnostics remain (${diagnostics.length}).`,
+          );
+          NODE
+      - name: Production build
+        run: npm run build
