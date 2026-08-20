@@ -110,9 +110,12 @@ export function StepAmount({
     <div
       data-testid="step-amount"
       data-transaction-step="amount"
-      className="flex h-full min-h-0 flex-col gap-5 overflow-hidden px-4"
+      className="flex h-full min-h-0 flex-col gap-5 overflow-x-hidden overflow-y-hidden px-4"
     >
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        data-step-amount-fields
+        className="flex min-h-0 flex-1 flex-col"
+      >
         {customHeader ? (
           <div className="shrink-0">{customHeader}</div>
         ) : category ? (
@@ -155,7 +158,7 @@ export function StepAmount({
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
+        <div className="flex min-h-[72px] flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
           <span>{amount ? amount : "0"}</span>
           <CurrencyPicker
             value={currency}
