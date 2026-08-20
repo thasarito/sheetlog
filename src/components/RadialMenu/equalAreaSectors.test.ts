@@ -72,6 +72,20 @@ describe('equal-area warped radial sectors', () => {
     ).toBeLessThanOrEqual(layout.safeBounds.left + 1);
   });
 
+  it('keeps a clamped visual node mapped to its own sector', () => {
+    const threeItems = items.slice(0, 3);
+    const layout = createEqualAreaRadialLayout(
+      threeItems,
+      { x: 344, y: 422 },
+      fullscreenBounds,
+    );
+    const middleSector = layout.sectors[1];
+
+    expect(findEqualAreaSector(layout, middleSector.labelPoint)?.id).toBe(
+      middleSector.id,
+    );
+  });
+
   it('assigns the exact leftward seam to the first warped sector', () => {
     const anchor = { x: 46, y: 318 };
     const layout = createEqualAreaRadialLayout(items, anchor, fullscreenBounds);
