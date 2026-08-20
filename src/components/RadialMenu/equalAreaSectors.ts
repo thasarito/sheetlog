@@ -54,7 +54,7 @@ export const CANCEL_ITEM_ID = '__cancel__';
 
 const DEFAULT_PADDING = 12;
 const DEFAULT_SAMPLE_COUNT = 720;
-const DEFAULT_DEAD_ZONE_RADIUS = 38;
+const DEFAULT_DEAD_ZONE_RADIUS = 24;
 const DEFAULT_LABEL_PROGRESS = 0.62;
 const DEFAULT_LABEL_EDGE_INSET = 24;
 const DEFAULT_MAX_POLYGON_SAMPLES = 28;
@@ -63,6 +63,13 @@ const EPSILON = 1e-7;
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
+}
+
+function normalizeAngle(angle: number): number {
+  let normalizedAngle = angle;
+  while (normalizedAngle < 0) normalizedAngle += Math.PI * 2;
+  while (normalizedAngle >= Math.PI * 2) normalizedAngle -= Math.PI * 2;
+  return normalizedAngle;
 }
 
 function sanitizeBounds(bounds: RadialMenuBounds): RadialMenuBounds {
@@ -333,17 +340,16 @@ export function findEqualAreaSector(
   const dy = dragPosition.y - layout.anchor.y;
   if (Math.hypot(dx, dy) < layout.deadZoneRadius) return null;
 
-  const angle = Math.atan2(dy, dx);
-  for (let index = 0; index < layout.sectors.length; index += 1) {
-    const sector = layout.sectors[index];
-    const isLastSector = index === layout.sectors.length - 1;
-    if (
-      angle >= sector.startAngle - EPSILON &&
-      (angle < sector.endAngle - EPSILON ||
-        (isLastSector && angle <= sector.endAngle + EPSILON))
-    ) {
-      return sector;
-    }
+  const angle = normalizeAngle(Math.atan2(dy, dx));
+  for (const sector of layout.sectors) {
+    const startAngle = normalizeAngle(sector.startAngle);
+    const endAngle = normalizeAngle(sector.endAngle);
+    const isInside =
+      startAngle <= endAngle
+        ? angle >= startAngle - EPSILON && angle < endAngle - EPSILON
+        : angle >= startAngle - EPSILON || angle < endAngle - EPSILON;
+
+    if (isInside) return sector;
   }
 
   return null;
