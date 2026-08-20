@@ -18,71 +18,56 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
       - name: Apply focused hardening patch
         run: |
           python - <<'PY'
-          from pathlib import import Path
+          from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
+          def rewrite(path: str, changes: list[tuple[str, str]]) -> None:
               file = Path(path)
               text = file.read_text()
-              if old in text:
-                  if text.count(old) != 1:
-                      raise SystemExit(f"Expected one match in {path}: {old!r}")
-                  file.write_text(text.replace(old, new, 1))
-                  return
-              if new not in text:
-                  raise SystemExit(f"Neither old nor new content found in {path}")
+              for old, new in changes:
+                  if old in text:
+                      text = text.replace(old, new)
+                  elif new not in text:
+                      raise SystemExit(f"Neither old nor new content found in {path}: {old!r}")
+              file.write_text(text)
 
-          def replace_all(path: str, old: str, new: str, expected: int) -> None:
-              file = Path(path)
-              text = file.read_text()
-              count = text.count(old)
-              if count == expected:
-                  file.write_text(text.replace(old, new))
-                  return
-              if old not in text and text.count(new) == expected:
-                  return
-              raise SystemExit(
-                  f"Expected {expected} old or new matches in {path}; got {count} old"
-              )
-
-          replace_once(
+          rewrite(
               "src/components/TransactionFlow/AnalyticsSheetMorph.tsx",
-              "`${(12 + normalized * 30).toFixed(2)}px`",
-              "`${(12 + normalized * 4).toFixed(2)}px`",
+              [
+                  ("`${(12 + normalized * 30).toFixed(2)}px`", "`${(12 + normalized * 4).toFixed(2)}px`"),
+                  ('"--analytics-morph-summary-top": "42px"', '"--analytics-morph-summary-top": "16px"'),
+              ],
           )
-          replace_once(
-              "src/components/TransactionFlow/AnalyticsSheetMorph.tsx",
-              '"--analytics-morph-summary-top": "42px"',
-              '"--analytics-morph-summary-top": "16px"',
-          )
-          replace_all(
+          rewrite(
               "src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx",
-              '"--analytics-morph-summary-top": "24.00px"',
-              '"--analytics-morph-summary-top": "16.00px"',
-              2,
+              [
+                  ('"--analytics-morph-summary-top": "24.00px"', '"--analytics-morph-summary-top": "16.00px"'),
+              ],
           )
-          replace_once(
+          rewrite(
               "src/components/ui/AnimatedTabs.tsx",
-              '"relative grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1"',
-              '"relative grid h-[52px] gap-1 bg-surface-2 p-1"',
+              [
+                  (
+                      '"relative grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1"',
+                      '"relative grid h-[52px] gap-1 bg-surface-2 p-1"',
+                  ),
+              ],
           )
-          replace_once(
+          rewrite(
               "e2e/transaction-amount-layout.spec.ts",
-              'page.getByTestId("step-amount-layout")',
-              'page.getByTestId("step-amount")',
-          )
-          replace_once(
-              "e2e/transaction-amount-layout.spec.ts",
-              'await expect(page.getByTestId("dashboard-header")).toHaveCount(0);',
-              'await expect(page.getByTestId("dashboard-header")).toBeHidden();',
-          )
-          replace_once(
-              "e2e/transaction-amount-layout.spec.ts",
-              '''  await page.setViewportSize({ width: 390, height: 844 });
+              [
+                  ('page.getByTestId("step-amount-layout")', 'page.getByTestId("step-amount")'),
+                  (
+                      'await expect(page.getByTestId("dashboard-header")).toHaveCount(0);',
+                      'await expect(page.getByTestId("dashboard-header")).toBeHidden();',
+                  ),
+                  (
+                      '''  await page.setViewportSize({ width: 390, height: 844 });
           await page.goto("/app");''',
-              '''  await page.setViewportSize({ width: 390, height: 844 });
+                      '''  await page.setViewportSize({ width: 390, height: 844 });
           await page.addInitScript(() => {
             window.localStorage.clear();
             window.localStorage.setItem("sheetlog.mock.transactions", "[]");
@@ -100,40 +85,43 @@ jobs:
               }
             `,
           });''',
+                  ),
+              ],
           )
 
           css = Path("src/styles/globals.css")
           text = css.read_text()
-          analytics_override = '''/* Let the morphed analytics summary sit closer to the title reel as the sheet expands. */
+          for block in (
+              '''/* Let the morphed analytics summary sit closer to the title reel as the sheet expands. */
           [data-analytics-sheet-morph] .analytics-today-morph {
             margin-top: calc(0px - var(--analytics-morph-detail-offset, 0px));
           }
 
-          '''
-          tabs_override = '''/* The transaction type control should read as tabs, not a bordered card. */
+          ''',
+              '''/* The transaction type control should read as tabs, not a bordered card. */
           [data-testid="category-step-type-tabs"]
             [data-animated-tabs-variant="compact"] {
             border: 0;
             border-radius: 0;
           }
 
-          '''
-          for block in (analytics_override, tabs_override):
-              if block in text:
-                  text = text.replace(block, "", 1)
+          ''',
+          ):
+              text = text.replace(block, "")
+
           containment = '''main[data-testid="transaction-canvas"] {
             overflow-x: clip;
           }
 
           '''
-          anchor = '''/* The amount step owns the full transaction canvas instead of sharing the title reel. */
-          '''
+          anchor = "/* The amount step owns the full transaction canvas instead of sharing the title reel. */\n"
           if containment not in text:
-              if text.count(anchor) != 1:
+              if anchor not in text:
                   raise SystemExit("Expected transaction canvas CSS anchor")
               text = text.replace(anchor, containment + anchor, 1)
           css.write_text(text)
           PY
+
       - name: Format and check touched files
         run: >-
           npx biome check --write
@@ -143,6 +131,7 @@ jobs:
           src/components/TransactionFlow/AnalyticsSheetMorph.tsx
           src/components/ui/AnimatedTabs.tsx
           src/styles/globals.css
+
       - name: Create exact GitHub blobs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -157,27 +146,18 @@ jobs:
           do
             expected="$(git hash-object "$path")"
             encoded="$(base64 -w0 "$path")"
-            jq -n --arg content "$encoded" \
-              '{encoding: "base64", content: $content}' > /tmp/blob.json
-            actual="$(gh api --method POST \
-              "repos/${GITHUB_REPOSITORY}/git/blobs" \
-              --input /tmp/blob.json \
-              --jq .sha)"
+            jq -n --arg content "$encoded" '{encoding: "base64", content: $content}' > /tmp/blob.json
+            actual="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input /tmp/blob.json --jq .sha)"
             test "$actual" = "$expected"
             printf '%s\t%s\n' "$path" "$actual" | tee -a /tmp/transaction-entry-blobs.tsv
           done
+
       - uses: actions/upload-artifact@v4
         with:
           name: transaction-entry-blobs
           path: /tmp/transaction-entry-blobs.tsv
           retention-days: 1
-      - name: Package patched source workspace
-        run: tar --exclude=.git --exclude=node_modules --exclude=dist -czf /tmp/sheetlog-source.tgz .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sheetlog-source
-          path: /tmp/sheetlog-source.tgz
-          retention-days: 1
+
       - name: Run focused transaction layout tests
         run: >-
           npx vitest run
@@ -185,10 +165,13 @@ jobs:
           src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
           src/components/TransactionFlow/StepAmount.test.tsx
           src/components/TransactionFlow/useStableTransactionHeight.test.tsx
+
       - name: Run unit test suite (baseline advisory)
         continue-on-error: true
         run: npm test
+
       - run: npm run build
+
       - name: Verify portrait-only PWA manifest
         run: >-
           node --input-type=module -e
@@ -198,13 +181,16 @@ jobs:
           assert.ok(path, 'Expected a generated PWA manifest');
           const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
           assert.equal(manifest.orientation, 'portrait');"
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
       - name: Run amount layout browser test
         run: |
           set -o pipefail
           npx playwright test e2e/transaction-amount-layout.spec.ts \
             --project="Mobile Chrome" 2>&1 | tee /tmp/playwright-output.log
+
       - name: Upload browser diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -216,9 +202,11 @@ jobs:
             test-results
           if-no-files-found: ignore
           retention-days: 1
+
       - name: Run repository lint (baseline advisory)
         continue-on-error: true
         run: npm run lint
+
       - name: Run repository typecheck (baseline advisory)
         continue-on-error: true
         run: npx tsc --noEmit
