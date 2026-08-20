@@ -58,6 +58,8 @@ const DEFAULT_DEAD_ZONE_RADIUS = 24;
 const DEFAULT_LABEL_PROGRESS = 0.62;
 const DEFAULT_LABEL_EDGE_INSET = 24;
 const DEFAULT_MAX_POLYGON_SAMPLES = 28;
+const DEFAULT_NODE_HORIZONTAL_INSET = 52;
+const DEFAULT_NODE_VERTICAL_INSET = 36;
 const MIN_LABEL_DISTANCE_AFTER_DEAD_ZONE = 22;
 const EPSILON = 1e-7;
 
@@ -107,6 +109,33 @@ function pointAlong(
   return {
     x: origin.x + Math.cos(angle) * distance,
     y: origin.y + Math.sin(angle) * distance,
+  };
+}
+
+function clampLabelPoint(
+  point: RadialMenuPoint,
+  bounds: RadialMenuBounds,
+): RadialMenuPoint {
+  const horizontalInset = Math.min(
+    DEFAULT_NODE_HORIZONTAL_INSET,
+    bounds.width / 2,
+  );
+  const verticalInset = Math.min(
+    DEFAULT_NODE_VERTICAL_INSET,
+    bounds.height / 2,
+  );
+
+  return {
+    x: clamp(
+      point.x,
+      bounds.left + horizontalInset,
+      bounds.left + bounds.width - horizontalInset,
+    ),
+    y: clamp(
+      point.y,
+      bounds.top + verticalInset,
+      bounds.top + bounds.height - verticalInset,
+    ),
   };
 }
 
@@ -303,7 +332,10 @@ export function createEqualAreaRadialLayout(
       startAngle: rays[startIndex].angle,
       endAngle: rays[endIndex].angle,
       polygon: [anchor, ...outerPoints],
-      labelPoint: pointAlong(anchor, labelRay.angle, safeLabelRadius),
+      labelPoint: clampLabelPoint(
+        pointAlong(anchor, labelRay.angle, safeLabelRadius),
+        bounds,
+      ),
       edgePoint: pointAlong(anchor, labelRay.angle, labelRay.radius),
     };
   });
