@@ -45,7 +45,7 @@ describe('StepCategory-centered absolute radial menu geometry', () => {
     ).toEqual({ type: 'cancel' });
   });
 
-  it('uses the pointer absolute position instead of projecting its displacement', () => {
+  it('uses the pointer absolute position and requires the visible ring band', () => {
     const geometry = getRadialMenuGeometry(stepCategoryBounds);
     const anchor = { x: 40, y: 650 };
     const relative-onlyTopDrag = {
@@ -59,7 +59,7 @@ describe('StepCategory-centered absolute radial menu geometry', () => {
 
     expect(
       resolveRadialMenuReleaseTarget(items, geometry, anchor, relative-onlyTopDrag),
-    ).toEqual({ type: 'item', itemId: 'bottom' });
+    ).toEqual({ type: 'cancel' });
     expect(
       resolveRadialMenuReleaseTarget(items, geometry, anchor, actualTopSegment),
     ).toEqual({ type: 'item', itemId: 'top' });
@@ -79,6 +79,12 @@ describe('StepCategory-centered absolute radial menu geometry', () => {
       resolveRadialMenuReleaseTarget(items, geometry, anchor, {
         x: geometry.center.x,
         y: geometry.center.y + geometry.maxDragDistance + 1,
+      }),
+    ).toEqual({ type: 'cancel' });
+    expect(
+      resolveRadialMenuReleaseTarget(items, geometry, anchor, {
+        x: geometry.center.x,
+        y: geometry.center.y + geometry.minDragDistance - 1,
       }),
     ).toEqual({ type: 'cancel' });
   });
