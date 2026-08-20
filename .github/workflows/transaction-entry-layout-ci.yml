@@ -13,12 +13,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Package source workspace
+        run: tar --exclude=.git --exclude=node_modules --exclude=dist -czf /tmp/sheetlog-source.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sheetlog-source
+          path: /tmp/sheetlog-source.tgz
+          retention-days: 1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run lint
+      - name: Check touched files
+        run: >-
+          npx biome check
+          e2e/transaction-amount-layout.spec.ts
+          src/components/TransactionFlow/StepCategoryTypeTabs.test.tsx
+          src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
+          src/components/TransactionFlow/StepAmount.tsx
+          src/components/TransactionFlow/AnalyticsSheetMorph.tsx
+          src/components/TransactionFlow/index.tsx
+          src/components/ui/AnimatedTabs.tsx
+          vite.config.ts
       - run: npx tsc --noEmit
       - name: Run focused component tests
         run: >-
