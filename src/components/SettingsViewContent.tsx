@@ -53,6 +53,7 @@ import {
   SettingsQuickNoteEditorDrawer,
   type SettingsQuickNoteTarget,
 } from './SettingsQuickNoteEditorDrawer';
+import { ThemeSetting } from './ThemeSetting';
 import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 
 export type SettingsViewProps = {
@@ -959,6 +960,18 @@ export function SettingsView({
               })}
             </div>
           </SettingsControlSection>
+
+          <div className="px-1 pt-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Appearance
+            </p>
+          </div>
+          <section
+            aria-label="Appearance"
+            className="overflow-hidden rounded-[20px] border border-border/70 bg-card"
+          >
+            <ThemeSetting />
+          </section>
 
           <div className="px-1 pt-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
