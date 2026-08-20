@@ -14,7 +14,7 @@ let carousel = readFileSync(carouselPath, 'utf8');
 carousel = replaceOnce(
   carousel,
   `  );\n\n  const settleHorizontalScroll = useCallback(() => {`,
-  `  );\n\n  const restoreLockedPosition = useCallback(() => {\n    if (!navigationLocked) return false;\n    const viewport = viewportRef.current;\n    if (!viewport || viewport.clientWidth <= 0) return true;\n\n    clearSettleTimer();\n    touchActiveRef.current = false;\n    const index = activeIndexRef.current;\n    const targetLeft = index * viewport.clientWidth;\n    if (Math.abs(viewport.scrollLeft - targetLeft) > SNAP_TOLERANCE_PX) {\n      viewport.scrollTo({ left: targetLeft, behavior: \"auto\" });\n    }\n    renderHorizontalPosition(false);\n    commitActiveIndex(index);\n    return true;\n  }, [\n    clearSettleTimer,\n    commitActiveIndex,\n    navigationLocked,\n    renderHorizontalPosition,\n  ]);\n\n  const settleHorizontalScroll = useCallback(() => {`,
+  `  );\n\n  const restoreLockedPosition = useCallback(() => {\n    if (!navigationLocked) return false;\n    const viewport = viewportRef.current;\n    if (!viewport || viewport.clientWidth <= 0) return true;\n\n    clearSettleTimer();\n    touchActiveRef.current = false;\n    const index = activeIndexRef.current;\n    const targetLeft = index * viewport.clientWidth;\n    if (Math.abs(viewport.scrollLeft - targetLeft) > SNAP_TOLERANCE_PX) {\n      viewport.scrollTo({ left: targetLeft, behavior: "auto" });\n    }\n    renderHorizontalPosition(false);\n    commitActiveIndex(index);\n    return true;\n  }, [\n    clearSettleTimer,\n    commitActiveIndex,\n    navigationLocked,\n    renderHorizontalPosition,\n  ]);\n\n  const settleHorizontalScroll = useCallback(() => {`,
   'locked-position restore callback',
 );
 
@@ -105,6 +105,13 @@ settings = replaceOnce(
   `  ) => {\n    editorOriginRef.current = origin;\n    setQuickNoteEditor({`,
   `  ) => {\n    onCarouselNavigationLockChange?.(true);\n    editorOriginRef.current = origin;\n    setQuickNoteEditor({`,
   'Quick Note editor synchronous lock',
+);
+
+settings = replaceOnce(
+  settings,
+  `      <div\n        data-testid="settings-control-center-scroll"\n        data-dashboard-scroll="true"\n        className="h-full overflow-y-auto overscroll-contain pb-safe"\n      >\n        <div className="space-y-4 px-4 pb-8 pt-3">`,
+  `      <div\n        data-testid="settings-control-center-scroll"\n        data-dashboard-scroll="true"\n        className="h-full overflow-y-auto overscroll-contain pb-safe"\n        style={{\n          scrollPaddingBottom:\n            'calc(var(--category-sheet-occlusion, 44px) + 1rem)',\n        }}\n      >\n        <div\n          className="space-y-4 px-4 pt-3"\n          style={{\n            paddingBottom:\n              'calc(var(--category-sheet-occlusion, 44px) + 2rem)',\n          }}\n        >`,
+  'transaction-entry occlusion spacing',
 );
 
 writeFileSync(settingsPath, settings);
