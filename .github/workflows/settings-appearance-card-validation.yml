@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  green:
+  clean-head:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -21,23 +21,25 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Add the always-visible Appearance card
+      - name: Remove temporary validation scaffolding
         run: |
-          node scripts/patch-settings-appearance-card.mjs
-          npx biome check --write \
-            src/components/SettingsViewContent.tsx \
-            src/components/SettingsView.test.tsx
-      - name: Commit Appearance card
+          rm \
+            .github/workflows/settings-appearance-card-validation.yml \
+            scripts/patch-settings-appearance-card.mjs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A \
+            .github/workflows/settings-appearance-card-validation.yml \
+            scripts/patch-settings-appearance-card.mjs
+          git commit -m "chore: remove temporary Appearance validation scaffolding"
+          git push origin HEAD:feat/settings-control-center-navigation
+      - name: Verify exact cleaned branch head
         run: |
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add \
-              src/components/SettingsViewContent.tsx \
-              src/components/SettingsView.test.tsx
-            git commit -m "feat: add always-visible Settings appearance card"
-            git push origin HEAD:feat/settings-control-center-navigation
-          fi
+          remote_sha=$(git ls-remote origin refs/heads/feat/settings-control-center-navigation | cut -f1)
+          test "$remote_sha" = "$(git rev-parse HEAD)"
+          test -z "$(git status --porcelain)"
+          test ! -e .github/workflows/settings-appearance-card-validation.yml
+          test ! -e scripts/patch-settings-appearance-card.mjs
       - name: Settings and Theme regressions
         run: >-
           npm test --
