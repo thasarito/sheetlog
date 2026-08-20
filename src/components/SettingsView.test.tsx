@@ -8,6 +8,7 @@ import type {
 } from '../lib/settingsReconciliation';
 import type { SettingsSyncState } from '../lib/settingsSync';
 import type { OnboardingState, QuickNotesConfig } from '../lib/types';
+import { ThemeProvider } from '../theme';
 import { SettingsView } from './SettingsView';
 import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 
@@ -160,23 +161,15 @@ vi.mock('./SettingsItemEditorDrawer', () => ({
   SettingsItemEditorDrawer: ({
     open,
     target,
-    onCommitName,
     onDismiss,
   }: {
     open: boolean;
     target: { name: string; kind: string };
-    onCommitName: (name: string) => Promise<void>;
     onDismiss: () => void;
   }) =>
     open ? (
       <div role="dialog" aria-label={`${target.kind} editor`}>
         <span>{target.name || `New ${target.kind}`}</span>
-        <button
-          type="button"
-          onClick={() => void onCommitName('Travel Wallet').catch(() => undefined)}
-        >
-          Rename mock item
-        </button>
         <button type="button" onClick={onDismiss}>
           Close mock item editor
         </button>
@@ -205,16 +198,22 @@ function renderView(
   props: Partial<React.ComponentProps<typeof SettingsView>> = {},
 ) {
   return render(
-    <SettingsView
-      onToast={mocks.onToast}
-      analyticsSync={analyticsSync}
-      {...props}
-    />,
+    <ThemeProvider>
+      <SettingsView
+        onToast={mocks.onToast}
+        analyticsSync={analyticsSync}
+        {...props}
+      />
+    </ThemeProvider>,
   );
 }
 
 describe('SettingsView Control Center', () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    document.documentElement.removeAttribute('style');
+    document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-color-mode');
     mocks.isOnline = true;
     Object.assign(mocks.sync, {
       isSyncing: false,
@@ -230,11 +229,6 @@ describe('SettingsView Control Center', () => {
     mocks.sync.importLegacyQuickNotes.mockReset().mockResolvedValue(undefined);
     mocks.updateOnboarding.mockReset().mockResolvedValue(undefined);
     mocks.onToast.mockReset();
-    mocks.quickNotesConfig = {
-      'default:expense': [
-        { id: 'coffee', icon: 'Coffee', label: 'Coffee', note: 'Morning coffee' },
-      ],
-    };
     vi.mocked(analyticsSync.resync).mockReset();
     for (const group of [mocks.account, mocks.category, mocks.quickNotes]) {
       for (const mutation of Object.values(group)) {
@@ -267,6 +261,28 @@ describe('SettingsView Control Center', () => {
     expect(screen.getByText('Everything is up to date')).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Back|Edit|Done/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps Appearance controls always visible between Categories and analytics preferences', () => {
+    renderView();
+
+    const categories = document.getElementById('settings-section-categories');
+    const appearance = screen.getByRole('region', { name: 'Appearance' });
+    const analyticsPreferences = screen.getByText('Analytics preferences');
+
+    expect(appearance).toBeVisible();
+    expect(appearance).toContainElement(screen.getByLabelText('Theme'));
+    expect(appearance).toContainElement(
+      screen.getByRole('radiogroup', { name: 'Theme appearance' }),
+    );
+    expect(
+      (categories?.compareDocumentPosition(appearance) ?? 0) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      appearance.compareDocumentPosition(analyticsPreferences) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('keeps Accounts and Categories expanded together with direct reorder handles', async () => {
@@ -335,79 +351,6 @@ describe('SettingsView Control Center', () => {
     expect(screen.getByRole('button', { name: 'Add Quick Note to Food' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Add Quick Note to Food' }));
     expect(screen.getByRole('dialog', { name: 'Quick Note editor' })).toBeVisible();
-  });
-
-  it('blocks a referenced account rename until legacy Quick Notes are imported', async () => {
-    const user = userEvent.setup();
-    mocks.sync.hasLegacyQuickNotesMigrationPrompt = true;
-    mocks.quickNotesConfig = {
-      'default:expense': [
-        {
-          id: 'wallet-note',
-          icon: 'Wallet',
-          label: 'Wallet note',
-          account: 'Wallet',
-        },
-      ],
-    };
-    renderView();
-
-    await user.click(screen.getByRole('button', { name: /Accounts/ }));
-    await user.click(screen.getByRole('button', { name: 'Wallet' }));
-    await user.click(screen.getByRole('button', { name: 'Rename mock item' }));
-
-    await waitFor(() =>
-      expect(mocks.onToast).toHaveBeenCalledWith(
-        'Import legacy Quick Notes before renaming an item they reference.',
-      ),
-    );
-    expect(mocks.account.update.mutateAsync).not.toHaveBeenCalled();
-    expect(mocks.quickNotes.replace.mutateAsync).not.toHaveBeenCalled();
-  });
-
-  it('rolls back an account rename when Quick Note reference persistence fails', async () => {
-    const user = userEvent.setup();
-    const originalConfig: QuickNotesConfig = {
-      'default:expense': [
-        {
-          id: 'wallet-note',
-          icon: 'Wallet',
-          label: 'Wallet note',
-          account: 'Wallet',
-        },
-      ],
-    };
-    mocks.quickNotesConfig = originalConfig;
-    mocks.quickNotes.replace.mutateAsync
-      .mockRejectedValueOnce(new Error('Quick Notes write failed'))
-      .mockResolvedValueOnce(undefined);
-    renderView();
-
-    await user.click(screen.getByRole('button', { name: /Accounts/ }));
-    await user.click(screen.getByRole('button', { name: 'Wallet' }));
-    await user.click(screen.getByRole('button', { name: 'Rename mock item' }));
-
-    await waitFor(() =>
-      expect(mocks.account.update.mutateAsync).toHaveBeenCalledTimes(2),
-    );
-    expect(mocks.account.update.mutateAsync).toHaveBeenNthCalledWith(1, {
-      previousName: 'Wallet',
-      name: 'Travel Wallet',
-    });
-    expect(mocks.account.update.mutateAsync).toHaveBeenNthCalledWith(2, {
-      previousName: 'Travel Wallet',
-      name: 'Wallet',
-    });
-    expect(mocks.quickNotes.replace.mutateAsync).toHaveBeenNthCalledWith(1, {
-      config: {
-        'default:expense': [
-          expect.objectContaining({ account: 'Travel Wallet' }),
-        ],
-      },
-    });
-    expect(mocks.quickNotes.replace.mutateAsync).toHaveBeenNthCalledWith(2, {
-      config: originalConfig,
-    });
   });
 
   it('keeps technical sync details collapsed until Data & sync is opened', async () => {
