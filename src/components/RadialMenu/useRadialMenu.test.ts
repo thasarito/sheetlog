@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CANCEL_ITEM_ID,
   createEqualAreaRadialLayout,
@@ -19,12 +19,22 @@ const notes: Note[] = [
   { id: 'promptpay', icon: 'ScanLine', label: 'PromptPay' },
 ];
 
+const fullscreenBounds = {
+  left: 0,
+  top: 0,
+  width: 390,
+  height: 844,
+};
+
+beforeEach(() => {
+  Object.defineProperties(window, {
+    innerWidth: { configurable: true, value: fullscreenBounds.width },
+    innerHeight: { configurable: true, value: fullscreenBounds.height },
+  });
+});
+
 describe('useRadialMenu equal-area relative drag', () => {
-  it('selects the territory reached relative to the long-press position', () => {
-    Object.defineProperties(window, {
-      innerWidth: { configurable: true, value: 390 },
-      innerHeight: { configurable: true, value: 844 },
-    });
+  it('uses the full screen and selects the territory reached from the press point', () => {
     const onSelect = vi.fn();
     const onDefault = vi.fn();
     const hook = renderHook(() =>
@@ -40,24 +50,25 @@ describe('useRadialMenu equal-area relative drag', () => {
     const anchor = { x: 46, y: 318 };
 
     act(() => {
-      (
-        hook.result.current.handlers.onLongPressStart as unknown as (
-          category: string,
-          position: { x: number; y: number },
-        ) => void
-      )('Food', anchor);
+      hook.result.current.handlers.onLongPressStart('Food', anchor, {
+        left: 12,
+        top: 244,
+        width: 351,
+        height: 351,
+      });
     });
+
+    expect(hook.result.current.state?.bounds).toEqual(fullscreenBounds);
 
     const menuItems: RadialMenuItemData[] = [
       ...notes,
       { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel' },
     ];
-    const layout = createEqualAreaRadialLayout(menuItems, anchor, {
-      left: 0,
-      top: 0,
-      width: 390,
-      height: 844,
-    });
+    const layout = createEqualAreaRadialLayout(
+      menuItems,
+      anchor,
+      fullscreenBounds,
+    );
 
     act(() => {
       hook.result.current.handlers.onRelease(layout.sectors[1].labelPoint);
@@ -83,12 +94,9 @@ describe('useRadialMenu equal-area relative drag', () => {
     const anchor = { x: 46, y: 318 };
 
     act(() => {
-      (
-        hook.result.current.handlers.onLongPressStart as unknown as (
-          category: string,
-          position: { x: number; y: number },
-        ) => void
-      )('Food', anchor);
+      hook.result.current.handlers.onLongPressStart('Food', anchor);
+    });
+    act(() => {
       hook.result.current.handlers.onRelease(anchor);
     });
 
