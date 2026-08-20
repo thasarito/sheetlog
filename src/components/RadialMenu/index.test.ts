@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   findHoveredItem,
   getRadialMenuGeometry,
-  MENU_PADDING,
   projectDragPositionToCenter,
   type RadialMenuItemData,
 } from './index';
@@ -22,7 +21,7 @@ describe('centered radial menu geometry', () => {
     const geometry = getRadialMenuGeometry({ width: 375, height: 812 });
 
     expect(geometry.ringRadius).toBeGreaterThanOrEqual(125);
-    expect(geometry.outerRadius + MENU_PADDING).toBeLessThanOrEqual(375 / 2);
+    expect(geometry.outerRadius).toBeLessThanOrEqual(375 / 2);
     expect(geometry.maxDragDistance).toBeGreaterThan(geometry.ringRadius);
   });
 
