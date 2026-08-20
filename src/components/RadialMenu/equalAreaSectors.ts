@@ -18,6 +18,7 @@ export interface RadialMenuItemData {
   id: string;
   icon: string;
   label: string;
+  color?: string;
   shortcut?: string;
 }
 
@@ -60,12 +61,12 @@ const DEFAULT_PADDING = 12;
 const DEFAULT_SAMPLE_COUNT = 720;
 const DEFAULT_ACTIVATION_DISTANCE = 12;
 const DEFAULT_DEAD_ZONE_RADIUS = 24;
-const DEFAULT_NODE_HIT_RADIUS = 34;
+const DEFAULT_NODE_HIT_RADIUS = 40;
 const DEFAULT_LABEL_PROGRESS = 0.62;
-const DEFAULT_LABEL_EDGE_INSET = 24;
+const DEFAULT_LABEL_EDGE_INSET = 32;
 const DEFAULT_MAX_POLYGON_SAMPLES = 28;
-const DEFAULT_NODE_HORIZONTAL_INSET = 52;
-const DEFAULT_NODE_VERTICAL_INSET = 36;
+const DEFAULT_NODE_HORIZONTAL_INSET = 66;
+const DEFAULT_NODE_VERTICAL_INSET = 52;
 const MIN_LABEL_DISTANCE_AFTER_DEAD_ZONE = 22;
 const EPSILON = 1e-7;
 

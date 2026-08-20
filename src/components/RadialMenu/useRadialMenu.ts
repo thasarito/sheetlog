@@ -1,4 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  activateCategoryRadialSpotlight,
+  clearCategoryRadialSpotlight,
+} from '../categoryRadialSpotlight';
+import { resolveQuickNoteColors } from '../../lib/quickNoteColors';
 import {
   CANCEL_ITEM_ID,
   createEqualAreaRadialLayout,
@@ -24,6 +29,7 @@ export interface UseRadialMenuOptions<T> {
   getItemId: (item: T) => string;
   getItemIcon: (item: T) => string;
   getItemLabel: (item: T) => string;
+  getItemColor?: (item: T) => string | undefined;
   getCategoryPresentation?: (category: string) => RadialMenuCategoryPresentation;
   onSelect?: (item: T | null, category: string) => void;
   onDefault?: (category: string) => void;
@@ -57,16 +63,32 @@ function getFullscreenBounds(): RadialMenuBounds {
   };
 }
 
+function readOptionalColor(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null || !('color' in value)) {
+    return undefined;
+  }
+  const color = (value as { color?: unknown }).color;
+  return typeof color === 'string' ? color : undefined;
+}
+
 export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMenuReturn {
   const {
     getItems,
     getItemId,
     getItemIcon,
     getItemLabel,
+    getItemColor,
     getCategoryPresentation,
     onSelect,
   } = options;
   const [state, setState] = useState<RadialMenuState | null>(null);
+
+  useEffect(
+    () => () => {
+      clearCategoryRadialSpotlight();
+    },
+    [],
+  );
 
   const handleLongPressStart = useCallback(
     (
@@ -75,28 +97,39 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       _sourceBounds?: RadialMenuBounds,
     ) => {
       const items = getItems(category);
-      if (items.length === 0) return;
+      if (items.length === 0) {
+        clearCategoryRadialSpotlight();
+        return;
+      }
 
+      const categoryPresentation = getCategoryPresentation?.(category) ?? {
+        label: category,
+        icon: 'Wallet',
+        color: 'hsl(var(--primary))',
+      };
+      const menuItems = resolveQuickNoteColors(
+        items.map((item) => ({
+          id: getItemId(item),
+          icon: getItemIcon(item),
+          label: getItemLabel(item),
+          color: getItemColor?.(item) ?? readOptionalColor(item),
+        })),
+      );
+
+      activateCategoryRadialSpotlight(position, categoryPresentation.color);
       setState({
         isOpen: true,
         category,
         anchorPosition: position,
         dragPosition: position,
         bounds: getFullscreenBounds(),
-        categoryPresentation: getCategoryPresentation?.(category) ?? {
-          label: category,
-          icon: 'Wallet',
-          color: 'hsl(var(--primary))',
-        },
-        menuItems: items.map((item) => ({
-          id: getItemId(item),
-          icon: getItemIcon(item),
-          label: getItemLabel(item),
-        })),
+        categoryPresentation,
+        menuItems,
       });
     },
     [
       getCategoryPresentation,
+      getItemColor,
       getItemIcon,
       getItemId,
       getItemLabel,
@@ -118,13 +151,19 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       const layout = createEqualAreaRadialLayout(
         [
           ...state.menuItems,
-          { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel' },
+          {
+            id: CANCEL_ITEM_ID,
+            icon: 'X',
+            label: 'Cancel',
+            color: '#ef4444',
+          },
         ],
         state.anchorPosition,
         state.bounds,
       );
       const target = resolveEqualAreaRadialRelease(layout, position);
 
+      clearCategoryRadialSpotlight();
       if (target.type === 'cancel' || target.itemId === CANCEL_ITEM_ID) {
         setState(null);
         return;
@@ -139,6 +178,7 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
   );
 
   const handleCancel = useCallback(() => {
+    clearCategoryRadialSpotlight();
     setState(null);
   }, []);
 

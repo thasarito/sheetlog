@@ -7,7 +7,15 @@ import {
   useState,
 } from 'react';
 import { CURRENCIES } from '../lib/currencies';
-import { ICON_PICKER_LIST, type IconName } from '../lib/icons';
+import {
+  COLOR_PALETTE,
+  ICON_PICKER_LIST,
+  type IconName,
+} from '../lib/icons';
+import {
+  isValidQuickNoteColor,
+  resolveQuickNoteColor,
+} from '../lib/quickNoteColors';
 import { validateSettingsName } from '../lib/settingsControlCenter';
 import type { QuickNote, TransactionType } from '../lib/types';
 import { DynamicIcon } from './DynamicIcon';
@@ -46,12 +54,17 @@ function normalizeNote(note: QuickNote): QuickNote {
   return {
     ...note,
     label: note.label.trim(),
+    color: isValidQuickNoteColor(note.color) ? note.color : undefined,
     note: note.note?.trim() || undefined,
     amount: note.amount?.trim() || undefined,
     currency: note.currency || undefined,
     account: note.account || undefined,
     forValue: note.forValue?.trim() || undefined,
   };
+}
+
+function editorNote(note: QuickNote): QuickNote {
+  return resolveQuickNoteColor(note);
 }
 
 export function SettingsQuickNoteEditorDrawer({
@@ -66,8 +79,11 @@ export function SettingsQuickNoteEditorDrawer({
   onDismiss,
 }: SettingsQuickNoteEditorDrawerProps) {
   const [activeSnapPoint, setActiveSnapPoint] = useState<string | number | null>('82%');
-  const [draft, setDraft] = useState(note);
+  const [draft, setDraft] = useState<QuickNote>(() => editorNote(note));
   const [savedNote, setSavedNote] = useState<QuickNote | null>(mode === 'edit' ? note : null);
+  const [usesAutomaticColor, setUsesAutomaticColor] = useState(
+    () => !isValidQuickNoteColor(note.color),
+  );
   const [amountDraft, setAmountDraft] = useState(note.amount ?? '');
   const [labelError, setLabelError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -76,8 +92,9 @@ export function SettingsQuickNoteEditorDrawer({
   const errorId = useId();
 
   useEffect(() => {
-    setDraft(note);
+    setDraft(editorNote(note));
     setSavedNote(mode === 'edit' ? note : null);
+    setUsesAutomaticColor(!isValidQuickNoteColor(note.color));
     setAmountDraft(note.amount ?? '');
     setLabelError(null);
     setSaveState('idle');
@@ -95,7 +112,11 @@ export function SettingsQuickNoteEditorDrawer({
   }, []);
 
   const performCommit = useCallback(
-    async (candidate: QuickNote, showValidation = true): Promise<boolean> => {
+    async (
+      candidate: QuickNote,
+      showValidation: boolean,
+      automaticColor: boolean,
+    ): Promise<boolean> => {
       const error = validateSettingsName(candidate.label, [], undefined, 'Quick Note', 12);
       if (error) {
         if (showValidation) {
@@ -106,8 +127,9 @@ export function SettingsQuickNoteEditorDrawer({
       }
 
       const nextNote = normalizeNote(candidate);
+      if (automaticColor) delete nextNote.color;
       if (savedNote && sameNote(nextNote, savedNote)) {
-        setDraft(nextNote);
+        setDraft(automaticColor ? editorNote(nextNote) : nextNote);
         setLabelError(null);
         return true;
       }
@@ -116,7 +138,7 @@ export function SettingsQuickNoteEditorDrawer({
         setSaveState('saving');
         await onCommit(nextNote);
         setSavedNote(nextNote);
-        setDraft(nextNote);
+        setDraft(automaticColor ? editorNote(nextNote) : nextNote);
         setAmountDraft(nextNote.amount ?? '');
         setLabelError(null);
         setSaveState('saved');
@@ -131,27 +153,38 @@ export function SettingsQuickNoteEditorDrawer({
   );
 
   const commit = useCallback(
-    (candidate = draft, showValidation = true): Promise<boolean> => {
+    (
+      candidate = draft,
+      showValidation = true,
+      automaticColor = usesAutomaticColor,
+    ): Promise<boolean> => {
       if (commitPromiseRef.current) return commitPromiseRef.current;
-      const pending = performCommit(candidate, showValidation);
+      const pending = performCommit(candidate, showValidation, automaticColor);
       commitPromiseRef.current = pending;
       void pending.finally(() => {
         if (commitPromiseRef.current === pending) commitPromiseRef.current = null;
       });
       return pending;
     },
-    [draft, performCommit],
+    [draft, performCommit, usesAutomaticColor],
   );
 
   const requestDismiss = useCallback(async () => {
-    const valid = await commit(draft, true);
+    const valid = await commit(draft, true, usesAutomaticColor);
     if (valid) onDismiss();
-  }, [commit, draft, onDismiss]);
+  }, [commit, draft, onDismiss, usesAutomaticColor]);
 
   const updateDiscrete = (patch: Partial<QuickNote>) => {
     const next = { ...draft, ...patch };
     setDraft(next);
-    void commit(next, false);
+    void commit(next, false, usesAutomaticColor);
+  };
+
+  const updateColor = (color: string) => {
+    const next = { ...draft, color };
+    setUsesAutomaticColor(false);
+    setDraft(next);
+    void commit(next, false, false);
   };
 
   const updateAmount = (value: string) => {
@@ -167,7 +200,9 @@ export function SettingsQuickNoteEditorDrawer({
       onDismiss();
       return;
     }
-    setDraft(savedNote);
+    const automaticColor = !isValidQuickNoteColor(savedNote.color);
+    setUsesAutomaticColor(automaticColor);
+    setDraft(automaticColor ? editorNote(savedNote) : savedNote);
     setAmountDraft(savedNote.amount ?? '');
     setLabelError(null);
     setSaveState('idle');
@@ -193,6 +228,7 @@ export function SettingsQuickNoteEditorDrawer({
         ? 'Couldn’t save'
         : 'Live save';
   const forLabel = target.type === 'transfer' ? 'To' : 'For';
+  const selectedColor = draft.color ?? resolveQuickNoteColor(draft).color;
 
   return (
     <DrawerNestedRoot
@@ -343,6 +379,38 @@ export function SettingsQuickNoteEditorDrawer({
               />
             </label>
           </div>
+
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <h3 className="text-[13px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              Color
+            </h3>
+            <span className="text-[12px] font-medium text-muted-foreground">
+              {usesAutomaticColor ? 'Automatic' : selectedColor.toUpperCase()}
+            </span>
+          </div>
+          <div className="mt-2 grid grid-cols-9 gap-2">
+            {COLOR_PALETTE.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-label={`Use ${option.name}`}
+                aria-pressed={selectedColor.toLowerCase() === option.value.toLowerCase()}
+                onClick={() => updateColor(option.value)}
+                className="aspect-square rounded-full border-2 border-card ring-offset-2 ring-offset-card aria-pressed:ring-2 aria-pressed:ring-primary"
+                style={{ backgroundColor: option.value }}
+              />
+            ))}
+          </div>
+          <label className="mt-3 flex items-center justify-between rounded-[14px] border border-border/70 px-3 py-2 text-[14px] font-medium text-foreground">
+            Custom color
+            <input
+              type="color"
+              aria-label="Custom Quick Note color"
+              value={selectedColor}
+              onChange={(event) => updateColor(event.target.value)}
+              className="h-8 w-12 rounded border-0 bg-transparent"
+            />
+          </label>
 
           <h3 className="mt-5 text-[13px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
             Icon

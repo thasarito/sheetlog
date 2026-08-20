@@ -12,7 +12,7 @@ import type {
   QuickNotesConfig,
 } from './types';
 
-const NOTE_COLUMNS = 13;
+const NOTE_COLUMNS = 14;
 
 function noteRow({
   scope = 'default',
@@ -22,6 +22,7 @@ function noteRow({
   id = 'note-1',
   icon = 'Coffee',
   label = 'Coffee',
+  color = '',
 }: {
   scope?: unknown;
   type?: unknown;
@@ -30,6 +31,7 @@ function noteRow({
   id?: unknown;
   icon?: unknown;
   label?: unknown;
+  color?: unknown;
 } = {}): unknown[] {
   return [
     scope,
@@ -45,6 +47,7 @@ function noteRow({
     '',
     '',
     '',
+    color,
   ];
 }
 
@@ -57,7 +60,22 @@ function emptyRow({
   type?: unknown;
   category?: unknown;
 } = {}): unknown[] {
-  return [scope, type, category, 'empty', '', '', '', '', '', '', '', '', ''];
+  return [
+    scope,
+    type,
+    category,
+    'empty',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ];
 }
 
 function expectValidationError(
@@ -75,12 +93,14 @@ function expectValidationError(
   expect(thrown).toBeInstanceOf(QuickNoteSheetValidationError);
   const validationError = thrown as QuickNoteSheetValidationError;
   expect(validationError.rowNumber).toBe(rowNumber);
-  expect(validationError.message).toMatch(new RegExp(`Quick Note row ${rowNumber}`));
+  expect(validationError.message).toMatch(
+    new RegExp(`Quick Note row ${rowNumber}`),
+  );
   expect(validationError.message).toMatch(reason);
 }
 
 describe('Quick Note Sheet codec', () => {
-  it('exports the exact thirteen-column contract', () => {
+  it('exports the exact fourteen-column contract', () => {
     expect(QUICK_NOTE_HEADERS).toEqual([
       'Scope',
       'Type',
@@ -95,6 +115,7 @@ describe('Quick Note Sheet codec', () => {
       'Currency',
       'Account',
       'For',
+      'Color',
     ]);
   });
 
@@ -110,6 +131,7 @@ describe('Quick Note Sheet codec', () => {
           currency: 'THB',
           account: 'Wallet',
           forValue: 'Partner',
+          color: '#f97316',
         },
         {
           id: 'first-by-name',
@@ -151,8 +173,38 @@ describe('Quick Note Sheet codec', () => {
     };
 
     expect(serializeQuickNoteRows(config)).toEqual([
-      ['default', 'income', '', 'empty', '', '', '', '', '', '', '', '', ''],
-      ['category', 'expense', 'Food', 'empty', '', '', '', '', '', '', '', '', ''],
+      [
+        'default',
+        'income',
+        '',
+        'empty',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ],
+      [
+        'category',
+        'expense',
+        'Food',
+        'empty',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ],
     ]);
     expect(parseQuickNoteRows(serializeQuickNoteRows(config))).toEqual(config);
   });
@@ -161,10 +213,11 @@ describe('Quick Note Sheet codec', () => {
     const second = noteRow({ id: 'second', position: '2' });
     const first = noteRow({ id: 'first', position: 1 });
 
-    expect(parseQuickNoteRows([second, first])['default:expense'].map(({ id }) => id)).toEqual([
-      'first',
-      'second',
-    ]);
+    expect(
+      parseQuickNoteRows([second, first])['default:expense'].map(
+        ({ id }) => id,
+      ),
+    ).toEqual(['first', 'second']);
   });
 
   it('keeps formula-looking text as an ordinary literal string in codec output', () => {
@@ -194,14 +247,23 @@ describe('Quick Note Sheet codec', () => {
       '-THB',
       '@Wallet',
       '=Me',
+      '',
     ]);
     expect(parseQuickNoteRows([row])).toEqual(config);
   });
 
   it('serializes targets in canonical key order without reordering notes within a target', () => {
     const transferNotes = [
-      { id: 'transfer-second-by-name', icon: 'ArrowRightLeft', label: 'Move' },
-      { id: 'transfer-first-by-name', icon: 'Landmark', label: 'Bank' },
+      {
+        id: 'transfer-second-by-name',
+        icon: 'ArrowRightLeft',
+        label: 'Move',
+      },
+      {
+        id: 'transfer-first-by-name',
+        icon: 'Landmark',
+        label: 'Bank',
+      },
     ];
     const first: QuickNotesConfig = {
       'transfer:Savings': transferNotes,
@@ -232,15 +294,34 @@ describe('Quick Note Sheet codec', () => {
 
 describe('Quick Note Sheet validation', () => {
   it.each([
-    ['scope', ['other', 'expense', '', 'note', '1', 'id', 'Coffee', 'Coffee'], /scope/i],
-    ['type', ['default', 'refund', '', 'note', '1', 'id', 'Coffee', 'Coffee'], /type/i],
-    ['entry', ['default', 'expense', '', 'other', '1', 'id', 'Coffee', 'Coffee'], /entry/i],
-  ] as const)('rejects an invalid %s at the exact Sheet row', (_name, row, reason) => {
-    expectValidationError([noteRow(), [...row]], 3, reason);
-  });
+    [
+      'scope',
+      ['other', 'expense', '', 'note', '1', 'id', 'Coffee', 'Coffee'],
+      /scope/i,
+    ],
+    [
+      'type',
+      ['default', 'refund', '', 'note', '1', 'id', 'Coffee', 'Coffee'],
+      /type/i,
+    ],
+    [
+      'entry',
+      ['default', 'expense', '', 'other', '1', 'id', 'Coffee', 'Coffee'],
+      /entry/i,
+    ],
+  ] as const)(
+    'rejects an invalid %s at the exact Sheet row',
+    (_name, row, reason) => {
+      expectValidationError([noteRow(), [...row]], 3, reason);
+    },
+  );
 
   it.each([
-    ['category target', noteRow({ scope: 'category', category: '' }), /category target/i],
+    [
+      'category target',
+      noteRow({ scope: 'category', category: '' }),
+      /category target/i,
+    ],
     ['Id', noteRow({ id: '' }), /Id is required/i],
     ['Icon', noteRow({ icon: '   ' }), /Icon is required/i],
     ['Label', noteRow({ label: null }), /Label is required/i],
@@ -285,17 +366,24 @@ describe('Quick Note Sheet validation', () => {
   });
 
   it('rejects duplicate empty markers for one target', () => {
-    expectValidationError([emptyRow(), emptyRow()], 3, /duplicate empty marker/i);
+    expectValidationError(
+      [emptyRow(), emptyRow()],
+      3,
+      /duplicate empty marker/i,
+    );
   });
 
-  it('rejects an empty marker when any column E through M is populated at the exact row', () => {
+  it('rejects an empty marker when any column E through N is populated at the exact row', () => {
     for (let column = 4; column < NOTE_COLUMNS; column += 1) {
       const populatedEmptyRow = emptyRow();
       populatedEmptyRow[column] = 'unexpected';
       expectValidationError(
-        [noteRow({ type: 'income', id: 'income-note' }), populatedEmptyRow],
+        [
+          noteRow({ type: 'income', id: 'income-note' }),
+          populatedEmptyRow,
+        ],
         3,
-        /empty entry.*columns E through M.*blank/i,
+        /empty entry.*columns E through N.*blank/i,
       );
     }
   });
@@ -305,9 +393,16 @@ describe('Quick Note Sheet validation', () => {
     ['six', 6],
     ['a fraction', 1.5],
     ['text', 'first'],
-  ] as const)('rejects %s as a position outside integer 1-5', (_name, position) => {
-    expectValidationError([noteRow({ position })], 2, /position must be an integer from 1 to 5/i);
-  });
+  ] as const)(
+    'rejects %s as a position outside integer 1-5',
+    (_name, position) => {
+      expectValidationError(
+        [noteRow({ position })],
+        2,
+        /position must be an integer from 1 to 5/i,
+      );
+    },
+  );
 
   it('rejects a sixth note for one target', () => {
     const rows = Array.from({ length: 6 }, (_, index) =>
@@ -337,6 +432,7 @@ describe('sanitizeQuickNotes', () => {
           amount: '10',
           currency: 'THB',
           forValue: 'Me',
+          color: '#3b82f6',
         },
         {
           id: 'stale-account',
@@ -347,6 +443,7 @@ describe('sanitizeQuickNotes', () => {
           amount: '20',
           currency: 'USD',
           forValue: 'Partner',
+          color: '#f97316',
         },
       ],
       'default:income': [],
@@ -355,10 +452,20 @@ describe('sanitizeQuickNotes', () => {
         { id: 'late', icon: 'Moon', label: 'Late', account: 'Bank' },
       ],
       'expense:Deleted': [
-        { id: 'remove-target', icon: 'Trash', label: 'Old', account: 'Wallet' },
+        {
+          id: 'remove-target',
+          icon: 'Trash',
+          label: 'Old',
+          account: 'Wallet',
+        },
       ],
       'income:Salary': [
-        { id: 'salary', icon: 'Landmark', label: 'Salary', account: 'Bank' },
+        {
+          id: 'salary',
+          icon: 'Landmark',
+          label: 'Salary',
+          account: 'Bank',
+        },
       ],
     };
     const original = JSON.parse(JSON.stringify(config)) as QuickNotesConfig;
@@ -377,7 +484,9 @@ describe('sanitizeQuickNotes', () => {
       'valid-account',
       'stale-account',
     ]);
-    expect(sanitized['default:expense'][0]).toEqual(config['default:expense'][0]);
+    expect(sanitized['default:expense'][0]).toEqual(
+      config['default:expense'][0],
+    );
     expect(sanitized['default:expense'][1]).toEqual({
       id: 'stale-account',
       icon: 'Sandwich',
@@ -386,13 +495,18 @@ describe('sanitizeQuickNotes', () => {
       amount: '20',
       currency: 'USD',
       forValue: 'Partner',
+      color: '#f97316',
     });
     expect(sanitized['default:expense'][1]).not.toHaveProperty('account');
     expect(sanitized['default:income']).toEqual([]);
     expect(sanitized['expense:Food']).toEqual([]);
-    expect(sanitized['expense:Food:Late']).toEqual(config['expense:Food:Late']);
+    expect(sanitized['expense:Food:Late']).toEqual(
+      config['expense:Food:Late'],
+    );
     expect(sanitized['income:Salary']).toEqual(config['income:Salary']);
-    expect(sanitized['default:expense']).not.toBe(config['default:expense']);
+    expect(sanitized['default:expense']).not.toBe(
+      config['default:expense'],
+    );
   });
 
   it('clears stale transfer destinations for default and category targets only', () => {
@@ -458,7 +572,9 @@ describe('sanitizeQuickNotes', () => {
       label: 'Move',
       note: 'Preserve me',
     });
-    expect(sanitized['default:transfer'][1]).toEqual(config['default:transfer'][1]);
+    expect(sanitized['default:transfer'][1]).toEqual(
+      config['default:transfer'][1],
+    );
     expect(sanitized['transfer:Savings'][0]).toEqual({
       id: 'category-stale',
       icon: 'PiggyBank',
