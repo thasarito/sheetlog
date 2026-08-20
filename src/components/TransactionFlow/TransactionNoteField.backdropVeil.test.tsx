@@ -18,7 +18,7 @@ const centralWorld = {
 } satisfies PlaceSuggestion;
 
 const hookState = vi.hoisted(() => ({
-  suggestions: [centralCafe, centralWorld] as PlaceSuggestion[],
+  suggestions: [] as PlaceSuggestion[],
   isDebouncing: false,
   isLoading: false,
   isError: false,
@@ -140,10 +140,12 @@ describe("TransactionNoteField backdrop veil", () => {
     expect(fireEvent.pointerDown(option)).toBe(false);
     await user.click(option);
 
-    expect(onPlaceSelect).toHaveBeenCalledWith({
-      displayName: "Central Cafe",
-      placeId: "central-cafe",
-    });
+    await waitFor(() =>
+      expect(onPlaceSelect).toHaveBeenCalledWith({
+        displayName: "Central Cafe",
+        placeId: "central-cafe",
+      }),
+    );
     await waitFor(() => expect(input).not.toHaveFocus());
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
