@@ -4,6 +4,7 @@
 
 :root {
   --analytics-control-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --transaction-visual-viewport-offset: 0px;
 }
 
 html,
@@ -14,6 +15,16 @@ body {
 
 body {
   @apply antialiased;
+}
+
+/* Counter iOS visual-viewport panning while the software keyboard is open. */
+main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"]) {
+  transform: translate3d(
+    0,
+    var(--transaction-visual-viewport-offset),
+    0
+  );
+  will-change: transform;
 }
 
 /* The amount step owns the full transaction canvas instead of sharing the title reel. */
@@ -36,6 +47,18 @@ main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
   height: 2.75rem;
   min-height: 2.75rem;
   overflow: hidden;
+}
+
+/* Preserve access to every control on genuinely short devices without reacting to keyboard height. */
+html[data-transaction-compact-height="true"] [data-transaction-step="amount"] {
+  gap: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+html[data-transaction-compact-height="true"] [data-step-amount-fields] {
+  flex: none;
 }
 
 /* Let the morphed analytics summary sit closer to the title reel as the sheet expands. */
