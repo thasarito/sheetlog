@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/settings-section-scroll-boundary
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
