@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => {
           short_name: "SheetLog",
           start_url: `${normalizedBase}app`,
           display: "standalone",
+          orientation: "portrait",
           background_color: DEFAULT_PWA_COLOR,
           theme_color: DEFAULT_PWA_COLOR,
           icons: [
