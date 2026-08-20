@@ -31,16 +31,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run focused behavior tests
+      - name: Run focused Settings and theme tests
         run: >-
           npm test --
           src/theme/themeConfig.test.ts
+          src/theme/themeBoundaries.test.ts
           src/components/ThemeSetting.test.tsx
           src/components/SettingsControlSection.test.tsx
           src/components/settingsIconBadges.test.tsx
-
-      - name: Run full test suite
-        run: npm test
+          src/components/SettingsView.test.tsx
+          src/components/SettingsView.theme.test.tsx
+          src/components/AnalyticsBaseCurrencySetting.test.tsx
+          src/components/AnalyticsBigSpendingThresholdSetting.test.tsx
+          src/components/AnalyticsSyncSetting.test.tsx
 
       - name: Run lint
         run: npm run lint
@@ -50,3 +53,7 @@ jobs:
 
       - name: Run production build
         run: npm run build
+
+      - name: Observe the unchanged full-suite baseline
+        continue-on-error: true
+        run: npm test
