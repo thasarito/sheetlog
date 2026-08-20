@@ -95,9 +95,13 @@ export function getRadialMenuGeometry(
     ringRadius,
     Math.min(availableOuterRadius, ringRadius + LABEL_GUTTER),
   );
-  const centerControlRadius = Math.max(
-    29,
-    Math.min(42, ringRadius * 0.31),
+  const centerControlRadius = Math.min(
+    ringRadius * 0.6,
+    Math.max(29, Math.min(42, ringRadius * 0.31)),
+  );
+  const segmentHitHalfWidth = Math.min(
+    30,
+    Math.max(4, (outerRadius - centerControlRadius) / 3),
   );
 
   return {
@@ -106,8 +110,14 @@ export function getRadialMenuGeometry(
     outerRadius,
     svgSize: outerRadius * 2,
     centerControlRadius,
-    minDragDistance: ringRadius * 0.4,
-    maxDragDistance: ringRadius * 1.9,
+    minDragDistance: Math.max(
+      centerControlRadius,
+      ringRadius - segmentHitHalfWidth,
+    ),
+    maxDragDistance: Math.min(
+      outerRadius,
+      ringRadius + segmentHitHalfWidth,
+    ),
   };
 }
 
