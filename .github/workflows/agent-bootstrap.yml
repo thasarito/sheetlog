@@ -1,0 +1,35 @@
+name: Agent bootstrap
+
+on:
+  push:
+    branches:
+      - fix/settings-section-scroll-boundary
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package workspace
+        run: tar --exclude=.git --exclude=workspace.tar.gz -czf workspace.tar.gz .
+
+      - name: Upload workspace
+        uses: actions/upload-artifact@v4
+        with:
+          name: sheetlog-agent-workspace
+          path: workspace.tar.gz
+          retention-days: 1
