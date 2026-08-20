@@ -130,6 +130,7 @@ export interface QuickNote {
   id: string;
   icon: string;      // lucide icon name
   label: string;     // short label for radial menu
+  color?: string;    // six-digit hex color for radial presentation
   note?: string;     // full note text to pre-fill (optional)
   amount?: string;   // amount to pre-fill (optional)
   currency?: string;
