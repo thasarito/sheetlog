@@ -80,6 +80,22 @@ describe('equal-area warped radial sectors', () => {
     expect(findEqualAreaSector(layout, leftPoint)?.id).toBe(items[0].id);
   });
 
+  it('keeps visible note nodes inside the screen near an edge anchor', () => {
+    const layout = createEqualAreaRadialLayout(
+      items,
+      { x: 370, y: 100 },
+      fullscreenBounds,
+    );
+
+    for (const sector of layout.sectors) {
+      expect(sector.labelPoint.x).toBeGreaterThanOrEqual(52);
+      expect(sector.labelPoint.x).toBeLessThanOrEqual(338);
+      expect(sector.labelPoint.y).toBeGreaterThanOrEqual(36);
+      expect(sector.labelPoint.y).toBeLessThanOrEqual(808);
+      expect(findEqualAreaSector(layout, sector.labelPoint)?.id).toBe(sector.id);
+    }
+  });
+
   it('opens neutrally and commits only after leaving the anchor dead zone', () => {
     const anchor = { x: 46, y: 318 };
     const layout = createEqualAreaRadialLayout(items, anchor, fullscreenBounds);
