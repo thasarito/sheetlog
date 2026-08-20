@@ -54,6 +54,22 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+export function getRadialMenuLabelPosition(
+  nodePosition: { x: number; y: number },
+  outerRadius: number,
+  labelWidth: number,
+  labelHeight: number,
+) {
+  const labelHorizontalLimit = Math.max(0, outerRadius - labelWidth / 2);
+  return {
+    x: clamp(nodePosition.x, -labelHorizontalLimit, labelHorizontalLimit),
+    y: Math.min(
+      nodePosition.y + NODE_RADIUS + 8,
+      outerRadius - labelHeight / 2,
+    ),
+  };
+}
+
 export function RadialMenuSegment({
   icon,
   label,
@@ -71,14 +87,12 @@ export function RadialMenuSegment({
   const textWidth = estimateTextWidth(label);
   const labelHeight = 22;
   const labelWidth = textWidth + 20;
-  const labelHorizontalLimit = Math.max(0, outerRadius - labelWidth / 2);
-  const labelPosition = {
-    x: clamp(nodePosition.x, -labelHorizontalLimit, labelHorizontalLimit),
-    y: Math.min(
-      nodePosition.y + NODE_RADIUS + 8,
-      outerRadius - labelHeight / 2,
-    ),
-  };
+  const labelPosition = getRadialMenuLabelPosition(
+    nodePosition,
+    outerRadius,
+    labelWidth,
+    labelHeight,
+  );
   const highlightPath = createHighlightArc(startAngle, endAngle, ringRadius, 20);
 
   return (
