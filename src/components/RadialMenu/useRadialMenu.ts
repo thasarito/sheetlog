@@ -34,6 +34,7 @@ export interface UseRadialMenuReturn {
     onLongPressStart: (
       category: string,
       position: RadialMenuPoint,
+      sourceBounds?: RadialMenuBounds,
     ) => void;
     onDrag: (position: RadialMenuPoint) => void;
     onRelease: (position: RadialMenuPoint) => void;
@@ -67,7 +68,11 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
   const [state, setState] = useState<RadialMenuState | null>(null);
 
   const handleLongPressStart = useCallback(
-    (category: string, position: RadialMenuPoint) => {
+    (
+      category: string,
+      position: RadialMenuPoint,
+      _sourceBounds?: RadialMenuBounds,
+    ) => {
       const items = getItems(category);
       if (items.length === 0) return;
 
