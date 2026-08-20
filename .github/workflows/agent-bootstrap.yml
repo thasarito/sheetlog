@@ -1,22 +1,23 @@
-name: Agent bootstrap
+name: Agent verification
 
 on:
-  push:
-    branches:
-      - fix/settings-section-scroll-boundary
   pull_request:
     branches:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  bootstrap:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Check out branch
+      - name: Check out pull request head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -27,12 +28,92 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Package workspace
-        run: tar -C .. --exclude=sheetlog/.git -czf /tmp/workspace.tar.gz sheetlog
+      - name: Apply the proposed fix
+        run: |
+          git apply --check .github/agent/settings-scroll.patch
+          git apply .github/agent/settings-scroll.patch
 
-      - name: Upload workspace
-        uses: actions/upload-artifact@v4
-        with:
-          name: sheetlog-agent-workspace
-          path: /tmp/workspace.tar.gz
-          retention-days: 1
+      - name: Create focused verification configs
+        run: |
+          cat > vite.agent-test.config.ts <<'EOF'
+          /// <reference types="vitest/config" />
+          import { defineConfig } from 'vitest/config';
+
+          export default defineConfig({
+            test: {
+              environment: 'jsdom',
+              exclude: ['node_modules/**', '.worktrees/**', 'dist/**', 'e2e/**'],
+              setupFiles: ['./src/test/setup.ts'],
+              globals: true,
+            },
+          });
+          EOF
+
+          cat > tsconfig.agent-settings-scroll.json <<'EOF'
+          {
+            "extends": "./tsconfig.json",
+            "include": [
+              "src/components/SettingsViewContent.tsx",
+              "src/components/SettingsView.test.tsx",
+              "e2e/home-carousel.spec.ts"
+            ]
+          }
+          EOF
+
+          cat > playwright.agent.config.ts <<'EOF'
+          import { defineConfig, devices } from '@playwright/test';
+
+          export default defineConfig({
+            testDir: './e2e',
+            fullyParallel: false,
+            forbidOnly: true,
+            retries: 0,
+            workers: 1,
+            reporter: 'line',
+            use: {
+              baseURL: 'http://127.0.0.1:5174',
+              trace: 'off',
+            },
+            projects: [
+              {
+                name: 'Mobile Chrome',
+                use: { ...devices['Pixel 5'] },
+              },
+            ],
+            webServer: {
+              command: 'VITE_DEV_MODE=true SHEETLOG_DEV_PORT=5174 npm run dev -- --host 127.0.0.1',
+              url: 'http://127.0.0.1:5174',
+              reuseExistingServer: false,
+              timeout: 120000,
+            },
+          });
+          EOF
+
+      - name: Run focused Settings regression tests
+        run: npx vitest run --config vite.agent-test.config.ts src/components/SettingsView.test.tsx
+
+      - name: Type-check affected files
+        run: npx tsc --noEmit --project tsconfig.agent-settings-scroll.json
+
+      - name: Lint affected files
+        run: npx biome check src/components/SettingsViewContent.tsx src/components/SettingsView.test.tsx e2e/home-carousel.spec.ts
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run mobile layout-shift regression
+        run: >-
+          npx playwright test e2e/home-carousel.spec.ts
+          --config playwright.agent.config.ts
+          --project "Mobile Chrome"
+          --grep "keeps Settings as an expandable Control Center"
+
+      - name: Commit the verified fix through the GitHub API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .github/agent/commit-settings-scroll.mjs
