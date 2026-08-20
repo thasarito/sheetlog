@@ -54,7 +54,10 @@ describe('RadialMenu equal-area full-screen presentation', () => {
     expect(
       screen
         .getAllByTestId('radial-menu-sector')
-        .some((sector) => sector.getAttribute('data-selected') === 'true'),
+        .some(
+          (sector: HTMLElement) =>
+            sector.getAttribute('data-selected') === 'true',
+        ),
     ).toBe(false);
   });
 
