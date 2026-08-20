@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -97,6 +97,34 @@ describe('SettingsQuickNoteEditorDrawer', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Currency' }), 'USD');
     expect(props.onCommit).toHaveBeenLastCalledWith(
       expect.objectContaining({ account: 'Cash', currency: 'USD' }),
+    );
+  });
+
+  it('shows an automatic color and saves palette or custom color changes immediately', async () => {
+    const user = userEvent.setup();
+    const props = renderEditor();
+
+    expect(screen.getByRole('heading', { name: 'Color' })).toBeVisible();
+    expect(
+      screen.getAllByRole('button', { pressed: true }).some((button) =>
+        button.getAttribute('aria-label')?.startsWith('Use '),
+      ),
+    ).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'Use Orange' }));
+    await waitFor(() =>
+      expect(props.onCommit).toHaveBeenLastCalledWith(
+        expect.objectContaining({ color: '#f97316' }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText('Custom Quick Note color'), {
+      target: { value: '#123456' },
+    });
+    await waitFor(() =>
+      expect(props.onCommit).toHaveBeenLastCalledWith(
+        expect.objectContaining({ color: '#123456' }),
+      ),
     );
   });
 
