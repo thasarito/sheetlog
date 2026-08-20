@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { Check, ChevronLeft, Pencil, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -67,6 +67,8 @@ export function StepAmount({
 }: StepAmountProps) {
   const { type, category, amount, currency, account, forValue, note, dateObject } =
     form.useStore((state) => state.values);
+  const [searchOverlayTarget, setSearchOverlayTarget] =
+    useState<HTMLDivElement | null>(null);
   const isTransfer = type === "transfer";
   const accountLabel = isTransfer ? "From" : "Account";
   const hasTransferAccounts = accounts.length > 1;
@@ -158,57 +160,76 @@ export function StepAmount({
           </div>
         ) : null}
 
-        <div className="flex min-h-[72px] flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
-          <span>{amount ? amount : "0"}</span>
-          <CurrencyPicker
-            value={currency}
-            onChange={(value) => form.setFieldValue("currency", value)}
-            disabled={currencyLocked}
-          />
-        </div>
+        <div
+          data-step-amount-search-canvas
+          className="relative isolate flex min-h-0 flex-1 flex-col"
+        >
+          <div
+            data-testid="place-search-stage"
+            className="relative min-h-0 flex-1"
+          >
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex min-h-[72px] flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
+                <span>{amount ? amount : "0"}</span>
+                <CurrencyPicker
+                  value={currency}
+                  onChange={(value) => form.setFieldValue("currency", value)}
+                  disabled={currencyLocked}
+                />
+              </div>
 
-        <div className="mt-4 grid shrink-0 grid-cols-2 gap-3">
-          <InlinePicker
-            label={accountLabel}
-            value={account || null}
-            options={accounts}
-            onChange={handleAccountChange}
-          />
+              <div className="mt-4 grid shrink-0 grid-cols-2 gap-3">
+                <InlinePicker
+                  label={accountLabel}
+                  value={account || null}
+                  options={accounts}
+                  onChange={handleAccountChange}
+                />
 
-          {isTransfer ? (
-            <InlinePicker
-              label="To"
-              value={selectedFor}
-              options={toAccountOptions}
-              onChange={(value) => form.setFieldValue("forValue", value)}
-              disabled={!hasTransferAccounts || forLocked}
+                {isTransfer ? (
+                  <InlinePicker
+                    label="To"
+                    value={selectedFor}
+                    options={toAccountOptions}
+                    onChange={(value) => form.setFieldValue("forValue", value)}
+                    disabled={!hasTransferAccounts || forLocked}
+                  />
+                ) : (
+                  <InlinePicker
+                    label="For"
+                    value={selectedFor}
+                    options={FOR_OPTIONS}
+                    onChange={(value) => form.setFieldValue("forValue", value)}
+                    disabled={forLocked}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div
+              ref={setSearchOverlayTarget}
+              data-testid="place-search-overlay-target"
+              className="pointer-events-none absolute inset-0 z-10"
             />
-          ) : (
-            <InlinePicker
-              label="For"
-              value={selectedFor}
-              options={FOR_OPTIONS}
-              onChange={(value) => form.setFieldValue("forValue", value)}
-              disabled={forLocked}
+          </div>
+
+          <div className="relative z-20 shrink-0">
+            <TransactionNoteField
+              value={note}
+              onManualChange={(value) => setManualTransactionNote(form, value)}
+              onClear={() => clearTransactionNote(form)}
+              onPlaceSelect={(selection) => selectGooglePlace(form, selection)}
+              onSubmit={onSubmit}
+              canSubmit={Boolean(
+                (amount || optionalAmount) && !isSubmitting && !isDeleting,
+              )}
+              inputRef={noteInputRef}
+              places={places}
+              searchOverlayTarget={searchOverlayTarget}
             />
-          )}
-        </div>
 
-        <div className="shrink-0">
-          <TransactionNoteField
-            value={note}
-            onManualChange={(value) => setManualTransactionNote(form, value)}
-            onClear={() => clearTransactionNote(form)}
-            onPlaceSelect={(selection) => selectGooglePlace(form, selection)}
-            onSubmit={onSubmit}
-            canSubmit={Boolean(
-              (amount || optionalAmount) && !isSubmitting && !isDeleting,
-            )}
-            inputRef={noteInputRef}
-            places={places}
-          />
-
-          {formNotice}
+            {formNotice}
+          </div>
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { FileText, X } from "lucide-react";
+import { FileText, MapPin, X } from "lucide-react";
 import type React from "react";
 import {
   useCallback,
@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import type { Coordinates, PlaceSuggestion } from "../../lib/googlePlaces";
 import { cn } from "../../lib/utils";
 import { NearbyPlaceChips } from "./NearbyPlaceChips";
@@ -30,6 +31,7 @@ type TransactionNoteFieldProps = {
   canSubmit: boolean;
   inputRef?: React.Ref<HTMLInputElement>;
   places?: PlaceNoteOptions;
+  searchOverlayTarget?: HTMLElement | null;
 };
 
 export function TransactionNoteField({
@@ -41,8 +43,10 @@ export function TransactionNoteField({
   canSubmit,
   inputRef,
   places,
+  searchOverlayTarget,
 }: TransactionNoteFieldProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const searchOverlayRef = useRef<HTMLDivElement>(null);
   const localInputRef = useRef<HTMLInputElement | null>(null);
   const mountedRef = useRef(true);
   const valueRef = useRef(value);
@@ -100,6 +104,19 @@ export function TransactionNoteField({
     setActiveIndex(-1);
     setSessionId(createPlaceSessionId());
   }, []);
+
+  const containsFieldUi = useCallback((target: Node | null) => {
+    if (!target) return false;
+    return Boolean(
+      rootRef.current?.contains(target) ||
+        searchOverlayRef.current?.contains(target),
+    );
+  }, []);
+
+  const dismissSearch = useCallback(() => {
+    retireLifecycle(true);
+    blurInput();
+  }, [blurInput, retireLifecycle]);
 
   const handleManualChange = (nextValue: string) => {
     generationRef.current += 1;
@@ -196,14 +213,14 @@ export function TransactionNoteField({
     if (!active) return;
     const handleOutsidePointer = (event: PointerEvent) => {
       const target = event.target;
-      if (target instanceof Node && !rootRef.current?.contains(target)) {
+      if (target instanceof Node && !containsFieldUi(target)) {
         retireLifecycle();
       }
     };
     document.addEventListener("pointerdown", handleOutsidePointer, true);
     return () =>
       document.removeEventListener("pointerdown", handleOutsidePointer, true);
-  }, [active, retireLifecycle]);
+  }, [active, containsFieldUi, retireLifecycle]);
 
   const popupOpen = Boolean(
     placesEnabled &&
@@ -271,37 +288,44 @@ export function TransactionNoteField({
       tabIndex={-1}
       aria-selected={index === activeIndex}
       className={cn(
-        "flex min-h-11 w-full flex-col justify-center px-3 py-2 text-left text-sm",
+        "pointer-events-auto flex min-h-14 w-full items-center gap-3 border-b border-border/15 px-2 py-2.5 text-left text-sm first:border-t first:border-border/15",
         index === activeIndex && "bg-muted text-foreground",
       )}
       onPointerDown={(event) => event.preventDefault()}
       onClick={() => void selectOption(suggestion, true)}
     >
-      <span>{suggestion.name}</span>
-      {suggestion.secondaryText ? (
-        <span className="text-xs text-muted-foreground">
-          {suggestion.secondaryText}
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-foreground/[0.03] text-muted-foreground">
+        <MapPin className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-foreground">
+          {suggestion.name}
         </span>
-      ) : null}
+        {suggestion.secondaryText ? (
+          <span className="block truncate text-xs text-muted-foreground">
+            {suggestion.secondaryText}
+          </span>
+        ) : null}
+      </span>
     </button>
   ));
 
   const renderedPopupState = autocomplete.isLoading ? (
-    <p className="min-h-11 px-3 py-2 text-sm text-muted-foreground">
+    <p className="pointer-events-auto flex min-h-20 items-center px-2 py-3 text-sm text-muted-foreground">
       Searching places…
     </p>
   ) : autocomplete.isError ? (
-    <p className="min-h-11 px-3 py-2 text-sm text-muted-foreground">
+    <p className="pointer-events-auto flex min-h-20 items-center px-2 py-3 text-sm text-muted-foreground">
       Couldn’t search places.
     </p>
   ) : autocomplete.suggestions.length === 0 ? (
-    <p className="min-h-11 px-3 py-2 text-sm text-muted-foreground">
+    <p className="pointer-events-auto flex min-h-20 items-center px-2 py-3 text-sm text-muted-foreground">
       No places found.
     </p>
   ) : (
     <>
       {autocomplete.selectionError ? (
-        <p className="min-h-11 px-3 py-2 text-sm text-muted-foreground">
+        <p className="pointer-events-auto min-h-11 px-2 py-2 text-sm text-muted-foreground">
           Couldn’t select that place. Choose it again or edit the note.
         </p>
       ) : null}
@@ -309,77 +333,134 @@ export function TransactionNoteField({
     </>
   );
 
-  return (
-    <div ref={rootRef} className="relative mt-4">
-      <div className="relative flex items-center gap-3 border-b border-border/10 pb-2 transition-colors focus-within:border-primary/50">
-        <FileText
-          className="h-4 w-4 text-muted-foreground/50"
-          aria-hidden="true"
-        />
-        <input
-          ref={assignInputRef}
-          type="text"
-          aria-label="Transaction note"
-          {...(placesEnabled
-            ? {
-                role: "combobox",
-                "aria-autocomplete": "list",
-                "aria-expanded": popupOpen,
-                "aria-controls": popupOpen ? listboxId : undefined,
-                "aria-activedescendant": activeOption
-                  ? optionId(activeIndex)
-                  : undefined,
-              }
-            : {})}
-          className="flex-1 bg-transparent pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
-          placeholder="Add a note..."
-          value={value}
-          autoComplete="off"
-          onChange={(event) => handleManualChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={(event) => {
-            const next = event.relatedTarget;
-            if (
-              !(next instanceof Node) ||
-              !rootRef.current?.contains(next)
-            ) {
-              retireLifecycle();
-            }
-          }}
-        />
-        {value ? (
-          <button
-            type="button"
-            aria-label="Clear note"
-            className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            onClick={handleClear}
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ) : null}
-        {popupOpen ? (
+  const backdropVeil =
+    popupOpen && searchOverlayTarget
+      ? createPortal(
           <div
-            id={listboxId}
-            role="listbox"
-            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-border bg-surface"
+            ref={searchOverlayRef}
+            data-testid="place-search-backdrop-veil"
+            className="pointer-events-auto absolute inset-0 flex min-h-0 flex-col overflow-hidden bg-background/80 px-4 pt-2 backdrop-blur-md"
           >
-            {renderedPopupState}
-          </div>
-        ) : null}
-      </div>
-      <span className="sr-only" aria-live="polite" aria-atomic="true">
-        {liveStatus}
-      </span>
-      <div data-testid="nearby-place-slot" className="min-h-[42px]">
-        {placesEnabled && value.trim() === "" ? (
-          <NearbyPlaceChips
-            suggestions={places?.nearbySuggestions ?? []}
-            isLoading={places?.isNearbyLoading ?? false}
-            onPointerDown={(event) => event.preventDefault()}
-            onSelect={handleNearbySelect}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="Dismiss place search"
+              className="absolute inset-0 border-0 bg-transparent"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={dismissSearch}
+            />
+            <section
+              aria-label="Place search results"
+              className="pointer-events-none relative z-10 flex min-h-0 flex-1 flex-col"
+            >
+              <div className="pointer-events-auto flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border/10 px-1">
+                <div className="flex min-w-0 items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  <span>Places</span>
+                  <span className="flex min-w-5 items-center justify-center rounded-full border border-primary/25 px-1.5 py-0.5 text-[9px] tracking-normal text-primary">
+                    {autocomplete.suggestions.length}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Cancel place search"
+                  className="min-h-11 rounded-full px-2 text-xs font-medium text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={dismissSearch}
+                >
+                  Cancel
+                </button>
+              </div>
+              <div
+                id={listboxId}
+                role="listbox"
+                className="pointer-events-none min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              >
+                {renderedPopupState}
+              </div>
+            </section>
+          </div>,
+          searchOverlayTarget,
+        )
+      : null;
+
+  return (
+    <>
+      <div ref={rootRef} className="relative mt-4">
+        <div
+          className={cn(
+            "relative flex items-center gap-3 border-b pb-2 transition-colors",
+            popupOpen
+              ? "border-primary/60"
+              : "border-border/10 focus-within:border-primary/50",
+          )}
+        >
+          <FileText
+            className="h-4 w-4 text-muted-foreground/50"
+            aria-hidden="true"
           />
-        ) : null}
+          <input
+            ref={assignInputRef}
+            type="text"
+            aria-label="Transaction note"
+            {...(placesEnabled
+              ? {
+                  role: "combobox",
+                  "aria-autocomplete": "list",
+                  "aria-expanded": popupOpen,
+                  "aria-controls": popupOpen ? listboxId : undefined,
+                  "aria-activedescendant": activeOption
+                    ? optionId(activeIndex)
+                    : undefined,
+                }
+              : {})}
+            className="flex-1 bg-transparent pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+            placeholder="Add a note..."
+            value={value}
+            autoComplete="off"
+            onChange={(event) => handleManualChange(event.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={(event) => {
+              const next = event.relatedTarget;
+              if (!(next instanceof Node) || !containsFieldUi(next)) {
+                retireLifecycle();
+              }
+            }}
+          />
+          {value ? (
+            <button
+              type="button"
+              aria-label="Clear note"
+              className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              onClick={handleClear}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
+          {popupOpen && !searchOverlayTarget ? (
+            <div
+              id={listboxId}
+              role="listbox"
+              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-border bg-surface"
+            >
+              {renderedPopupState}
+            </div>
+          ) : null}
+        </div>
+        <span className="sr-only" aria-live="polite" aria-atomic="true">
+          {liveStatus}
+        </span>
+        <div data-testid="nearby-place-slot" className="min-h-[42px]">
+          {placesEnabled && value.trim() === "" ? (
+            <NearbyPlaceChips
+              suggestions={places?.nearbySuggestions ?? []}
+              isLoading={places?.isNearbyLoading ?? false}
+              onPointerDown={(event) => event.preventDefault()}
+              onSelect={handleNearbySelect}
+            />
+          ) : null}
+        </div>
       </div>
-    </div>
+      {backdropVeil}
+    </>
   );
 }
