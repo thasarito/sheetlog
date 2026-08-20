@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CANCEL_ITEM_ID,
   createEqualAreaRadialLayout,
@@ -25,12 +25,24 @@ const fullscreenBounds = {
   width: 390,
   height: 844,
 };
+const originalViewport = {
+  width: window.innerWidth,
+  height: window.innerHeight,
+};
+
+function setViewport(width: number, height: number) {
+  Object.defineProperties(window, {
+    innerWidth: { configurable: true, value: width },
+    innerHeight: { configurable: true, value: height },
+  });
+}
 
 beforeEach(() => {
-  Object.defineProperties(window, {
-    innerWidth: { configurable: true, value: fullscreenBounds.width },
-    innerHeight: { configurable: true, value: fullscreenBounds.height },
-  });
+  setViewport(fullscreenBounds.width, fullscreenBounds.height);
+});
+
+afterAll(() => {
+  setViewport(originalViewport.width, originalViewport.height);
 });
 
 describe('useRadialMenu equal-area relative drag', () => {
