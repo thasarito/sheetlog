@@ -65,10 +65,13 @@ function measureKeyboardInset(
 }
 
 function setVisualViewportOffset(value: number) {
-  document.documentElement.style.setProperty(
+  const normalized = Math.max(0, Math.round(value));
+  const root = document.documentElement;
+  root.style.setProperty(
     VISUAL_VIEWPORT_OFFSET_PROPERTY,
-    `${Math.max(0, Math.round(value))}px`,
+    `${normalized}px`,
   );
+  root.dataset.transactionViewportPanned = normalized > 0 ? "true" : "false";
 }
 
 function setCompactTransactionLayout(height: number) {
@@ -182,6 +185,7 @@ export function useStableTransactionHeight() {
       document.documentElement.style.removeProperty(
         VISUAL_VIEWPORT_OFFSET_PROPERTY,
       );
+      delete document.documentElement.dataset.transactionViewportPanned;
       delete document.documentElement.dataset.transactionCompactHeight;
       restoreKeyboardOverlay();
     };
