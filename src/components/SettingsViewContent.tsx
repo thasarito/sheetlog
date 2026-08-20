@@ -732,8 +732,18 @@ export function SettingsView({
         data-testid="settings-control-center-scroll"
         data-dashboard-scroll="true"
         className="h-full overflow-y-auto overscroll-contain pb-safe"
+        style={{
+          scrollPaddingBottom:
+            'calc(var(--category-sheet-occlusion, 44px) + 1rem)',
+        }}
       >
-        <div className="space-y-4 px-4 pb-8 pt-3">
+        <div
+          className="space-y-4 px-4 pt-3"
+          style={{
+            paddingBottom:
+              'calc(var(--category-sheet-occlusion, 44px) + 2rem)',
+          }}
+        >
           <section
             aria-label="Workspace health"
             className="rounded-[22px] border border-border/70 bg-card p-4"
