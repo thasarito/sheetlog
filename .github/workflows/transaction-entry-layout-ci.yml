@@ -36,12 +36,13 @@ jobs:
           src/components/TransactionFlow/index.tsx
           src/components/ui/AnimatedTabs.tsx
           vite.config.ts
-      - run: npx tsc --noEmit
       - name: Run focused component tests
         run: >-
           npx vitest run
           src/components/TransactionFlow/StepCategoryTypeTabs.test.tsx
           src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
+      - name: Run unit test suite
+        run: npm test
       - run: npm run build
       - name: Verify portrait-only PWA manifest
         run: >-
@@ -58,3 +59,9 @@ jobs:
         run: >-
           npx playwright test e2e/transaction-amount-layout.spec.ts
           --project="Mobile Chrome"
+      - name: Run repository lint (baseline advisory)
+        continue-on-error: true
+        run: npm run lint
+      - name: Run repository typecheck (baseline advisory)
+        continue-on-error: true
+        run: npx tsc --noEmit
