@@ -3,64 +3,59 @@ import { motion } from 'framer-motion';
 export interface RadialMenuSegmentProps {
   icon: string;
   label: string;
-  shortcut?: string;
   startAngle: number;
   endAngle: number;
-  innerRadius: number;
   outerRadius: number;
   isHovered: boolean;
   ringRadius: number;
   isCancel?: boolean;
+  animationDelay: number;
+  reducedMotion: boolean;
 }
 
 function polarToCartesian(angle: number, radius: number) {
-  const rad = (angle * Math.PI) / 180;
+  const radians = (angle * Math.PI) / 180;
   return {
-    x: radius * Math.cos(rad),
-    y: radius * Math.sin(rad),
+    x: radius * Math.cos(radians),
+    y: radius * Math.sin(radians),
   };
 }
 
-// Create arc path for the highlight
 function createHighlightArc(
   startAngle: number,
   endAngle: number,
   radius: number,
-  thickness: number
+  thickness: number,
 ): string {
-  const innerR = radius - thickness / 2;
-  const outerR = radius + thickness / 2;
-
-  const outerStart = polarToCartesian(startAngle, outerR);
-  const outerEnd = polarToCartesian(endAngle, outerR);
-  const innerStart = polarToCartesian(startAngle, innerR);
-  const innerEnd = polarToCartesian(endAngle, innerR);
-
+  const innerRadius = radius - thickness / 2;
+  const outerRadius = radius + thickness / 2;
+  const outerStart = polarToCartesian(startAngle, outerRadius);
+  const outerEnd = polarToCartesian(endAngle, outerRadius);
+  const innerStart = polarToCartesian(startAngle, innerRadius);
+  const innerEnd = polarToCartesian(endAngle, innerRadius);
   const largeArc = endAngle - startAngle > 180 ? 1 : 0;
 
   return [
     `M ${outerStart.x} ${outerStart.y}`,
-    `A ${outerR} ${outerR} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
     `L ${innerEnd.x} ${innerEnd.y}`,
-    `A ${innerR} ${innerR} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
     'Z',
   ].join(' ');
 }
 
-const NODE_RADIUS = 18;
+const NODE_RADIUS = 20;
 
-// Estimate text width based on character count (rough approximation for 12px font)
 function estimateTextWidth(text: string): number {
   return text.length * 6.5;
 }
 
-// Calculate horizontal offset to push labels away from center based on angle
 function getLabelOffsetX(angle: number, textWidth: number): number {
-  const normalized = ((angle % 360) + 360) % 360;
-  const pushAmount = textWidth / 2 + 5;
-  if (normalized > 110 && normalized < 250) return -pushAmount; // Left side - push left
-  if (normalized < 70 || normalized > 290) return pushAmount;   // Right side - push right
-  return 0;  // Top/bottom - centered
+  const normalizedAngle = ((angle % 360) + 360) % 360;
+  const inset = textWidth / 2 + 7;
+  if (normalizedAngle > 110 && normalizedAngle < 250) return inset;
+  if (normalizedAngle < 70 || normalizedAngle > 290) return -inset;
+  return 0;
 }
 
 export function RadialMenuSegment({
@@ -68,55 +63,62 @@ export function RadialMenuSegment({
   label,
   startAngle,
   endAngle,
+  outerRadius,
   isHovered,
   ringRadius,
   isCancel,
+  animationDelay,
+  reducedMotion,
 }: RadialMenuSegmentProps) {
-  // Calculate node position at the center of the segment
   const midAngle = (startAngle + endAngle) / 2;
-  const nodePos = polarToCartesian(midAngle, ringRadius);
-
-  // Calculate label position (outside the ring)
-  const labelRadius = ringRadius + 36;
-  const baseLabelPos = polarToCartesian(midAngle, labelRadius);
-
-  // Calculate adjusted label position with offset to push away from center
+  const nodePosition = polarToCartesian(midAngle, ringRadius);
+  const availableLabelGutter = Math.max(12, outerRadius - ringRadius);
+  const labelRadius = ringRadius + Math.min(32, availableLabelGutter - 6);
+  const baseLabelPosition = polarToCartesian(midAngle, labelRadius);
   const textWidth = estimateTextWidth(label);
-  const labelOffsetX = getLabelOffsetX(midAngle, textWidth);
-  const labelPos = {
-    x: baseLabelPos.x + labelOffsetX,
-    y: baseLabelPos.y,
+  const labelPosition = {
+    x: baseLabelPosition.x + getLabelOffsetX(midAngle, textWidth),
+    y: baseLabelPosition.y,
   };
-
-  const labelPadding = { x: 10, y: 4 };
   const labelHeight = 22;
-  const rectWidth = textWidth + labelPadding.x * 2;
-
-  const highlightPath = createHighlightArc(startAngle, endAngle, ringRadius, 16);
+  const labelWidth = textWidth + 20;
+  const highlightPath = createHighlightArc(startAngle, endAngle, ringRadius, 20);
 
   return (
-    <g>
-      {/* Highlight arc for active segment */}
-      {isHovered && (
-        <motion.path
-          d={highlightPath}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className={isCancel ? 'fill-danger/20' : 'fill-primary/20'}
-        />
-      )}
+    <motion.g
+      initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0 }}
+      transition={
+        reducedMotion
+          ? { duration: 0.1 }
+          : {
+              type: 'spring',
+              stiffness: 390,
+              damping: 29,
+              delay: animationDelay,
+            }
+      }
+      style={{ transformOrigin: '0px 0px' }}
+    >
+      <motion.path
+        d={highlightPath}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isHovered ? 1 : 0 }}
+        transition={{ duration: reducedMotion ? 0.08 : 0.16 }}
+        className={isCancel ? 'fill-danger/20' : 'fill-primary/20'}
+      />
 
-      {/* Node circle */}
       <motion.circle
-        cx={nodePos.x}
-        cy={nodePos.y}
-        r={NODE_RADIUS}
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.8, opacity: 0 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        cx={nodePosition.x}
+        cy={nodePosition.y}
+        initial={{ r: NODE_RADIUS - 3 }}
+        animate={{ r: isHovered ? NODE_RADIUS + 3 : NODE_RADIUS }}
+        transition={
+          reducedMotion
+            ? { duration: 0.08 }
+            : { type: 'spring', stiffness: 520, damping: 31 }
+        }
         className={
           isHovered
             ? isCancel
@@ -126,19 +128,19 @@ export function RadialMenuSegment({
               ? 'fill-card stroke-danger'
               : 'fill-card stroke-border'
         }
-        strokeWidth={1}
+        strokeWidth={1.5}
       />
 
-      {/* Initial as icon */}
       <motion.text
-        x={nodePos.x}
-        y={nodePos.y}
+        x={nodePosition.x}
+        y={nodePosition.y}
         textAnchor="middle"
         dominantBaseline="central"
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.8, opacity: 0 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        animate={{ scale: isHovered && !reducedMotion ? 1.08 : 1 }}
+        transition={{ duration: 0.12 }}
+        style={{
+          transformOrigin: `${nodePosition.x}px ${nodePosition.y}px`,
+        }}
         className={`text-sm font-bold ${
           isHovered
             ? isCancel
@@ -152,32 +154,25 @@ export function RadialMenuSegment({
         {isCancel ? icon : label.charAt(0).toUpperCase()}
       </motion.text>
 
-      {/* Label background pill */}
       <motion.rect
-        x={labelPos.x - rectWidth / 2}
-        y={labelPos.y - labelHeight / 2}
-        width={rectWidth}
+        x={labelPosition.x - labelWidth / 2}
+        y={labelPosition.y - labelHeight / 2}
+        width={labelWidth}
         height={labelHeight}
-        rx={4}
-        ry={4}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2, delay: 0.05 }}
+        rx={6}
+        ry={6}
+        animate={{ opacity: isHovered ? 1 : 0.88 }}
+        transition={{ duration: reducedMotion ? 0.08 : 0.14 }}
         className="fill-card stroke-border"
         strokeWidth={1}
       />
 
-      {/* Label text */}
       <motion.text
-        x={labelPos.x}
-        y={labelPos.y}
+        x={labelPosition.x}
+        y={labelPosition.y}
         textAnchor="middle"
         dominantBaseline="central"
-        initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2, delay: 0.05 }}
         className={`text-xs font-semibold ${
           isHovered
             ? isCancel
@@ -190,6 +185,6 @@ export function RadialMenuSegment({
       >
         {label}
       </motion.text>
-    </g>
+    </motion.g>
   );
 }
