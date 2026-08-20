@@ -8,10 +8,19 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { getQuickNotesForCategory, useQuickNotesQuery } from '../../hooks/useQuickNotes';
+import {
+  DEFAULT_CATEGORY_COLORS,
+  DEFAULT_CATEGORY_ICONS,
+  SUGGESTED_CATEGORY_COLORS,
+  SUGGESTED_CATEGORY_ICONS,
+} from '../../lib/icons';
 import type { CategoryItem, QuickNote, TransactionType } from '../../lib/types';
 import { CategoryGrid } from '../CategoryGrid';
 import { DateTimeDrawer } from '../DateTimeDrawer';
-import { RadialMenu } from '../RadialMenu';
+import {
+  RadialMenu,
+  type RadialMenuCategoryPresentation,
+} from '../RadialMenu';
 import { useRadialMenu } from '../RadialMenu/useRadialMenu';
 import { TYPE_OPTIONS } from './constants';
 import {
@@ -39,6 +48,28 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+function resolveCategoryPresentation(
+  categoryGroups: Record<TransactionType, CategoryItem[]>,
+  transactionType: TransactionType,
+  categoryName: string,
+): RadialMenuCategoryPresentation {
+  const category = categoryGroups[transactionType]?.find(
+    (candidate) => candidate.name === categoryName,
+  );
+
+  return {
+    label: categoryName,
+    icon:
+      category?.icon ||
+      SUGGESTED_CATEGORY_ICONS[categoryName] ||
+      DEFAULT_CATEGORY_ICONS[transactionType],
+    color:
+      category?.color ||
+      SUGGESTED_CATEGORY_COLORS[categoryName] ||
+      DEFAULT_CATEGORY_COLORS[transactionType],
+  };
+}
+
 export function StepCategory({
   form,
   categoryGroups,
@@ -63,16 +94,18 @@ export function StepCategory({
 
   const { data: quickNotesConfig } = useQuickNotesQuery();
 
-  // Radial menu hook
   const {
     state: radialMenuState,
     handlers: radialHandlers,
     menuItems,
   } = useRadialMenu<QuickNote>({
-    getItems: (category) => getQuickNotesForCategory(quickNotesConfig, activeType, category),
+    getItems: (category) =>
+      getQuickNotesForCategory(quickNotesConfig, activeType, category),
     getItemId: (note) => note.id,
     getItemIcon: (note) => note.icon,
     getItemLabel: (note) => note.label,
+    getCategoryPresentation: (category) =>
+      resolveCategoryPresentation(categoryGroups, activeType, category),
     onSelect: (selectedNote, category) => {
       if (!selectedNote) return;
       form.setFieldValue('category', category);
@@ -236,15 +269,16 @@ export function StepCategory({
     onConfirm();
   };
 
-  const radialMenu = radialMenuState ? (
+  const radialMenu = (
     <RadialMenu
       items={menuItems}
-      anchorPosition={radialMenuState.anchorPosition}
-      dragPosition={radialMenuState.dragPosition}
-      isOpen={radialMenuState.isOpen}
+      anchorPosition={radialMenuState?.anchorPosition ?? null}
+      dragPosition={radialMenuState?.dragPosition ?? null}
+      categoryPresentation={radialMenuState?.categoryPresentation ?? null}
+      isOpen={radialMenuState?.isOpen ?? false}
       onCancel={radialHandlers.onCancel}
     />
-  ) : null;
+  );
 
   const typeTabs = (
     <StepCategoryTypeTabs
@@ -333,8 +367,7 @@ export function StepCategory({
         onConfirm={handleConfirm}
       />
 
-      {/* Radial menu for quick notes */}
-      {radialMenu && dateDrawerNested && typeof document !== 'undefined'
+      {typeof document !== 'undefined'
         ? createPortal(radialMenu, document.body)
         : radialMenu}
     </section>

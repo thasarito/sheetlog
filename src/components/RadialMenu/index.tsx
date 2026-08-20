@@ -1,6 +1,14 @@
-import { useMemo } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { DynamicIcon } from '../DynamicIcon';
 import { RadialMenuSegment } from './RadialMenuItem';
+
+export type RadialMenuPoint = { x: number; y: number };
 
 export interface RadialMenuItemData {
   id: string;
@@ -9,80 +17,148 @@ export interface RadialMenuItemData {
   shortcut?: string;
 }
 
+export interface RadialMenuCategoryPresentation {
+  label: string;
+  icon: string;
+  color: string;
+}
+
 export interface RadialMenuProps {
   items: RadialMenuItemData[];
-  anchorPosition: { x: number; y: number };
-  dragPosition: { x: number; y: number } | null;
+  anchorPosition: RadialMenuPoint | null;
+  dragPosition: RadialMenuPoint | null;
+  categoryPresentation: RadialMenuCategoryPresentation | null;
   isOpen: boolean;
   onCancel: () => void;
 }
 
 export interface ArcConfig {
-  startAngle: number;  // Start angle in degrees (where -90 = top)
-  sweepAngle: number;  // Total arc span in degrees
+  startAngle: number;
+  sweepAngle: number;
 }
 
-// ===== Interaction Thresholds =====
-const MIN_DRAG_DISTANCE = 40;   // Minimum distance from center to start selecting
-const MAX_DRAG_DISTANCE = 200;  // Maximum distance - beyond this, nothing is selected
+export interface RadialMenuSelectionRange {
+  minDragDistance: number;
+  maxDragDistance: number;
+}
 
-// ===== Layout Dimensions =====
-const RING_RADIUS = 100;        // Radius of the ring where nodes sit
-const OUTER_RADIUS = 160;       // Extended to accommodate labels
-const GAP_ANGLE = 4;            // Gap between segments in degrees
-const SVG_SIZE = OUTER_RADIUS * 2 + 80; // Extra space for labels
-const MENU_PADDING = 20;        // Padding from viewport edges
+export interface RadialMenuGeometry extends RadialMenuSelectionRange {
+  center: RadialMenuPoint;
+  ringRadius: number;
+  outerRadius: number;
+  svgSize: number;
+}
 
-// ===== Special IDs =====
+const FULL_CIRCLE_ARC: ArcConfig = { startAngle: -90, sweepAngle: 360 };
+const IDEAL_RING_RADIUS = 132;
+const MIN_RING_RADIUS = 72;
+const LABEL_GUTTER = 40;
+const GAP_ANGLE = 4;
+const CENTERED_MENU_PADDING = 16;
+const MIN_DRAG_DISTANCE = 40;
+const MAX_DRAG_DISTANCE = 200;
+const OUTER_RADIUS = 160;
+const MENU_PADDING = 20;
 const CANCEL_ITEM_ID = '__cancel__';
 
-/**
- * Find which item the drag position selects based on angular sector.
- * Supports partial arcs via arcConfig parameter.
- */
+function getViewportSize(): { width: number; height: number } {
+  if (typeof window === 'undefined') return { width: 375, height: 812 };
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+function useViewportSize() {
+  const [viewport, setViewport] = useState(getViewportSize);
+
+  useEffect(() => {
+    const updateViewport = () => setViewport(getViewportSize());
+    window.addEventListener('resize', updateViewport);
+    window.visualViewport?.addEventListener('resize', updateViewport);
+    return () => {
+      window.removeEventListener('resize', updateViewport);
+      window.visualViewport?.removeEventListener('resize', updateViewport);
+    };
+  }, []);
+
+  return viewport;
+}
+
+export function getRadialMenuGeometry(viewport: {
+  width: number;
+  height: number;
+}): RadialMenuGeometry {
+  const width = Math.max(1, viewport.width);
+  const height = Math.max(1, viewport.height);
+  const shortestSide = Math.min(width, height);
+  const availableOuterRadius = Math.max(1, shortestSide / 2 - CENTERED_MENU_PADDING);
+  const minimumRadius = Math.min(MIN_RING_RADIUS, availableOuterRadius);
+  const ringRadius = Math.min(
+    IDEAL_RING_RADIUS,
+    Math.max(minimumRadius, availableOuterRadius - LABEL_GUTTER),
+  );
+  const outerRadius = Math.max(
+    ringRadius,
+    Math.min(availableOuterRadius, ringRadius + LABEL_GUTTER),
+  );
+
+  return {
+    center: { x: width / 2, y: height / 2 },
+    ringRadius,
+    outerRadius,
+    svgSize: outerRadius * 2,
+    minDragDistance: ringRadius * 0.4,
+    maxDragDistance: ringRadius * 1.9,
+  };
+}
+
+export function projectDragPositionToCenter(
+  anchorPosition: RadialMenuPoint,
+  dragPosition: RadialMenuPoint | null,
+  center: RadialMenuPoint,
+): RadialMenuPoint | null {
+  if (!dragPosition) return null;
+  return {
+    x: center.x + dragPosition.x - anchorPosition.x,
+    y: center.y + dragPosition.y - anchorPosition.y,
+  };
+}
+
 export function findHoveredItem(
   items: RadialMenuItemData[],
-  center: { x: number; y: number },
-  dragPos: { x: number; y: number } | null,
-  arcConfig: ArcConfig = { startAngle: -90, sweepAngle: 360 }
+  center: RadialMenuPoint,
+  dragPos: RadialMenuPoint | null,
+  arcConfig: ArcConfig = FULL_CIRCLE_ARC,
+  selectionRange: RadialMenuSelectionRange = {
+    minDragDistance: MIN_DRAG_DISTANCE,
+    maxDragDistance: MAX_DRAG_DISTANCE,
+  },
 ): string | null {
   if (!dragPos || items.length === 0) return null;
 
   const dx = dragPos.x - center.x;
   const dy = dragPos.y - center.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
+  const distance = Math.hypot(dx, dy);
 
-  if (dist < MIN_DRAG_DISTANCE || dist > MAX_DRAG_DISTANCE) return null;
+  if (
+    distance < selectionRange.minDragDistance ||
+    distance > selectionRange.maxDragDistance
+  ) {
+    return null;
+  }
 
-  // Calculate angle in degrees (0 = right, counterclockwise positive in math convention)
-  const angleRad = Math.atan2(dy, dx);
-  const angleDeg = (angleRad * 180) / Math.PI;
-
-  // Check if angle is within the available arc
+  const angleDegrees = (Math.atan2(dy, dx) * 180) / Math.PI;
   const { startAngle, sweepAngle } = arcConfig;
   const endAngle = startAngle + sweepAngle;
+  let normalizedDragAngle = angleDegrees;
 
-  // Normalize drag angle to compare with arc range
-  let normalizedDragAngle = angleDeg;
-  // Adjust to be relative to startAngle
   while (normalizedDragAngle < startAngle) normalizedDragAngle += 360;
   while (normalizedDragAngle >= startAngle + 360) normalizedDragAngle -= 360;
+  if (normalizedDragAngle > endAngle) return null;
 
-  if (normalizedDragAngle > endAngle) return null; // Outside arc
-
-  // Calculate which segment within the arc
   const segmentSize = sweepAngle / items.length;
-  const angleWithinArc = normalizedDragAngle - startAngle;
-  const segmentIndex = Math.floor(angleWithinArc / segmentSize);
-
+  const segmentIndex = Math.floor((normalizedDragAngle - startAngle) / segmentSize);
   return items[Math.min(segmentIndex, items.length - 1)].id;
 }
 
-/**
- * Calculate the available arc that fits within the viewport.
- * Uses fine-grained angle sampling (1°) to maximize the usable arc.
- * Returns start angle and sweep angle for rendering partial arcs.
- */
 export function calculateAvailableArc(
   anchor: { x: number; y: number },
   viewport: { width: number; height: number },
@@ -157,18 +233,26 @@ export function calculateAvailableArc(
   return { startAngle, sweepAngle };
 }
 
-
-// Ring track component
-function RingTrack() {
+function RingTrack({
+  radius,
+  reducedMotion,
+}: {
+  radius: number;
+  reducedMotion: boolean;
+}) {
   return (
-    <circle
+    <motion.circle
       cx={0}
       cy={0}
-      r={RING_RADIUS}
+      r={radius}
       fill="none"
-      className="stroke-border/40"
+      className="stroke-border/55"
       strokeWidth={2}
-      strokeDasharray="4 4"
+      strokeDasharray="5 7"
+      initial={reducedMotion ? { opacity: 0 } : { opacity: 0, pathLength: 0 }}
+      animate={reducedMotion ? { opacity: 1 } : { opacity: 1, pathLength: 1 }}
+      exit={{ opacity: 0 }}
+      transition={reducedMotion ? { duration: 0.12 } : { duration: 0.32, ease: 'easeOut' }}
     />
   );
 }
@@ -177,113 +261,207 @@ export function RadialMenu({
   items,
   anchorPosition,
   dragPosition,
+  categoryPresentation,
   isOpen,
   onCancel,
 }: RadialMenuProps) {
-  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 375;
-  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 812;
-
-  // Add cancel item when there are items to display
+  const viewport = useViewportSize();
+  const reducedMotion = useReducedMotion() ?? false;
+  const geometry = useMemo(
+    () => getRadialMenuGeometry(viewport),
+    [viewport.height, viewport.width],
+  );
   const itemsWithCancel = useMemo(() => {
     if (items.length === 0) return items;
-    const cancelItem: RadialMenuItemData = {
-      id: CANCEL_ITEM_ID,
-      icon: '\\',
-      label: 'Cancel',
-    };
-    return [...items, cancelItem];
+    return [
+      ...items,
+      { id: CANCEL_ITEM_ID, icon: '×', label: 'Cancel' },
+    ];
   }, [items]);
-
-  const arcConfig = useMemo(
+  const projectedDragPosition = useMemo(
     () =>
-      calculateAvailableArc(
-        anchorPosition,
-        { width: viewportWidth, height: viewportHeight },
-        OUTER_RADIUS,
-        MENU_PADDING,
-      ),
-    [anchorPosition, viewportWidth, viewportHeight],
+      anchorPosition
+        ? projectDragPositionToCenter(
+            anchorPosition,
+            dragPosition,
+            geometry.center,
+          )
+        : null,
+    [anchorPosition, dragPosition, geometry.center],
   );
-
   const hoveredItemId = useMemo(
-    () => findHoveredItem(itemsWithCancel, anchorPosition, dragPosition, arcConfig),
-    [itemsWithCancel, anchorPosition, dragPosition, arcConfig]
+    () =>
+      findHoveredItem(
+        itemsWithCancel,
+        geometry.center,
+        projectedDragPosition,
+        FULL_CIRCLE_ARC,
+        geometry,
+      ),
+    [geometry, itemsWithCancel, projectedDragPosition],
   );
-
-  const segmentAngle = arcConfig.sweepAngle / itemsWithCancel.length;
-  const center = SVG_SIZE / 2;
+  const segmentAngle = itemsWithCancel.length
+    ? FULL_CIRCLE_ARC.sweepAngle / itemsWithCancel.length
+    : 0;
+  const svgCenter = geometry.svgSize / 2;
+  const centerControlSize = Math.max(58, Math.min(84, geometry.ringRadius * 0.62));
+  const entryOffset = anchorPosition
+    ? {
+        x: anchorPosition.x - geometry.center.x,
+        y: anchorPosition.y - geometry.center.y,
+      }
+    : { x: 0, y: 0 };
 
   return (
     <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
+      {isOpen &&
+        anchorPosition &&
+        categoryPresentation &&
+        itemsWithCancel.length > 0 && (
           <motion.div
-            className="fixed inset-0 z-40 bg-overlay/40"
-            initial={{ opacity: 0 }}
+            key="radial-menu-layer"
+            className="fixed inset-0 z-[70]"
+            initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              onCancel();
-            }}
-          />
-
-          {/* Tool Wheel */}
-          <div className="fixed inset-0 z-50 pointer-events-none">
-            <motion.div
-              style={{
-                position: 'absolute',
-                left: anchorPosition.x - center,
-                top: anchorPosition.y - center,
+            transition={{ duration: reducedMotion ? 0.1 : 0.16 }}
+          >
+            <motion.button
+              type="button"
+              aria-label="Cancel quick note menu"
+              className="absolute inset-0 h-full w-full touch-none cursor-default border-0 bg-overlay/40 p-0 backdrop-blur-[2px]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reducedMotion ? 0.1 : 0.18 }}
+              onPointerDown={(event: ReactPointerEvent<HTMLButtonElement>) => {
+                event.preventDefault();
+                onCancel();
               }}
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            >
-              <svg
-                width={SVG_SIZE}
-                height={SVG_SIZE}
-                viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
-                style={{ overflow: 'visible' }}
+              onClick={onCancel}
+            />
+
+            <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
+              <motion.div
+                data-testid="radial-menu-wheel"
+                className="relative isolate"
+                style={{ width: geometry.svgSize, height: geometry.svgSize }}
+                initial={
+                  reducedMotion
+                    ? { opacity: 0 }
+                    : {
+                        opacity: 0,
+                        scale: 0.72,
+                        x: entryOffset.x,
+                        y: entryOffset.y,
+                      }
+                }
+                animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+                exit={
+                  reducedMotion
+                    ? { opacity: 0 }
+                    : { opacity: 0, scale: 0.9, x: 0, y: 0 }
+                }
+                transition={
+                  reducedMotion
+                    ? { duration: 0.12 }
+                    : {
+                        type: 'spring',
+                        stiffness: 360,
+                        damping: 30,
+                        mass: 0.85,
+                      }
+                }
               >
-                <title>Radial menu</title>
-                {/* Center the wheel elements */}
-                <g transform={`translate(${center}, ${center})`}>
-                  {/* Ring track (dashed circle) */}
-                  <RingTrack />
+                <svg
+                  width={geometry.svgSize}
+                  height={geometry.svgSize}
+                  viewBox={`0 0 ${geometry.svgSize} ${geometry.svgSize}`}
+                  className="overflow-visible"
+                >
+                  <title>{categoryPresentation.label} quick notes</title>
+                  <g transform={`translate(${svgCenter}, ${svgCenter})`}>
+                    <RingTrack
+                      radius={geometry.ringRadius}
+                      reducedMotion={reducedMotion}
+                    />
 
-                  {/* Menu segments with nodes */}
-                  {itemsWithCancel.map((item, index) => {
-                    const startAngle = arcConfig.startAngle + index * segmentAngle + GAP_ANGLE / 2;
-                    const endAngle = arcConfig.startAngle + (index + 1) * segmentAngle - GAP_ANGLE / 2;
-                    return (
-                      <RadialMenuSegment
-                        key={item.id}
-                        icon={item.icon}
-                        label={item.label}
-                        shortcut={item.shortcut}
-                        startAngle={startAngle}
-                        endAngle={endAngle}
-                        innerRadius={50}
-                        outerRadius={RING_RADIUS + 30}
-                        ringRadius={RING_RADIUS}
-                        isHovered={item.id === hoveredItemId}
-                        isCancel={item.id === CANCEL_ITEM_ID}
-                      />
-                    );
-                  })}
+                    {itemsWithCancel.map((item, index) => {
+                      const startAngle =
+                        FULL_CIRCLE_ARC.startAngle +
+                        index * segmentAngle +
+                        GAP_ANGLE / 2;
+                      const endAngle =
+                        FULL_CIRCLE_ARC.startAngle +
+                        (index + 1) * segmentAngle -
+                        GAP_ANGLE / 2;
+                      return (
+                        <RadialMenuSegment
+                          key={item.id}
+                          icon={item.icon}
+                          label={item.label}
+                          startAngle={startAngle}
+                          endAngle={endAngle}
+                          outerRadius={geometry.outerRadius}
+                          ringRadius={geometry.ringRadius}
+                          isHovered={item.id === hoveredItemId}
+                          isCancel={item.id === CANCEL_ITEM_ID}
+                          animationDelay={reducedMotion ? 0 : 0.035 * index}
+                          reducedMotion={reducedMotion}
+                        />
+                      );
+                    })}
+                  </g>
+                </svg>
 
-                </g>
-              </svg>
-            </motion.div>
-          </div>
-        </>
-      )}
+                <motion.div
+                  aria-hidden="true"
+                  data-testid="radial-menu-center-icon"
+                  className="absolute flex items-center justify-center rounded-full border-2 bg-card"
+                  style={{
+                    left: svgCenter - centerControlSize / 2,
+                    top: svgCenter - centerControlSize / 2,
+                    width: centerControlSize,
+                    height: centerControlSize,
+                    color: categoryPresentation.color,
+                    borderColor: `color-mix(in srgb, ${categoryPresentation.color} 62%, hsl(var(--border)))`,
+                    backgroundColor: `color-mix(in srgb, ${categoryPresentation.color} 18%, hsl(var(--card)))`,
+                  }}
+                  initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.72 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: reducedMotion ? 1 : 0.86 }}
+                  transition={
+                    reducedMotion
+                      ? { duration: 0.1 }
+                      : {
+                          type: 'spring',
+                          stiffness: 420,
+                          damping: 27,
+                          delay: 0.08,
+                        }
+                  }
+                >
+                  <DynamicIcon
+                    name={categoryPresentation.icon}
+                    style={{
+                      width: centerControlSize * 0.43,
+                      height: centerControlSize * 0.43,
+                    }}
+                  />
+                </motion.div>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
     </AnimatePresence>
   );
 }
 
-export { MIN_DRAG_DISTANCE, MAX_DRAG_DISTANCE, CANCEL_ITEM_ID, OUTER_RADIUS, MENU_PADDING };
+export {
+  CANCEL_ITEM_ID,
+  FULL_CIRCLE_ARC,
+  MAX_DRAG_DISTANCE,
+  MENU_PADDING,
+  MIN_DRAG_DISTANCE,
+  OUTER_RADIUS,
+};
