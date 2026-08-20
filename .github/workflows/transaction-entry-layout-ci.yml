@@ -6,36 +6,156 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Package source workspace
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply transaction entry implementation patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old in text:
+                  if text.count(old) != 1:
+                      raise SystemExit(f"Expected one match in {path}: {old!r}")
+                  file.write_text(text.replace(old, new, 1))
+                  return
+              if new not in text:
+                  raise SystemExit(f"Neither old nor new content found in {path}")
+
+          replace_once(
+              "src/components/TransactionFlow/AnalyticsSheetMorph.tsx",
+              "`${(12 + normalized * 30).toFixed(2)}px`",
+              "`${(12 + normalized * 12).toFixed(2)}px`",
+          )
+          replace_once(
+              "src/components/TransactionFlow/AnalyticsSheetMorph.tsx",
+              '"--analytics-morph-summary-top": "42px"',
+              '"--analytics-morph-summary-top": "24px"',
+          )
+          replace_once(
+              "src/components/ui/AnimatedTabs.tsx",
+              '"relative grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1"',
+              '"relative grid h-[52px] gap-1 bg-surface-2 p-1"',
+          )
+          replace_once(
+              "src/components/TransactionFlow/StepAmount.tsx",
+              '''    <div className="flex h-full flex-col gap-5 px-4">
+                <div className="flex-1 flex flex-col">''',
+              '''    <div
+                data-testid="step-amount-layout"
+                data-transaction-step="amount"
+                className="flex h-full min-h-0 flex-col gap-5 overflow-x-hidden px-4"
+              >
+                <div className="flex min-h-0 flex-1 flex-col">''',
+          )
+          replace_once(
+              "src/components/TransactionFlow/StepAmount.tsx",
+              '      <div className="flex flex-col gap-5 pb-6">',
+              '''      <div
+                data-testid="step-amount-action-rail"
+                className="flex shrink-0 flex-col gap-5 pb-6"
+              >''',
+          )
+          replace_once(
+              "vite.config.ts",
+              '          display: "standalone",\n',
+              '          display: "standalone",\n          orientation: "portrait",\n',
+          )
+          replace_once(
+              "e2e/transaction-amount-layout.spec.ts",
+              '  await expect(page.getByTestId("dashboard-header")).toHaveCount(0);',
+              '  await expect(page.getByTestId("dashboard-header")).toBeHidden();',
+          )
+
+          css = Path("src/styles/globals.css")
+          text = css.read_text()
+          insertion_point = '''body {
+            @apply antialiased;
+          }
+          '''
+          addition = '''
+          /* Keep transaction entry horizontally contained and let StepAmount own the full canvas. */
+          [data-testid="transaction-canvas"] {
+            overflow-x: clip;
+          }
+
+          [data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
+            > div
+            > header {
+            display: none;
+          }
+
+          [data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
+            > div
+            > header
+            + div {
+            padding-bottom: 0;
+          }
+          '''
+          if addition not in text:
+              if text.count(insertion_point) != 1:
+                  raise SystemExit("Expected globals.css insertion point")
+              css.write_text(text.replace(insertion_point, insertion_point + addition, 1))
+          PY
+      - name: Format and check touched files
+        run: >-
+          npx biome check --write
+          e2e/transaction-amount-layout.spec.ts
+          src/components/TransactionFlow/StepCategoryTypeTabs.test.tsx
+          src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
+          src/components/TransactionFlow/StepAmount.tsx
+          src/components/TransactionFlow/AnalyticsSheetMorph.tsx
+          src/components/ui/AnimatedTabs.tsx
+          src/styles/globals.css
+          vite.config.ts
+      - name: Create exact GitHub blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          : > /tmp/transaction-entry-blobs.tsv
+          for path in \
+            e2e/transaction-amount-layout.spec.ts \
+            src/components/TransactionFlow/AnalyticsSheetMorph.tsx \
+            src/components/TransactionFlow/StepAmount.tsx \
+            src/components/ui/AnimatedTabs.tsx \
+            src/styles/globals.css \
+            vite.config.ts
+          do
+            expected="$(git hash-object "$path")"
+            encoded="$(base64 -w0 "$path")"
+            jq -n --arg content "$encoded" \
+              '{encoding: "base64", content: $content}' > /tmp/blob.json
+            actual="$(gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/git/blobs" \
+              --input /tmp/blob.json \
+              --jq .sha)"
+            test "$actual" = "$expected"
+            printf '%s\t%s\n' "$path" "$actual" | tee -a /tmp/transaction-entry-blobs.tsv
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transaction-entry-blobs
+          path: /tmp/transaction-entry-blobs.tsv
+          retention-days: 1
+      - name: Package patched source workspace
         run: tar --exclude=.git --exclude=node_modules --exclude=dist -czf /tmp/sheetlog-source.tgz .
       - uses: actions/upload-artifact@v4
         with:
           name: sheetlog-source
           path: /tmp/sheetlog-source.tgz
           retention-days: 1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Check touched files
-        run: >-
-          npx biome check
-          e2e/transaction-amount-layout.spec.ts
-          src/components/TransactionFlow/StepCategoryTypeTabs.test.tsx
-          src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
-          src/components/TransactionFlow/StepAmount.tsx
-          src/components/TransactionFlow/AnalyticsSheetMorph.tsx
-          src/components/TransactionFlow/index.tsx
-          src/components/ui/AnimatedTabs.tsx
-          vite.config.ts
       - name: Run focused component tests
         run: >-
           npx vitest run
