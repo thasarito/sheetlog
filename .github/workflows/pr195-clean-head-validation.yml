@@ -11,23 +11,104 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
+      - name: Check out main baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 377f356100b35a728ec12355f6f78d67172804d9
+          path: baseline
+          persist-credentials: false
       - name: Check out the exact cleaned PR head
         uses: actions/checkout@v4
         with:
           ref: baa47a09eb6e2c64b5dd03e55a62387ea68adcbf
+          path: head
           persist-credentials: false
-      - name: Verify exact commit
-        run: test "$(git rev-parse HEAD)" = "baa47a09eb6e2c64b5dd03e55a62387ea68adcbf"
+      - name: Verify exact commits
+        run: |
+          test "$(git -C baseline rev-parse HEAD)" = "377f356100b35a728ec12355f6f78d67172804d9"
+          test "$(git -C head rev-parse HEAD)" = "baa47a09eb6e2c64b5dd03e55a62387ea68adcbf"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - name: Full unit and component suite
-        run: npm test
+          cache-dependency-path: head/package-lock.json
+      - name: Install main baseline dependencies
+        working-directory: baseline
+        run: npm ci
+      - name: Confirm transaction-entry failures reproduce on main
+        working-directory: baseline
+        run: |
+          set +e
+          npm test -- \
+            src/components/TransactionFlow/CategoryStepSheet.test.tsx \
+            src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx \
+            2>&1 | tee /tmp/pr195-main-baseline.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "Expected documented main failures, but the baseline tests passed."
+            exit 1
+          fi
+          node <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const clean = readFileSync('/tmp/pr195-main-baseline.log', 'utf8')
+            .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+          const expected = [
+            'src/components/TransactionFlow/CategoryStepSheet.test.tsx > CategoryStepSheet > clamps content height and never accepts a null dismiss point',
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx > CategoryStepSheet keyboard state > captures an expanded-sheet search tap instead of selecting the row underneath',
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx > CategoryStepSheet keyboard state > focuses search on the first tap from collapsed and then matches the measured keyboard',
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx > CategoryStepSheet keyboard state > restores the previous state when a captured tap is cancelled',
+          ];
+          const failures = [...clean.matchAll(/^ FAIL\s+(.+)$/gm)]
+            .map((match) => match[1].trim());
+          const unique = [...new Set(failures)];
+          const missing = expected.filter((item) => !unique.includes(item));
+          const unexpected = unique.filter((item) => !expected.includes(item));
+          if (missing.length || unexpected.length || unique.length !== expected.length) {
+            console.error({ missing, unexpected, failures: unique });
+            process.exit(1);
+          }
+          console.log('The four transaction-entry failures reproduce exactly on main.');
+          NODE
+      - name: Install cleaned PR head dependencies
+        working-directory: head
+        run: npm ci
+      - name: Full unit and component suite (reject non-baseline failures)
+        working-directory: head
+        run: |
+          set +e
+          npm test 2>&1 | tee /tmp/pr195-head-tests.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "Full suite passed with no failures."
+            exit 0
+          fi
+          node <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const clean = readFileSync('/tmp/pr195-head-tests.log', 'utf8')
+            .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+          const expected = [
+            'src/components/TransactionFlow/CategoryStepSheet.test.tsx > CategoryStepSheet > clamps content height and never accepts a null dismiss point',
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx > CategoryStepSheet keyboard state > captures an expanded-sheet search tap instead of selecting the row underneath',
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx > CategoryStepSheet keyboard state > focuses search on the first tap from collapsed and then matches the measured keyboard',
+            'src/components/TransactionFlow/CategoryStepSheetKeyboard.test.tsx > CategoryStepSheet keyboard state > restores the previous state when a captured tap is cancelled',
+          ];
+          const failures = [...clean.matchAll(/^ FAIL\s+(.+)$/gm)]
+            .map((match) => match[1].trim());
+          const unique = [...new Set(failures)];
+          const missing = expected.filter((item) => !unique.includes(item));
+          const unexpected = unique.filter((item) => !expected.includes(item));
+          if (missing.length || unexpected.length || unique.length !== expected.length) {
+            console.error({ missing, unexpected, failures: unique });
+            process.exit(1);
+          }
+          console.log('Full suite has only the four failures reproduced on main.');
+          NODE
       - name: Changed-file Biome check
+        working-directory: head
         run: >-
           npx biome check
           src/lib/settingsControlCenter.ts
@@ -51,6 +132,7 @@ jobs:
           src/components/TransactionFlow/HomeDashboardCarousel.test.tsx
           e2e/home-carousel.spec.ts
       - name: TypeScript diagnostics (reject new errors)
+        working-directory: head
         run: |
           set +e
           npx tsc --noEmit 2>&1 | tee /tmp/pr195-tsc.log
@@ -79,10 +161,13 @@ jobs:
           );
           NODE
       - name: Production build
+        working-directory: head
         run: npm run build
       - name: Install Chromium
+        working-directory: head
         run: npx playwright install chromium
       - name: Mobile Control Center regression
+        working-directory: head
         env:
           VITE_DEV_MODE: "true"
           VITE_GOOGLE_MAPS_API_KEY: e2e-key
