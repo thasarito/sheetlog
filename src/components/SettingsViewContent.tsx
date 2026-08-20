@@ -351,6 +351,7 @@ export function SettingsView({
   const [itemEditor, setItemEditor] = useState<ItemEditorState | null>(null);
   const [quickNoteEditor, setQuickNoteEditor] = useState<QuickNoteEditorState | null>(null);
   const editorOriginRef = useRef<HTMLElement | null>(null);
+  const settingsScrollRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<ControlSectionId, HTMLDivElement | null>>({
     accounts: null,
     categories: null,
@@ -461,11 +462,29 @@ export function SettingsView({
 
   const positionSection = useCallback((id: ControlSectionId) => {
     window.requestAnimationFrame(() => {
+      const scrollContainer = settingsScrollRef.current;
+      const section = sectionRefs.current[id];
+      if (!scrollContainer || !section) return;
+
       const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-      sectionRefs.current[id]?.scrollIntoView({
-        behavior: reduced ? 'auto' : 'smooth',
-        block: 'start',
-      });
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const sectionRect = section.getBoundingClientRect();
+      const scrollMarginTop =
+        Number.parseFloat(window.getComputedStyle(section).scrollMarginTop) || 0;
+      const top = Math.max(
+        0,
+        scrollContainer.scrollTop + sectionRect.top - containerRect.top - scrollMarginTop,
+      );
+
+      if (typeof scrollContainer.scrollTo === 'function') {
+        scrollContainer.scrollTo({
+          behavior: reduced ? 'auto' : 'smooth',
+          top,
+        });
+        return;
+      }
+
+      scrollContainer.scrollTop = top;
     });
   }, []);
 
@@ -730,6 +749,7 @@ export function SettingsView({
       }}
     >
       <div
+        ref={settingsScrollRef}
         data-testid="settings-control-center-scroll"
         data-dashboard-scroll="true"
         className="h-full overflow-y-auto overscroll-contain pb-safe"

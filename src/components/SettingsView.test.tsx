@@ -302,17 +302,46 @@ describe('SettingsView Control Center', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
-  it('positions a newly opened section and honors reduced motion', async () => {
+  it('positions a newly opened section inside the Control Center without scrolling ancestors', async () => {
     const user = userEvent.setup();
     const scrollIntoView = vi.mocked(HTMLElement.prototype.scrollIntoView);
     renderView();
 
+    const controlCenter = screen.getByTestId('settings-control-center-scroll');
+    const accountsSection = document.getElementById('settings-section-accounts');
+    const categoriesSection = document.getElementById('settings-section-categories');
+    const scrollTo = vi.fn();
+
+    expect(accountsSection).not.toBeNull();
+    expect(categoriesSection).not.toBeNull();
+    Object.defineProperty(controlCenter, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 120,
+    });
+    Object.defineProperty(controlCenter, 'scrollTo', {
+      configurable: true,
+      value: scrollTo,
+    });
+    vi.spyOn(controlCenter, 'getBoundingClientRect').mockReturnValue({
+      top: 80,
+    } as DOMRect);
+    vi.spyOn(accountsSection as HTMLDivElement, 'getBoundingClientRect').mockReturnValue({
+      top: 260,
+    } as DOMRect);
+    vi.spyOn(categoriesSection as HTMLDivElement, 'getBoundingClientRect').mockReturnValue({
+      top: 520,
+    } as DOMRect);
+    (accountsSection as HTMLDivElement).style.scrollMarginTop = '24px';
+    (categoriesSection as HTMLDivElement).style.scrollMarginTop = '24px';
+
     await user.click(screen.getByRole('button', { name: /Accounts/ }));
     await waitFor(() =>
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' }),
+      expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 276 }),
     );
+    expect(scrollIntoView).not.toHaveBeenCalled();
 
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
     vi.mocked(window.matchMedia).mockImplementation(() => ({
       matches: true,
       addEventListener: vi.fn(),
@@ -320,8 +349,9 @@ describe('SettingsView Control Center', () => {
     }) as unknown as MediaQueryList);
     await user.click(screen.getByRole('button', { name: /Categories/ }));
     await waitFor(() =>
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' }),
+      expect(scrollTo).toHaveBeenCalledWith({ behavior: 'auto', top: 536 }),
     );
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('opens a concrete Account in a nested editor and restores row focus on dismissal', async () => {

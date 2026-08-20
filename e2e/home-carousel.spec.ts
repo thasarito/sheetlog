@@ -210,7 +210,6 @@ test.describe("Home dashboard carousel", () => {
     const transactions = page.getByLabel("Transactions, slide 2 of 3");
     const settings = page.getByLabel("Settings, slide 3 of 3");
     const categorySheet = page.getByTestId("category-step-layout");
-    const dashboardHeader = page.getByTestId("dashboard-header");
 
     await viewport.focus();
     await page.keyboard.press("ArrowRight");
@@ -315,6 +314,33 @@ test.describe("Home dashboard carousel", () => {
     await expect(accountsRegion).toBeVisible();
     await expect(categoriesRegion).toBeVisible();
 
+    const categoryDialog = page.getByRole("dialog", {
+      name: "Transaction entry",
+    });
+    const layoutTopBeforeDataExpand = await categorySheet.evaluate(
+      (element) => element.getBoundingClientRect().top,
+    );
+    const dialogTopBeforeDataExpand = await categoryDialog.evaluate(
+      (element) => element.getBoundingClientRect().top,
+    );
+    const documentScrollBeforeDataExpand = await page.evaluate(() => ({
+      documentTop: document.scrollingElement?.scrollTop ?? 0,
+      windowY: window.scrollY,
+    }));
+    await page.evaluate(() => {
+      delete document.documentElement.dataset.settingsNativeScrollIntoView;
+      const nativeScrollIntoView = HTMLElement.prototype.scrollIntoView;
+      HTMLElement.prototype.scrollIntoView = function scrollIntoView(
+        options?: boolean | ScrollIntoViewOptions,
+      ) {
+        if (this.id === "settings-section-data-sync") {
+          document.documentElement.dataset.settingsNativeScrollIntoView =
+            "true";
+        }
+        nativeScrollIntoView.call(this, options);
+      };
+    });
+
     await settings.locator("#settings-section-data-sync > button").click();
     await expect(
       settings.getByText("Transaction history", { exact: true }),
@@ -323,6 +349,35 @@ test.describe("Home dashboard carousel", () => {
     await expect(
       settings.getByRole("button", { name: "Resync transaction history" }),
     ).toBeVisible();
+    await expect(page.locator("html")).not.toHaveAttribute(
+      "data-settings-native-scroll-into-view",
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          documentTop: document.scrollingElement?.scrollTop ?? 0,
+          windowY: window.scrollY,
+        })),
+      )
+      .toEqual(documentScrollBeforeDataExpand);
+    await expect
+      .poll(() =>
+        categorySheet.evaluate(
+          (element, expectedTop) =>
+            Math.abs(element.getBoundingClientRect().top - expectedTop),
+          layoutTopBeforeDataExpand,
+        ),
+      )
+      .toBeLessThan(1);
+    await expect
+      .poll(() =>
+        categoryDialog.evaluate(
+          (element, expectedTop) =>
+            Math.abs(element.getBoundingClientRect().top - expectedTop),
+          dialogTopBeforeDataExpand,
+        ),
+      )
+      .toBeLessThan(1);
 
     await controlCenter.evaluate((element) => {
       element.scrollTop = 34;
