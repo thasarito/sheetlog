@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { CategoryGrid } from './CategoryGrid';
-import { CATEGORY_GESTURE_SELECTION_ATTRIBUTE } from './categoryGestureSelectionLock';
+import {
+  CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
+  installCategoryGestureSelectionGuard,
+} from './categoryGestureSelectionLock';
 
 function touch(identifier: number, clientX: number, clientY: number): Touch {
   return { identifier, clientX, clientY } as Touch;
@@ -31,44 +34,50 @@ afterEach(() => {
 
 it('does not select the category after a long-press drag and delayed touch click', async () => {
   vi.useFakeTimers();
+  const removeSelectionGuard = installCategoryGestureSelectionGuard(document);
   const onSelect = vi.fn();
   const onLongPress = vi.fn();
   const onDrag = vi.fn();
   const onRelease = vi.fn();
-  render(
-    <CategoryGrid
-      categories={[{ name: 'Food', icon: 'Utensils', color: '#ef4444' }]}
-      transactionType="expense"
-      onSelect={onSelect}
-      onLongPress={onLongPress}
-      onDrag={onDrag}
-      onRelease={onRelease}
-    />,
-  );
-  const tile = screen.getByRole('button', { name: 'Food' });
-  const start = touch(73, 28, 620);
 
-  dispatchTouch(tile, 'touchstart', [start], [start]);
-  expect(document.documentElement).toHaveAttribute(
-    CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
-    'true',
-  );
-  await act(async () => vi.advanceTimersByTimeAsync(400));
+  try {
+    render(
+      <CategoryGrid
+        categories={[{ name: 'Food', icon: 'Utensils', color: '#ef4444' }]}
+        transactionType="expense"
+        onSelect={onSelect}
+        onLongPress={onLongPress}
+        onDrag={onDrag}
+        onRelease={onRelease}
+      />,
+    );
+    const tile = screen.getByRole('button', { name: 'Food' });
+    const start = touch(73, 28, 620);
 
-  const moved = touch(73, 188, 420);
-  const moveEvent = dispatchTouch(document, 'touchmove', [moved], [moved]);
-  const endEvent = dispatchTouch(document, 'touchend', [], [moved]);
+    dispatchTouch(tile, 'touchstart', [start], [start]);
+    expect(document.documentElement).toHaveAttribute(
+      CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
+      'true',
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(400));
 
-  expect(moveEvent.defaultPrevented).toBe(true);
-  expect(endEvent.defaultPrevented).toBe(true);
-  expect(onDrag).toHaveBeenCalledWith({ x: 188, y: 420 });
-  expect(onRelease).toHaveBeenCalledWith({ x: 188, y: 420 });
-  expect(document.documentElement).not.toHaveAttribute(
-    CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
-  );
+    const moved = touch(73, 188, 420);
+    const moveEvent = dispatchTouch(document, 'touchmove', [moved], [moved]);
+    const endEvent = dispatchTouch(document, 'touchend', [], [moved]);
 
-  await act(async () => vi.advanceTimersByTimeAsync(300));
-  fireEvent.click(tile);
+    expect(moveEvent.defaultPrevented).toBe(true);
+    expect(endEvent.defaultPrevented).toBe(true);
+    expect(onDrag).toHaveBeenCalledWith({ x: 188, y: 420 });
+    expect(onRelease).toHaveBeenCalledWith({ x: 188, y: 420 });
+    expect(document.documentElement).not.toHaveAttribute(
+      CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
+    );
 
-  expect(onSelect).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(300));
+    fireEvent.click(tile);
+
+    expect(onSelect).not.toHaveBeenCalled();
+  } finally {
+    removeSelectionGuard();
+  }
 });
