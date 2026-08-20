@@ -52,10 +52,7 @@ describe("ThemeSetting", () => {
     await waitFor(() =>
       expect(document.documentElement).toHaveAttribute("data-color-mode", "dark"),
     );
-    expect(screen.getByRole("radio", { name: "Dark" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
   });
 
   it("keeps consecutive preset and mode updates together", async () => {
