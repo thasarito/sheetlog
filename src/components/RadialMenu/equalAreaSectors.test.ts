@@ -86,6 +86,27 @@ describe('equal-area warped radial sectors', () => {
     );
   });
 
+  it('lets a cramped visible node override the wider center dead zone', () => {
+    const fourItems = items.slice(0, 4);
+    const anchor = { x: 322.01, y: 528.2 };
+    const layout = createEqualAreaRadialLayout(
+      fourItems,
+      anchor,
+      fullscreenBounds,
+    );
+    const crampedSector = layout.sectors[2];
+    const distanceFromAnchor = Math.hypot(
+      crampedSector.labelPoint.x - anchor.x,
+      crampedSector.labelPoint.y - anchor.y,
+    );
+
+    expect(distanceFromAnchor).toBeLessThan(layout.deadZoneRadius);
+    expect(distanceFromAnchor).toBeGreaterThan(layout.activationDistance);
+    expect(findEqualAreaSector(layout, crampedSector.labelPoint)?.id).toBe(
+      crampedSector.id,
+    );
+  });
+
   it('assigns the exact leftward seam to the first warped sector', () => {
     const anchor = { x: 46, y: 318 };
     const layout = createEqualAreaRadialLayout(items, anchor, fullscreenBounds);
