@@ -64,30 +64,38 @@ jobs:
                       'await expect(page.getByTestId("dashboard-header")).toHaveCount(0);',
                       'await expect(page.getByTestId("dashboard-header")).toBeHidden();',
                   ),
-                  (
-                      '''  await page.setViewportSize({ width: 390, height: 844 });
-          await page.goto("/app");''',
-                      '''  await page.setViewportSize({ width: 390, height: 844 });
-          await page.addInitScript(() => {
-            window.localStorage.clear();
-            window.localStorage.setItem("sheetlog.mock.transactions", "[]");
-          });
-          await page.emulateMedia({ reducedMotion: "reduce" });
-          await page.goto("/app");
-          await page.addStyleTag({
-            content: `
-              *, *::before, *::after {
-                animation-delay: 0s !important;
-                animation-duration: 0s !important;
-                caret-color: transparent !important;
-                transition-delay: 0s !important;
-                transition-duration: 0s !important;
-              }
-            `,
-          });''',
-                  ),
               ],
           )
+
+          e2e = Path("e2e/transaction-amount-layout.spec.ts")
+          text = e2e.read_text()
+          if 'window.localStorage.setItem("sheetlog.mock.transactions", "[]")' not in text:
+              target = '  await page.goto("/app");'
+              setup = "\n".join(
+                  [
+                      "  await page.addInitScript(() => {",
+                      "    window.localStorage.clear();",
+                      '    window.localStorage.setItem("sheetlog.mock.transactions", "[]");',
+                      "  });",
+                      '  await page.emulateMedia({ reducedMotion: "reduce" });',
+                      '  await page.goto("/app");',
+                      "  await page.addStyleTag({",
+                      "    content: `",
+                      "      *, *::before, *::after {",
+                      "        animation-delay: 0s !important;",
+                      "        animation-duration: 0s !important;",
+                      "        caret-color: transparent !important;",
+                      "        transition-delay: 0s !important;",
+                      "        transition-duration: 0s !important;",
+                      "      }",
+                      "    `,",
+                      "  });",
+                  ]
+              )
+              if text.count(target) != 1:
+                  raise SystemExit("Expected one app navigation in amount layout test")
+              text = text.replace(target, setup, 1)
+              e2e.write_text(text)
 
           css = Path("src/styles/globals.css")
           text = css.read_text()
