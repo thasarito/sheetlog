@@ -6,6 +6,7 @@ import {
 import { RouterProvider } from '@tanstack/react-router';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { installCategoryGestureSelectionGuard } from './components/categoryGestureSelectionLock';
 import { IS_DEV_MODE, MOCK_ONBOARDING_STATE } from './lib/mock';
 import { setOnboardingState } from './lib/settings';
 import { router } from './router';
@@ -29,6 +30,13 @@ const rootElement = document.getElementById('root');
 
 if (!rootElement) {
   throw new Error('Missing root element');
+}
+
+const removeCategoryGestureSelectionGuard =
+  installCategoryGestureSelectionGuard(document);
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(removeCategoryGestureSelectionGuard);
 }
 
 async function startApplication(container: HTMLElement): Promise<void> {
