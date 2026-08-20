@@ -10,6 +10,11 @@ export interface ConstellationBoundary {
   path: string;
 }
 
+export interface ConstellationPaintIds {
+  spotlight: string;
+  trail: string;
+}
+
 const CONSTELLATION_ACCENTS = [
   'hsl(var(--chart-1))',
   'hsl(var(--chart-2))',
@@ -20,6 +25,16 @@ const CONSTELLATION_ACCENTS = [
 
 function formatCoordinate(value: number): string {
   return Number(value.toFixed(2)).toString();
+}
+
+export function createConstellationPaintIds(
+  reactId: string,
+): ConstellationPaintIds {
+  const instanceId = reactId.replace(/[^a-zA-Z0-9_-]/g, '') || 'default';
+  return {
+    spotlight: `radial-menu-constellation-spotlight-${instanceId}`,
+    trail: `radial-menu-constellation-trail-${instanceId}`,
+  };
 }
 
 export function createConstellationBoundary(
