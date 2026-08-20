@@ -13,7 +13,7 @@ export function SettingsView(props: SettingsViewProps) {
   const [themeOpen, setThemeOpen] = useState(false);
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="settings-view-shell relative h-full min-h-0">
       <SettingsViewContent {...props} />
       <div
         data-home-carousel-swipe-lock="true"

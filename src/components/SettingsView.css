@@ -1,5 +1,5 @@
 /* Normalize fixed Settings leading icons without overriding user-selected account/category colors. */
-[data-testid="settings-view"]
+.settings-view-shell
   :is(
     section[aria-label="Workspace health"] > div > span:first-child,
     #settings-section-data-sync-content > div > button:first-child > span:first-child,
