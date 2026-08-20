@@ -1,5 +1,5 @@
 diff --git a/e2e/home-carousel.spec.ts b/e2e/home-carousel.spec.ts
-index 41bedce..97a896a 100644
+index 41bedce..660f674 100644
 --- a/e2e/home-carousel.spec.ts
 +++ b/e2e/home-carousel.spec.ts
 @@ -210,7 +210,6 @@ test.describe("Home dashboard carousel", () => {
@@ -61,19 +61,19 @@ index 41bedce..97a896a 100644
 +      .toEqual(documentScrollBeforeDataExpand);
 +    await expect
 +      .poll(() =>
-+        categorySheet.evaluate((element) =>
-+          Math.abs(
-+            element.getBoundingClientRect().top - layoutTopBeforeDataExpand,
-+          ),
++        categorySheet.evaluate(
++          (element, expectedTop) =>
++            Math.abs(element.getBoundingClientRect().top - expectedTop),
++          layoutTopBeforeDataExpand,
 +        ),
 +      )
 +      .toBeLessThan(1);
 +    await expect
 +      .poll(() =>
-+        categoryDialog.evaluate((element) =>
-+          Math.abs(
-+            element.getBoundingClientRect().top - dialogTopBeforeDataExpand,
-+          ),
++        categoryDialog.evaluate(
++          (element, expectedTop) =>
++            Math.abs(element.getBoundingClientRect().top - expectedTop),
++          dialogTopBeforeDataExpand,
 +        ),
 +      )
 +      .toBeLessThan(1);
