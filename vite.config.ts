@@ -10,6 +10,22 @@ import {
 } from "./src/theme/themeConfig";
 
 const DEFAULT_PWA_COLOR = THEMES[DEFAULT_THEME_ID].modes.light.background;
+const DEFAULT_CLOUDFLARE_PRODUCTION_BRANCH = "main";
+
+export function isCloudflarePagesPreview(
+  environment: Record<string, string | undefined>,
+): boolean {
+  const branch = environment.CF_PAGES_BRANCH;
+  const productionBranch =
+    environment.CF_PAGES_PRODUCTION_BRANCH ||
+    DEFAULT_CLOUDFLARE_PRODUCTION_BRANCH;
+
+  return (
+    environment.CF_PAGES === "1" &&
+    Boolean(branch) &&
+    branch !== productionBranch
+  );
+}
 
 function sheetlogThemeBootstrap(): Plugin {
   return {
@@ -25,11 +41,20 @@ function sheetlogThemeBootstrap(): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  const buildEnvironment = { ...env, ...process.env };
   const base = env.VITE_BASE_PATH || "/";
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+  const mockModeEnabled =
+    buildEnvironment.VITE_DEV_MODE === "true" ||
+    isCloudflarePagesPreview(buildEnvironment);
 
   return {
     base: normalizedBase,
+    define: {
+      "import.meta.env.VITE_DEV_MODE": JSON.stringify(
+        mockModeEnabled ? "true" : "false",
+      ),
+    },
     plugins: [
       sheetlogThemeBootstrap(),
       react(),
