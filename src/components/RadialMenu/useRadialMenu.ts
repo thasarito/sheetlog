@@ -16,6 +16,7 @@ export interface RadialMenuState {
   dragPosition: RadialMenuPoint | null;
   bounds: RadialMenuBounds;
   categoryPresentation: RadialMenuCategoryPresentation;
+  menuItems: RadialMenuItemData[];
 }
 
 export interface UseRadialMenuOptions<T> {
@@ -87,9 +88,20 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
           icon: 'Wallet',
           color: 'hsl(var(--primary))',
         },
+        menuItems: items.map((item) => ({
+          id: getItemId(item),
+          icon: getItemIcon(item),
+          label: getItemLabel(item),
+        })),
       });
     },
-    [getCategoryPresentation, getItems],
+    [
+      getCategoryPresentation,
+      getItemIcon,
+      getItemId,
+      getItemLabel,
+      getItems,
+    ],
   );
 
   const handleDrag = useCallback((position: RadialMenuPoint) => {
@@ -103,16 +115,11 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       if (!state) return;
 
       const items = getItems(state.category);
-      const menuItems: RadialMenuItemData[] = [
-        ...items.map((item) => ({
-          id: getItemId(item),
-          icon: getItemIcon(item),
-          label: getItemLabel(item),
-        })),
-        { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel' },
-      ];
       const layout = createEqualAreaRadialLayout(
-        menuItems,
+        [
+          ...state.menuItems,
+          { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel' },
+        ],
         state.anchorPosition,
         state.bounds,
       );
@@ -128,27 +135,12 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       onSelect?.(selectedItem, state.category);
       setState(null);
     },
-    [
-      getItemIcon,
-      getItemId,
-      getItemLabel,
-      getItems,
-      onSelect,
-      state,
-    ],
+    [getItemId, getItems, onSelect, state],
   );
 
   const handleCancel = useCallback(() => {
     setState(null);
   }, []);
-
-  const menuItems: RadialMenuItemData[] = state
-    ? getItems(state.category).map((item) => ({
-        id: getItemId(item),
-        icon: getItemIcon(item),
-        label: getItemLabel(item),
-      }))
-    : [];
 
   return {
     state,
@@ -158,6 +150,6 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       onRelease: handleRelease,
       onCancel: handleCancel,
     },
-    menuItems,
+    menuItems: state?.menuItems ?? [],
   };
 }
