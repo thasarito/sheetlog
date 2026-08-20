@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { CategoryGrid } from './CategoryGrid';
+import { CATEGORY_GESTURE_SELECTION_ATTRIBUTE } from './categoryGestureSelectionLock';
 
 function touch(identifier: number, clientX: number, clientY: number): Touch {
   return { identifier, clientX, clientY } as Touch;
@@ -23,6 +24,9 @@ function dispatchTouch(
 
 afterEach(() => {
   vi.useRealTimers();
+  document.documentElement.removeAttribute(
+    CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
+  );
 });
 
 it('does not select the category after a long-press drag and delayed touch click', async () => {
@@ -45,6 +49,10 @@ it('does not select the category after a long-press drag and delayed touch click
   const start = touch(73, 28, 620);
 
   dispatchTouch(tile, 'touchstart', [start], [start]);
+  expect(document.documentElement).toHaveAttribute(
+    CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
+    'true',
+  );
   await act(async () => vi.advanceTimersByTimeAsync(400));
 
   const moved = touch(73, 188, 420);
@@ -55,6 +63,9 @@ it('does not select the category after a long-press drag and delayed touch click
   expect(endEvent.defaultPrevented).toBe(true);
   expect(onDrag).toHaveBeenCalledWith({ x: 188, y: 420 });
   expect(onRelease).toHaveBeenCalledWith({ x: 188, y: 420 });
+  expect(document.documentElement).not.toHaveAttribute(
+    CATEGORY_GESTURE_SELECTION_ATTRIBUTE,
+  );
 
   await act(async () => vi.advanceTimersByTimeAsync(300));
   fireEvent.click(tile);
