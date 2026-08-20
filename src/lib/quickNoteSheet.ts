@@ -20,6 +20,7 @@ export const QUICK_NOTE_HEADERS = [
   'Currency',
   'Account',
   'For',
+  'Color',
 ] as const;
 
 const TRANSACTION_TYPES: readonly TransactionType[] = ['expense', 'income', 'transfer'];
@@ -155,6 +156,15 @@ function addOptionalField<Key extends keyof Pick<
   }
 }
 
+function addOptionalColor(note: QuickNote, value: unknown, rowNumber: number): void {
+  const color = cellString(value);
+  if (color.length === 0) return;
+  if (!/^#[0-9a-f]{6}$/i.test(color)) {
+    rowError(rowNumber, 'Color must be a six-digit hex color such as #3b82f6.');
+  }
+  note.color = color;
+}
+
 export function serializeQuickNoteRows(config: QuickNotesConfig): string[][] {
   const rows: string[][] = [];
   const targets = Object.entries(config).sort(([left], [right]) =>
@@ -168,6 +178,7 @@ export function serializeQuickNoteRows(config: QuickNotesConfig): string[][] {
         target.type,
         target.category,
         'empty',
+        '',
         '',
         '',
         '',
@@ -195,6 +206,7 @@ export function serializeQuickNoteRows(config: QuickNotesConfig): string[][] {
         note.currency ?? '',
         note.account ?? '',
         note.forValue ?? '',
+        note.color ?? '',
       ]);
     });
   }
@@ -224,7 +236,7 @@ export function parseQuickNoteRows(rows: readonly (readonly unknown[])[]): Quick
 
     if (entry === 'empty') {
       if (row.slice(4, QUICK_NOTE_HEADERS.length).some((value) => cellString(value).length > 0)) {
-        rowError(rowNumber, 'An empty entry requires columns E through M to be blank.');
+        rowError(rowNumber, 'An empty entry requires columns E through N to be blank.');
       }
       if (parsedTarget.notes.length > 0) {
         rowError(rowNumber, 'A target cannot mix empty and note entries.');
@@ -262,6 +274,7 @@ export function parseQuickNoteRows(rows: readonly (readonly unknown[])[]): Quick
     addOptionalField(note, 'currency', row[10]);
     addOptionalField(note, 'account', row[11]);
     addOptionalField(note, 'forValue', row[12]);
+    addOptionalColor(note, row[13], rowNumber);
 
     parsedTarget.noteIds.add(id);
     parsedTarget.positions.add(position);
