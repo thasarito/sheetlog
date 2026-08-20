@@ -18,7 +18,8 @@ body {
 }
 
 /* Counter iOS visual-viewport panning while the software keyboard is open. */
-main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"]) {
+html[data-transaction-viewport-panned="true"]
+  main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"]) {
   transform: translate3d(
     0,
     var(--transaction-visual-viewport-offset),
