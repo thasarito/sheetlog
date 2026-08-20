@@ -20,18 +20,27 @@ describe("ThemeSetting", () => {
     document.documentElement.removeAttribute("data-color-mode");
   });
 
-  it("switches and persists a preset", async () => {
+  it("lists, switches, and persists every preset family", async () => {
     renderSetting();
 
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "SheetLog",
+      "Dracula",
+      "Monokai",
+      "Wise",
+      "X",
+      "Pinterest",
+    ]);
+
     fireEvent.change(screen.getByLabelText("Theme"), {
-      target: { value: "dracula" },
+      target: { value: "pinterest" },
     });
 
     await waitFor(() =>
-      expect(document.documentElement).toHaveAttribute("data-theme", "dracula"),
+      expect(document.documentElement).toHaveAttribute("data-theme", "pinterest"),
     );
     expect(JSON.parse(window.localStorage.getItem(THEME_STORAGE_KEY) ?? "{}")).toMatchObject({
-      themeId: "dracula",
+      themeId: "pinterest",
     });
   });
 
