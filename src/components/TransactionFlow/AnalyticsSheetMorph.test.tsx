@@ -163,7 +163,7 @@ describe("AnalyticsSheetMorph", () => {
     await waitFor(() => {
       expect(root).toHaveStyle({ "--category-sheet-progress": "1.0000" });
       expect(root).toHaveStyle({
-        "--analytics-morph-summary-top": "24.00px",
+        "--analytics-morph-summary-top": "16.00px",
       });
     });
     expect(detail.inert).toBe(true);
@@ -210,7 +210,7 @@ describe("AnalyticsSheetMorph", () => {
         "--analytics-morph-summary-opacity": "1.0000",
       });
       expect(root).toHaveStyle({
-        "--analytics-morph-summary-top": "24.00px",
+        "--analytics-morph-summary-top": "16.00px",
       });
       expect(root).toHaveAttribute("data-category-sheet-state", "expanded");
       expect(scroll.scrollTop).toBe(0);

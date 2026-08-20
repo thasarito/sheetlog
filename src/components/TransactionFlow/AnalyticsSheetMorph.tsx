@@ -158,7 +158,7 @@ function setProgressVariables(root: HTMLElement, progress: number) {
   );
   root.style.setProperty(
     "--analytics-morph-summary-top",
-    `${(12 + normalized * 30).toFixed(2)}px`,
+    `${(12 + normalized * 4).toFixed(2)}px`,
   );
   root.style.setProperty(
     "--analytics-morph-amount-size",
@@ -594,7 +594,7 @@ export function AnalyticsSheetMorph({
           "--category-sheet-progress": "1",
           "--analytics-morph-detail-opacity": "0",
           "--analytics-morph-detail-offset": "26px",
-          "--analytics-morph-summary-top": "42px",
+          "--analytics-morph-summary-top": "16px",
           "--analytics-morph-amount-size": "50px",
           "--analytics-morph-metrics-opacity": "1",
           "--analytics-morph-metrics-offset": "0px",

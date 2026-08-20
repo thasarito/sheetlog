@@ -85,7 +85,7 @@ export function AnimatedTabs<T extends string>({
         data-testid="animated-tabs-compact"
         data-animated-tabs-variant="compact"
         className={cn(
-          "relative grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1",
+          "relative grid h-[52px] gap-1 bg-surface-2 p-1",
           className,
         )}
         style={{

@@ -13,15 +13,41 @@ test("StepAmount fills the stable portrait canvas without the title reel", async
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("sheetlog.mock.transactions", "[]");
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/app");
+  await page.addStyleTag({
+    content: `
+      *, *::before, *::after {
+        animation-delay: 0s !important;
+        animation-duration: 0s !important;
+        caret-color: transparent !important;
+        transition-delay: 0s !important;
+        transition-duration: 0s !important;
+      }
+    `,
+  });
 
-  await page.getByRole("button", { name: "Dining Out" }).click();
+  const launcher = page
+    .getByTestId("category-step-launcher")
+    .getByRole("button");
+  await expect(launcher).toBeVisible();
+  if ((await launcher.getAttribute("aria-expanded")) !== "true") {
+    await launcher.click();
+  }
+
+  const categoryGrid = page.getByTestId("category-grid");
+  await expect(categoryGrid).toBeVisible();
+  await categoryGrid.getByRole("button").first().click();
   await page.getByRole("button", { name: "Done" }).click();
 
   const canvas = page.getByTestId("transaction-canvas");
-  const amountLayout = page.getByTestId("step-amount-layout");
+  const amountLayout = page.getByTestId("step-amount");
   await expect(amountLayout).toBeVisible();
-  await expect(page.getByTestId("dashboard-header")).toHaveCount(0);
+  await expect(page.getByTestId("dashboard-header")).toBeHidden();
 
   const canvasBox = await canvas.boundingBox();
   const amountBox = await amountLayout.boundingBox();

@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -18,154 +18,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-
-      - name: Apply focused hardening patch
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          def rewrite(path: str, changes: list[tuple[str, str]]) -> None:
-              file = Path(path)
-              text = file.read_text()
-              for old, new in changes:
-                  if old in text:
-                      text = text.replace(old, new)
-                  elif new not in text:
-                      raise SystemExit(f"Neither old nor new content found in {path}: {old!r}")
-              file.write_text(text)
-
-          rewrite(
-              "src/components/TransactionFlow/AnalyticsSheetMorph.tsx",
-              [
-                  ("`${(12 + normalized * 30).toFixed(2)}px`", "`${(12 + normalized * 4).toFixed(2)}px`"),
-                  ('"--analytics-morph-summary-top": "42px"', '"--analytics-morph-summary-top": "16px"'),
-              ],
-          )
-          rewrite(
-              "src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx",
-              [
-                  ('"--analytics-morph-summary-top": "24.00px"', '"--analytics-morph-summary-top": "16.00px"'),
-              ],
-          )
-          rewrite(
-              "src/components/ui/AnimatedTabs.tsx",
-              [
-                  (
-                      '"relative grid h-[52px] gap-1 rounded-2xl border border-border bg-surface-2 p-1"',
-                      '"relative grid h-[52px] gap-1 bg-surface-2 p-1"',
-                  ),
-              ],
-          )
-          rewrite(
-              "e2e/transaction-amount-layout.spec.ts",
-              [
-                  ('page.getByTestId("step-amount-layout")', 'page.getByTestId("step-amount")'),
-                  (
-                      'await expect(page.getByTestId("dashboard-header")).toHaveCount(0);',
-                      'await expect(page.getByTestId("dashboard-header")).toBeHidden();',
-                  ),
-              ],
-          )
-
-          e2e = Path("e2e/transaction-amount-layout.spec.ts")
-          text = e2e.read_text()
-          if 'window.localStorage.setItem("sheetlog.mock.transactions", "[]")' not in text:
-              target = '  await page.goto("/app");'
-              setup = "\n".join(
-                  [
-                      "  await page.addInitScript(() => {",
-                      "    window.localStorage.clear();",
-                      '    window.localStorage.setItem("sheetlog.mock.transactions", "[]");',
-                      "  });",
-                      '  await page.emulateMedia({ reducedMotion: "reduce" });',
-                      '  await page.goto("/app");',
-                      "  await page.addStyleTag({",
-                      "    content: `",
-                      "      *, *::before, *::after {",
-                      "        animation-delay: 0s !important;",
-                      "        animation-duration: 0s !important;",
-                      "        caret-color: transparent !important;",
-                      "        transition-delay: 0s !important;",
-                      "        transition-duration: 0s !important;",
-                      "      }",
-                      "    `,",
-                      "  });",
-                  ]
-              )
-              if text.count(target) != 1:
-                  raise SystemExit("Expected one app navigation in amount layout test")
-              text = text.replace(target, setup, 1)
-              e2e.write_text(text)
-
-          css = Path("src/styles/globals.css")
-          text = css.read_text()
-          for block in (
-              '''/* Let the morphed analytics summary sit closer to the title reel as the sheet expands. */
-          [data-analytics-sheet-morph] .analytics-today-morph {
-            margin-top: calc(0px - var(--analytics-morph-detail-offset, 0px));
-          }
-
-          ''',
-              '''/* The transaction type control should read as tabs, not a bordered card. */
-          [data-testid="category-step-type-tabs"]
-            [data-animated-tabs-variant="compact"] {
-            border: 0;
-            border-radius: 0;
-          }
-
-          ''',
-          ):
-              text = text.replace(block, "")
-
-          containment = '''main[data-testid="transaction-canvas"] {
-            overflow-x: clip;
-          }
-
-          '''
-          anchor = "/* The amount step owns the full transaction canvas instead of sharing the title reel. */\n"
-          if containment not in text:
-              if anchor not in text:
-                  raise SystemExit("Expected transaction canvas CSS anchor")
-              text = text.replace(anchor, containment + anchor, 1)
-          css.write_text(text)
-          PY
-
-      - name: Format and check touched files
+      - name: Check changed transaction layout files
         run: >-
-          npx biome check --write
+          npx biome check
           e2e/transaction-amount-layout.spec.ts
-          src/components/TransactionFlow/StepCategoryTypeTabs.test.tsx
           src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
           src/components/TransactionFlow/AnalyticsSheetMorph.tsx
+          src/components/TransactionFlow/StepCategoryTypeTabs.test.tsx
           src/components/ui/AnimatedTabs.tsx
           src/styles/globals.css
-
-      - name: Create exact GitHub blobs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          : > /tmp/transaction-entry-blobs.tsv
-          for path in \
-            e2e/transaction-amount-layout.spec.ts \
-            src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx \
-            src/components/TransactionFlow/AnalyticsSheetMorph.tsx \
-            src/components/ui/AnimatedTabs.tsx \
-            src/styles/globals.css
-          do
-            expected="$(git hash-object "$path")"
-            encoded="$(base64 -w0 "$path")"
-            jq -n --arg content "$encoded" '{encoding: "base64", content: $content}' > /tmp/blob.json
-            actual="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input /tmp/blob.json --jq .sha)"
-            test "$actual" = "$expected"
-            printf '%s\t%s\n' "$path" "$actual" | tee -a /tmp/transaction-entry-blobs.tsv
-          done
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: transaction-entry-blobs
-          path: /tmp/transaction-entry-blobs.tsv
-          retention-days: 1
-
       - name: Run focused transaction layout tests
         run: >-
           npx vitest run
@@ -173,13 +34,9 @@ jobs:
           src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
           src/components/TransactionFlow/StepAmount.test.tsx
           src/components/TransactionFlow/useStableTransactionHeight.test.tsx
-
-      - name: Run unit test suite (baseline advisory)
-        continue-on-error: true
+      - name: Run unit test suite
         run: npm test
-
       - run: npm run build
-
       - name: Verify portrait-only PWA manifest
         run: >-
           node --input-type=module -e
@@ -189,32 +46,15 @@ jobs:
           assert.ok(path, 'Expected a generated PWA manifest');
           const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
           assert.equal(manifest.orientation, 'portrait');"
-
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-
       - name: Run amount layout browser test
-        run: |
-          set -o pipefail
-          npx playwright test e2e/transaction-amount-layout.spec.ts \
-            --project="Mobile Chrome" 2>&1 | tee /tmp/playwright-output.log
-
-      - name: Upload browser diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: transaction-layout-browser-diagnostics
-          path: |
-            /tmp/playwright-output.log
-            playwright-report
-            test-results
-          if-no-files-found: ignore
-          retention-days: 1
-
+        run: >-
+          npx playwright test e2e/transaction-amount-layout.spec.ts
+          --project="Mobile Chrome"
       - name: Run repository lint (baseline advisory)
         continue-on-error: true
         run: npm run lint
-
       - name: Run repository typecheck (baseline advisory)
         continue-on-error: true
         run: npx tsc --noEmit
