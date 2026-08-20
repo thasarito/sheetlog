@@ -1,0 +1,32 @@
+name: Settings Appearance Card Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/settings-control-center-navigation
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Appearance placement regression is red
+        run: |
+          set +e
+          npm test -- src/components/SettingsView.test.tsx --reporter=verbose 2>&1 | tee /tmp/settings-appearance-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F "keeps Appearance controls always visible between Categories and analytics preferences" /tmp/settings-appearance-red.log
+          grep -F "Appearance" /tmp/settings-appearance-red.log
