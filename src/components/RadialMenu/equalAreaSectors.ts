@@ -33,6 +33,7 @@ export interface EqualAreaRadialLayout {
   anchor: RadialMenuPoint;
   bounds: RadialMenuBounds;
   safeBounds: RadialMenuSafeBounds;
+  activationDistance: number;
   deadZoneRadius: number;
   nodeHitRadius: number;
   sectors: EqualAreaRadialSector[];
@@ -41,6 +42,7 @@ export interface EqualAreaRadialLayout {
 export interface EqualAreaRadialOptions {
   padding?: number;
   sampleCount?: number;
+  activationDistance?: number;
   deadZoneRadius?: number;
   nodeHitRadius?: number;
   labelProgress?: number;
@@ -56,6 +58,7 @@ export const CANCEL_ITEM_ID = '__cancel__';
 
 const DEFAULT_PADDING = 12;
 const DEFAULT_SAMPLE_COUNT = 720;
+const DEFAULT_ACTIVATION_DISTANCE = 12;
 const DEFAULT_DEAD_ZONE_RADIUS = 24;
 const DEFAULT_NODE_HIT_RADIUS = 34;
 const DEFAULT_LABEL_PROGRESS = 0.62;
@@ -226,8 +229,12 @@ export function createEqualAreaRadialLayout(
     72,
     Math.floor(options.sampleCount ?? DEFAULT_SAMPLE_COUNT),
   );
-  const deadZoneRadius = Math.max(
+  const activationDistance = Math.max(
     0,
+    options.activationDistance ?? DEFAULT_ACTIVATION_DISTANCE,
+  );
+  const deadZoneRadius = Math.max(
+    activationDistance,
     options.deadZoneRadius ?? DEFAULT_DEAD_ZONE_RADIUS,
   );
   const nodeHitRadius = Math.max(
@@ -254,6 +261,7 @@ export function createEqualAreaRadialLayout(
       anchor,
       bounds,
       safeBounds,
+      activationDistance,
       deadZoneRadius,
       nodeHitRadius,
       sectors: [],
@@ -358,6 +366,7 @@ export function createEqualAreaRadialLayout(
     anchor,
     bounds,
     safeBounds,
+    activationDistance,
     deadZoneRadius,
     nodeHitRadius,
     sectors,
@@ -409,10 +418,13 @@ export function findEqualAreaSector(
 
   const dx = dragPosition.x - layout.anchor.x;
   const dy = dragPosition.y - layout.anchor.y;
-  if (Math.hypot(dx, dy) < layout.deadZoneRadius) return null;
+  const dragDistance = Math.hypot(dx, dy);
+  if (dragDistance < layout.activationDistance) return null;
 
   const visibleNode = findNearestVisibleNode(layout, dragPosition);
   if (visibleNode) return visibleNode;
+
+  if (dragDistance < layout.deadZoneRadius) return null;
 
   const angle = normalizeAngle(Math.atan2(dy, dx));
   for (const sector of layout.sectors) {
