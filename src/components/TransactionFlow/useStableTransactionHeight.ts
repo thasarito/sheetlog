@@ -112,10 +112,10 @@ export function useStableTransactionHeight() {
         keyboardInset > KEYBOARD_INSET_THRESHOLD || viewportContracted;
       const editableFocused = isEditableElement(document.activeElement);
 
-      if (editableFocused && (keyboardActive || viewportTop > 0.5)) {
-        keyboardPanSession = true;
-      } else if (!keyboardActive && viewportTop <= 0.5) {
+      if (!keyboardActive) {
         keyboardPanSession = false;
+      } else if (editableFocused) {
+        keyboardPanSession = true;
       }
 
       setVisualViewportOffset(keyboardPanSession ? viewportTop : 0);
