@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,8 @@ import type {
   SettingsReconciliationStatus,
 } from '../lib/settingsReconciliation';
 import type { SettingsSyncState } from '../lib/settingsSync';
-import type { OnboardingState } from '../lib/types';
+import type { OnboardingState, QuickNotesConfig } from '../lib/types';
+import { ThemeProvider } from '../theme';
 import { SettingsView } from './SettingsView';
 import type { AnalyticsSyncController } from './TransactionFlow/useAnalyticsSync';
 
@@ -44,56 +45,72 @@ const analyticsSync: AnalyticsSyncController = {
   resync: vi.fn(),
 };
 
-const mocks = vi.hoisted(() => ({
-  isOnline: true,
-  onboarding: {
-    sheetFolderId: null,
-    accounts: [{ name: 'Wallet', icon: 'Wallet', color: '#34C759' }],
-    accountsConfirmed: true,
-    categories: {
-      expense: [{ name: 'Food', icon: 'Utensils', color: '#FF9500' }],
-      income: [{ name: 'Salary', icon: 'Banknote', color: '#34C759' }],
-      transfer: [{ name: 'Transfer', icon: 'ArrowRightLeft', color: '#007AFF' }],
+const mocks = vi.hoisted(() => {
+  const mutation = () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+  });
+  return {
+    isOnline: true,
+    onboarding: {
+      sheetFolderId: null,
+      accounts: [{ name: 'Wallet', icon: 'Wallet', color: '#22c55e' }],
+      accountsConfirmed: true,
+      categories: {
+        expense: [{ name: 'Food', icon: 'Utensils', color: '#f97316' }],
+        income: [{ name: 'Salary', icon: 'Banknote', color: '#22c55e' }],
+        transfer: [{ name: 'Move', icon: 'ArrowLeftRight', color: '#3b82f6' }],
+      },
+      categoriesConfirmed: true,
+      analyticsBaseCurrency: 'THB',
+      analyticsBaseCurrencyUpdatedAt: '2026-08-16T12:00:00.000Z',
+      analyticsBigSpendingThreshold: {
+        amount: null,
+        currency: 'THB',
+        updatedAt: '2026-08-16T12:00:00.000Z',
+      },
+    } as OnboardingState,
+    sync: {
+      isSyncing: false,
+      isUpdating: false,
+      refreshSettings: vi.fn(),
+      settingsSyncResult: undefined as SettingsReconciliationResult | undefined,
+      settingsSyncState: null as SettingsSyncState | null,
+      settingsSyncStatus: 'synced' as SettingsReconciliationStatus,
+      settingsSyncError: null as Error | null,
+      hasLegacyQuickNotesMigrationPrompt: false,
+      importLegacyQuickNotes: vi.fn(),
+      isImportingLegacyQuickNotes: false,
     },
-    categoriesConfirmed: true,
-    analyticsBaseCurrency: 'THB',
-    analyticsBaseCurrencyUpdatedAt: '2026-08-16T12:00:00.000Z',
-    analyticsBigSpendingThreshold: {
-      amount: null,
-      currency: 'THB',
-      updatedAt: '2026-08-16T12:00:00.000Z',
+    updateOnboarding: vi.fn(),
+    onToast: vi.fn(),
+    quickNotesConfig: {
+      'default:expense': [
+        { id: 'coffee', icon: 'Coffee', label: 'Coffee', note: 'Morning coffee' },
+      ],
+    } as QuickNotesConfig,
+    account: {
+      add: mutation(),
+      remove: mutation(),
+      update: mutation(),
+      reorder: mutation(),
     },
-  } as OnboardingState,
-  sync: {
-    isSyncing: false,
-    isUpdating: false,
-    refreshSettings: vi.fn(),
-    settingsSyncResult: undefined as SettingsReconciliationResult | undefined,
-    settingsSyncState: null as SettingsSyncState | null,
-    settingsSyncStatus: 'synced' as SettingsReconciliationStatus,
-    settingsSyncError: null as Error | null,
-    hasLegacyQuickNotesMigrationPrompt: false,
-    importLegacyQuickNotes: vi.fn(),
-    isImportingLegacyQuickNotes: false,
-  },
-  updateOnboarding: vi.fn(),
-  onToast: vi.fn(),
-  quickNotesConfig: {},
-  emptyQuickNotes: [],
-}));
+    category: {
+      add: mutation(),
+      remove: mutation(),
+      update: mutation(),
+      reorder: mutation(),
+    },
+    quickNotes: {
+      update: mutation(),
+      updateDefault: mutation(),
+      replace: mutation(),
+    },
+  };
+});
 
 vi.mock('framer-motion', () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  motion: {
-    div: ({
-      children,
-      className,
-    }: {
-      children: React.ReactNode;
-      className?: string;
-    }) => <div className={className}>{children}</div>,
-    span: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
-  },
   Reorder: {
     Group: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
     Item: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -113,49 +130,90 @@ vi.mock('../hooks/useOnboarding', () => ({
   }),
 }));
 
-function idleMutation() {
-  return { mutate: vi.fn(), isPending: false };
-}
-
 vi.mock('../hooks/useAccountMutations', () => ({
   useAccountMutations: () => ({
-    addAccount: idleMutation(),
-    removeAccount: idleMutation(),
-    updateAccountMeta: idleMutation(),
-    reorderAccounts: idleMutation(),
+    addAccount: mocks.account.add,
+    removeAccount: mocks.account.remove,
+    updateAccountMeta: mocks.account.update,
+    reorderAccounts: mocks.account.reorder,
     isSaving: false,
   }),
 }));
 
 vi.mock('../hooks/useCategoryMutations', () => ({
   useCategoryMutations: () => ({
-    addCategory: idleMutation(),
-    removeCategory: idleMutation(),
-    updateCategoryMeta: idleMutation(),
-    reorderCategories: idleMutation(),
+    addCategory: mocks.category.add,
+    removeCategory: mocks.category.remove,
+    updateCategoryMeta: mocks.category.update,
+    reorderCategories: mocks.category.reorder,
     isSaving: false,
   }),
 }));
 
 vi.mock('../hooks/useQuickNotes', () => ({
-  getQuickNotesForCategory: () => mocks.emptyQuickNotes,
-  getDefaultQuickNotes: () => mocks.emptyQuickNotes,
   useQuickNotesQuery: () => ({ data: mocks.quickNotesConfig }),
-  useUpdateQuickNotes: () => idleMutation(),
-  useUpdateDefaultQuickNotes: () => idleMutation(),
+  useUpdateQuickNotes: () => mocks.quickNotes.update,
+  useUpdateDefaultQuickNotes: () => mocks.quickNotes.updateDefault,
+  useReplaceQuickNotesConfig: () => mocks.quickNotes.replace,
 }));
 
-vi.mock('./AppearancePicker', () => ({ AppearancePicker: () => null }));
-vi.mock('./ThemeSetting', () => ({ ThemeSetting: () => null }));
-vi.mock('./QuickNotes/QuickNoteFlow', () => ({ QuickNoteFlow: () => null }));
+vi.mock('./SettingsItemEditorDrawer', () => ({
+  SettingsItemEditorDrawer: ({
+    open,
+    target,
+    onDismiss,
+  }: {
+    open: boolean;
+    target: { name: string; kind: string };
+    onDismiss: () => void;
+  }) =>
+    open ? (
+      <div role="dialog" aria-label={`${target.kind} editor`}>
+        <span>{target.name || `New ${target.kind}`}</span>
+        <button type="button" onClick={onDismiss}>
+          Close mock item editor
+        </button>
+      </div>
+    ) : null,
+}));
 
-function renderView() {
-  return render(<SettingsView onToast={mocks.onToast} analyticsSync={analyticsSync} />);
+vi.mock('./SettingsQuickNoteEditorDrawer', () => ({
+  SettingsQuickNoteEditorDrawer: ({
+    open,
+    onDismiss,
+  }: {
+    open: boolean;
+    onDismiss: () => void;
+  }) =>
+    open ? (
+      <div role="dialog" aria-label="Quick Note editor">
+        <button type="button" onClick={onDismiss}>
+          Close mock Quick Note editor
+        </button>
+      </div>
+    ) : null,
+}));
+
+function renderView(
+  props: Partial<React.ComponentProps<typeof SettingsView>> = {},
+) {
+  return render(
+    <ThemeProvider>
+      <SettingsView
+        onToast={mocks.onToast}
+        analyticsSync={analyticsSync}
+        {...props}
+      />
+    </ThemeProvider>,
+  );
 }
 
-describe('SettingsView', () => {
+describe('SettingsView Control Center', () => {
   beforeEach(() => {
-    document.body.style.overflow = '';
+    window.localStorage.clear();
+    document.documentElement.removeAttribute('style');
+    document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-color-mode');
     mocks.isOnline = true;
     Object.assign(mocks.sync, {
       isSyncing: false,
@@ -172,138 +230,142 @@ describe('SettingsView', () => {
     mocks.updateOnboarding.mockReset().mockResolvedValue(undefined);
     mocks.onToast.mockReset();
     vi.mocked(analyticsSync.resync).mockReset();
+    for (const group of [mocks.account, mocks.category, mocks.quickNotes]) {
+      for (const mutation of Object.values(group)) {
+        mutation.mutate.mockReset();
+        mutation.mutateAsync.mockReset().mockResolvedValue(undefined);
+      }
+    }
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockImplementation(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
-  it('renders inline without modal ownership or a main Done action', () => {
+  it('renders one persistent Control Center scroll surface without an internal page stack', () => {
     renderView();
 
-    const settingsView = screen.getByTestId('settings-view');
-    expect(settingsView).toBeInTheDocument();
-    expect(settingsView.querySelector('.absolute.inset-0')).toHaveClass('bg-transparent');
-    expect(settingsView.querySelector('.absolute.inset-0')).not.toHaveClass('bg-surface');
-    expect(screen.queryByRole('heading', { name: 'Settings' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('settings-scroll-main')).toHaveAttribute(
+    expect(screen.getByTestId('settings-view')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-control-center-scroll')).toHaveAttribute(
       'data-dashboard-scroll',
       'true',
     );
-    expect(screen.queryByRole('button', { name: 'Close settings' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
-    expect(document.body.style.overflow).toBe('');
+    expect(screen.getByText('Everything is up to date')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Back|Edit|Done/ })).not.toBeInTheDocument();
   });
 
-  it('keeps settings sync diagnostics and owns transaction history resync', async () => {
+  it('keeps Appearance controls always visible between Categories and analytics preferences', () => {
+    renderView();
+
+    const categories = document.getElementById('settings-section-categories');
+    const appearance = screen.getByRole('region', { name: 'Appearance' });
+    const analyticsPreferences = screen.getByText('Analytics preferences');
+
+    expect(appearance).toBeVisible();
+    expect(appearance).toContainElement(screen.getByLabelText('Theme'));
+    expect(appearance).toContainElement(
+      screen.getByRole('radiogroup', { name: 'Theme appearance' }),
+    );
+    expect(
+      (categories?.compareDocumentPosition(appearance) ?? 0) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      appearance.compareDocumentPosition(analyticsPreferences) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('keeps Accounts and Categories expanded together with direct reorder handles', async () => {
     const user = userEvent.setup();
     renderView();
+
+    await user.click(screen.getByRole('button', { name: /Accounts/ }));
+    await user.click(screen.getByRole('button', { name: /Categories/ }));
+
+    expect(screen.getByRole('region', { name: 'Accounts' })).toHaveTextContent('Wallet');
+    expect(screen.getByRole('region', { name: 'Categories' })).toHaveTextContent('Food');
+    expect(screen.getByRole('button', { name: 'Drag Wallet to reorder' })).toHaveAttribute(
+      'data-home-carousel-swipe-lock',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Drag Food to reorder' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('positions a newly opened section and honors reduced motion', async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.mocked(HTMLElement.prototype.scrollIntoView);
+    renderView();
+
+    await user.click(screen.getByRole('button', { name: /Accounts/ }));
+    await waitFor(() =>
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' }),
+    );
+
+    scrollIntoView.mockClear();
+    vi.mocked(window.matchMedia).mockImplementation(() => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }) as unknown as MediaQueryList);
+    await user.click(screen.getByRole('button', { name: /Categories/ }));
+    await waitFor(() =>
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' }),
+    );
+  });
+
+  it('opens a concrete Account in a nested editor and restores row focus on dismissal', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    await user.click(screen.getByRole('button', { name: /Accounts/ }));
+    const wallet = screen.getByRole('button', { name: 'Wallet' });
+    await user.click(wallet);
+    expect(screen.getByRole('dialog', { name: 'account editor' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Close mock item editor' }));
+    await waitFor(() => expect(wallet).toHaveFocus());
+    expect(screen.getByRole('region', { name: 'Accounts' })).toBeVisible();
+  });
+
+  it('shows Quick Note targets without counting inherited defaults as custom notes', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    await user.click(screen.getByRole('button', { name: /Quick Notes/ }));
+    expect(screen.getByText('Expense defaults')).toBeVisible();
+    expect(screen.getByText('Food')).toBeVisible();
+    expect(screen.getByText('Uses 1 default')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: /Food.*Uses 1 default/ }));
+    expect(screen.getByRole('button', { name: 'Add Quick Note to Food' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Add Quick Note to Food' }));
+    expect(screen.getByRole('dialog', { name: 'Quick Note editor' })).toBeVisible();
+  });
+
+  it('keeps technical sync details collapsed until Data & sync is opened', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    expect(screen.queryByRole('button', { name: /Sync Settings/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Data & sync/ }));
 
     const syncButton = screen.getByRole('button', { name: /Sync Settings/i });
     expect(syncButton).toHaveTextContent('Synced');
-    expect(screen.getByText('Synced')).toHaveAttribute('aria-live', 'polite');
     await user.click(syncButton);
     expect(mocks.sync.refreshSettings).toHaveBeenCalledTimes(1);
-
-    const transactionHistory = screen.getByText('Transaction history');
-    expect(syncButton.parentElement).toContainElement(transactionHistory);
-    expect(
-      screen.getByText('Base currency').parentElement?.parentElement,
-    ).not.toContainElement(transactionHistory);
-    expect(screen.getByText('0 transactions · Not downloaded')).toBeInTheDocument();
-    await user.click(
-      screen.getByRole('button', { name: 'Resync transaction history' }),
-    );
+    expect(screen.getByText('Transaction history')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Resync transaction history' }));
     expect(analyticsSync.resync).toHaveBeenCalledTimes(1);
-  });
-
-  it('navigates nested screens with Back/Edit/Add actions while preserving local drafts', async () => {
-    const user = userEvent.setup();
-    renderView();
-
-    await user.click(screen.getByRole('button', { name: /Accounts/i }));
-    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-    expect(screen.getByTestId('settings-scroll-accounts')).toHaveAttribute(
-      'data-dashboard-scroll',
-      'true',
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Add Account' }));
-    const input = screen.getByPlaceholderText('e.g. Cash');
-    await user.type(input, 'Travel Wallet');
-    expect(input).toHaveValue('Travel Wallet');
-    expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Accounts' })).toBeInTheDocument();
-  });
-
-  it('marks reorder and swipe-delete gesture owners as carousel locks', async () => {
-    const user = userEvent.setup();
-    renderView();
-    await user.click(screen.getByRole('button', { name: /Accounts/i }));
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
-
-    const drag = screen.getByRole('button', { name: 'Drag to reorder' });
-    expect(drag).toHaveAttribute('data-home-carousel-swipe-lock', 'true');
-    const wallet = screen.getByRole('button', { name: /Wallet/ });
-    expect(wallet.closest('[data-home-carousel-swipe-lock="true"]')).not.toBeNull();
-  });
-
-  it('restores per-screen scroll positions when navigating back', async () => {
-    const user = userEvent.setup();
-    renderView();
-    const mainScroll = screen.getByTestId('settings-scroll-main');
-    Object.defineProperty(mainScroll, 'scrollTop', {
-      configurable: true,
-      value: 48,
-      writable: true,
-    });
-    fireEvent.scroll(mainScroll);
-
-    await user.click(screen.getByRole('button', { name: /Accounts/i }));
-    await user.click(screen.getByRole('button', { name: 'Settings' }));
-    await waitFor(() => expect(screen.getByTestId('settings-scroll-main').scrollTop).toBe(48));
-  });
-
-  it('keeps failures visible while busy and reports global, section, and Sheet-wins diagnostics', () => {
-    const state = {
-      ...defaultSettingsState(),
-      errors: { accounts: 'Account tab is invalid.' },
-    } satisfies SettingsSyncState;
-    mocks.sync.settingsSyncState = state;
-    mocks.sync.settingsSyncStatus = 'error';
-    mocks.sync.isSyncing = true;
-    mocks.sync.settingsSyncError = new Error('Google Sheets is unavailable.');
-    mocks.sync.settingsSyncResult = {
-      state,
-      changed: ['quickNotes'],
-      pushed: [],
-      conflicts: ['quickNotes'],
-      errors: { categories: 'Category row 4 is invalid.' },
-      migrationDecision: 'none',
-      migrationApplied: false,
-      status: 'error',
-    };
-
-    renderView();
-
-    expect(screen.getByRole('button', { name: /Sync Settings/i })).toHaveTextContent(
-      'Needs attention',
-    );
-    expect(screen.getAllByRole('alert')).toHaveLength(3);
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Quick Notes changed in both places; the Sheet version was kept.',
-    );
-  });
-
-  it('explains offline durability and disables settings sync actions', () => {
-    mocks.isOnline = false;
-    mocks.sync.settingsSyncStatus = 'pending';
-    mocks.sync.hasLegacyQuickNotesMigrationPrompt = true;
-    renderView();
-
-    expect(
-      screen.getByText(
-        'You’re offline. Changes stay on this device and will sync when you reconnect.',
-      ),
-    ).toBeVisible();
-    expect(screen.getByRole('button', { name: /Sync Settings/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
   });
 });

@@ -1,32 +1,41 @@
 import { useMutation } from '@tanstack/react-query';
-import { useUpdateOnboarding } from './useOnboardingQuery';
-import type { AccountItem } from '../lib/types';
 import {
-  DEFAULT_ACCOUNT_ICON,
   DEFAULT_ACCOUNT_COLOR,
+  DEFAULT_ACCOUNT_ICON,
 } from '../lib/icons';
+import type { AccountItem } from '../lib/types';
+import { useUpdateOnboarding } from './useOnboardingQuery';
 
-type AddAccountParams = { name: string };
+type AddAccountParams = {
+  name: string;
+  icon?: string;
+  color?: string;
+};
 type RemoveAccountParams = { name: string };
-type UpdateAccountMetaParams = { name: string; icon?: string; color?: string };
+type UpdateAccountMetaParams = {
+  previousName?: string;
+  name: string;
+  icon?: string;
+  color?: string;
+};
 type ReorderAccountsParams = { accounts: AccountItem[] };
 
 export function useAccountMutations(onToast: (message: string) => void) {
   const { mutateAsync: updateOnboarding } = useUpdateOnboarding();
 
   const addAccount = useMutation({
-    mutationFn: async ({ name }: AddAccountParams) => {
+    mutationFn: async ({ name, icon, color }: AddAccountParams) => {
       const newAccount: AccountItem = {
         name,
-        icon: DEFAULT_ACCOUNT_ICON,
-        color: DEFAULT_ACCOUNT_COLOR,
+        icon: icon ?? DEFAULT_ACCOUNT_ICON,
+        color: color ?? DEFAULT_ACCOUNT_COLOR,
       };
       return updateOnboarding((current) => ({
         accounts: [...current.accounts, newAccount],
         accountsConfirmed: true,
       }));
     },
-    onError: () => onToast("Failed to add account"),
+    onError: () => onToast('Failed to add account'),
   });
 
   const removeAccount = useMutation({
@@ -36,16 +45,23 @@ export function useAccountMutations(onToast: (message: string) => void) {
         accountsConfirmed: true,
       }));
     },
-    onError: () => onToast("Failed to remove account"),
+    onError: () => onToast('Failed to remove account'),
   });
 
   const updateAccountMeta = useMutation({
-    mutationFn: async ({ name, icon, color }: UpdateAccountMetaParams) => {
+    mutationFn: async ({
+      previousName,
+      name,
+      icon,
+      color,
+    }: UpdateAccountMetaParams) => {
+      const identity = previousName ?? name;
       return updateOnboarding((current) => ({
         accounts: current.accounts.map((account) =>
-          account.name === name
+          account.name === identity
             ? {
                 ...account,
+                name,
                 ...(icon !== undefined && { icon }),
                 ...(color !== undefined && { color }),
               }
@@ -54,7 +70,7 @@ export function useAccountMutations(onToast: (message: string) => void) {
         accountsConfirmed: true,
       }));
     },
-    onError: () => onToast("Failed to update account"),
+    onError: () => onToast('Failed to update account'),
   });
 
   const reorderAccounts = useMutation({
@@ -64,7 +80,7 @@ export function useAccountMutations(onToast: (message: string) => void) {
         accountsConfirmed: true,
       });
     },
-    onError: () => onToast("Failed to reorder accounts"),
+    onError: () => onToast('Failed to reorder accounts'),
   });
 
   const isSaving =

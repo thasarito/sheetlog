@@ -75,12 +75,27 @@ vi.mock("./AnalyticsView", () => ({
 vi.mock("../SettingsView", () => ({
   SettingsView: (props: SettingsViewProps) => {
     settingsViewCalls.push(props);
+    const navigationProps = props as SettingsViewProps & {
+      onCarouselNavigationLockChange?: (locked: boolean) => void;
+    };
     return (
       <section data-testid="settings-scroll" data-dashboard-scroll="true">
         <span>Full Settings view</span>
         <input aria-label="Settings draft" defaultValue="" />
         <button type="button" data-home-carousel-swipe-lock="true">
           Settings-owned swipe target
+        </button>
+        <button
+          type="button"
+          onClick={() => navigationProps.onCarouselNavigationLockChange?.(true)}
+        >
+          Open Settings editor
+        </button>
+        <button
+          type="button"
+          onClick={() => navigationProps.onCarouselNavigationLockChange?.(false)}
+        >
+          Close Settings editor
         </button>
       </section>
     );
@@ -511,6 +526,37 @@ describe("HomeDashboardCarousel", () => {
     expect(locked).toHaveAttribute("data-home-carousel-swipe-lock", "true");
     expect(scrollToMock).not.toHaveBeenCalled();
     expect(headerMotion.setHorizontalPosition).not.toHaveBeenCalled();
+  });
+
+  it("locks the native carousel owner while a Settings editor is open", async () => {
+    const user = userEvent.setup();
+    const { viewport } = renderCarousel();
+    await settleAt(viewport, 2);
+
+    await user.click(screen.getByRole("button", { name: "Open Settings editor" }));
+
+    expect(viewport).toHaveAttribute("data-navigation-locked", "true");
+    expect(viewport).toHaveClass("overflow-x-hidden", "[touch-action:pan-y]");
+    viewport.focus();
+    scrollToMock.mockClear();
+    fireEvent.keyDown(viewport, { key: "ArrowLeft" });
+    expect(scrollToMock).not.toHaveBeenCalled();
+
+    viewport.scrollLeft = viewportWidth;
+    fireEvent.scroll(viewport);
+
+    expect(scrollToMock).toHaveBeenCalledWith({ left: viewportWidth * 2, behavior: "auto" });
+    expect(viewport.scrollLeft).toBe(viewportWidth * 2);
+    expect(screen.getByLabelText("Settings, slide 3 of 3")).not.toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(viewport).toHaveAttribute("data-selected-snap", "2");
+
+    await user.click(screen.getByRole("button", { name: "Close Settings editor" }));
+
+    expect(viewport).toHaveAttribute("data-navigation-locked", "false");
+    expect(viewport).toHaveClass("overflow-x-auto", "[touch-action:pan-x_pan-y]");
   });
 
   it("passes offline state to both Analytics and Settings without resyncing", () => {

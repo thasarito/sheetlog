@@ -77,6 +77,7 @@ export function HomeDashboardCarousel({
   headerMotionRef,
 }: HomeDashboardCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [navigationLocked, setNavigationLocked] = useState(false);
   const [range, setRange] = useState<AnalyticsRange>("week");
   const [periodOffset, setPeriodOffset] = useState(0);
   const [noBigSpending, setNoBigSpending] = useState(false);
@@ -216,9 +217,32 @@ export function HomeDashboardCarousel({
     [headerMotionRef, renderTransactionDockMotion],
   );
 
+  const restoreLockedPosition = useCallback(() => {
+    if (!navigationLocked) return false;
+    const viewport = viewportRef.current;
+    if (!viewport || viewport.clientWidth <= 0) return true;
+
+    clearSettleTimer();
+    touchActiveRef.current = false;
+    const index = activeIndexRef.current;
+    const targetLeft = index * viewport.clientWidth;
+    if (Math.abs(viewport.scrollLeft - targetLeft) > SNAP_TOLERANCE_PX) {
+      viewport.scrollTo({ left: targetLeft, behavior: "auto" });
+    }
+    renderHorizontalPosition(false);
+    commitActiveIndex(index);
+    return true;
+  }, [
+    clearSettleTimer,
+    commitActiveIndex,
+    navigationLocked,
+    renderHorizontalPosition,
+  ]);
+
   const settleHorizontalScroll = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport || viewport.clientWidth <= 0) return;
+    if (restoreLockedPosition()) return;
     clearSettleTimer();
     if (touchActiveRef.current) return;
 
@@ -258,12 +282,17 @@ export function HomeDashboardCarousel({
     clearSettleTimer,
     commitActiveIndex,
     renderHorizontalPosition,
+    restoreLockedPosition,
     scheduleHorizontalSettle,
   ]);
 
   useLayoutEffect(() => {
     settleHorizontalScrollRef.current = settleHorizontalScroll;
   }, [settleHorizontalScroll]);
+
+  useLayoutEffect(() => {
+    if (navigationLocked) restoreLockedPosition();
+  }, [navigationLocked, restoreLockedPosition]);
 
   useEffect(() => {
     for (const [index, slide] of slideRefs.current.entries()) {
@@ -360,16 +389,19 @@ export function HomeDashboardCarousel({
   );
 
   const handleViewportScroll = () => {
+    if (restoreLockedPosition()) return;
     renderHorizontalPosition(true);
     if (!touchActiveRef.current) scheduleHorizontalSettle();
   };
 
   const handleTouchStart = () => {
+    if (restoreLockedPosition()) return;
     touchActiveRef.current = true;
     clearSettleTimer();
   };
 
   const releaseTouch = () => {
+    if (restoreLockedPosition()) return;
     touchActiveRef.current = false;
     scheduleHorizontalSettle();
   };
@@ -400,6 +432,7 @@ export function HomeDashboardCarousel({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (navigationLocked) return;
     const viewport = viewportRef.current;
     if (event.target !== viewport || !viewport || viewport.clientWidth <= 0) {
       return;
@@ -470,6 +503,7 @@ export function HomeDashboardCarousel({
         data-motion-position="0.000"
         data-motion-progress="0.000"
         data-motion-status="settled"
+        data-navigation-locked={navigationLocked ? "true" : "false"}
         data-selected-snap="0"
         data-target-snap="0"
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the scroll viewport needs a keyboard target for arrow-key slide navigation
@@ -478,7 +512,11 @@ export function HomeDashboardCarousel({
         onTouchStart={handleTouchStart}
         onTouchEnd={releaseTouch}
         onTouchCancel={releaseTouch}
-        className="h-full min-h-0 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] [touch-action:pan-x_pan-y] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden"
+        className={`h-full min-h-0 snap-x snap-mandatory overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden ${
+          navigationLocked
+            ? "overflow-x-hidden [touch-action:pan-y]"
+            : "overflow-x-auto [touch-action:pan-x_pan-y]"
+        }`}
       >
         <div
           data-testid="home-carousel-track"
@@ -553,7 +591,11 @@ export function HomeDashboardCarousel({
               } as CSSProperties
             }
           >
-            <SettingsView onToast={onToast} analyticsSync={analyticsSync} />
+            <SettingsView
+              onToast={onToast}
+              analyticsSync={analyticsSync}
+              onCarouselNavigationLockChange={setNavigationLocked}
+            />
           </section>
         </div>
       </div>
