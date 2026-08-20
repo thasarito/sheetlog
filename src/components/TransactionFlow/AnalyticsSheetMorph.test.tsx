@@ -162,6 +162,9 @@ describe("AnalyticsSheetMorph", () => {
 
     await waitFor(() => {
       expect(root).toHaveStyle({ "--category-sheet-progress": "1.0000" });
+      expect(root).toHaveStyle({
+        "--analytics-morph-summary-top": "24.00px",
+      });
     });
     expect(detail.inert).toBe(true);
     expect(detail).toHaveAttribute("aria-hidden", "true");
@@ -176,6 +179,9 @@ describe("AnalyticsSheetMorph", () => {
 
     await waitFor(() => {
       expect(root).toHaveStyle({ "--category-sheet-progress": "0.0000" });
+      expect(root).toHaveStyle({
+        "--analytics-morph-summary-top": "12.00px",
+      });
       expect(root).toHaveAttribute(
         "data-category-sheet-state",
         "collapsed",
@@ -202,6 +208,9 @@ describe("AnalyticsSheetMorph", () => {
     await waitFor(() => {
       expect(root).toHaveStyle({
         "--analytics-morph-summary-opacity": "1.0000",
+      });
+      expect(root).toHaveStyle({
+        "--analytics-morph-summary-top": "24.00px",
       });
       expect(root).toHaveAttribute("data-category-sheet-state", "expanded");
       expect(scroll.scrollTop).toBe(0);

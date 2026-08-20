@@ -40,4 +40,19 @@ describe("StepCategoryTypeTabs", () => {
       "true",
     );
   });
+
+  it("renders the compact type tabs without an outer border or rounding", () => {
+    const hook = renderHook(() => useTransactionForm());
+    render(
+      <StepCategoryTypeTabs
+        form={hook.result.current}
+        layoutId="flatTransactionType"
+      />,
+    );
+
+    const tabs = screen.getByTestId("animated-tabs-compact");
+    expect(tabs).not.toHaveClass("border");
+    expect(tabs).not.toHaveClass("border-border");
+    expect(tabs).not.toHaveClass("rounded-2xl");
+  });
 });

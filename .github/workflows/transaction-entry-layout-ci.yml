@@ -1,0 +1,43 @@
+name: Transaction entry layout CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - name: Run focused component tests
+        run: >-
+          npx vitest run
+          src/components/TransactionFlow/StepCategoryTypeTabs.test.tsx
+          src/components/TransactionFlow/AnalyticsSheetMorph.test.tsx
+      - run: npm run build
+      - name: Verify portrait-only PWA manifest
+        run: >-
+          node --input-type=module -e
+          "import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          const path = ['dist/manifest.webmanifest', 'dist/manifest.json'].find(fs.existsSync);
+          assert.ok(path, 'Expected a generated PWA manifest');
+          const manifest = JSON.parse(fs.readFileSync(path, 'utf8'));
+          assert.equal(manifest.orientation, 'portrait');"
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run amount layout browser test
+        run: >-
+          npx playwright test e2e/transaction-amount-layout.spec.ts
+          --project="Mobile Chrome"
