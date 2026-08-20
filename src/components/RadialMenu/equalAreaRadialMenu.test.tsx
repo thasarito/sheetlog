@@ -40,37 +40,28 @@ function renderMenu(dragPosition = anchor) {
   );
 }
 
-describe('RadialMenu constellation lens presentation', () => {
-  it('draws curved territory contours and keeps the category lens at the press point', () => {
+describe('RadialMenu equal-area full-screen presentation', () => {
+  it('draws every warped territory and keeps the category halo at the press point', () => {
     renderMenu();
 
-    expect(screen.getAllByTestId('radial-menu-contour')).toHaveLength(
+    expect(screen.getAllByTestId('radial-menu-sector')).toHaveLength(
       items.length + 1,
     );
-    expect(screen.queryByTestId('radial-menu-spotlight')).not.toBeInTheDocument();
     expect(screen.getByTestId('radial-menu-anchor')).toHaveStyle({
       left: `${anchor.x}px`,
       top: `${anchor.y}px`,
     });
-    expect(screen.getByTestId('radial-menu-anchor')).toHaveAttribute(
-      'data-variant',
-      'constellation',
-    );
-    expect(screen.getByTestId('radial-menu-anchor-label')).toHaveTextContent(
-      'Food',
-    );
     expect(
       screen
-        .getAllByTestId('radial-menu-node')
-        .every(
-          (node: HTMLElement) =>
-            node.getAttribute('data-variant') === 'constellation' &&
-            node.getAttribute('data-selected') === 'false',
+        .getAllByTestId('radial-menu-sector')
+        .some(
+          (sector: HTMLElement) =>
+            sector.getAttribute('data-selected') === 'true',
         ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it('spotlights the selected territory and renders the luminous drag trail', () => {
+  it('highlights the territory reached by relative drag', () => {
     const menuItems = [
       ...items,
       { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel' },
@@ -95,17 +86,9 @@ describe('RadialMenu constellation lens presentation', () => {
       />,
     );
 
-    expect(screen.getByTestId('radial-menu-spotlight')).toHaveAttribute(
-      'data-sector-id',
-      target.id,
-    );
-    const selectedNode = screen
-      .getAllByTestId('radial-menu-node')
-      .find((node) => node.getAttribute('data-sector-id') === target.id);
-    expect(selectedNode).toHaveAttribute('data-selected', 'true');
+    expect(
+      screen.getByTestId(`radial-menu-sector-${target.id}`),
+    ).toHaveAttribute('data-selected', 'true');
     expect(screen.getByTestId('radial-menu-gesture')).toBeInTheDocument();
-    expect(screen.getByTestId('radial-menu-gesture-glow')).toBeInTheDocument();
-    expect(screen.getByTestId('radial-menu-gesture-core')).toBeInTheDocument();
-    expect(screen.getByTestId('radial-menu-gesture-pointer')).toBeInTheDocument();
   });
 });
