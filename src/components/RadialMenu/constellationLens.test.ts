@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createConstellationBoundary,
+  createConstellationPaintIds,
   getConstellationAccent,
   isConstellationBoundaryHighlighted,
 } from './constellationLens';
@@ -62,5 +63,17 @@ describe('constellation lens presentation geometry', () => {
     expect(getConstellationAccent(0, false)).toBe('hsl(var(--chart-1))');
     expect(getConstellationAccent(5, false)).toBe('hsl(var(--chart-1))');
     expect(getConstellationAccent(2, true)).toBe('hsl(var(--danger))');
+  });
+
+  it('creates stable, instance-scoped SVG paint ids from React ids', () => {
+    const first = createConstellationPaintIds(':r0:');
+    const second = createConstellationPaintIds(':r1:');
+
+    expect(first).toEqual({
+      spotlight: 'radial-menu-constellation-spotlight-r0',
+      trail: 'radial-menu-constellation-trail-r0',
+    });
+    expect(second.spotlight).not.toBe(first.spotlight);
+    expect(second.trail).not.toBe(first.trail);
   });
 });
