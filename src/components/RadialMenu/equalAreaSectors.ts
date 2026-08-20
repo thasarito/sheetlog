@@ -34,6 +34,7 @@ export interface EqualAreaRadialLayout {
   bounds: RadialMenuBounds;
   safeBounds: RadialMenuSafeBounds;
   deadZoneRadius: number;
+  nodeHitRadius: number;
   sectors: EqualAreaRadialSector[];
 }
 
@@ -41,6 +42,7 @@ export interface EqualAreaRadialOptions {
   padding?: number;
   sampleCount?: number;
   deadZoneRadius?: number;
+  nodeHitRadius?: number;
   labelProgress?: number;
   labelEdgeInset?: number;
   maxPolygonSamples?: number;
@@ -55,6 +57,7 @@ export const CANCEL_ITEM_ID = '__cancel__';
 const DEFAULT_PADDING = 12;
 const DEFAULT_SAMPLE_COUNT = 720;
 const DEFAULT_DEAD_ZONE_RADIUS = 24;
+const DEFAULT_NODE_HIT_RADIUS = 34;
 const DEFAULT_LABEL_PROGRESS = 0.62;
 const DEFAULT_LABEL_EDGE_INSET = 24;
 const DEFAULT_MAX_POLYGON_SAMPLES = 28;
@@ -227,6 +230,10 @@ export function createEqualAreaRadialLayout(
     0,
     options.deadZoneRadius ?? DEFAULT_DEAD_ZONE_RADIUS,
   );
+  const nodeHitRadius = Math.max(
+    0,
+    options.nodeHitRadius ?? DEFAULT_NODE_HIT_RADIUS,
+  );
   const labelProgress = clamp(
     options.labelProgress ?? DEFAULT_LABEL_PROGRESS,
     0.25,
@@ -243,7 +250,14 @@ export function createEqualAreaRadialLayout(
   const safeBounds = createSafeBounds(bounds, anchor, padding);
 
   if (items.length === 0) {
-    return { anchor, bounds, safeBounds, deadZoneRadius, sectors: [] };
+    return {
+      anchor,
+      bounds,
+      safeBounds,
+      deadZoneRadius,
+      nodeHitRadius,
+      sectors: [],
+    };
   }
 
   const angularStep = (Math.PI * 2) / sampleCount;
@@ -345,6 +359,7 @@ export function createEqualAreaRadialLayout(
     bounds,
     safeBounds,
     deadZoneRadius,
+    nodeHitRadius,
     sectors,
   };
 }
@@ -361,6 +376,30 @@ function pointIsInsideBounds(
   );
 }
 
+function findNearestVisibleNode(
+  layout: EqualAreaRadialLayout,
+  dragPosition: RadialMenuPoint,
+): EqualAreaRadialSector | null {
+  let nearestSector: EqualAreaRadialSector | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const sector of layout.sectors) {
+    const distance = Math.hypot(
+      dragPosition.x - sector.labelPoint.x,
+      dragPosition.y - sector.labelPoint.y,
+    );
+    if (
+      distance <= layout.nodeHitRadius &&
+      distance < nearestDistance
+    ) {
+      nearestSector = sector;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearestSector;
+}
+
 export function findEqualAreaSector(
   layout: EqualAreaRadialLayout,
   dragPosition: RadialMenuPoint | null,
@@ -371,6 +410,9 @@ export function findEqualAreaSector(
   const dx = dragPosition.x - layout.anchor.x;
   const dy = dragPosition.y - layout.anchor.y;
   if (Math.hypot(dx, dy) < layout.deadZoneRadius) return null;
+
+  const visibleNode = findNearestVisibleNode(layout, dragPosition);
+  if (visibleNode) return visibleNode;
 
   const angle = normalizeAngle(Math.atan2(dy, dx));
   for (const sector of layout.sectors) {
