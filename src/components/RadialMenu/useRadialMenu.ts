@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react';
 import {
   CANCEL_ITEM_ID,
-  getRadialMenuGeometry,
-  resolveRadialMenuReleaseTarget,
+  createEqualAreaRadialLayout,
+  resolveEqualAreaRadialRelease,
   type RadialMenuBounds,
-  type RadialMenuCategoryPresentation,
   type RadialMenuItemData,
   type RadialMenuPoint,
-} from './index';
+} from './equalAreaSectors';
+import type { RadialMenuCategoryPresentation } from './index';
 
 export interface RadialMenuState {
   isOpen: boolean;
@@ -16,6 +16,7 @@ export interface RadialMenuState {
   dragPosition: RadialMenuPoint | null;
   bounds: RadialMenuBounds;
   categoryPresentation: RadialMenuCategoryPresentation;
+  menuItems: RadialMenuItemData[];
 }
 
 export interface UseRadialMenuOptions<T> {
@@ -34,13 +35,26 @@ export interface UseRadialMenuReturn {
     onLongPressStart: (
       category: string,
       position: RadialMenuPoint,
-      bounds: RadialMenuBounds,
+      sourceBounds?: RadialMenuBounds,
     ) => void;
     onDrag: (position: RadialMenuPoint) => void;
     onRelease: (position: RadialMenuPoint) => void;
     onCancel: () => void;
   };
   menuItems: RadialMenuItemData[];
+}
+
+function getFullscreenBounds(): RadialMenuBounds {
+  if (typeof window === 'undefined') {
+    return { left: 0, top: 0, width: 375, height: 812 };
+  }
+
+  return {
+    left: 0,
+    top: 0,
+    width: Math.max(1, window.innerWidth),
+    height: Math.max(1, window.innerHeight),
+  };
 }
 
 export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMenuReturn {
@@ -51,7 +65,6 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
     getItemLabel,
     getCategoryPresentation,
     onSelect,
-    onDefault,
   } = options;
   const [state, setState] = useState<RadialMenuState | null>(null);
 
@@ -59,7 +72,7 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
     (
       category: string,
       position: RadialMenuPoint,
-      bounds: RadialMenuBounds,
+      _sourceBounds?: RadialMenuBounds,
     ) => {
       const items = getItems(category);
       if (items.length === 0) return;
@@ -69,15 +82,26 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
         category,
         anchorPosition: position,
         dragPosition: position,
-        bounds,
+        bounds: getFullscreenBounds(),
         categoryPresentation: getCategoryPresentation?.(category) ?? {
           label: category,
           icon: 'Wallet',
           color: 'hsl(var(--primary))',
         },
+        menuItems: items.map((item) => ({
+          id: getItemId(item),
+          icon: getItemIcon(item),
+          label: getItemLabel(item),
+        })),
       });
     },
-    [getCategoryPresentation, getItems],
+    [
+      getCategoryPresentation,
+      getItemIcon,
+      getItemId,
+      getItemLabel,
+      getItems,
+    ],
   );
 
   const handleDrag = useCallback((position: RadialMenuPoint) => {
@@ -91,31 +115,17 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       if (!state) return;
 
       const items = getItems(state.category);
-      const menuItems: RadialMenuItemData[] = [
-        ...items.map((item) => ({
-          id: getItemId(item),
-          icon: getItemIcon(item),
-          label: getItemLabel(item),
-        })),
-        { id: CANCEL_ITEM_ID, icon: '×', label: 'Cancel' },
-      ];
-      const target = resolveRadialMenuReleaseTarget(
-        menuItems,
-        getRadialMenuGeometry(state.bounds),
+      const layout = createEqualAreaRadialLayout(
+        [
+          ...state.menuItems,
+          { id: CANCEL_ITEM_ID, icon: 'X', label: 'Cancel' },
+        ],
         state.anchorPosition,
-        position,
+        state.bounds,
       );
+      const target = resolveEqualAreaRadialRelease(layout, position);
 
-      if (target.type === 'cancel') {
-        setState(null);
-        return;
-      }
-      if (target.type === 'default') {
-        onDefault?.(state.category);
-        setState(null);
-        return;
-      }
-      if (target.itemId === CANCEL_ITEM_ID) {
+      if (target.type === 'cancel' || target.itemId === CANCEL_ITEM_ID) {
         setState(null);
         return;
       }
@@ -125,28 +135,12 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       onSelect?.(selectedItem, state.category);
       setState(null);
     },
-    [
-      getItemIcon,
-      getItemId,
-      getItemLabel,
-      getItems,
-      onDefault,
-      onSelect,
-      state,
-    ],
+    [getItemId, getItems, onSelect, state],
   );
 
   const handleCancel = useCallback(() => {
     setState(null);
   }, []);
-
-  const menuItems: RadialMenuItemData[] = state
-    ? getItems(state.category).map((item) => ({
-        id: getItemId(item),
-        icon: getItemIcon(item),
-        label: getItemLabel(item),
-      }))
-    : [];
 
   return {
     state,
@@ -156,6 +150,6 @@ export function useRadialMenu<T>(options: UseRadialMenuOptions<T>): UseRadialMen
       onRelease: handleRelease,
       onCancel: handleCancel,
     },
-    menuItems,
+    menuItems: state?.menuItems ?? [],
   };
 }
