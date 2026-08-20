@@ -1,17 +1,6 @@
-import {
-  useId,
-  useMemo,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-} from 'react';
+import { useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { DynamicIcon } from '../DynamicIcon';
-import {
-  createConstellationBoundary,
-  createConstellationPaintIds,
-  getConstellationAccent,
-  isConstellationBoundaryHighlighted,
-} from './constellationLens';
 import {
   CANCEL_ITEM_ID,
   createEqualAreaRadialLayout,
@@ -50,7 +39,6 @@ export interface RadialMenuProps {
 
 type SectorNodeProps = {
   sector: EqualAreaRadialSector;
-  accentColor: string;
   isSelected: boolean;
   reducedMotion: boolean;
   index: number;
@@ -58,38 +46,29 @@ type SectorNodeProps = {
 
 function SectorNode({
   sector,
-  accentColor,
   isSelected,
   reducedMotion,
   index,
 }: SectorNodeProps) {
   const isCancel = sector.id === CANCEL_ITEM_ID;
-  const selectedForeground = isCancel
-    ? 'hsl(var(--danger-foreground))'
-    : 'hsl(var(--primary-foreground))';
-  const iconStyle: CSSProperties = {
-    color: isSelected ? selectedForeground : accentColor,
-    borderColor: `color-mix(in srgb, ${accentColor} ${isSelected ? 82 : 58}%, hsl(var(--border)))`,
-    background: isSelected
-      ? accentColor
-      : `radial-gradient(circle at 35% 30%, hsl(var(--foreground) / 0.13), transparent 42%), color-mix(in srgb, ${accentColor} 13%, hsl(var(--card)))`,
-  };
-  const labelStyle: CSSProperties = {
-    color: isSelected
-      ? 'hsl(var(--foreground))'
-      : 'hsl(var(--muted-foreground))',
-    backgroundColor: isSelected
-      ? `color-mix(in srgb, ${accentColor} 19%, hsl(var(--background) / 0.78))`
-      : 'hsl(var(--background) / 0.62)',
-  };
+  const circleClassName = isSelected
+    ? isCancel
+      ? 'border-danger bg-danger text-danger-foreground'
+      : 'border-primary bg-primary text-primary-foreground'
+    : isCancel
+      ? 'border-danger/70 bg-card text-danger'
+      : 'border-border bg-card text-foreground';
+  const labelClassName = isSelected
+    ? isCancel
+      ? 'border-danger/60 text-danger'
+      : 'border-primary/60 text-primary'
+    : 'border-border/70 text-muted-foreground';
 
   return (
     <div
       aria-hidden="true"
       data-testid="radial-menu-node"
       data-sector-id={sector.id}
-      data-selected={isSelected ? 'true' : 'false'}
-      data-variant="constellation"
       className="pointer-events-none fixed z-[72]"
       style={{
         left: sector.labelPoint.x,
@@ -103,7 +82,7 @@ function SectorNode({
             ? { opacity: 0 }
             : { opacity: 0, scale: 0.82 }
         }
-        animate={{ opacity: 1, scale: isSelected ? 1.12 : 1 }}
+        animate={{ opacity: 1, scale: isSelected ? 1.1 : 1 }}
         exit={{ opacity: 0, scale: reducedMotion ? 1 : 0.9 }}
         transition={
           reducedMotion
@@ -112,48 +91,22 @@ function SectorNode({
                 type: 'spring',
                 stiffness: 430,
                 damping: 29,
-                delay: index * 0.03,
+                delay: index * 0.025,
               }
         }
-        className="flex min-w-[66px] flex-col items-center"
+        className="flex flex-col items-center"
       >
-        <div className="relative flex h-[57px] w-[57px] items-center justify-center">
-          <motion.div
-            aria-hidden="true"
-            className="absolute h-[57px] w-[57px] rounded-full border border-dashed"
-            style={{
-              borderColor: `color-mix(in srgb, ${accentColor} ${isSelected ? 48 : 25}%, transparent)`,
-            }}
-            animate={{
-              opacity: isSelected ? 1 : 0.72,
-              scale: isSelected ? 1.04 : 1,
-            }}
-            transition={{ duration: reducedMotion ? 0.1 : 0.16 }}
-          />
-          <motion.div
-            aria-hidden="true"
-            className="absolute h-[53px] w-[53px] rounded-full border"
-            style={{
-              borderColor: `color-mix(in srgb, ${accentColor} ${isSelected ? 28 : 8}%, transparent)`,
-              backgroundColor: `color-mix(in srgb, ${accentColor} ${isSelected ? 12 : 5}%, transparent)`,
-            }}
-            animate={{ opacity: isSelected ? 1 : 0.72 }}
-            transition={{ duration: reducedMotion ? 0.1 : 0.16 }}
-          />
-          <div
-            className="relative flex h-[43px] w-[43px] items-center justify-center rounded-full border-[1.5px]"
-            style={iconStyle}
-          >
-            {isCancel ? (
-              <span className="text-lg font-bold leading-none">×</span>
-            ) : (
-              <DynamicIcon name={sector.icon} className="h-[18px] w-[18px]" />
-            )}
-          </div>
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${circleClassName}`}
+        >
+          {isCancel ? (
+            <span className="text-lg font-bold leading-none">×</span>
+          ) : (
+            <DynamicIcon name={sector.icon} className="h-[18px] w-[18px]" />
+          )}
         </div>
         <div
-          className="mt-1.5 max-w-[102px] overflow-hidden text-ellipsis whitespace-nowrap rounded-full px-2 py-1 text-center text-[10px] font-semibold leading-none backdrop-blur-[5px]"
-          style={labelStyle}
+          className={`mt-1.5 max-w-[104px] rounded-md border bg-card/90 px-2 py-0.5 text-center text-[10px] font-semibold leading-tight ${labelClassName}`}
         >
           {sector.label}
         </div>
@@ -177,7 +130,6 @@ function LongPressAnchor({
     <div
       aria-hidden="true"
       data-testid="radial-menu-anchor"
-      data-variant="constellation"
       className="pointer-events-none fixed z-[73]"
       style={{
         left: position.x,
@@ -186,7 +138,7 @@ function LongPressAnchor({
       }}
     >
       <motion.div
-        className="relative flex h-[78px] w-[78px] items-center justify-center"
+        className="relative flex h-[62px] w-[62px] items-center justify-center"
         initial={
           reducedMotion
             ? { opacity: 0 }
@@ -201,71 +153,28 @@ function LongPressAnchor({
         }
       >
         <motion.div
-          aria-hidden="true"
-          className="absolute h-[104px] w-[104px] rounded-full border-[1.5px] border-dashed"
+          className="absolute h-[82px] w-[82px] rounded-full border-2"
           style={{
-            borderColor: `color-mix(in srgb, ${presentation.color} 42%, transparent)`,
+            borderColor: `color-mix(in srgb, ${presentation.color} 55%, transparent)`,
+            backgroundColor: `color-mix(in srgb, ${presentation.color} 11%, transparent)`,
           }}
-          animate={
-            reducedMotion
-              ? { opacity: 0.62, scale: 1 }
-              : {
-                  opacity: [0.44, 0.86, 0.44],
-                  scale: [0.94, 1.05, 0.94],
-                }
-          }
-          transition={
-            reducedMotion
-              ? { duration: 0.1 }
-              : {
-                  duration: 1.7,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: 'easeInOut',
-                }
-          }
-        />
-        <motion.div
-          aria-hidden="true"
-          className="absolute h-[72px] w-[72px] rounded-full border"
-          style={{
-            borderColor: `color-mix(in srgb, ${presentation.color} 24%, transparent)`,
-            backgroundColor: `color-mix(in srgb, ${presentation.color} 9%, transparent)`,
-          }}
-          initial={
-            reducedMotion
-              ? { opacity: 0 }
-              : { opacity: 0, scale: 0.76 }
-          }
+          initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.72 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={
             reducedMotion
               ? { duration: 0.1 }
-              : {
-                  type: 'spring',
-                  stiffness: 330,
-                  damping: 24,
-                  delay: 0.04,
-                }
+              : { type: 'spring', stiffness: 330, damping: 24, delay: 0.04 }
           }
         />
         <div
-          className="relative flex h-[54px] w-[54px] items-center justify-center rounded-full border-2"
+          className="relative flex h-[58px] w-[58px] items-center justify-center rounded-full border-2 bg-card"
           style={{
             color: presentation.color,
             borderColor: `color-mix(in srgb, ${presentation.color} 68%, hsl(var(--border)))`,
-            backgroundColor: `color-mix(in srgb, ${presentation.color} 16%, hsl(var(--card)))`,
+            backgroundColor: `color-mix(in srgb, ${presentation.color} 18%, hsl(var(--card)))`,
           }}
         >
-          <DynamicIcon
-            name={presentation.icon}
-            className="h-[22px] w-[22px]"
-          />
-        </div>
-        <div
-          data-testid="radial-menu-anchor-label"
-          className="absolute left-1/2 top-full mt-1.5 max-w-[116px] -translate-x-1/2 overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-border/50 bg-background/75 px-2 py-1 text-[9px] font-semibold leading-none text-foreground/80 backdrop-blur-[5px]"
-        >
-          {presentation.label}
+          <DynamicIcon name={presentation.icon} className="h-6 w-6" />
         </div>
       </motion.div>
     </div>
@@ -282,11 +191,6 @@ export function RadialMenu({
   onCancel,
 }: RadialMenuProps) {
   const reducedMotion = useReducedMotion() ?? false;
-  const reactId = useId();
-  const paintIds = useMemo(
-    () => createConstellationPaintIds(reactId),
-    [reactId],
-  );
   const itemsWithCancel = useMemo(() => {
     if (items.length === 0) return items;
     return [
@@ -305,17 +209,6 @@ export function RadialMenu({
     () => (layout ? findEqualAreaSector(layout, dragPosition) : null),
     [dragPosition, layout],
   );
-  const selectedSectorIndex =
-    layout && selectedSector
-      ? layout.sectors.findIndex((sector) => sector.id === selectedSector.id)
-      : null;
-  const selectedAccent =
-    selectedSectorIndex !== null && selectedSectorIndex >= 0 && selectedSector
-      ? getConstellationAccent(
-          selectedSectorIndex,
-          selectedSector.id === CANCEL_ITEM_ID,
-        )
-      : categoryPresentation?.color ?? 'hsl(var(--primary))';
   const gestureDistance =
     anchorPosition && dragPosition
       ? Math.hypot(
@@ -326,12 +219,6 @@ export function RadialMenu({
   const showGesture = Boolean(
     anchorPosition && dragPosition && gestureDistance > 2,
   );
-  const contourBend = bounds
-    ? Math.min(24, Math.max(14, Math.min(bounds.width, bounds.height) * 0.04))
-    : 22;
-  const spotlightRadius = bounds
-    ? Math.hypot(bounds.width, bounds.height) * 0.72
-    : 640;
 
   return (
     <AnimatePresence>
@@ -352,7 +239,7 @@ export function RadialMenu({
             <motion.button
               type="button"
               aria-label="Cancel quick note menu"
-              className="absolute inset-0 h-full w-full touch-none cursor-default border-0 bg-overlay/40 p-0 backdrop-blur-[1.5px]"
+              className="absolute inset-0 h-full w-full touch-none cursor-default border-0 bg-overlay/45 p-0 backdrop-blur-[2px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -374,73 +261,6 @@ export function RadialMenu({
               preserveAspectRatio="none"
             >
               <title>{categoryPresentation.label} quick notes</title>
-              <defs>
-                <radialGradient
-                  id={paintIds.spotlight}
-                  gradientUnits="userSpaceOnUse"
-                  cx={anchorPosition.x}
-                  cy={anchorPosition.y}
-                  r={spotlightRadius}
-                >
-                  <stop
-                    offset="0%"
-                    stopColor={selectedAccent}
-                    stopOpacity={0.035}
-                  />
-                  <stop
-                    offset="42%"
-                    stopColor={selectedAccent}
-                    stopOpacity={0.17}
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor={selectedAccent}
-                    stopOpacity={0.025}
-                  />
-                </radialGradient>
-                <linearGradient
-                  id={paintIds.trail}
-                  gradientUnits="userSpaceOnUse"
-                  x1={anchorPosition.x}
-                  y1={anchorPosition.y}
-                  x2={dragPosition?.x ?? anchorPosition.x}
-                  y2={dragPosition?.y ?? anchorPosition.y}
-                >
-                  <stop
-                    offset="0%"
-                    stopColor={categoryPresentation.color}
-                    stopOpacity={0.26}
-                  />
-                  <stop
-                    offset="65%"
-                    stopColor={selectedAccent}
-                    stopOpacity={0.84}
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="hsl(var(--foreground))"
-                    stopOpacity={1}
-                  />
-                </linearGradient>
-              </defs>
-
-              {selectedSector ? (
-                <motion.path
-                  data-testid="radial-menu-spotlight"
-                  data-sector-id={selectedSector.id}
-                  d={radialPolygonPath(selectedSector.polygon)}
-                  fill={`url(#${paintIds.spotlight})`}
-                  stroke={selectedAccent}
-                  strokeOpacity={0.34}
-                  strokeWidth={1.25}
-                  vectorEffect="non-scaling-stroke"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: reducedMotion ? 0.08 : 0.16 }}
-                />
-              ) : null}
-
               <motion.g
                 style={{
                   transformOrigin: `${anchorPosition.x}px ${anchorPosition.y}px`,
@@ -448,53 +268,43 @@ export function RadialMenu({
                 initial={
                   reducedMotion
                     ? { opacity: 0 }
-                    : { opacity: 0, scale: 0.985 }
+                    : { opacity: 0, scale: 0.97 }
                 }
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: reducedMotion ? 0.1 : 0.2 }}
               >
                 {layout.sectors.map((sector, index) => {
-                  const boundary = createConstellationBoundary(
-                    anchorPosition,
-                    sector.startAngle,
-                    layout.safeBounds,
-                    index,
-                    contourBend,
-                  );
-                  const highlighted = isConstellationBoundaryHighlighted(
-                    index,
-                    selectedSectorIndex,
-                    layout.sectors.length,
-                  );
+                  const isSelected = sector.id === selectedSector?.id;
+                  const isCancel = sector.id === CANCEL_ITEM_ID;
+                  const className = isSelected
+                    ? isCancel
+                      ? 'fill-danger/20 stroke-danger/75'
+                      : 'fill-primary/20 stroke-primary/75'
+                    : 'fill-card/5 stroke-border/25';
 
                   return (
-                    <motion.path
+                    <motion.g
                       key={sector.id}
-                      data-testid="radial-menu-contour"
-                      data-boundary-index={index}
-                      data-highlighted={highlighted ? 'true' : 'false'}
-                      d={boundary.path}
-                      fill="none"
-                      stroke={
-                        highlighted
-                          ? `color-mix(in srgb, ${selectedAccent} 58%, transparent)`
-                          : 'hsl(var(--foreground) / 0.16)'
-                      }
-                      strokeWidth={highlighted ? 1.5 : 1}
-                      strokeLinecap="round"
-                      vectorEffect="non-scaling-stroke"
-                      initial={
-                        reducedMotion
-                          ? { opacity: 0 }
-                          : { opacity: 0, pathLength: 0 }
-                      }
-                      animate={{ opacity: 1, pathLength: 1 }}
+                      data-testid="radial-menu-sector"
+                      data-sector-id={sector.id}
+                      data-selected={isSelected ? 'true' : 'false'}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
                       transition={{
-                        duration: reducedMotion ? 0.08 : 0.24,
+                        duration: reducedMotion ? 0.08 : 0.18,
                         delay: reducedMotion ? 0 : index * 0.018,
                       }}
-                    />
+                    >
+                      <motion.path
+                        data-testid={`radial-menu-sector-${sector.id}`}
+                        data-selected={isSelected ? 'true' : 'false'}
+                        d={radialPolygonPath(sector.polygon)}
+                        className={className}
+                        strokeWidth={isSelected ? 2.25 : 1}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </motion.g>
                   );
                 })}
               </motion.g>
@@ -502,59 +312,25 @@ export function RadialMenu({
               {showGesture && dragPosition ? (
                 <g data-testid="radial-menu-gesture">
                   <motion.line
-                    data-testid="radial-menu-gesture-glow"
                     x1={anchorPosition.x}
                     y1={anchorPosition.y}
                     x2={dragPosition.x}
                     y2={dragPosition.y}
-                    stroke={selectedAccent}
-                    strokeOpacity={0.22}
-                    strokeWidth={11}
+                    className="stroke-foreground/65"
+                    strokeWidth={2.5}
                     strokeLinecap="round"
+                    strokeDasharray="5 6"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ duration: reducedMotion ? 0.08 : 0.14 }}
-                  />
-                  <motion.line
-                    data-testid="radial-menu-gesture-core"
-                    x1={anchorPosition.x}
-                    y1={anchorPosition.y}
-                    x2={dragPosition.x}
-                    y2={dragPosition.y}
-                    stroke={`url(#${paintIds.trail})`}
-                    strokeWidth={3.2}
-                    strokeLinecap="round"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: reducedMotion ? 0.08 : 0.14 }}
                   />
                   <motion.circle
                     cx={dragPosition.x}
                     cy={dragPosition.y}
-                    r={13}
-                    fill={selectedAccent}
-                    fillOpacity={0.12}
-                    initial={{
-                      opacity: 0,
-                      scale: reducedMotion ? 1 : 0.72,
-                    }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: reducedMotion ? 0.08 : 0.14 }}
-                  />
-                  <motion.circle
-                    data-testid="radial-menu-gesture-pointer"
-                    cx={dragPosition.x}
-                    cy={dragPosition.y}
-                    r={8}
-                    fill="hsl(var(--foreground))"
-                    stroke={selectedAccent}
+                    r={7}
+                    className="fill-foreground stroke-primary"
                     strokeWidth={3}
-                    initial={{
-                      opacity: 0,
-                      scale: reducedMotion ? 1 : 0.72,
-                    }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: reducedMotion ? 0.08 : 0.14 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
                   />
                 </g>
               ) : null}
@@ -564,10 +340,6 @@ export function RadialMenu({
               <SectorNode
                 key={sector.id}
                 sector={sector}
-                accentColor={getConstellationAccent(
-                  index,
-                  sector.id === CANCEL_ITEM_ID,
-                )}
                 isSelected={sector.id === selectedSector?.id}
                 reducedMotion={reducedMotion}
                 index={index}
