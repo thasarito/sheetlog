@@ -54,10 +54,11 @@ const IDEAL_RING_RADIUS = 132;
 const MIN_RING_RADIUS = 72;
 const LABEL_GUTTER = 40;
 const GAP_ANGLE = 4;
-const MENU_PADDING = 16;
-const OUTER_RADIUS = IDEAL_RING_RADIUS + LABEL_GUTTER;
-const MIN_DRAG_DISTANCE = IDEAL_RING_RADIUS * 0.4;
-const MAX_DRAG_DISTANCE = IDEAL_RING_RADIUS * 1.9;
+const CENTERED_MENU_PADDING = 16;
+const MIN_DRAG_DISTANCE = 40;
+const MAX_DRAG_DISTANCE = 200;
+const OUTER_RADIUS = 160;
+const MENU_PADDING = 20;
 const CANCEL_ITEM_ID = '__cancel__';
 
 function getViewportSize(): { width: number; height: number } {
@@ -88,7 +89,7 @@ export function getRadialMenuGeometry(viewport: {
   const width = Math.max(1, viewport.width);
   const height = Math.max(1, viewport.height);
   const shortestSide = Math.min(width, height);
-  const availableOuterRadius = Math.max(1, shortestSide / 2 - MENU_PADDING);
+  const availableOuterRadius = Math.max(1, shortestSide / 2 - CENTERED_MENU_PADDING);
   const minimumRadius = Math.min(MIN_RING_RADIUS, availableOuterRadius);
   const ringRadius = Math.min(
     IDEAL_RING_RADIUS,
@@ -159,11 +160,12 @@ export function findHoveredItem(
 }
 
 export function calculateAvailableArc(
-  anchor: RadialMenuPoint,
+  anchor: { x: number; y: number },
   viewport: { width: number; height: number },
   outerRadius: number,
-  padding: number = MENU_PADDING,
+  padding: number = 20
 ): ArcConfig {
+  // Calculate available space as ratios relative to outerRadius
   const spaceRatio = {
     right: (viewport.width - anchor.x - padding) / outerRadius,
     left: (anchor.x - padding) / outerRadius,
@@ -171,50 +173,64 @@ export function calculateAvailableArc(
     up: (anchor.y - padding) / outerRadius,
   };
 
-  if (
-    spaceRatio.right >= 1 &&
-    spaceRatio.left >= 1 &&
-    spaceRatio.up >= 1 &&
-    spaceRatio.down >= 1
-  ) {
-    return FULL_CIRCLE_ARC;
+  // Full circle if all directions have enough space
+  if (spaceRatio.right >= 1 && spaceRatio.left >= 1 &&
+      spaceRatio.up >= 1 && spaceRatio.down >= 1) {
+    return { startAngle: -90, sweepAngle: 360 };
   }
 
-  const isValidAngle = (degrees: number): boolean => {
-    const radians = (degrees * Math.PI) / 180;
-    const cosine = Math.cos(radians);
-    const sine = Math.sin(radians);
+  // Check if a given angle (in degrees) fits within viewport
+  // Convention: 0 = right, 90 = down, -90 = up, ±180 = left
+  const isValidAngle = (deg: number): boolean => {
+    const rad = (deg * Math.PI) / 180;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
     return (
-      cosine <= spaceRatio.right &&
-      cosine >= -spaceRatio.left &&
-      sine <= spaceRatio.down &&
-      sine >= -spaceRatio.up
+      cosA <= spaceRatio.right &&
+      cosA >= -spaceRatio.left &&
+      sinA <= spaceRatio.down &&
+      sinA >= -spaceRatio.up
     );
   };
 
-  const validAngles = Array.from({ length: 360 }, (_, index) =>
-    isValidAngle(index - 180),
-  );
+  // Sample every degree from -180 to 179
+  const STEP = 1;
+  const SAMPLES = 360 / STEP;
+  const validAngles: boolean[] = [];
+
+  for (let i = 0; i < SAMPLES; i++) {
+    const deg = (i * STEP) - 180; // Range: -180 to 179
+    validAngles.push(isValidAngle(deg));
+  }
+
+  // Find longest contiguous arc of valid angles (circular array)
   let bestStart = 0;
   let bestLength = 0;
 
-  for (let start = 0; start < validAngles.length; start += 1) {
+  for (let start = 0; start < SAMPLES; start++) {
     if (!validAngles[start]) continue;
+
     let length = 0;
-    for (let offset = 0; offset < validAngles.length; offset += 1) {
-      if (!validAngles[(start + offset) % validAngles.length]) break;
-      length += 1;
+    for (let i = 0; i < SAMPLES; i++) {
+      if (validAngles[(start + i) % SAMPLES]) {
+        length++;
+      } else {
+        break;
+      }
     }
+
     if (length > bestLength) {
       bestLength = length;
       bestStart = start;
     }
   }
 
-  return {
-    startAngle: bestStart - 180,
-    sweepAngle: Math.max(bestLength, 45),
-  };
+  // Convert index back to degrees (-180 to 179)
+  const startAngle = (bestStart * STEP) - 180;
+  // Ensure minimum sweep angle for usability
+  const sweepAngle = Math.max(bestLength * STEP, 45);
+
+  return { startAngle, sweepAngle };
 }
 
 function RingTrack({
@@ -313,7 +329,7 @@ export function RadialMenu({
             <motion.button
               type="button"
               aria-label="Cancel quick note menu"
-              className="absolute inset-0 h-full w-full cursor-default border-0 bg-overlay/40 p-0 backdrop-blur-[2px]"
+              className="absolute inset-0 h-full w-full touch-none cursor-default border-0 bg-overlay/40 p-0 backdrop-blur-[2px]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -322,12 +338,11 @@ export function RadialMenu({
                 event.preventDefault();
                 onCancel();
               }}
+              onClick={onCancel}
             />
 
             <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
               <motion.div
-                role="menu"
-                aria-label={`${categoryPresentation.label} quick notes`}
                 data-testid="radial-menu-wheel"
                 className="relative isolate"
                 style={{ width: geometry.svgSize, height: geometry.svgSize }}
@@ -400,7 +415,7 @@ export function RadialMenu({
                 </svg>
 
                 <motion.div
-                  aria-label={categoryPresentation.label}
+                  aria-hidden="true"
                   data-testid="radial-menu-center-icon"
                   className="absolute flex items-center justify-center rounded-full border-2 bg-card"
                   style={{
