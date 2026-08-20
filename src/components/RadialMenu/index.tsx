@@ -1,4 +1,5 @@
 import {
+  useId,
   useMemo,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -7,6 +8,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { DynamicIcon } from '../DynamicIcon';
 import {
   createConstellationBoundary,
+  createConstellationPaintIds,
   getConstellationAccent,
   isConstellationBoundaryHighlighted,
 } from './constellationLens';
@@ -64,7 +66,7 @@ function SectorNode({
   const isCancel = sector.id === CANCEL_ITEM_ID;
   const selectedForeground = isCancel
     ? 'hsl(var(--danger-foreground))'
-    : 'hsl(var(--background))';
+    : 'hsl(var(--primary-foreground))';
   const iconStyle: CSSProperties = {
     color: isSelected ? selectedForeground : accentColor,
     borderColor: `color-mix(in srgb, ${accentColor} ${isSelected ? 82 : 58}%, hsl(var(--border)))`,
@@ -280,6 +282,11 @@ export function RadialMenu({
   onCancel,
 }: RadialMenuProps) {
   const reducedMotion = useReducedMotion() ?? false;
+  const reactId = useId();
+  const paintIds = useMemo(
+    () => createConstellationPaintIds(reactId),
+    [reactId],
+  );
   const itemsWithCancel = useMemo(() => {
     if (items.length === 0) return items;
     return [
@@ -369,7 +376,7 @@ export function RadialMenu({
               <title>{categoryPresentation.label} quick notes</title>
               <defs>
                 <radialGradient
-                  id="radial-menu-constellation-spotlight"
+                  id={paintIds.spotlight}
                   gradientUnits="userSpaceOnUse"
                   cx={anchorPosition.x}
                   cy={anchorPosition.y}
@@ -392,7 +399,7 @@ export function RadialMenu({
                   />
                 </radialGradient>
                 <linearGradient
-                  id="radial-menu-constellation-trail"
+                  id={paintIds.trail}
                   gradientUnits="userSpaceOnUse"
                   x1={anchorPosition.x}
                   y1={anchorPosition.y}
@@ -422,7 +429,7 @@ export function RadialMenu({
                   data-testid="radial-menu-spotlight"
                   data-sector-id={selectedSector.id}
                   d={radialPolygonPath(selectedSector.polygon)}
-                  fill="url(#radial-menu-constellation-spotlight)"
+                  fill={`url(#${paintIds.spotlight})`}
                   stroke={selectedAccent}
                   strokeOpacity={0.34}
                   strokeWidth={1.25}
@@ -514,7 +521,7 @@ export function RadialMenu({
                     y1={anchorPosition.y}
                     x2={dragPosition.x}
                     y2={dragPosition.y}
-                    stroke="url(#radial-menu-constellation-trail)"
+                    stroke={`url(#${paintIds.trail})`}
                     strokeWidth={3.2}
                     strokeLinecap="round"
                     initial={{ opacity: 0 }}
