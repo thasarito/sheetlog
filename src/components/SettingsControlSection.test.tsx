@@ -49,6 +49,8 @@ describe('SettingsControlSection', () => {
     const categories = screen.getByRole('button', { name: /Categories/ });
     expect(accounts).toHaveAttribute('aria-expanded', 'false');
     expect(categories).toHaveAttribute('aria-expanded', 'false');
+    expect(accounts.querySelector('[data-settings-icon-badge]')).toBeInTheDocument();
+    expect(categories.querySelector('[data-settings-icon-badge]')).toBeInTheDocument();
 
     await user.click(accounts);
     await user.click(categories);

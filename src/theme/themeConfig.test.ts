@@ -40,7 +40,14 @@ function contrastRatio(first: string, second: string): number {
 
 describe("theme configuration", () => {
   it("keeps every preset complete and hex based", () => {
-    expect(Object.keys(THEMES)).toEqual(["sheetlog", "dracula", "monokai"]);
+    expect(Object.keys(THEMES)).toEqual([
+      "sheetlog",
+      "dracula",
+      "monokai",
+      "wise",
+      "x",
+      "pinterest",
+    ]);
 
     for (const theme of THEME_LIST) {
       for (const mode of ["light", "dark"] as const) {
@@ -55,6 +62,13 @@ describe("theme configuration", () => {
   it("includes canonical Dracula and Monokai dark backgrounds", () => {
     expect(THEMES.dracula.modes.dark.background).toBe("#282A36");
     expect(THEMES.monokai.modes.dark.background).toBe("#272822");
+  });
+
+  it("includes recognizable brand-inspired primary accents", () => {
+    expect(THEMES.wise.modes.dark.primary).toBe("#9FE870");
+    expect(THEMES.x.modes.light.primary).toBe("#0F1419");
+    expect(THEMES.x.modes.dark.primary).toBe("#FFFFFF");
+    expect(THEMES.pinterest.modes.light.primary).toBe("#E60023");
   });
 
   it("keeps semantic foreground pairs readable in every preset", () => {
@@ -85,10 +99,16 @@ describe("theme configuration", () => {
     }
   });
 
-  it("keeps editor-theme semantic accents readable as text", () => {
+  it("keeps generated-theme semantic accents readable as text", () => {
     const accents = ["primary", "info", "success", "warning", "danger"] as const;
 
-    for (const theme of [THEMES.dracula, THEMES.monokai]) {
+    for (const theme of [
+      THEMES.dracula,
+      THEMES.monokai,
+      THEMES.wise,
+      THEMES.x,
+      THEMES.pinterest,
+    ]) {
       for (const mode of ["light", "dark"] as const) {
         for (const accent of accents) {
           expect(

@@ -1,0 +1,52 @@
+name: Validate settings brand themes
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/validate-settings-brand-themes.yml'
+      - 'src/components/**'
+      - 'src/styles/globals.css'
+      - 'src/theme/**'
+      - 'docs/superpowers/**'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run focused behavior tests
+        run: >-
+          npm test --
+          src/theme/themeConfig.test.ts
+          src/components/ThemeSetting.test.tsx
+          src/components/SettingsControlSection.test.tsx
+          src/components/settingsIconBadges.test.tsx
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run typecheck
+        run: npx tsc --noEmit
+
+      - name: Run production build
+        run: npm run build
