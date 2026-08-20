@@ -330,11 +330,20 @@ test.describe("Home dashboard carousel", () => {
     });
     await expect
       .poll(() =>
-        dashboardHeader.evaluate((element) =>
-          Number((element as HTMLElement).dataset.hideProgress),
-        ),
+        page.evaluate(() => {
+          const scroll = document.querySelector<HTMLElement>(
+            '[data-testid="settings-control-center-scroll"]',
+          );
+          const header = document.querySelector<HTMLElement>(
+            '[data-testid="dashboard-header"]',
+          );
+          if (!scroll || !header) return Number.POSITIVE_INFINITY;
+          const expected = Math.min(1, Math.max(0, scroll.scrollTop / 68));
+          const actual = Number(header.dataset.hideProgress);
+          return Math.abs(actual - expected);
+        }),
       )
-      .toBeCloseTo(0.5, 2);
+      .toBeLessThan(0.01);
 
     await expect(page.getByRole("button", { name: "Open settings" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Close settings" })).toHaveCount(0);
