@@ -185,8 +185,12 @@ export function useStableTransactionHeight() {
       document.documentElement.style.removeProperty(
         VISUAL_VIEWPORT_OFFSET_PROPERTY,
       );
-      delete document.documentElement.dataset.transactionViewportPanned;
-      delete document.documentElement.dataset.transactionCompactHeight;
+      document.documentElement.removeAttribute(
+        "data-transaction-viewport-panned",
+      );
+      document.documentElement.removeAttribute(
+        "data-transaction-compact-height",
+      );
       restoreKeyboardOverlay();
     };
   }, []);
