@@ -41,10 +41,12 @@ function sheetlogThemeBootstrap(): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  const buildEnvironment = { ...env, ...process.env };
   const base = env.VITE_BASE_PATH || "/";
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
   const mockModeEnabled =
-    env.VITE_DEV_MODE === "true" || isCloudflarePagesPreview(process.env);
+    buildEnvironment.VITE_DEV_MODE === "true" ||
+    isCloudflarePagesPreview(buildEnvironment);
 
   return {
     base: normalizedBase,
