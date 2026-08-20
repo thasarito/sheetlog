@@ -16,6 +16,40 @@ body {
   @apply antialiased;
 }
 
+/* The amount step owns the full transaction canvas instead of sharing the title reel. */
+main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
+  > div
+  > header {
+  display: none;
+}
+
+main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
+  > div
+  > header
+  + div {
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+/* Keep note entry geometry stable while nearby chips and autocomplete change. */
+[data-transaction-step="amount"] [data-testid="nearby-place-slot"] {
+  height: 2.75rem;
+  min-height: 2.75rem;
+  overflow: hidden;
+}
+
+/* Let the morphed analytics summary sit closer to the title reel as the sheet expands. */
+[data-analytics-sheet-morph] .analytics-today-morph {
+  margin-top: calc(0px - var(--analytics-morph-detail-offset, 0px));
+}
+
+/* The transaction type control should read as tabs, not a bordered card. */
+[data-testid="category-step-type-tabs"]
+  [data-animated-tabs-variant="compact"] {
+  border: 0;
+  border-radius: 0;
+}
+
 input[type="date"] {
   color-scheme: inherit;
 }
