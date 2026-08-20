@@ -21,17 +21,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Reserve transaction-sheet occlusion in Settings
+      - name: Finalize Settings Control Center regression
         run: |
           node scripts/patch-settings-control-center-e2e-selectors.mjs
-          npx biome check --write src/components/SettingsViewContent.tsx
-      - name: Commit occlusion fix
+          node scripts/patch-settings-control-center-e2e-diagnostic.mjs
+          npx biome check --write \
+            src/components/SettingsViewContent.tsx \
+            e2e/home-carousel.spec.ts
+      - name: Commit final regression changes
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/components/SettingsViewContent.tsx
-            git commit -m "fix: keep Settings controls above transaction sheet"
+            git add \
+              src/components/SettingsViewContent.tsx \
+              e2e/home-carousel.spec.ts
+            git commit -m "test: stabilize Settings Control Center browser regression"
             git push origin HEAD:feat/settings-control-center-navigation
           fi
       - name: Focused behavior and theme tests
