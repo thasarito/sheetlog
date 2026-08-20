@@ -178,9 +178,21 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run amount layout browser test
-        run: >-
-          npx playwright test e2e/transaction-amount-layout.spec.ts
-          --project="Mobile Chrome"
+        run: |
+          set -o pipefail
+          npx playwright test e2e/transaction-amount-layout.spec.ts \
+            --project="Mobile Chrome" 2>&1 | tee /tmp/playwright-output.log
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transaction-layout-browser-diagnostics
+          path: |
+            /tmp/playwright-output.log
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Run repository lint (baseline advisory)
         continue-on-error: true
         run: npm run lint
