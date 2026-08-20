@@ -61,22 +61,26 @@ export function ThemeSetting() {
             const Icon = option.icon;
             const selected = mode === option.value;
             return (
-              <button
+              <label
                 key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                aria-label={option.label}
                 title={option.label}
-                onClick={() => setMode(option.value)}
                 className={
                   selected
-                    ? "flex h-7 w-8 items-center justify-center rounded-md bg-background text-foreground"
-                    : "flex h-7 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+                    ? "flex h-7 w-8 cursor-pointer items-center justify-center rounded-md bg-background text-foreground has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/40"
+                    : "flex h-7 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/40"
                 }
               >
-                <Icon className="h-3.5 w-3.5" strokeWidth={2.25} />
-              </button>
+                <input
+                  type="radio"
+                  name="theme-appearance"
+                  value={option.value}
+                  checked={selected}
+                  onChange={() => setMode(option.value)}
+                  aria-label={option.label}
+                  className="sr-only"
+                />
+                <Icon aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.25} />
+              </label>
             );
           })}
         </div>

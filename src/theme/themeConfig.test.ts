@@ -53,7 +53,7 @@ describe("theme configuration", () => {
       for (const mode of ["light", "dark"] as const) {
         expect(Object.keys(theme.modes[mode])).toEqual(THEME_COLOR_TOKEN_NAMES);
         for (const color of Object.values(theme.modes[mode])) {
-          expect(color).toMatch(/^#[\da-f]{6}$/i);
+          expect(color).toMatch(/^[#][\da-f]{6}$/i);
         }
       }
     }
@@ -153,7 +153,9 @@ describe("theme bootstrap", () => {
     document.documentElement.removeAttribute("data-color-mode");
     document.documentElement.removeAttribute("data-theme-ready");
     document.documentElement.removeAttribute("style");
-    document.querySelectorAll('meta[name="theme-color"]').forEach((element) => element.remove());
+    document.querySelectorAll('meta[name="theme-color"]').forEach((element) => {
+      element.remove();
+    });
   });
 
   it("applies variables, browser color scheme, and theme metadata", () => {

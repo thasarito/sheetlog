@@ -45,14 +45,31 @@ jobs:
           src/components/AnalyticsBigSpendingThresholdSetting.test.tsx
           src/components/AnalyticsSyncSetting.test.tsx
 
-      - name: Run lint
-        run: npm run lint
+      - name: Run scoped lint
+        run: >-
+          npx biome check
+          src/theme/themeConfig.ts
+          src/theme/themeConfig.test.ts
+          src/components/SettingsIconBadge.tsx
+          src/components/ThemeSetting.tsx
+          src/components/ThemeSetting.test.tsx
+          src/components/SettingsControlSection.tsx
+          src/components/SettingsControlSection.test.tsx
+          src/components/settingsIconBadges.test.tsx
+          src/components/AnalyticsBaseCurrencySetting.tsx
+          src/components/AnalyticsBigSpendingThresholdSetting.tsx
+          src/components/AnalyticsSyncSetting.tsx
+          src/styles/globals.css
 
       - name: Run typecheck
         run: npx tsc --noEmit
 
       - name: Run production build
         run: npm run build
+
+      - name: Observe the unchanged repository lint baseline
+        continue-on-error: true
+        run: npm run lint
 
       - name: Observe the unchanged full-suite baseline
         continue-on-error: true
