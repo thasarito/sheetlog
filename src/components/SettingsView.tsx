@@ -5,6 +5,7 @@ import {
   type SettingsViewProps,
 } from './SettingsViewContent';
 import { ThemeSetting } from './ThemeSetting';
+import './SettingsView.css';
 
 export type { SettingsViewProps } from './SettingsViewContent';
 
@@ -28,7 +29,7 @@ export function SettingsView(props: SettingsViewProps) {
           aria-label={themeOpen ? 'Close theme settings' : 'Theme settings'}
           aria-expanded={themeOpen}
           onClick={() => setThemeOpen((open) => !open)}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-border/70 bg-card text-primary active:bg-surface-2"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary active:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
         >
           <Palette className="h-5 w-5" />
         </button>

@@ -1,0 +1,11 @@
+/* Normalize fixed Settings leading icons without overriding user-selected account/category colors. */
+[data-testid="settings-view"]
+  :is(
+    section[aria-label="Workspace health"] > div > span:first-child,
+    #settings-section-data-sync-content > div > button:first-child > span:first-child,
+    #settings-section-quick-notes-content button > span:first-child
+  ) {
+  background-color: hsl(var(--primary) / 0.1);
+  border-color: transparent;
+  color: hsl(var(--primary));
+}
