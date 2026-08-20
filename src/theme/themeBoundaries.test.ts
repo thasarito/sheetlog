@@ -35,6 +35,15 @@ const ALLOWED_THEME_FILES = new Set([
 ]);
 
 describe('theme boundaries', () => {
+  it('lets the themed app background extend behind the iOS standalone status bar', () => {
+    const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+
+    expect(indexHtml).toContain(
+      '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />',
+    );
+    expect(indexHtml).toContain('viewport-fit=cover');
+  });
+
   it('keeps managed UI and build files free of palette literals', () => {
     const violations = THEME_MANAGED_FILES.flatMap((file) => {
       if (ALLOWED_THEME_FILES.has(file)) return [];
