@@ -17,12 +17,13 @@ describe("iOS standalone safe-area presentation", () => {
       'html:has([data-testid="category-step-layout"])',
     );
     expect(globalsCss).toContain("background-color: hsl(var(--card));");
-    expect(globalsCss).toContain(
-      'html:has([data-testid="category-step-layout"]) body::before',
-    );
-    expect(globalsCss).toContain("height: env(safe-area-inset-top, 0px);");
+    expect(globalsCss).toContain("background-image: linear-gradient(");
+    expect(globalsCss).toContain("env(safe-area-inset-top, 0px)");
     expect(globalsCss).toContain(
       'html:has([data-testid="category-step-layout"]) #root',
+    );
+    expect(globalsCss).not.toContain(
+      'html:has([data-testid="category-step-layout"]) body::before',
     );
   });
 
