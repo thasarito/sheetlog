@@ -54,6 +54,29 @@ describe("StepReceipt ledger timeline", () => {
     );
   });
 
+  it("does not claim Sheets sync when status is unknown", () => {
+    render(
+      <StepReceipt
+        {...receipt}
+        isPending={false}
+        isSuccess
+        isError={false}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved locally and will sync to Google Sheets.",
+    );
+    expect(screen.getByTestId("receipt-timeline-step-local")).toHaveAttribute(
+      "data-state",
+      "complete",
+    );
+    expect(screen.getByTestId("receipt-timeline-step-sync")).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+  });
+
   it("separates local completion from queued Google Sheets sync", () => {
     render(
       <StepReceipt
