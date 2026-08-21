@@ -38,6 +38,13 @@ describe("useStableTransactionHeight", () => {
     expect(indexHtml).toContain("interactive-widget=overlays-content");
   });
 
+  it("anchors the application shell to a fixed dynamic viewport", () => {
+    const documentRoot = new DOMParser().parseFromString(indexHtml, "text/html");
+
+    expect(documentRoot.body).toHaveClass("fixed", "inset-0", "h-[100dvh]");
+    expect(documentRoot.getElementById("root")).toHaveClass("h-full", "w-full");
+  });
+
   it("ignores a same-width mobile keyboard contraction", () => {
     const input = document.createElement("input");
     document.body.append(input);
