@@ -50,6 +50,10 @@ main[data-testid="transaction-canvas"]:has([data-transaction-step="receipt"])
   padding-bottom: 0;
 }
 
+[data-transaction-step="receipt"] {
+  padding-top: 1rem;
+}
+
 /* Keep note entry geometry stable while nearby chips and autocomplete change. */
 [data-transaction-step="amount"] [data-testid="nearby-place-slot"] {
   height: 2.75rem;
