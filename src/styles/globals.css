@@ -17,30 +17,6 @@ body {
   @apply antialiased;
 }
 
-/*
- * iOS standalone can reserve a system-owned strip below the layout viewport.
- * Let the root canvas provide the category-sheet color for that strip while
- * keeping the black-translucent status-bar region and app canvas unchanged.
- */
-html:has([data-category-sheet-state]) {
-  background-color: hsl(var(--card));
-  background-image: linear-gradient(
-    to bottom,
-    hsl(var(--background)) 0,
-    hsl(var(--background)) env(safe-area-inset-top, 0px),
-    transparent env(safe-area-inset-top, 0px),
-    transparent 100%
-  );
-}
-
-html:has([data-category-sheet-state]) body {
-  background-color: transparent;
-}
-
-html:has([data-category-sheet-state]) #root {
-  background-color: hsl(var(--background));
-}
-
 /* Counter iOS visual-viewport panning while the software keyboard is open. */
 html[data-transaction-viewport-panned="true"]
   main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"]) {
