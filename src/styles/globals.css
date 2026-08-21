@@ -22,7 +22,7 @@ body {
  * Let the root canvas provide the category-sheet color for that strip while
  * keeping the black-translucent status-bar region and app canvas unchanged.
  */
-html:has([data-testid="category-step-layout"]) {
+html:has([data-category-sheet-state]) {
   background-color: hsl(var(--card));
   background-image: linear-gradient(
     to bottom,
@@ -33,11 +33,11 @@ html:has([data-testid="category-step-layout"]) {
   );
 }
 
-html:has([data-testid="category-step-layout"]) body {
+html:has([data-category-sheet-state]) body {
   background-color: transparent;
 }
 
-html:has([data-testid="category-step-layout"]) #root {
+html:has([data-category-sheet-state]) #root {
   background-color: hsl(var(--background));
 }
 
