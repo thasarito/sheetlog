@@ -1,0 +1,9 @@
+[role='dialog'][data-placement][data-gesture-active] {
+  overflow: visible !important;
+}
+
+[role='dialog'][data-placement][data-gesture-active]
+  > [data-category-menu-autofocus] {
+  border-start-start-radius: 21px;
+  border-start-end-radius: 21px;
+}
