@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>SheetLog Step Receipt — Digital Receipt</title>
+  <style>
+    :root{--bg:#fff;--fg:#0f1729;--surface:#f8fafc;--surface2:#f1f5f9;--card:#fff;--muted:#596a80;--primary:#10b77f;--accent:#cef3e8;--accent-fg:#064c39;--success:#10b77f;--success-fg:#0f1729;--warning:#e7b008;--danger:#ef4343;--border:#e1e7ef;--ring:#10b77f;--stage:#e9eef3}
+    html[data-theme="dark"]{--bg:#0f1015;--fg:#f8f8fc;--surface:#191b24;--surface2:#232634;--card:#191b24;--muted:#b1b5c8;--primary:#8fa3ff;--accent:#30354a;--accent-fg:#f8f8fc;--success:#12d393;--success-fg:#0f1015;--warning:#f7c222;--danger:#ef4343;--border:#383d51;--ring:#8fa3ff;--stage:#090a0e}
+    *{box-sizing:border-box}html,body{min-height:100%;margin:0}body{background:var(--stage);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}button{font:inherit}button:focus-visible{outline:3px solid color-mix(in srgb,var(--ring) 55%,transparent);outline-offset:2px}
+    .stage{min-height:100dvh;display:grid;grid-template-columns:minmax(240px,320px) minmax(320px,430px);place-content:center;gap:40px;padding:32px}.notes{align-self:center}.eyebrow{margin:0 0 10px;color:var(--muted);font-size:12px;font-weight:750;letter-spacing:.13em;text-transform:uppercase}.notes h1{margin:0;font-size:clamp(30px,4vw,46px);line-height:1;letter-spacing:-.045em}.notes>p{margin:18px 0 0;color:var(--muted);font-size:15px;line-height:1.55}.notes ul{display:grid;gap:10px;margin:24px 0 0;padding:0;list-style:none}.notes li{display:grid;grid-template-columns:18px 1fr;gap:10px;font-size:13px;line-height:1.45}.notes li::before{content:"✓";color:var(--primary);font-weight:800}.controls{display:grid;gap:12px;margin-top:28px}.control{display:flex;flex-wrap:wrap;gap:8px}.control b{width:100%;color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}.chip{min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--fg);cursor:pointer}.chip[aria-pressed="true"]{border-color:var(--primary);background:var(--accent);color:var(--accent-fg)}
+    .device{width:min(100%,390px);height:min(844px,calc(100dvh - 48px));min-height:650px;justify-self:center;overflow:hidden;border:1px solid var(--border);border-radius:42px;background:var(--bg)}.app{height:100%;display:flex;flex-direction:column;padding:max(16px,env(safe-area-inset-top)) 18px max(24px,calc(env(safe-area-inset-bottom) + 24px));background:var(--bg)}.scroll{min-height:0;flex:1;display:flex;align-items:center;overflow-y:auto;padding:8px 0 22px;scrollbar-width:none}.scroll::-webkit-scrollbar{display:none}
+    .receipt{position:relative;width:100%;border:1px solid var(--border);border-radius:24px;background:var(--card);font-variant-numeric:tabular-nums}.receipt::before,.receipt::after{position:absolute;top:58%;width:18px;height:36px;content:"";border:1px solid var(--border);background:var(--bg)}.receipt::before{left:-1px;border-left:0;border-radius:0 20px 20px 0;transform:translate(-1px,-50%)}.receipt::after{right:-1px;border-right:0;border-radius:20px 0 0 20px;transform:translate(1px,-50%)}
+    .head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px}.brand{display:flex;align-items:center;gap:10px}.brandmark{width:34px;height:34px;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--primary) 36%,var(--border));border-radius:11px;background:color-mix(in srgb,var(--primary) 9%,var(--card));color:var(--primary);font-weight:850}.brand b,.brand small{display:block}.brand b{font-size:14px}.brand small{margin-top:2px;color:var(--muted);font-size:10px}.stamp{min-height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border:1px solid color-mix(in srgb,var(--status) 45%,var(--border));border-radius:999px;background:color-mix(in srgb,var(--status) 8%,var(--card));color:var(--status);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.dot{width:7px;height:7px;border-radius:50%;background:currentColor}.device[data-state="pending"] .dot{background:transparent;border:2px solid currentColor;border-top-color:transparent;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.device[data-state="pending"] .dot{animation:none}}
+    .tear{height:1px;margin:0 20px;background:repeating-linear-gradient(to right,var(--border) 0 7px,transparent 7px 13px)}.total{padding:26px 20px 22px;text-align:center}.total span{color:var(--muted);font:700 11px ui-monospace,"SFMono-Regular",Menlo,monospace;letter-spacing:.13em;text-transform:uppercase}.total strong{display:block;margin-top:9px;font-size:44px;line-height:1;letter-spacing:-.05em}.total p{margin:10px auto 0;max-width:280px;color:var(--muted);font-size:12px;line-height:1.45}.lines{padding:5px 20px 20px;font:12px ui-monospace,"SFMono-Regular",Menlo,monospace}.line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;padding:7px 0}.line span{overflow:hidden;color:var(--muted);text-overflow:ellipsis;white-space:nowrap}.line strong{font-weight:650}.note{margin:4px 20px 20px;padding:12px 14px;border-radius:14px;background:var(--surface);color:var(--muted);font-size:12px}.foot{display:flex;align-items:end;justify-content:space-between;gap:16px;padding:18px 20px 20px;border-top:1px solid var(--border)}.id{color:var(--muted);font:9px/1.5 ui-monospace,"SFMono-Regular",Menlo,monospace;letter-spacing:.05em;text-transform:uppercase}.bars{width:78px;height:28px;opacity:.72;background:repeating-linear-gradient(to right,var(--fg) 0 2px,transparent 2px 5px,var(--fg) 5px 6px,transparent 6px 9px)}
+    .actions{display:grid;grid-template-columns:1fr 1.6fr;gap:10px}.button{min-height:52px;border:1px solid var(--border);border-radius:17px;background:var(--card);color:var(--fg);font-size:14px;font-weight:720;cursor:pointer}.button.primary{border-color:transparent;background:var(--success);color:var(--success-fg)}.actions[data-visible="false"]{visibility:hidden;pointer-events:none}.device[data-state="success"]{--status:var(--success)}.device[data-state="pending"]{--status:var(--warning)}.device[data-state="error"]{--status:var(--danger)}
+    @media(max-width:760px){.stage{display:block;padding:0}.notes{display:none}.device{width:100%;height:100dvh;min-height:600px;border:0;border-radius:0}}
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="notes" aria-label="Prototype notes">
+      <p class="eyebrow">Concept B · Artifact-first</p><h1>Digital receipt</h1>
+      <p>A tangible receipt treatment makes the saved transaction feel final and keeps dense metadata easy to audit.</p>
+      <ul><li>Monospaced rows support fast amount and metadata scanning.</li><li>Status stays contextual instead of interrupting the flow.</li><li>Exact SheetLog semantic tokens work in light and dark modes.</li></ul>
+      <div class="controls">
+        <div class="control"><b>State</b><button class="chip" data-state-control="success" aria-pressed="true">Success</button><button class="chip" data-state-control="pending" aria-pressed="false">Pending</button><button class="chip" data-state-control="error" aria-pressed="false">Error</button></div>
+        <div class="control"><b>Theme</b><button class="chip" data-theme-control="light" aria-pressed="true">Light</button><button class="chip" data-theme-control="dark" aria-pressed="false">Dark</button></div>
+      </div>
+    </section>
+    <section class="device" data-state="success" aria-label="SheetLog mobile receipt preview">
+      <div class="app">
+        <div class="scroll">
+          <article class="receipt" aria-label="Transaction receipt">
+            <header class="head"><div class="brand"><span class="brandmark" aria-hidden="true">SL</span><div><b>SheetLog</b><small>Local ledger entry</small></div></div><span class="stamp" id="status-region" role="status" aria-live="polite" aria-atomic="true"><span class="dot" aria-hidden="true"></span><span id="status-label">Saved</span></span></header>
+            <div class="tear" aria-hidden="true"></div>
+            <section class="total"><span>Total</span><strong>THB&nbsp;248</strong><p id="status-copy">Recorded on your device and queued for Google Sheets.</p></section>
+            <div class="lines"><div class="line"><span>Type</span><strong>Expense</strong></div><div class="line"><span>Category</span><strong>Food</strong></div><div class="line"><span>Account</span><strong>Wallet</strong></div><div class="line"><span>For</span><strong>Me</strong></div><div class="line"><span>Date</span><strong>21 Aug 2026</strong></div><div class="line"><span>Time</span><strong>17:30</strong></div></div>
+            <p class="note">Lunch</p><footer class="foot"><span class="id">Entry<br />SL-210826-1730</span><span class="bars" aria-hidden="true"></span></footer>
+          </article>
+        </div>
+        <div class="actions" data-visible="true"><button class="button" type="button">Undo</button><button class="button primary" type="button">Done</button></div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const copy={success:{label:'Saved',text:'Recorded on your device and queued for Google Sheets.'},pending:{label:'Saving',text:'Securing the entry locally before sync begins.'},error:{label:'Failed',text:'The entry was not saved. Check the connection and try again.'}};
+    const device=document.querySelector('.device'),region=document.getElementById('status-region'),actions=document.querySelector('.actions');
+    function setState(state){device.dataset.state=state;document.getElementById('status-label').textContent=copy[state].label;document.getElementById('status-copy').textContent=copy[state].text;region.setAttribute('role',state==='error'?'alert':'status');if(state==='error')region.removeAttribute('aria-live');else region.setAttribute('aria-live','polite');actions.dataset.visible=String(state==='success');document.querySelectorAll('[data-state-control]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.stateControl===state)))}
+    function setTheme(theme){document.documentElement.dataset.theme=theme;document.querySelectorAll('[data-theme-control]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.themeControl===theme)))}
+    document.querySelectorAll('[data-state-control]').forEach(b=>b.addEventListener('click',()=>setState(b.dataset.stateControl)));document.querySelectorAll('[data-theme-control]').forEach(b=>b.addEventListener('click',()=>setTheme(b.dataset.themeControl)));setState('success');
+  </script>
+</body>
+</html>
