@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import { Loader2, XCircle } from "lucide-react";
+import { Check, Loader2, XCircle } from "lucide-react";
 import type { TransactionStatus, TransactionType } from "../../lib/types";
 import {
   CircleCheckIcon,
@@ -36,11 +36,108 @@ type StepReceiptProps = ReceiptData & {
   undoErrorMessage?: string;
 };
 
+type TimelineStepState = "complete" | "active" | "pending" | "error";
+type TimelineStepId = "captured" | "local" | "sync";
+
+type TimelineStep = {
+  id: TimelineStepId;
+  label: string;
+  description: string;
+  state: TimelineStepState;
+};
+
 const TYPE_LABELS: Record<TransactionType, string> = {
   expense: "Expense",
   income: "Income",
   transfer: "Transfer",
 };
+
+const TIMELINE_STATE_LABELS: Record<TimelineStepState, string> = {
+  complete: "Done",
+  active: "In progress",
+  pending: "Waiting",
+  error: "Needs attention",
+};
+
+function timelineStateClasses(state: TimelineStepState): string {
+  if (state === "complete") {
+    return "border-success/35 bg-success/10 text-success";
+  }
+  if (state === "active") {
+    return "border-warning/45 bg-warning/10 text-warning";
+  }
+  if (state === "error") {
+    return "border-danger/35 bg-danger/10 text-danger";
+  }
+  return "border-border bg-background text-muted-foreground";
+}
+
+function timelineLabelClasses(state: TimelineStepState): string {
+  if (state === "complete") return "text-success";
+  if (state === "active") return "text-warning";
+  if (state === "error") return "text-danger";
+  return "text-muted-foreground";
+}
+
+function TimelineStateIcon({ state }: { state: TimelineStepState }) {
+  if (state === "complete") {
+    return <Check className="h-4 w-4" strokeWidth={2.5} />;
+  }
+  if (state === "active") {
+    return <Loader2 className="h-4 w-4 animate-spin" />;
+  }
+  if (state === "error") {
+    return <XCircle className="h-4 w-4" />;
+  }
+  return <span className="h-1.5 w-1.5 rounded-full bg-current" />;
+}
+
+function ReceiptTimeline({ steps }: { steps: TimelineStep[] }) {
+  return (
+    <ol data-testid="receipt-timeline" className="mt-4">
+      {steps.map((step, index) => (
+        <li
+          key={step.id}
+          data-testid={`receipt-timeline-step-${step.id}`}
+          data-state={step.state}
+          className="relative grid min-h-[72px] grid-cols-[36px_minmax(0,1fr)] gap-3 last:min-h-0"
+        >
+          {index < steps.length - 1 ? (
+            <span
+              aria-hidden="true"
+              className="absolute bottom-0 left-[17px] top-9 w-px bg-border"
+            />
+          ) : null}
+          <span
+            aria-hidden="true"
+            className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-full border ${timelineStateClasses(
+              step.state,
+            )}`}
+          >
+            <TimelineStateIcon state={step.state} />
+          </span>
+          <div className="min-w-0 pb-5 last:pb-0">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-semibold text-foreground">
+                {step.label}
+              </p>
+              <span
+                className={`shrink-0 text-[10px] font-semibold uppercase tracking-wider ${timelineLabelClasses(
+                  step.state,
+                )}`}
+              >
+                {TIMELINE_STATE_LABELS[step.state]}
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {step.description}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 export function StepReceipt({
   type,
@@ -71,21 +168,24 @@ export function StepReceipt({
   const normalizedStatus = isPending
     ? "loading"
     : isSuccess
-    ? "success"
-    : isError
-    ? "error"
-    : "loading";
+      ? "success"
+      : isError
+        ? "error"
+        : "loading";
   const isReimbursement = variant === "reimbursement";
   const isUndoPending = isReimbursement && undoOutcome === "pending";
   const isUndoError = isReimbursement && undoOutcome === "error";
   const presentationStatus = isUndoPending
     ? "loading"
     : isUndoError
-    ? "error"
-    : normalizedStatus;
+      ? "error"
+      : normalizedStatus;
   const isStatusSuccess = presentationStatus === "success";
   const isStatusError = presentationStatus === "error";
   const hasSuccessfulReceipt = normalizedStatus === "success";
+  const resolvedSyncStatus = hasSuccessfulReceipt
+    ? syncStatus ?? "synced"
+    : undefined;
   let statusTitle: string;
   let statusDescription: string;
 
@@ -108,15 +208,23 @@ export function StepReceipt({
     statusTitle = isReimbursement ? "Reimbursement failed" : "Save failed";
     statusDescription =
       errorMessage || "Check your connection and try again.";
-  } else if (isReimbursement && syncStatus === "synced") {
+  } else if (isReimbursement && resolvedSyncStatus === "synced") {
     statusTitle = "Reimbursement recorded";
     statusDescription = "Saved to Google Sheets.";
+  } else if (isReimbursement && resolvedSyncStatus === "error") {
+    statusTitle = "Reimbursement saved locally";
+    statusDescription = "Google Sheets sync needs attention.";
   } else if (isReimbursement) {
     statusTitle = "Reimbursement queued";
     statusDescription = "Saved locally and will sync to Google Sheets.";
   } else {
     statusTitle = "Payment Successful";
-    statusDescription = "Transaction added to your ledger.";
+    statusDescription =
+      resolvedSyncStatus === "pending"
+        ? "Saved locally and will sync to Google Sheets."
+        : resolvedSyncStatus === "error"
+          ? "Saved locally, but Google Sheets sync needs attention."
+          : "Transaction added to your ledger.";
   }
 
   const resolvedDoneLabel = doneLabel ?? "Done";
@@ -125,8 +233,8 @@ export function StepReceipt({
     (isUndoError
       ? "Retry undo"
       : isReimbursement
-      ? "Undo reimbursement"
-      : "Undo");
+        ? "Undo reimbursement"
+        : "Undo");
   const shouldShowTimedProgress =
     showTimedProgress ?? variant === "transaction";
   const accountLabel = type === "transfer" ? "From" : "Account";
@@ -139,123 +247,225 @@ export function StepReceipt({
     }
   }, [isStatusSuccess]);
 
-  const summaryRows = useMemo(
-    () => [
+  const timelineSteps = useMemo<TimelineStep[]>(() => {
+    if (isUndoPending || isUndoError) {
+      return [
+        {
+          id: "captured",
+          label: "Undo requested",
+          description: "The exact reimbursement was selected for removal.",
+          state: "complete",
+        },
+        {
+          id: "local",
+          label: "Queued locally",
+          description: "SheetLog will keep retrying this exact undo safely.",
+          state: "complete",
+        },
+        {
+          id: "sync",
+          label: "Removed from Sheets",
+          description: isUndoError
+            ? undoErrorMessage || "Retry when Google Sheets is available."
+            : "Waiting for Google Sheets to confirm removal.",
+          state: isUndoError ? "error" : "active",
+        },
+      ];
+    }
+
+    const localState: TimelineStepState =
+      normalizedStatus === "loading"
+        ? "active"
+        : normalizedStatus === "error"
+          ? "error"
+          : "complete";
+    const syncState: TimelineStepState =
+      normalizedStatus !== "success"
+        ? "pending"
+        : resolvedSyncStatus === "pending"
+          ? "active"
+          : resolvedSyncStatus === "error"
+            ? "error"
+            : "complete";
+    const localDescription =
+      localState === "active"
+        ? "Saving this entry on your device."
+        : localState === "error"
+          ? "SheetLog could not finish saving this entry."
+          : "Available in your SheetLog ledger.";
+    const syncDescription =
+      syncState === "complete"
+        ? "Google Sheets is up to date."
+        : syncState === "active"
+          ? "Queued for Google Sheets."
+          : syncState === "error"
+            ? "Google Sheets sync needs attention."
+            : "Waiting for the local save to finish.";
+
+    return [
       {
-        label: "Date & Time",
-        value: format(dateObject, "dd MMM yyyy · hh:mm a"),
-        muted: false,
+        id: "captured",
+        label: "Captured",
+        description: isReimbursement
+          ? "Reimbursement details validated."
+          : "Transaction details validated.",
+        state: "complete",
       },
-      { label: "Category", value: category || "—", muted: !category },
-      { label: accountLabel, value: account || "—", muted: !account },
-      { label: forLabel, value: forValue || "—", muted: !forValue },
-      { label: "Type", value: TYPE_LABELS[type], muted: false },
-      { label: "Note", value: note || "—", muted: !note },
-    ],
-    [
-      account,
-      accountLabel,
-      category,
-      dateObject,
-      forLabel,
-      forValue,
-      note,
-      type,
-    ]
-  );
+      {
+        id: "local",
+        label: "Saved locally",
+        description: localDescription,
+        state: localState,
+      },
+      {
+        id: "sync",
+        label: "Synced to Sheets",
+        description: syncDescription,
+        state: syncState,
+      },
+    ];
+  }, [
+    isReimbursement,
+    isUndoError,
+    isUndoPending,
+    normalizedStatus,
+    resolvedSyncStatus,
+    undoErrorMessage,
+  ]);
+
+  const statusToneClass = isStatusError
+    ? "border-danger/25 bg-danger/5 text-danger"
+    : presentationStatus === "loading" || resolvedSyncStatus !== "synced"
+      ? "border-warning/30 bg-warning/5 text-warning"
+      : "border-success/25 bg-success/5 text-success";
 
   return (
-    <div className="flex h-full flex-col justify-between gap-6 px-4 pb-safe-offset-6">
-      <div className="space-y-6">
-        <div
-          role={isStatusError ? "alert" : "status"}
-          aria-live={isStatusError ? undefined : "polite"}
-          aria-atomic="true"
-          className={
-            isStatusSuccess
-              ? "rounded-[28px] border border-success/20 bg-gradient-to-b from-success/15 via-background to-background p-5"
-              : isStatusError
-              ? "rounded-[28px] border border-danger/20 bg-card p-5"
-              : "rounded-[28px] border border-border/70 bg-surface-2/80 p-5"
-          }
+    <div
+      data-testid="step-receipt"
+      data-transaction-step="receipt"
+      className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-4 pb-safe-offset-6"
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+        <section
+          data-testid="receipt-amount-card"
+          aria-label="Transaction summary"
+          className="relative overflow-hidden rounded-[28px] border border-border bg-surface p-5"
         >
-          <div className="flex items-start gap-4">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-10 -right-8 h-32 w-32 rounded-full border-[24px] border-primary/10"
+          />
+          <div className="relative z-10 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="flex min-w-0 items-center gap-2 normal-case tracking-normal text-foreground">
+              <span className="h-2 w-2 shrink-0 rounded-[3px] bg-primary" />
+              <span className="truncate">{category || "Uncategorized"}</span>
+            </span>
+            <span>{TYPE_LABELS[type]}</span>
+          </div>
+          <p className="relative z-10 mt-5 text-[clamp(2.5rem,12vw,3.25rem)] font-semibold leading-none tracking-[-0.055em] text-foreground tabular-nums">
+            {amountDisplay}
+          </p>
+          <dl className="relative z-10 mt-5 grid grid-cols-3 gap-3">
+            <div className="min-w-0">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {accountLabel}
+              </dt>
+              <dd
+                className="mt-1 truncate text-xs font-semibold text-foreground"
+                title={account || undefined}
+              >
+                {account || "—"}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {forLabel}
+              </dt>
+              <dd
+                className="mt-1 truncate text-xs font-semibold text-foreground"
+                title={forValue || undefined}
+              >
+                {forValue || "—"}
+              </dd>
+            </div>
+            <div className="min-w-0 text-right">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Date
+              </dt>
+              <dd className="mt-1 whitespace-nowrap text-xs font-semibold text-foreground tabular-nums">
+                {format(dateObject, "dd MMM · HH:mm")}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="mt-6" aria-label="Entry progress">
+          <div className="flex items-end justify-between gap-4">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Entry progress
+            </p>
+            <span className="text-xs font-semibold text-muted-foreground">
+              {isUndoPending || isUndoError ? "Undo" : "Save & sync"}
+            </span>
+          </div>
+
+          <div
+            role={isStatusError ? "alert" : "status"}
+            aria-live={isStatusError ? undefined : "polite"}
+            aria-atomic="true"
+            className={`mt-3 flex items-start gap-3 rounded-2xl border p-3.5 ${statusToneClass}`}
+          >
             <span
-              className={
-                isStatusSuccess
-                  ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-success/15 text-success"
-                  : isStatusError
-                  ? "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-danger/10 text-danger"
-                  : "mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-card text-muted-foreground"
-              }
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-current/20 bg-background/70"
               aria-hidden="true"
             >
               {isStatusSuccess ? (
                 <CircleCheckIcon
                   ref={checkIconRef}
-                  size={22}
-                  className="text-success"
+                  size={21}
+                  className="text-current"
                 />
               ) : isStatusError ? (
-                <XCircle className="h-5 w-5 text-danger" />
+                <XCircle className="h-5 w-5" />
               ) : (
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin" />
               )}
             </span>
-            <div className="space-y-1">
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">
                 {statusTitle}
               </p>
-              <p
-                className={
-                  isStatusSuccess
-                    ? "text-2xl font-semibold text-success"
-                    : "text-xl font-semibold text-foreground"
-                }
-              >
-                {amountDisplay}
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {statusDescription}
               </p>
-              {isStatusSuccess && !isReimbursement ? null : (
-                <p className="text-xs text-muted-foreground">
-                  {statusDescription}
-                </p>
-              )}
             </div>
           </div>
-        </div>
 
-        <div className="space-y-3">
-          <p className="text-sm font-semibold text-muted-foreground">
-            Transaction Summary
-          </p>
-          <dl className="divide-y divide-border/60 rounded-2xl border border-border/70 bg-card px-4 py-1 text-sm">
-            {summaryRows.map((row) => (
-              <div
-                key={row.label}
-                className="flex items-start justify-between gap-4 py-3"
-              >
-                <dt className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  {row.label}
-                </dt>
-                <dd
-                  className={[
-                    "max-w-[60%] text-right text-sm font-medium break-words",
-                    row.muted ? "text-muted-foreground" : "text-foreground",
-                  ].join(" ")}
-                >
-                  {row.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
+          <ReceiptTimeline steps={timelineSteps} />
+        </section>
+
+        <section
+          aria-label="Additional transaction details"
+          className="mt-2 border-y border-border"
+        >
+          <div className="grid grid-cols-[1fr_minmax(0,2fr)] gap-4 py-3">
+            <span className="text-xs text-muted-foreground">Note</span>
+            <span
+              className={`break-words text-right text-sm font-medium ${
+                note ? "text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              {note || "—"}
+            </span>
+          </div>
+        </section>
       </div>
 
       {hasSuccessfulReceipt ? (
-        <div className="space-y-3">
+        <div className="shrink-0 space-y-3">
           <button
             type="button"
-            className="relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-success py-3 text-sm font-semibold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            className="relative flex min-h-12 w-full items-center justify-center overflow-hidden rounded-2xl bg-success px-4 text-sm font-semibold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60"
             onClick={onDone}
             disabled={actionsDisabled}
           >
@@ -274,7 +484,7 @@ export function StepReceipt({
           {isUndoPending ? null : (
             <button
               type="button"
-              className="w-full rounded-2xl border border-border bg-card py-2.5 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-11 w-full rounded-2xl border border-border bg-card px-4 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
               onClick={onUndo}
               disabled={actionsDisabled}
             >
