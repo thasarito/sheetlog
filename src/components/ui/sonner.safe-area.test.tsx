@@ -24,10 +24,10 @@ describe("Toaster iOS safe-area placement", () => {
     expect(sonnerMock.props).toMatchObject({
       position: "top-center",
       offset: {
-        top: "calc(env(safe-area-inset-top, 0px) + 12px)",
+        top: "calc(env(safe-area-inset-top, 0px) + 24px)",
       },
       mobileOffset: {
-        top: "calc(env(safe-area-inset-top, 0px) + 12px)",
+        top: "calc(env(safe-area-inset-top, 0px) + 16px)",
         right: 16,
         bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
         left: 16,
