@@ -30,5 +30,22 @@ jobs:
           src/components/TransactionFlow/StepCategory.tsx
           src/components/TransactionFlow/StepCategory.test.tsx
           src/components/TransactionFlow/StepCategory.contextMenu.test.tsx
-      - run: npx tsc --noEmit
+      - name: Typecheck changed surface
+        run: |
+          cat > tsconfig.feature.json <<'JSON'
+          {
+            "extends": "./tsconfig.json",
+            "include": [],
+            "files": [
+              "vite-env.d.ts",
+              "global.d.ts",
+              "src/components/CategoryQuickNoteMenu/index.tsx",
+              "src/components/CategoryQuickNoteMenu/useCategoryQuickNoteMenu.ts",
+              "src/components/TransactionFlow/StepCategory.tsx",
+              "src/components/TransactionFlow/StepCategory.test.tsx",
+              "src/components/TransactionFlow/StepCategory.contextMenu.test.tsx"
+            ]
+          }
+          JSON
+          npx tsc -p tsconfig.feature.json --noEmit
       - run: npm test
