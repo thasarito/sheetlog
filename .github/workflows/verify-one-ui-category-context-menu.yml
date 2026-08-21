@@ -48,4 +48,11 @@ jobs:
           }
           JSON
           npx tsc -p tsconfig.feature.json --noEmit
-      - run: npm test
+      - name: Full test suite
+        shell: bash
+        run: |
+          set +e
+          npm test > /tmp/vitest.log 2>&1
+          status=$?
+          tail -n 300 /tmp/vitest.log
+          exit $status
