@@ -1,0 +1,43 @@
+name: Verify transaction search iOS keyboard clearance
+
+on:
+  push:
+    branches:
+      - fix/transaction-search-ios-keyboard-clearance
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run focused regression tests
+        run: >-
+          npx vitest run
+          src/components/TransactionFlow/keyboardAccessoryClearance.test.ts
+          src/components/TransactionFlow/CategoryStepSheet.keyboardClearance.test.tsx
+          src/components/TransactionFlow/useKeyboardViewportState.test.tsx
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
