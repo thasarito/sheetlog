@@ -1,10 +1,18 @@
-import { cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ThemeProvider } from "../theme";
 import { STORAGE_KEYS } from "../lib/constants";
+import type { TransactionRecord } from "../lib/types";
 import { mockIosHapticsPlatform } from "../test/iosHaptics";
+import { ThemeProvider } from "../theme";
 import { DateScroller } from "./DateScroller";
 import { ThemeSetting } from "./ThemeSetting";
 import { AnalyticsCategories } from "./TransactionFlow/AnalyticsCategories";
@@ -19,7 +27,7 @@ import {
 import { StepCategoryTypeTabs } from "./TransactionFlow/StepCategoryTypeTabs";
 import { useTransactionForm } from "./TransactionFlow/useTransactionForm";
 import { AnimatedTabs } from "./ui/AnimatedTabs";
-import type { TransactionRecord } from "../lib/types";
+import { SelectionHaptics } from "./SelectionHaptics";
 
 const tabs = [
   { value: "expense", label: "Expense", icon: ArrowDownRight },
@@ -29,6 +37,15 @@ const tabs = [
 
 function hasHapticTrigger(element: HTMLElement): boolean {
   return element.querySelector("[data-haptic-trigger]") !== null;
+}
+
+function renderWithSelectionHaptics(node: ReactNode) {
+  return render(
+    <>
+      <SelectionHaptics />
+      {node}
+    </>,
+  );
 }
 
 let restoreIosPlatform: (() => void) | null = null;
@@ -46,30 +63,27 @@ afterEach(() => {
 });
 
 describe("first-release selection haptics", () => {
-  it("attaches only to value-changing animated tabs", () => {
-    render(
+  it("attaches only to value-changing compact tabs", async () => {
+    renderWithSelectionHaptics(
       <AnimatedTabs
         tabs={[...tabs]}
         value="expense"
         onChange={vi.fn()}
         layoutId="selection-haptics-tabs"
         variant="compact"
-        selectionHaptics
       />,
     );
 
-    expect(
-      hasHapticTrigger(screen.getByRole("button", { name: "Expense" })),
-    ).toBe(false);
-    expect(
-      hasHapticTrigger(screen.getByRole("button", { name: "Income" })),
-    ).toBe(true);
-    expect(
-      hasHapticTrigger(screen.getByRole("button", { name: "Transfer" })),
-    ).toBe(true);
+    const expense = screen.getByRole("button", { name: "Expense" });
+    const income = screen.getByRole("button", { name: "Income" });
+    const transfer = screen.getByRole("button", { name: "Transfer" });
+
+    await waitFor(() => expect(hasHapticTrigger(income)).toBe(true));
+    expect(hasHapticTrigger(expense)).toBe(false);
+    expect(hasHapticTrigger(transfer)).toBe(true);
   });
 
-  it("uses selection haptics on the transaction-type control", async () => {
+  it("moves selection haptics with the transaction-type value", async () => {
     const hook = renderHook(() =>
       useTransactionForm({
         initialValues: {
@@ -79,7 +93,7 @@ describe("first-release selection haptics", () => {
       }),
     );
     const user = userEvent.setup();
-    render(
+    renderWithSelectionHaptics(
       <StepCategoryTypeTabs
         form={hook.result.current}
         layoutId="transaction-type-haptics"
@@ -88,19 +102,18 @@ describe("first-release selection haptics", () => {
 
     const expense = screen.getByRole("button", { name: "Expense" });
     const income = screen.getByRole("button", { name: "Income" });
+    await waitFor(() => expect(hasHapticTrigger(income)).toBe(true));
     expect(hasHapticTrigger(expense)).toBe(false);
-    expect(hasHapticTrigger(income)).toBe(true);
 
     await user.click(income);
     await waitFor(() =>
       expect(hook.result.current.state.values.type).toBe("income"),
     );
-
+    await waitFor(() => expect(hasHapticTrigger(expense)).toBe(true));
     expect(hasHapticTrigger(income)).toBe(false);
-    expect(hasHapticTrigger(expense)).toBe(true);
   });
 
-  it("covers analytics range and category-filter changes", () => {
+  it("covers analytics range and category-filter changes", async () => {
     const series: AnalyticsSeries[] = [
       {
         key: "food",
@@ -120,18 +133,18 @@ describe("first-release selection haptics", () => {
       { category: "Travel", amount: 40, share: 40 },
     ];
 
-    const { unmount } = render(
+    const range = renderWithSelectionHaptics(
       <AnalyticsRangeToggle value="week" onChange={vi.fn()} />,
     );
-    expect(
-      hasHapticTrigger(screen.getByRole("button", { name: "Week" })),
-    ).toBe(false);
-    expect(
-      hasHapticTrigger(screen.getByRole("button", { name: "Month" })),
-    ).toBe(true);
-    unmount();
+    const week = screen.getByRole("button", { name: "Week" });
+    const month = screen.getByRole("button", { name: "Month" });
+    const custom = screen.getByRole("button", { name: "Custom date range" });
+    await waitFor(() => expect(hasHapticTrigger(month)).toBe(true));
+    expect(hasHapticTrigger(week)).toBe(false);
+    expect(hasHapticTrigger(custom)).toBe(false);
+    range.unmount();
 
-    render(
+    renderWithSelectionHaptics(
       <AnalyticsCategories
         series={series}
         categories={categories}
@@ -141,18 +154,17 @@ describe("first-release selection haptics", () => {
       />,
     );
 
-    expect(
-      hasHapticTrigger(screen.getByRole("button", { name: /Food/ })),
-    ).toBe(true);
-    expect(
-      hasHapticTrigger(screen.getByRole("button", { name: /Travel/ })),
-    ).toBe(true);
+    const food = screen.getByRole("button", { name: /Food/ });
+    const travel = screen.getByRole("button", { name: /Travel/ });
+    await waitFor(() => expect(hasHapticTrigger(food)).toBe(true));
+    expect(hasHapticTrigger(travel)).toBe(true);
   });
 
-  it("covers direct date choices without instrumenting the draggable week", () => {
+  it("covers direct date choices without instrumenting the draggable week", async () => {
     const value = new Date(2026, 7, 19, 12, 30);
-    const onChange = vi.fn();
-    render(<DateScroller value={value} onChange={onChange} />);
+    renderWithSelectionHaptics(
+      <DateScroller value={value} onChange={vi.fn()} />,
+    );
 
     const selectedDay = screen.getByRole("button", {
       name: "Wednesday, August 19",
@@ -160,22 +172,25 @@ describe("first-release selection haptics", () => {
     const nextDay = screen.getByRole("button", {
       name: "Thursday, August 20",
     });
+    const previousMonth = screen.getByRole("button", {
+      name: "Previous month",
+    });
+    const today = screen.getByRole("button", { name: "Today" });
 
+    await waitFor(() => expect(hasHapticTrigger(nextDay)).toBe(true));
     expect(hasHapticTrigger(selectedDay)).toBe(false);
-    expect(hasHapticTrigger(nextDay)).toBe(true);
+    expect(hasHapticTrigger(previousMonth)).toBe(true);
+    expect(hasHapticTrigger(today)).toBe(true);
     expect(
-      hasHapticTrigger(screen.getByRole("button", { name: "Previous month" })),
-    ).toBe(true);
-    expect(
-      screen.getByRole("list", { name: "Select date" }).querySelector(
-        ":scope > [data-haptic-trigger]",
-      ),
+      screen
+        .getByRole("list", { name: "Select date" })
+        .querySelector(":scope > [data-haptic-trigger]"),
     ).toBeNull();
   });
 
   it("persists an Appearance preference and removes active attachments globally", async () => {
     const user = userEvent.setup();
-    render(
+    renderWithSelectionHaptics(
       <ThemeProvider>
         <ThemeSetting />
       </ThemeProvider>,
@@ -187,8 +202,9 @@ describe("first-release selection haptics", () => {
       name: "Haptic feedback",
     });
 
+    await waitFor(() => expect(hasHapticTrigger(dark)).toBe(true));
     expect(hasHapticTrigger(system)).toBe(false);
-    expect(hasHapticTrigger(dark)).toBe(true);
+    expect(hasHapticTrigger(preference)).toBe(true);
     expect(preference).toHaveAttribute("aria-checked", "true");
 
     await user.click(preference);
@@ -197,7 +213,8 @@ describe("first-release selection haptics", () => {
     expect(window.localStorage.getItem(STORAGE_KEYS.HAPTIC_FEEDBACK)).toBe(
       "false",
     );
-    expect(hasHapticTrigger(dark)).toBe(false);
+    await waitFor(() => expect(hasHapticTrigger(dark)).toBe(false));
+    expect(hasHapticTrigger(preference)).toBe(true);
 
     await user.click(preference);
 
@@ -205,10 +222,10 @@ describe("first-release selection haptics", () => {
     expect(window.localStorage.getItem(STORAGE_KEYS.HAPTIC_FEEDBACK)).toBe(
       "true",
     );
-    expect(hasHapticTrigger(dark)).toBe(true);
+    await waitFor(() => expect(hasHapticTrigger(dark)).toBe(true));
   });
 
-  it("haptically marks No Big Spending only when the toggle can change", () => {
+  it("haptically marks No Big Spending only when the toggle can change", async () => {
     const transaction: TransactionRecord = {
       id: "expense",
       type: "expense",
@@ -273,21 +290,25 @@ describe("first-release selection haptics", () => {
       onSelectTransaction: vi.fn(),
       now,
     };
-    const { rerender } = render(<AnalyticsView {...baseProps} />);
+    const { rerender } = renderWithSelectionHaptics(
+      <AnalyticsView {...baseProps} />,
+    );
 
     const available = screen.getByRole("button", {
       name: /Turn on no big spending mode/,
     });
-    expect(hasHapticTrigger(available)).toBe(true);
+    await waitFor(() => expect(hasHapticTrigger(available)).toBe(true));
 
-    rerender(<AnalyticsView {...baseProps} bigSpendingThreshold={null} />);
+    rerender(
+      <>
+        <SelectionHaptics />
+        <AnalyticsView {...baseProps} bigSpendingThreshold={null} />
+      </>,
+    );
 
-    expect(
-      hasHapticTrigger(
-        screen.getByRole("button", {
-          name: /No big spending mode unavailable/,
-        }),
-      ),
-    ).toBe(false);
+    const unavailable = screen.getByRole("button", {
+      name: /No big spending mode unavailable/,
+    });
+    await waitFor(() => expect(hasHapticTrigger(unavailable)).toBe(false));
   });
 });
