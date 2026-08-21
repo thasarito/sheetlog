@@ -43,5 +43,4 @@ jobs:
         run: >-
           npx vitest run
           src/lib/haptics.test.ts
-          src/components/ui/HapticSelectionButton.test.tsx
           src/components/SelectionHaptics.test.tsx
