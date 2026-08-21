@@ -33,6 +33,7 @@ function sheetlogThemeBootstrap(): Plugin {
     enforce: "pre",
     transformIndexHtml(html) {
       return html
+        .replace(", interactive-widget=overlays-content", "")
         .replaceAll("__SHEETLOG_THEME_COLOR__", DEFAULT_PWA_COLOR)
         .replace("__SHEETLOG_THEME_BOOTSTRAP__", createInlineThemeScript());
     },
