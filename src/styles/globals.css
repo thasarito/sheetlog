@@ -24,26 +24,21 @@ body {
  */
 html:has([data-testid="category-step-layout"]) {
   background-color: hsl(var(--card));
+  background-image: linear-gradient(
+    to bottom,
+    hsl(var(--background)) 0,
+    hsl(var(--background)) env(safe-area-inset-top, 0px),
+    transparent env(safe-area-inset-top, 0px),
+    transparent 100%
+  );
 }
 
 html:has([data-testid="category-step-layout"]) body {
   background-color: transparent;
 }
 
-html:has([data-testid="category-step-layout"]) body::before {
-  background-color: hsl(var(--background));
-  content: "";
-  height: env(safe-area-inset-top, 0px);
-  inset: 0 0 auto;
-  pointer-events: none;
-  position: fixed;
-  z-index: 0;
-}
-
 html:has([data-testid="category-step-layout"]) #root {
   background-color: hsl(var(--background));
-  position: relative;
-  z-index: 1;
 }
 
 /* Counter iOS visual-viewport panning while the software keyboard is open. */
