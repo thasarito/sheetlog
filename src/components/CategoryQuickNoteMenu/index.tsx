@@ -8,7 +8,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { DynamicIcon } from '../DynamicIcon';
 import type {
   CategoryQuickNoteMenuBounds,
@@ -180,9 +180,8 @@ export function CategoryQuickNoteMenu({
     : null;
   const categorySelected = state?.activeTarget?.type === 'category';
 
-  const layer = (
-    <AnimatePresence>
-      {state && position ? (
+  const layer =
+    state && position ? (
         <motion.div
           key={`category-quick-note-${state.category}`}
           className="fixed inset-0 z-[70]"
@@ -325,10 +324,8 @@ export function CategoryQuickNoteMenu({
               </div>
             ) : null}
           </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
-  );
+      </motion.div>
+    ) : null;
 
   return typeof document === 'undefined'
     ? layer
