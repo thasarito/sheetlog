@@ -1,0 +1,80 @@
+name: Haptics final release
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: haptics-final-release-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies and refresh npm lockfile
+        run: npm install
+      - name: Refresh pnpm lockfile
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+      - name: Apply first-release haptics integration when needed
+        run: |
+          if [ -f scripts/apply-haptics-release.mjs ]; then
+            node scripts/apply-haptics-release.mjs apply
+          fi
+      - name: Format touched files
+        run: |
+          files=(
+            src/lib/haptics.ts
+            src/components/ui/HapticSelectionButton.tsx
+            src/components/ui/AnimatedTabs.tsx
+            src/components/TransactionFlow/AnalyticsRangeToggle.tsx
+            src/components/TransactionFlow/AnalyticsCategories.tsx
+            src/components/TransactionFlow/AnalyticsView.tsx
+            src/components/DateScroller.tsx
+            src/components/ThemeSetting.tsx
+            src/components/CategoryGrid.tsx
+            src/components/SettingsViewContent.tsx
+            scripts/finalize-haptics-release.mjs
+          )
+          if [ -f scripts/apply-haptics-release.mjs ]; then
+            files+=(scripts/apply-haptics-release.mjs)
+          fi
+          npx biome check --write "${files[@]}"
+      - name: Focused haptics tests
+        run: >-
+          npx vitest run
+          src/lib/haptics.test.ts
+          src/components/ui/HapticSelectionButton.test.tsx
+          src/components/SelectionHaptics.test.tsx
+      - name: Full test suite
+        run: npm test
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Inspect and finalize through GitHub API
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/finalize-haptics-release.mjs
