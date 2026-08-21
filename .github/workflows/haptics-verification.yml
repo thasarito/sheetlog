@@ -1,0 +1,44 @@
+name: Haptics verification
+
+on:
+  push:
+    branches:
+      - feat/ios-selection-haptics
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies and refresh npm lockfile
+        run: npm install --ignore-scripts
+
+      - name: Refresh pnpm lockfile
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+
+      - name: Upload refreshed lockfiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: haptics-lockfiles-${{ github.sha }}
+          path: |
+            package-lock.json
+            pnpm-lock.yaml
+
+      - name: Focused haptics tests
+        run: >-
+          npx vitest run
+          src/lib/haptics.test.ts
+          src/components/ui/HapticSelectionButton.test.tsx
+          src/components/SelectionHaptics.test.tsx
