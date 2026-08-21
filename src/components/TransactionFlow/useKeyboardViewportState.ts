@@ -1,6 +1,9 @@
 import { useLayoutEffect, useState } from "react";
+import { keyboardAccessoryOffset } from "./keyboardAccessoryClearance";
 
 export const KEYBOARD_INSET_THRESHOLD = 60;
+const TRANSACTION_HISTORY_KEYBOARD_OFFSET_PROPERTY =
+  "--transaction-history-keyboard-offset";
 
 export type KeyboardViewportState = {
   active: boolean;
@@ -71,6 +74,19 @@ export function useKeyboardViewportState(
   const [state, setState] = useState<KeyboardViewportState>(() =>
     inactiveKeyboardState(stableLayoutHeight),
   );
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      TRANSACTION_HISTORY_KEYBOARD_OFFSET_PROPERTY,
+      `${keyboardAccessoryOffset(state.active)}px`,
+    );
+    return () => {
+      root.style.removeProperty(
+        TRANSACTION_HISTORY_KEYBOARD_OFFSET_PROPERTY,
+      );
+    };
+  }, [state.active]);
 
   useLayoutEffect(() => {
     const viewport = window.visualViewport;
