@@ -14,16 +14,16 @@ const viteConfig = readFileSync(
 describe("iOS standalone safe-area presentation", () => {
   it("uses the category sheet card color for the system-owned bottom strip", () => {
     expect(globalsCss).toContain(
-      'html:has([data-testid="category-step-layout"])',
+      "html:has([data-category-sheet-state])",
     );
     expect(globalsCss).toContain("background-color: hsl(var(--card));");
     expect(globalsCss).toContain("background-image: linear-gradient(");
     expect(globalsCss).toContain("env(safe-area-inset-top, 0px)");
     expect(globalsCss).toContain(
-      'html:has([data-testid="category-step-layout"]) #root',
+      "html:has([data-category-sheet-state]) #root",
     );
     expect(globalsCss).not.toContain(
-      'html:has([data-testid="category-step-layout"]) body::before',
+      "html:has([data-category-sheet-state]) body::before",
     );
   });
 
