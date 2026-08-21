@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import globalsCss from "../../styles/globals.css?raw";
+import transactionFlowSource from "./index.tsx?raw";
 import { StepReceipt, type ReceiptData } from "./StepReceipt";
 
 const receipt: ReceiptData = {
@@ -51,6 +52,12 @@ describe("StepReceipt ledger timeline", () => {
     expect(screen.getByText("Synced to Sheets")).toBeInTheDocument();
     expect(globalsCss).toContain(
       ':has([data-transaction-step="receipt"])',
+    );
+  });
+
+  it("uses the ordinary mutation record as the authoritative sync status", () => {
+    expect(transactionFlowSource).toContain(
+      "syncStatus={ordinaryMutation.data?.status}",
     );
   });
 
