@@ -12,18 +12,14 @@ const viteConfig = readFileSync(
 );
 
 describe("iOS standalone safe-area presentation", () => {
-  it("uses the category sheet card color for the system-owned bottom strip", () => {
-    expect(globalsCss).toContain(
-      "html:has([data-category-sheet-state])",
-    );
-    expect(globalsCss).toContain("background-color: hsl(var(--card));");
-    expect(globalsCss).toContain("background-image: linear-gradient(");
-    expect(globalsCss).toContain("env(safe-area-inset-top, 0px)");
-    expect(globalsCss).toContain(
-      "html:has([data-category-sheet-state]) #root",
-    );
+  it("lets fixed inset positioning own the standalone viewport height", () => {
+    const bodyClass = indexHtml.match(/<body\s+class="([^"]+)"/)?.[1];
+
+    expect(bodyClass).toContain("fixed");
+    expect(bodyClass).toContain("inset-0");
+    expect(bodyClass).not.toContain("h-[100dvh]");
     expect(globalsCss).not.toContain(
-      "html:has([data-category-sheet-state]) body::before",
+      "html:has([data-category-sheet-state])",
     );
   });
 
