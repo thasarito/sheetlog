@@ -24,8 +24,8 @@ describe("iOS standalone safe-area presentation", () => {
 
   it("does not send unsupported interactive-widget metadata to iOS", () => {
     expect(indexHtml).not.toContain("interactive-widget=");
-    expect(indexHtml).toContain(
-      'name="apple-mobile-web-app-status-bar-style" content="black-translucent"',
+    expect(indexHtml).toMatch(
+      /name="apple-mobile-web-app-status-bar-style"\s+content="black-translucent"/,
     );
   });
 });
