@@ -28,8 +28,11 @@ html[data-transaction-viewport-panned="true"]
   will-change: transform;
 }
 
-/* The amount step owns the full transaction canvas instead of sharing the title reel. */
+/* Amount and receipt steps own the full transaction canvas instead of sharing the title reel. */
 main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
+  > div
+  > header,
+main[data-testid="transaction-canvas"]:has([data-transaction-step="receipt"])
   > div
   > header {
   display: none;
@@ -38,9 +41,17 @@ main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
 main[data-testid="transaction-canvas"]:has([data-transaction-step="amount"])
   > div
   > header
+  + div,
+main[data-testid="transaction-canvas"]:has([data-transaction-step="receipt"])
+  > div
+  > header
   + div {
   min-height: 0;
   padding-bottom: 0;
+}
+
+[data-transaction-step="receipt"] {
+  padding-top: 1rem;
 }
 
 /* Keep note entry geometry stable while nearby chips and autocomplete change. */

@@ -1328,6 +1328,7 @@ export function TransactionFlow() {
             isPending={ordinaryMutation.isPending}
             isSuccess={ordinaryMutation.isSuccess}
             isError={ordinaryMutation.isError}
+            syncStatus={ordinaryMutation.data?.status}
             errorMessage={
               ordinaryMutation.error instanceof Error
                 ? ordinaryMutation.error.message
