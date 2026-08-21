@@ -4,14 +4,17 @@ import { cn } from "../../lib/utils";
 
 type ToasterProps = ComponentProps<typeof Sonner>;
 
-const SAFE_TOP_OFFSET = "calc(env(safe-area-inset-top, 0px) + 12px)";
+const DESKTOP_SAFE_TOP_OFFSET =
+  "calc(env(safe-area-inset-top, 0px) + 24px)";
+const MOBILE_SAFE_TOP_OFFSET =
+  "calc(env(safe-area-inset-top, 0px) + 16px)";
 const SAFE_BOTTOM_OFFSET =
   "calc(env(safe-area-inset-bottom, 0px) + 16px)";
 const DEFAULT_TOAST_OFFSET = {
-  top: SAFE_TOP_OFFSET,
+  top: DESKTOP_SAFE_TOP_OFFSET,
 };
 const DEFAULT_MOBILE_TOAST_OFFSET = {
-  top: SAFE_TOP_OFFSET,
+  top: MOBILE_SAFE_TOP_OFFSET,
   right: 16,
   bottom: SAFE_BOTTOM_OFFSET,
   left: 16,
