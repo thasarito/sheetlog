@@ -101,6 +101,18 @@ async function beginFoodLongPress(tile: HTMLElement) {
   await act(async () => vi.advanceTimersByTimeAsync(400));
 }
 
+async function openPersistentMenu(tile: HTMLElement) {
+  await beginFoodLongPress(tile);
+  fireEvent.pointerUp(tile, {
+    pointerId: 71,
+    pointerType: 'mouse',
+    clientX: 80,
+    clientY: 360,
+  });
+  await act(async () => Promise.resolve());
+  return screen.getByRole('dialog', { name: 'Food quick notes' });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   quickNotesMock.config = {
@@ -129,16 +141,8 @@ describe('StepCategory One UI context menu', () => {
   it('keeps a stationary release open with four ordered custom notes and four type defaults', async () => {
     render(<Harness />);
     const tile = prepareTile();
+    const dialog = await openPersistentMenu(tile);
 
-    await beginFoodLongPress(tile);
-    fireEvent.pointerUp(tile, {
-      pointerId: 71,
-      pointerType: 'mouse',
-      clientX: 80,
-      clientY: 360,
-    });
-
-    const dialog = screen.getByRole('dialog', { name: 'Food quick notes' });
     expect(tile).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('form-category')).toHaveTextContent('empty');
     expect(
@@ -189,5 +193,103 @@ describe('StepCategory One UI context menu', () => {
     expect(
       screen.queryByRole('dialog', { name: 'Food quick notes' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('uses the category when the persistent menu header is tapped', async () => {
+    render(<Harness />);
+    const tile = prepareTile();
+    const dialog = await openPersistentMenu(tile);
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Use Food category' }),
+    );
+
+    expect(screen.getByTestId('form-category')).toHaveTextContent('Food');
+    expect(screen.getByTestId('form-note')).toHaveTextContent('empty');
+    expect(
+      screen.queryByRole('dialog', { name: 'Food quick notes' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('applies a default note when its persistent-menu item is tapped', async () => {
+    render(<Harness />);
+    const tile = prepareTile();
+    const dialog = await openPersistentMenu(tile);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Default two' }));
+
+    expect(screen.getByTestId('form-category')).toHaveTextContent('Food');
+    expect(screen.getByTestId('form-note')).toHaveTextContent('default two');
+    expect(
+      screen.queryByRole('dialog', { name: 'Food quick notes' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('collapses to the category header and default row when there are no custom notes', async () => {
+    quickNotesMock.config = {
+      'default:expense': quickNotesMock.config['default:expense'],
+    };
+    render(<Harness />);
+    const tile = prepareTile();
+    const dialog = await openPersistentMenu(tile);
+
+    expect(
+      within(dialog).queryByRole('button', { name: 'Custom one' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: 'Default one' }),
+    ).toBeInTheDocument();
+  });
+
+  it('applies a dragged default note immediately on release', async () => {
+    render(<Harness />);
+    const tile = prepareTile();
+    await beginFoodLongPress(tile);
+    const target = screen.getByRole('button', { name: 'Default one' });
+    const previousElementFromPoint = document.elementFromPoint;
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => target,
+    });
+
+    try {
+      fireEvent.pointerMove(tile, {
+        pointerId: 71,
+        pointerType: 'mouse',
+        clientX: 220,
+        clientY: 240,
+      });
+      fireEvent.pointerUp(tile, {
+        pointerId: 71,
+        pointerType: 'mouse',
+        clientX: 220,
+        clientY: 240,
+      });
+    } finally {
+      Object.defineProperty(document, 'elementFromPoint', {
+        configurable: true,
+        value: previousElementFromPoint,
+      });
+    }
+
+    expect(screen.getByTestId('form-category')).toHaveTextContent('Food');
+    expect(screen.getByTestId('form-note')).toHaveTextContent('default one');
+    expect(
+      screen.queryByRole('dialog', { name: 'Food quick notes' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('dismisses with Escape and restores focus to the original category', async () => {
+    render(<Harness />);
+    const tile = prepareTile();
+    await openPersistentMenu(tile);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await act(async () => Promise.resolve());
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Food quick notes' }),
+    ).not.toBeInTheDocument();
+    expect(tile).toHaveFocus();
   });
 });
