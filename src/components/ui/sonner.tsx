@@ -4,11 +4,32 @@ import { cn } from "../../lib/utils";
 
 type ToasterProps = ComponentProps<typeof Sonner>;
 
-export function Toaster({ className, toastOptions, ...props }: ToasterProps) {
+const SAFE_TOP_OFFSET = "calc(env(safe-area-inset-top, 0px) + 12px)";
+const SAFE_BOTTOM_OFFSET =
+  "calc(env(safe-area-inset-bottom, 0px) + 16px)";
+const DEFAULT_TOAST_OFFSET = {
+  top: SAFE_TOP_OFFSET,
+};
+const DEFAULT_MOBILE_TOAST_OFFSET = {
+  top: SAFE_TOP_OFFSET,
+  right: 16,
+  bottom: SAFE_BOTTOM_OFFSET,
+  left: 16,
+};
+
+export function Toaster({
+  className,
+  toastOptions,
+  offset,
+  mobileOffset,
+  ...props
+}: ToasterProps) {
   return (
     <Sonner
       position="top-center"
-      className={cn("toaster group top-safe", className)}
+      offset={offset ?? DEFAULT_TOAST_OFFSET}
+      mobileOffset={mobileOffset ?? DEFAULT_MOBILE_TOAST_OFFSET}
+      className={cn("toaster group", className)}
       toastOptions={{
         classNames: {
           toast:
