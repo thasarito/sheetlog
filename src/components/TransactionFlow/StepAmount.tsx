@@ -239,7 +239,7 @@ export function StepAmount({
         </p>
       ) : null}
 
-      <div className="flex shrink-0 flex-col gap-5 pb-6">
+      <div className="flex shrink-0 flex-col gap-5 pb-safe-offset-6">
         <Keypad
           value={amount}
           onChange={(value) => form.setFieldValue("amount", value)}
