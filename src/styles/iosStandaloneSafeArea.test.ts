@@ -6,6 +6,10 @@ const indexHtml = readFileSync(
   new URL("../../index.html", import.meta.url),
   "utf8",
 );
+const viteConfig = readFileSync(
+  new URL("../../vite.config.ts", import.meta.url),
+  "utf8",
+);
 
 describe("iOS standalone safe-area presentation", () => {
   it("uses the category sheet card color for the system-owned bottom strip", () => {
@@ -22,8 +26,10 @@ describe("iOS standalone safe-area presentation", () => {
     );
   });
 
-  it("does not send unsupported interactive-widget metadata to iOS", () => {
-    expect(indexHtml).not.toContain("interactive-widget=");
+  it("removes unsupported interactive-widget metadata from production HTML", () => {
+    expect(viteConfig).toContain(
+      '.replace(", interactive-widget=overlays-content", "")',
+    );
     expect(indexHtml).toMatch(
       /name="apple-mobile-web-app-status-bar-style"\s+content="black-translucent"/,
     );
