@@ -165,7 +165,7 @@ export function StepReceipt({
   );
 
   return (
-    <div className="flex h-full flex-col justify-between gap-6 pb-6 px-4">
+    <div className="flex h-full flex-col justify-between gap-6 px-4 pb-safe-offset-6">
       <div className="space-y-6">
         <div
           role={isStatusError ? "alert" : "status"}
