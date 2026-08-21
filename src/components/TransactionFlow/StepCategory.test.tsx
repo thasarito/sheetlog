@@ -1,44 +1,42 @@
-import { act, fireEvent, render, renderHook, waitFor } from "@testing-library/react";
-import type React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CategoryItem, QuickNote, TransactionType } from "../../lib/types";
-import { StepCategory } from "./StepCategory";
-import { useTransactionForm } from "./useTransactionForm";
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react';
+import type React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CategoryItem, QuickNote, TransactionType } from '../../lib/types';
+import { StepCategory } from './StepCategory';
+import { useTransactionForm } from './useTransactionForm';
 
 const mocks = vi.hoisted(() => ({
   categoryOnSelect: undefined as ((category: string) => void) | undefined,
-  radialOptions: undefined as
+  menuOptions: undefined as
     | {
-        onSelect?: (note: QuickNote | null, category: string) => void;
+        onSelectNote?: (note: QuickNote, category: string) => void;
       }
     | undefined,
   tabOnChange: undefined as ((value: TransactionType) => void) | undefined,
 }));
 
-vi.mock("framer-motion", () => ({
+vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
   motion: {
     div: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   },
 }));
 
-vi.mock("../../hooks/useQuickNotes", () => ({
-  getQuickNotesForCategory: () => [],
+vi.mock('../../hooks/useQuickNotes', () => ({
   useQuickNotesQuery: () => ({ data: {} }),
 }));
 
-vi.mock("../CategoryGrid", () => ({
+vi.mock('../CategoryGrid', () => ({
   CategoryGrid: ({ onSelect }: { onSelect: (category: string) => void }) => {
     mocks.categoryOnSelect = onSelect;
     return null;
   },
 }));
 
-vi.mock("../DateTimeDrawer", () => ({ DateTimeDrawer: () => null }));
-vi.mock("../RadialMenu", () => ({ RadialMenu: () => null }));
-vi.mock("../RadialMenu/useRadialMenu", () => ({
-  useRadialMenu: (options: typeof mocks.radialOptions) => {
-    mocks.radialOptions = options;
+vi.mock('../CategoryQuickNoteMenu', () => ({
+  CategoryQuickNoteMenu: () => null,
+  useCategoryQuickNoteMenu: (options: typeof mocks.menuOptions) => {
+    mocks.menuOptions = options;
     return {
       state: null,
       handlers: {
@@ -46,12 +44,16 @@ vi.mock("../RadialMenu/useRadialMenu", () => ({
         onDrag: vi.fn(),
         onRelease: vi.fn(),
         onCancel: vi.fn(),
+        onDismiss: vi.fn(),
+        onSelectNote: vi.fn(),
+        onUseCategory: vi.fn(),
       },
-      menuItems: [],
     };
   },
 }));
-vi.mock("../ui/AnimatedTabs", () => ({
+
+vi.mock('../DateTimeDrawer', () => ({ DateTimeDrawer: () => null }));
+vi.mock('../ui/AnimatedTabs', () => ({
   AnimatedTabs: ({
     onChange,
   }: {
@@ -63,19 +65,19 @@ vi.mock("../ui/AnimatedTabs", () => ({
 }));
 
 const categoryGroups: Record<TransactionType, CategoryItem[]> = {
-  expense: [{ name: "Food" }, { name: "Travel" }],
-  income: [{ name: "Salary" }],
-  transfer: [{ name: "Accounts" }],
+  expense: [{ name: 'Food' }, { name: 'Travel' }],
+  income: [{ name: 'Salary' }],
+  transfer: [{ name: 'Accounts' }],
 };
 
 function renderCategoryStep() {
   const hook = renderHook(() =>
     useTransactionForm({
       initialValues: {
-        type: "expense",
-        category: "Food",
-        note: "Central Cafe",
-        place: { provider: "google", placeId: "central-cafe" },
+        type: 'expense',
+        category: 'Food',
+        note: 'Central Cafe',
+        place: { provider: 'google', placeId: 'central-cafe' },
       },
     }),
   );
@@ -86,12 +88,12 @@ function renderCategoryStep() {
       onConfirm={vi.fn()}
     />,
   );
-  const viewport = rendered.getByTestId("transaction-type-carousel");
-  Object.defineProperty(viewport, "clientWidth", {
+  const viewport = rendered.getByTestId('transaction-type-carousel');
+  Object.defineProperty(viewport, 'clientWidth', {
     configurable: true,
     value: 300,
   });
-  Object.defineProperty(viewport, "scrollTo", {
+  Object.defineProperty(viewport, 'scrollTo', {
     configurable: true,
     value: ({ left }: ScrollToOptions) => {
       viewport.scrollLeft = Number(left ?? 0);
@@ -101,29 +103,29 @@ function renderCategoryStep() {
   return { ...hook, rendered };
 }
 
-describe("StepCategory place boundaries", () => {
+describe('StepCategory place boundaries', () => {
   beforeEach(() => {
     mocks.categoryOnSelect = undefined;
-    mocks.radialOptions = undefined;
+    mocks.menuOptions = undefined;
     mocks.tabOnChange = undefined;
   });
 
-  it("clears place when a Quick Note replaces the note", () => {
+  it('clears place when a Quick Note replaces the note', () => {
     const { result } = renderCategoryStep();
 
     act(() => {
-      mocks.radialOptions?.onSelect?.(
-        { id: "lunch", icon: "Utensils", label: "Lunch", note: "Quick lunch" },
-        "Food",
+      mocks.menuOptions?.onSelectNote?.(
+        { id: 'lunch', icon: 'Utensils', label: 'Lunch', note: 'Quick lunch' },
+        'Food',
       );
     });
 
-    expect(result.current.state.values.note).toBe("Quick lunch");
+    expect(result.current.state.values.note).toBe('Quick lunch');
     expect(result.current.state.values.place).toBeUndefined();
   });
 
-  it.each(["income", "transfer"] as const)(
-    "clears only place when switching an expense to %s",
+  it.each(['income', 'transfer'] as const)(
+    'clears only place when switching an expense to %s',
     async (type) => {
       const { result } = renderCategoryStep();
 
@@ -132,24 +134,24 @@ describe("StepCategory place boundaries", () => {
       await waitFor(() =>
         expect(result.current.state.values).toMatchObject({
           type,
-          category: "",
-          note: "Central Cafe",
+          category: '',
+          note: 'Central Cafe',
         }),
       );
       expect(result.current.state.values.place).toBeUndefined();
     },
   );
 
-  it("preserves note and place for another expense category", () => {
+  it('preserves note and place for another expense category', () => {
     const { result } = renderCategoryStep();
 
-    act(() => mocks.categoryOnSelect?.("Travel"));
+    act(() => mocks.categoryOnSelect?.('Travel'));
 
     expect(result.current.state.values).toMatchObject({
-      type: "expense",
-      category: "Travel",
-      note: "Central Cafe",
-      place: { provider: "google", placeId: "central-cafe" },
+      type: 'expense',
+      category: 'Travel',
+      note: 'Central Cafe',
+      place: { provider: 'google', placeId: 'central-cafe' },
     });
   });
 });
