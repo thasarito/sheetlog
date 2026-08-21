@@ -2,8 +2,53 @@ import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 import { cn } from "../../lib/utils";
 
-const Drawer = DrawerPrimitive.Root;
-const DrawerNestedRoot = DrawerPrimitive.NestedRoot;
+type DrawerRootProps = React.ComponentProps<typeof DrawerPrimitive.Root>;
+
+const SAFE_AREA_CAPTURE_FRAMES = 600;
+
+function useStableStandaloneSafeArea(open: boolean | undefined) {
+  React.useEffect(() => {
+    if (open || typeof window === "undefined") return;
+
+    const navigatorWithStandalone = window.navigator as Navigator & {
+      standalone?: boolean;
+    };
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      navigatorWithStandalone.standalone === true;
+
+    if (!isStandalone) return;
+
+    let animationFrame = 0;
+    let attempts = 0;
+    const captureSafeArea = () => {
+      // iOS can temporarily report a zero top inset after modal scroll locking.
+      // Capture the stable closed-state value so opening a drawer cannot move the app.
+      const paddingTop = window.getComputedStyle(document.body).paddingTop;
+      if (Number.parseFloat(paddingTop) > 0) {
+        document.body.style.paddingTop = paddingTop;
+        return;
+      }
+      attempts += 1;
+      if (attempts < SAFE_AREA_CAPTURE_FRAMES) {
+        animationFrame = window.requestAnimationFrame(captureSafeArea);
+      }
+    };
+
+    captureSafeArea();
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [open]);
+}
+
+const Drawer = (props: DrawerRootProps) => {
+  useStableStandaloneSafeArea(props.open ?? props.defaultOpen);
+  return <DrawerPrimitive.Root {...props} />;
+};
+
+const DrawerNestedRoot = (props: DrawerRootProps) => {
+  useStableStandaloneSafeArea(props.open ?? props.defaultOpen);
+  return <DrawerPrimitive.NestedRoot {...props} />;
+};
 const DrawerTrigger = DrawerPrimitive.Trigger;
 const DrawerPortal = DrawerPrimitive.Portal;
 const DrawerClose = DrawerPrimitive.Close;
@@ -47,6 +92,13 @@ const DrawerContent = React.forwardRef<
   return (
     <DrawerPortal>
       <DrawerOverlay contained={contained} />
+      {!contained ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-50 h-[max(env(safe-area-inset-bottom),34px)] bg-card"
+          data-drawer-system-area-fill
+        />
+      ) : null}
       <DrawerPrimitive.Content
         ref={ref}
         className={cn(
