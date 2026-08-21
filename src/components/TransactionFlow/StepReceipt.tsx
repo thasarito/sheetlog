@@ -84,7 +84,9 @@ function TimelineStateIcon({ state }: { state: TimelineStepState }) {
     return <Check className="h-4 w-4" strokeWidth={2.5} />;
   }
   if (state === "active") {
-    return <Loader2 className="h-4 w-4 animate-spin" />;
+    return (
+      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+    );
   }
   if (state === "error") {
     return <XCircle className="h-4 w-4" />;
@@ -116,7 +118,9 @@ function ReceiptTimeline({ steps }: { steps: TimelineStep[] }) {
           >
             <TimelineStateIcon state={step.state} />
           </span>
-          <div className="min-w-0 pb-5 last:pb-0">
+          <div
+            className={index < steps.length - 1 ? "min-w-0 pb-5" : "min-w-0"}
+          >
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-semibold text-foreground">
                 {step.label}
@@ -184,7 +188,7 @@ export function StepReceipt({
   const isStatusError = presentationStatus === "error";
   const hasSuccessfulReceipt = normalizedStatus === "success";
   const resolvedSyncStatus = hasSuccessfulReceipt
-    ? syncStatus ?? "synced"
+    ? syncStatus ?? "pending"
     : undefined;
   let statusTitle: string;
   let statusDescription: string;
@@ -428,7 +432,7 @@ export function StepReceipt({
               ) : isStatusError ? (
                 <XCircle className="h-5 w-5" />
               ) : (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" />
               )}
             </span>
             <div className="min-w-0">
