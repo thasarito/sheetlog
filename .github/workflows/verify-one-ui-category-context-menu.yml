@@ -1,0 +1,22 @@
+name: Verify One UI category context menu
+
+on:
+  push:
+    branches:
+      - feat/one-ui-category-context-menu
+
+permissions:
+  contents: read
+
+jobs:
+  focused-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run src/components/TransactionFlow/StepCategory.contextMenu.test.tsx
