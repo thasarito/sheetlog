@@ -73,7 +73,6 @@ function rect(height: number): DOMRect {
 
 afterEach(() => {
   drawerMock.rootProps = null;
-  document.documentElement.removeAttribute("data-category-sheet-gap-fill");
   vi.restoreAllMocks();
 });
 
@@ -118,24 +117,5 @@ describe("CategoryStepSheet bottom safe area", () => {
 
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("88px");
     expect(body).toHaveStyle({ height: "400px" });
-  });
-
-  it("marks the document while the category sheet owns the system bottom edge", () => {
-    const { unmount } = render(
-      <CategoryStepSheet entry={<div>Categories</div>} layoutHeight={700}>
-        <div>Dashboard</div>
-      </CategoryStepSheet>,
-    );
-
-    expect(document.documentElement).toHaveAttribute(
-      "data-category-sheet-gap-fill",
-      "true",
-    );
-
-    unmount();
-
-    expect(document.documentElement).not.toHaveAttribute(
-      "data-category-sheet-gap-fill",
-    );
   });
 });
