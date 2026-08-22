@@ -117,7 +117,7 @@ export type QuickNoteBrandName = QuickNoteBrand['name'];
 export type QuickNoteBrandSlug = QuickNoteBrand['slug'];
 
 const QUICK_NOTE_BRAND_BY_NAME = new Map<QuickNoteBrandName, QuickNoteBrand>(
-  QUICK_NOTE_BRANDS.map((brand) => [brand.name, brand]),
+  QUICK_NOTE_BRANDS.map((brand) => [brand.name, brand] as const),
 );
 
 function normalizeLabel(value: string): string {
