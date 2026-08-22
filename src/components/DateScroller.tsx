@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { format, addDays, isSameDay, addMonths, subMonths } from "date-fns";
+import { triggerHapticFeedback } from "../lib/transactionHaptics";
+import { HapticSelectionButton } from "./ui/HapticSelectionButton";
 
 interface DateScrollerProps {
   value: Date;
   onChange: (date: Date) => void;
 }
+
+const MotionHapticSelectionButton = motion(HapticSelectionButton);
 
 export function DateScroller({ value, onChange }: DateScrollerProps) {
   const today = new Date();
@@ -29,9 +33,15 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
     previousValueRef.current = value;
   }, [value]);
 
+  const commitDate = (nextDate: Date) => {
+    if (nextDate.getTime() === value.getTime()) return;
+    triggerHapticFeedback("selection");
+    onChange(nextDate);
+  };
+
   const handleMonthChange = (direction: number) => {
     const newDate = direction > 0 ? addMonths(value, 1) : subMonths(value, 1);
-    onChange(newDate);
+    commitDate(newDate);
   };
 
   const handleDragEnd = (
@@ -40,11 +50,11 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
   ) => {
     const swipeThreshold = 60;
     if (info.offset.x < -swipeThreshold) {
-      onChange(addDays(value, 7));
+      commitDate(addDays(value, 7));
       return;
     }
     if (info.offset.x > swipeThreshold) {
-      onChange(addDays(value, -7));
+      commitDate(addDays(value, -7));
     }
   };
 
@@ -56,7 +66,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
       today.getMonth(),
       today.getDate()
     );
-    onChange(nextDate);
+    commitDate(nextDate);
   };
 
   const weekVariants = {
@@ -74,7 +84,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
-        <motion.button
+        <MotionHapticSelectionButton
           type="button"
           onClick={() => handleMonthChange(-1)}
           aria-label="Previous month"
@@ -82,7 +92,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           whileTap={{ scale: 0.95 }}
         >
           ←
-        </motion.button>
+        </MotionHapticSelectionButton>
         <div className="flex items-center justify-center gap-2">
           <div
             className="text-sm font-semibold text-foreground"
@@ -90,10 +100,11 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           >
             {format(value, "MMMM yyyy")}
           </div>
-          <motion.button
+          <MotionHapticSelectionButton
             type="button"
             onClick={handleToday}
             disabled={isTodaySelected}
+            changesValue={!isTodaySelected}
             className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide transition disabled:cursor-not-allowed disabled:opacity-60 ${
               isTodaySelected
                 ? "border-border text-muted-foreground"
@@ -102,9 +113,9 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
             whileTap={{ scale: 0.96 }}
           >
             Today
-          </motion.button>
+          </MotionHapticSelectionButton>
         </div>
-        <motion.button
+        <MotionHapticSelectionButton
           type="button"
           onClick={() => handleMonthChange(1)}
           aria-label="Next month"
@@ -112,12 +123,10 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
           whileTap={{ scale: 0.95 }}
         >
           →
-        </motion.button>
+        </MotionHapticSelectionButton>
       </div>
 
-      <div
-        className="overflow-hidden rounded-2xl bg-card p-1"
-      >
+      <div className="overflow-hidden rounded-2xl bg-card p-1">
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           <motion.div
             key={weekKey}
@@ -142,10 +151,11 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
               const dateKey = format(date, "yyyy-MM-dd");
 
               return (
-                <motion.button
+                <MotionHapticSelectionButton
                   key={dateKey}
                   type="button"
-                  onClick={() => onChange(date)}
+                  changesValue={!isSelected}
+                  onClick={() => commitDate(date)}
                   className={`relative flex flex-col items-center justify-center rounded-xl border px-2 py-2 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer ${
                     isSelected
                       ? "border-primary/60 text-primary-foreground"
@@ -183,7 +193,7 @@ export function DateScroller({ value, onChange }: DateScrollerProps) {
                     }`}
                     aria-hidden="true"
                   />
-                </motion.button>
+                </MotionHapticSelectionButton>
               );
             })}
           </motion.div>
