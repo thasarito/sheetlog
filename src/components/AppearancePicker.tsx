@@ -13,6 +13,7 @@ import {
   ICON_PICKER_LIST,
   type IconName,
 } from '../lib/icons';
+import { QUICK_NOTE_BRANDS } from '../lib/quickNoteBrands';
 import { AdvancedColorPicker } from './AdvancedColorPicker';
 import { DynamicIcon } from './DynamicIcon';
 
@@ -28,6 +29,7 @@ type AppearancePickerProps = {
   defaultColor?: string;
   title?: string;
   section?: AppearancePickerSection;
+  includeBrandIcons?: boolean;
 };
 
 export function AppearancePicker({
@@ -40,6 +42,7 @@ export function AppearancePicker({
   defaultColor = DEFAULT_ACCOUNT_COLOR,
   title = 'Choose Appearance',
   section = 'appearance',
+  includeBrandIcons = false,
 }: AppearancePickerProps) {
   const [draftIcon, setDraftIcon] = useState<string>(
     initialIcon ?? defaultIcon,
@@ -111,8 +114,40 @@ export function AppearancePicker({
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
               {showIconPicker ? (
                 <div>
+                  {includeBrandIcons ? (
+                    <div className="mb-4">
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">
+                        Brands
+                      </p>
+                      <div className="grid grid-cols-6 gap-2">
+                        {QUICK_NOTE_BRANDS.map((brand) => {
+                          const isSelected = draftIcon === brand.name;
+                          return (
+                            <button
+                              key={brand.name}
+                              type="button"
+                              onClick={() => setDraftIcon(brand.name)}
+                              aria-label={`Use ${brand.label} brand icon`}
+                              aria-pressed={isSelected}
+                              className={`flex aspect-square items-center justify-center rounded-xl border transition ${
+                                isSelected
+                                  ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
+                                  : 'border-border bg-surface hover:bg-surface-2'
+                              }`}
+                            >
+                              <DynamicIcon
+                                name={brand.name}
+                                className="h-5 w-5"
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <p className="mb-2 text-xs font-medium text-muted-foreground">
-                    Icon
+                    {includeBrandIcons ? 'General icons' : 'Icon'}
                   </p>
                   <div className="grid grid-cols-6 gap-2">
                     {ICON_PICKER_LIST.map((iconName) => {
