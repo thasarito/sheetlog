@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
 import { flattenTransactionHistory } from './TransactionHistoryItems';
-import { findStickyTransactionDateIndex } from './transactionStickyDate';
+import {
+  findStickyDatePositionFromOffsets,
+  findStickyTransactionDateIndex,
+} from './transactionStickyDate';
 
 function transaction(
   id: string,
@@ -57,5 +60,23 @@ describe('findStickyTransactionDateIndex', () => {
     expect(
       findStickyTransactionDateIndex(items, undefined, 120, getOffset),
     ).toBeNull();
+  });
+});
+
+describe('findStickyDatePositionFromOffsets', () => {
+  const dateOffsets = [540, 740, 900];
+
+  it('selects no Analytics date before the first header reaches the sticky line', () => {
+    expect(findStickyDatePositionFromOffsets(dateOffsets, 400, 68)).toBeNull();
+  });
+
+  it('selects the current Analytics date from natural content offsets', () => {
+    expect(findStickyDatePositionFromOffsets(dateOffsets, 472, 68)).toBe(0);
+    expect(findStickyDatePositionFromOffsets(dateOffsets, 650, 68)).toBe(0);
+  });
+
+  it('switches Analytics dates exactly at the next natural header offset', () => {
+    expect(findStickyDatePositionFromOffsets(dateOffsets, 672, 68)).toBe(1);
+    expect(findStickyDatePositionFromOffsets(dateOffsets, 832, 68)).toBe(2);
   });
 });
