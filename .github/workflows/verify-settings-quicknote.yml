@@ -4,18 +4,57 @@ on:
   push:
     branches:
       - fix/settings-quicknote-step-amount
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  focused-test:
+  verification:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test -- src/components/SettingsQuickNoteEditorDrawer.test.tsx
+      - name: Verify the regression test fails on the previous Settings editor
+        shell: bash
+        run: |
+          cp src/components/SettingsQuickNoteEditorDrawer.tsx /tmp/SettingsQuickNoteEditorDrawer.tsx
+          cp src/components/QuickNotes/QuickNoteFlow.tsx /tmp/QuickNoteFlow.tsx
+          git checkout origin/main -- \
+            src/components/SettingsQuickNoteEditorDrawer.tsx \
+            src/components/QuickNotes/QuickNoteFlow.tsx
+          if npm test -- src/components/SettingsQuickNoteEditorDrawer.test.tsx; then
+            echo "Regression test unexpectedly passed against the previous Settings editor."
+            exit 1
+          else
+            echo "Regression reproduced against the previous Settings editor."
+          fi
+          cp /tmp/SettingsQuickNoteEditorDrawer.tsx src/components/SettingsQuickNoteEditorDrawer.tsx
+          cp /tmp/QuickNoteFlow.tsx src/components/QuickNotes/QuickNoteFlow.tsx
+      - name: Run focused regression tests
+        run: npm test -- src/components/SettingsQuickNoteEditorDrawer.test.tsx
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint changed files
+        run: >-
+          npx biome check
+          src/components/QuickNotes/QuickNoteFlow.tsx
+          src/components/SettingsQuickNoteEditorDrawer.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+      - name: Run full test suite
+        run: npm test
+      - name: Bundle the verified workspace
+        run: tar --exclude=.git -czf /tmp/sheetlog-verification.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sheetlog-verification
+          path: /tmp/sheetlog-verification.tgz
+          retention-days: 1
