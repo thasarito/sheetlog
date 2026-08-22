@@ -12,7 +12,7 @@ import { AppearancePicker } from './AppearancePicker';
 
 type PickerSection = 'appearance' | 'icon' | 'color';
 
-function renderPicker(section: PickerSection) {
+function renderPicker(section: PickerSection, includeBrandIcons = false) {
   const props: React.ComponentProps<typeof AppearancePicker> = {
     open: true,
     onOpenChange: vi.fn(),
@@ -20,6 +20,7 @@ function renderPicker(section: PickerSection) {
     initialColor: '#123456',
     onSave: vi.fn(),
     section,
+    includeBrandIcons,
   };
 
   render(<AppearancePicker {...props} />);
@@ -53,6 +54,30 @@ describe('AppearancePicker sections', () => {
 
     expect(props.onSave).toHaveBeenCalledWith('Coffee', '#123456');
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('keeps Quick Note brands out of the shared picker by default', () => {
+    renderPicker('icon');
+
+    expect(screen.queryByText('Brands')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Use Grab brand icon' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows Quick Note brands before general icons when explicitly enabled', async () => {
+    const user = userEvent.setup();
+    const props = renderPicker('icon', true);
+
+    expect(screen.getByText('Brands')).toBeInTheDocument();
+    expect(screen.getByText('General icons')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use Grab brand icon' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use ChatGPT brand icon' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Use Grab brand icon' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(props.onSave).toHaveBeenCalledWith('brand:grab', '#123456');
   });
 
   it('shows only the existing palette and custom-color picker from a color button', async () => {
