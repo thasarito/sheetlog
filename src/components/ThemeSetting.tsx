@@ -1,12 +1,5 @@
-import { Monitor, Moon, Palette, Sun, Vibrate } from "lucide-react";
-import { useEffect, useState } from "react";
-import {
-  getHapticFeedbackEnabled,
-  setHapticFeedbackEnabled,
-  subscribeHapticFeedback,
-} from "../lib/haptics";
+import { Monitor, Moon, Palette, Sun } from "lucide-react";
 import { useTheme, type ThemeId, type ThemeModePreference } from "../theme";
-import { HapticSelectionButton } from "./ui/HapticSelectionButton";
 import { SettingsIconBadge } from "./SettingsIconBadge";
 
 const MODE_OPTIONS: {
@@ -21,17 +14,6 @@ const MODE_OPTIONS: {
 
 export function ThemeSetting() {
   const { themes, themeId, mode, setThemeId, setMode } = useTheme();
-  const [hapticFeedbackEnabled, setHapticFeedbackEnabledState] = useState(
-    getHapticFeedbackEnabled,
-  );
-
-  useEffect(
-    () =>
-      subscribeHapticFeedback(() =>
-        setHapticFeedbackEnabledState(getHapticFeedbackEnabled()),
-      ),
-    [],
-  );
 
   return (
     <div className="divide-y divide-border/70">
@@ -79,14 +61,13 @@ export function ThemeSetting() {
             const Icon = option.icon;
             const selected = mode === option.value;
             return (
-              <HapticSelectionButton
+              <button
                 key={option.value}
                 type="button"
                 role="radio"
                 aria-checked={selected}
                 aria-label={option.label}
                 title={option.label}
-                changesValue={!selected}
                 onClick={() => setMode(option.value)}
                 className={
                   selected
@@ -95,43 +76,10 @@ export function ThemeSetting() {
                 }
               >
                 <Icon className="h-3.5 w-3.5" strokeWidth={2.25} />
-              </HapticSelectionButton>
+              </button>
             );
           })}
         </div>
-      </div>
-
-      <div className="flex min-h-14 items-center gap-3 px-4 py-3">
-        <SettingsIconBadge>
-          <Vibrate className="h-[18px] w-[18px]" strokeWidth={2.25} />
-        </SettingsIconBadge>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-medium text-foreground">
-            Haptic feedback
-          </span>
-          <span className="block text-[12px] text-muted-foreground">
-            Tactile confirmation for direct selections on supported iPhones.
-          </span>
-        </span>
-        <button
-          type="button"
-          role="switch"
-          aria-label="Haptic feedback"
-          aria-checked={hapticFeedbackEnabled}
-          onClick={() =>
-            setHapticFeedbackEnabled(!hapticFeedbackEnabled)
-          }
-          className={`relative h-7 w-12 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
-            hapticFeedbackEnabled ? "bg-primary" : "bg-surface-3"
-          }`}
-        >
-          <span
-            aria-hidden="true"
-            className={`absolute top-0.5 h-6 w-6 rounded-full bg-background transition-transform ${
-              hapticFeedbackEnabled ? "translate-x-[22px]" : "translate-x-0.5"
-            }`}
-          />
-        </button>
       </div>
     </div>
   );
