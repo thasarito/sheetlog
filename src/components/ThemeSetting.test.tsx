@@ -83,6 +83,7 @@ describe("ThemeSetting", () => {
 
     expect(hapticSwitch).toHaveAttribute("switch", "");
     expect(hapticSwitch).not.toHaveAttribute("data-haptic-trigger");
+    expect(hapticSwitch.closest("label")).toBeNull();
     expect(hapticSwitch).toBeVisible();
 
     fireEvent.click(hapticSwitch);
