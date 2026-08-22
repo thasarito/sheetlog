@@ -350,7 +350,7 @@ describe("CategoryStepSheet", () => {
     expect(drawerMock.rootProps?.snapPoints).toEqual(["60px", "700px"]);
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("700px");
     expect(screen.getByTestId("category-step-sheet-body")).toHaveStyle({
-      height: "700px",
+      height: "calc(700px + var(--category-sheet-safe-area))",
     });
     expect(screen.getByTestId("entry").parentElement).toHaveClass(
       "flex-1",
