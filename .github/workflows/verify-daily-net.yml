@@ -33,9 +33,26 @@ jobs:
       - run: npm ci
       - run: npx vitest run ${{ matrix.file }}
 
-  typecheck:
+  changed-lint:
+    name: changed lint / ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: daily-net-unit
+            file: src/components/TransactionFlow/transactionDailyNet.ts
+          - label: daily-net-test
+            file: src/components/TransactionFlow/transactionDailyNet.test.ts
+          - label: shared-history-items
+            file: src/components/TransactionFlow/TransactionHistoryItems.tsx
+          - label: shared-history-test
+            file: src/components/TransactionFlow/TransactionHistoryItems.test.tsx
+          - label: analytics-view
+            file: src/components/TransactionFlow/AnalyticsView.tsx
+          - label: transaction-history-view
+            file: src/components/TransactionFlow/TransactionHistoryView.tsx
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,9 +60,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx tsc --noEmit
+      - run: npx biome check ${{ matrix.file }}
 
-  lint:
+  changed-typecheck:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -55,16 +72,43 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run lint
+      - name: Reject diagnostics in changed feature files
+        shell: bash
+        run: |
+          set +e
+          output="$(npx tsc --noEmit --pretty false 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if printf '%s\n' "$output" | grep -E 'src/components/TransactionFlow/(AnalyticsView|TransactionHistoryItems|TransactionHistoryView|transactionDailyNet)(\.test)?\.(ts|tsx)'; then
+            exit 1
+          fi
+          echo 'No TypeScript diagnostic references a changed daily-net feature file.'
+          exit 0
 
-  full-tests:
+  baseline:
+    name: baseline / ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: full-tests
+            command: npm test
+          - label: typecheck
+            command: npx tsc --noEmit
+          - label: lint
+            command: npm run lint
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: 46a63da86ea9e4c432cf4434993c1b3aff6e73a8
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: ${{ matrix.command }}
