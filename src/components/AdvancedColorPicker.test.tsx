@@ -16,10 +16,12 @@ function renderPicker() {
 }
 
 describe('AdvancedColorPicker', () => {
-  it('renders as a nested modal above the appearance dialog', () => {
+  it('renders as a nested modal above the appearance dialog', async () => {
     renderPicker();
 
-    const dialog = screen.getByRole('dialog', { name: 'Custom Color' });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Custom Color',
+    });
     expect(dialog).toHaveAttribute(
       'data-advanced-color-presentation',
       'dialog',
