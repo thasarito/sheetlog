@@ -1,6 +1,9 @@
 name: Quick Note sync verification
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - fix/quick-note-color-sync-divergence
