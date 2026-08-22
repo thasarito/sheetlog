@@ -117,4 +117,22 @@ describe('Settings Control Center helpers', () => {
       inheritedCount: 0,
     });
   });
+
+  it('derives legacy brand icons for settings presentation without mutating stored config', () => {
+    const legacyGrab = note('grab', { label: 'grab' });
+    const config: QuickNotesConfig = {
+      'default:expense': [legacyGrab],
+    };
+    const categories: CategoryConfigWithMeta = {
+      expense: [],
+      income: [],
+      transfer: [],
+    };
+
+    const groups = buildQuickNotesGroups(config, categories);
+
+    expect(groups[0]?.notes[0]?.icon).toBe('brand:grab');
+    expect(config['default:expense']?.[0]?.icon).toBe('StickyNote');
+    expect(legacyGrab.icon).toBe('StickyNote');
+  });
 });
