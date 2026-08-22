@@ -28,6 +28,7 @@ import {
   type TransactionHistoryListItem,
   TransactionHistoryRow,
 } from "./TransactionHistoryItems";
+import { findStickyTransactionDateIndex } from "./transactionStickyDate";
 import { useTransactionBaseAmounts } from "./useTransactionBaseAmounts";
 import type { TransactionHistoryQueryResult } from "./useTransactionHistoryQuery";
 
@@ -67,6 +68,7 @@ function TransactionHistoryVirtualList({
     offsetWithinItem: number;
   } | null>(null);
   const previousItemsRef = useRef<TransactionHistoryListItem[] | null>(null);
+  const [stickyDateIndex, setStickyDateIndex] = useState<number | null>(null);
   const today = useMemo(() => new Date(), []);
   const getScrollElement = useCallback(() => scrollRef.current, []);
   const estimateSize = useCallback(
@@ -97,9 +99,28 @@ function TransactionHistoryVirtualList({
     initialRect: HISTORY_INITIAL_RECT,
     measureElement,
   });
+  const updateStickyDate = useCallback(
+    (scrollTop: number) => {
+      const firstVisible = virtualizer.getVirtualItemForOffset(scrollTop);
+      const nextIndex = findStickyTransactionDateIndex(
+        items,
+        firstVisible?.index,
+        scrollTop,
+        (index) => virtualizer.getOffsetForIndex(index, "start")?.[0],
+      );
+      setStickyDateIndex((current) =>
+        current === nextIndex ? current : nextIndex,
+      );
+    },
+    [items, virtualizer],
+  );
+  const stickyItem =
+    stickyDateIndex === null ? undefined : items[stickyDateIndex];
+  const stickyDateItem = stickyItem?.kind === "date" ? stickyItem : null;
   const bottomInset = usesSheetAccessory
     ? `calc(var(--category-sheet-occlusion, env(safe-area-inset-bottom)) + var(--transaction-history-dock-height, ${DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT}px) + ${TRANSACTION_HISTORY_DOCK_GAP}px)`
     : "var(--category-sheet-occlusion, env(safe-area-inset-bottom))";
+
   useLayoutEffect(() => {
     if (previousItemsRef.current === items) {
       return;
@@ -127,6 +148,10 @@ function TransactionHistoryVirtualList({
     }
   }, [items, virtualizer]);
 
+  useLayoutEffect(() => {
+    updateStickyDate(scrollRef.current?.scrollTop ?? 0);
+  }, [items, updateStickyDate]);
+
   return (
     <section
       ref={scrollRef}
@@ -147,8 +172,28 @@ function TransactionHistoryVirtualList({
             offsetWithinItem: scrollTop - firstVisible.start,
           };
         }
+        updateStickyDate(scrollTop);
       }}
     >
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        data-sticky-date-key={stickyDateItem?.dateKey}
+        data-testid="transaction-history-sticky-date-header"
+        className="pointer-events-none sticky top-0 z-30 -mb-9 h-9"
+      >
+        {stickyDateItem ? (
+          <TransactionHistoryDateHeader
+            key={stickyDateItem.key}
+            mode="pinned"
+            dateKey={stickyDateItem.dateKey}
+            today={today}
+            transactions={stickyDateItem.transactions}
+            baseCurrency={baseCurrency}
+            baseAmountStates={baseAmountStates}
+          />
+        ) : null}
+      </div>
       <div
         className="relative w-full"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
@@ -173,6 +218,7 @@ function TransactionHistoryVirtualList({
             >
               {item.kind === "date" ? (
                 <TransactionHistoryDateHeader
+                  mode="static"
                   dateKey={item.dateKey}
                   today={today}
                   transactions={item.transactions}

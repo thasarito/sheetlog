@@ -14,6 +14,7 @@ import {
   formatDailyNetAmount,
   getDailyNetAccessibleText,
 } from './transactionDailyNet';
+import { useAutoStickyDateHeader } from './useAutoStickyDateHeader';
 
 export type TransactionHistoryListItem =
   | {
@@ -23,6 +24,8 @@ export type TransactionHistoryListItem =
       transactions: TransactionRecord[];
     }
   | { key: string; kind: 'transaction'; transaction: TransactionRecord };
+
+export type TransactionHistoryDateHeaderMode = 'auto' | 'static' | 'pinned';
 
 export function flattenTransactionHistory(
   transactions: readonly TransactionRecord[],
@@ -69,13 +72,18 @@ export function TransactionHistoryDateHeader({
   transactions,
   baseCurrency,
   baseAmountStates,
+  mode = 'auto',
 }: {
   dateKey: string;
   today: Date;
   transactions: readonly TransactionRecord[];
   baseCurrency: string;
   baseAmountStates: Readonly<Record<string, TransactionBaseAmountState>>;
+  mode?: TransactionHistoryDateHeaderMode;
 }) {
+  const autoSticky = useAutoStickyDateHeader(mode === 'auto');
+  const isPinned =
+    mode === 'pinned' || (mode === 'auto' && autoSticky.isSticky);
   const dailyNet = buildDailyNetAmountState(
     transactions,
     baseCurrency,
@@ -85,36 +93,63 @@ export function TransactionHistoryDateHeader({
 
   return (
     <div
+      ref={autoSticky.ref}
       data-testid="transaction-history-date-header"
-      className="flex items-center justify-between gap-3 px-3 pb-1 pt-3 text-xs font-semibold text-muted-foreground"
+      data-transaction-history-date-header="true"
+      data-auto-sticky-date-header={mode === 'auto' ? 'true' : undefined}
+      data-transaction-history-date-key={dateKey}
+      data-sticky-state={isPinned ? 'pinned' : 'resting'}
+      className={cn(
+        'flex h-9 items-center justify-between gap-3 border-b px-3 text-xs font-semibold transition-[background-color,border-color,box-shadow,color] duration-150',
+        mode === 'auto' && 'sticky z-20',
+        isPinned
+          ? 'border-border/70 bg-background/95 text-foreground shadow-sm backdrop-blur-md'
+          : 'border-transparent bg-transparent text-muted-foreground',
+      )}
+      style={
+        mode === 'auto'
+          ? { top: 'var(--dashboard-header-height, 68px)' }
+          : undefined
+      }
     >
       <span className="min-w-0 truncate">{dateLabel(dateKey, today)}</span>
-      {dailyNet.status === 'loading' ? (
-        <span className="flex min-w-16 shrink-0 justify-end">
-          <Skeleton
-            aria-hidden="true"
-            data-testid="daily-net-amount-loading"
-            className="h-3 w-14"
-          />
-          <span className="sr-only">{accessibleText}</span>
-        </span>
-      ) : (
-        <span
-          aria-label={accessibleText}
-          data-testid="daily-net-amount"
-          className={cn(
-            'shrink-0 whitespace-nowrap tabular-nums',
-            dailyNet.status === 'ready' &&
-              dailyNet.amount > 0 &&
-              'text-emerald-500',
-            dailyNet.status === 'ready' &&
-              dailyNet.amount < 0 &&
-              'text-foreground',
-          )}
-        >
-          {formatDailyNetAmount(dailyNet)}
-        </span>
-      )}
+      <span
+        aria-hidden={isPinned ? undefined : true}
+        className={cn(
+          'flex min-w-16 shrink-0 justify-end transition-opacity duration-150',
+          isPinned ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+      >
+        {dailyNet.status === 'loading' ? (
+          <>
+            <Skeleton
+              aria-hidden="true"
+              data-testid="daily-net-amount-loading"
+              className="h-3 w-14"
+            />
+            <span className="sr-only">{accessibleText}</span>
+          </>
+        ) : (
+          <>
+            <span
+              aria-hidden="true"
+              data-testid="daily-net-amount"
+              className={cn(
+                'whitespace-nowrap tabular-nums',
+                dailyNet.status === 'ready' &&
+                  dailyNet.amount > 0 &&
+                  'text-emerald-500',
+                dailyNet.status === 'ready' &&
+                  dailyNet.amount < 0 &&
+                  'text-foreground',
+              )}
+            >
+              {formatDailyNetAmount(dailyNet)}
+            </span>
+            <span className="sr-only">{accessibleText}</span>
+          </>
+        )}
+      </span>
     </div>
   );
 }
