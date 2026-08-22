@@ -6,7 +6,11 @@ export function findStickyTransactionDateIndex(
   scrollTop: number,
   getOffset: (index: number) => number | undefined,
 ): number | null {
-  if (firstVisibleIndex === undefined || scrollTop <= 0.5 || items.length === 0) {
+  if (
+    firstVisibleIndex === undefined ||
+    scrollTop <= 0.5 ||
+    items.length === 0
+  ) {
     return null;
   }
 
