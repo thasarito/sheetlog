@@ -1,4 +1,5 @@
 import { format, isSameDay, subDays } from 'date-fns';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { parseDate } from '../../lib/date-utils';
 import { canEditTransaction } from '../../lib/transactionHistory';
 import type { TransactionRecord } from '../../lib/types';
@@ -23,6 +24,8 @@ export type TransactionHistoryListItem =
       transactions: TransactionRecord[];
     }
   | { key: string; kind: 'transaction'; transaction: TransactionRecord };
+
+export type TransactionHistoryDateHeaderMode = 'auto' | 'static' | 'pinned';
 
 export function flattenTransactionHistory(
   transactions: readonly TransactionRecord[],
@@ -63,19 +66,97 @@ function dateLabel(dateKey: string, today: Date): string {
   return format(date, 'EEEE, MMM d');
 }
 
+function useAutoStickyDateHeader(enabled: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isSticky, setIsSticky] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!enabled) {
+      setIsSticky(false);
+      return;
+    }
+
+    const header = ref.current;
+    const scrollRoot = header?.closest<HTMLElement>(
+      '[data-dashboard-scroll="true"]',
+    );
+    if (!header || !scrollRoot) {
+      setIsSticky(false);
+      return;
+    }
+
+    let frame: number | null = null;
+    const update = () => {
+      frame = null;
+      const headerRect = header.getBoundingClientRect();
+      const rootRect = scrollRoot.getBoundingClientRect();
+      const computedTop = Number.parseFloat(
+        window.getComputedStyle(header).top,
+      );
+      const topOffset = Number.isFinite(computedTop) ? computedTop : 0;
+      const pinned =
+        scrollRoot.scrollTop > 0.5 &&
+        headerRect.top <= rootRect.top + topOffset + 1;
+
+      let isTopmostPinnedHeader = pinned;
+      if (pinned && typeof document.elementFromPoint === 'function') {
+        const x = Math.min(
+          rootRect.right - 1,
+          Math.max(rootRect.left + 1, headerRect.right - 16),
+        );
+        const y = Math.min(
+          rootRect.bottom - 1,
+          rootRect.top + topOffset + Math.min(headerRect.height / 2, 16),
+        );
+        const topElement = document.elementFromPoint(x, y);
+        if (topElement) {
+          isTopmostPinnedHeader =
+            topElement.closest('[data-transaction-history-date-header]') ===
+            header;
+        }
+      }
+
+      setIsSticky((current) =>
+        current === isTopmostPinnedHeader ? current : isTopmostPinnedHeader,
+      );
+    };
+    const scheduleUpdate = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(update);
+    };
+
+    update();
+    scrollRoot.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
+    return () => {
+      scrollRoot.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [enabled]);
+
+  return { ref, isSticky };
+}
+
 export function TransactionHistoryDateHeader({
   dateKey,
   today,
   transactions,
   baseCurrency,
   baseAmountStates,
+  mode = 'auto',
+  stickyTop = 'var(--dashboard-header-height, 68px)',
 }: {
   dateKey: string;
   today: Date;
   transactions: readonly TransactionRecord[];
   baseCurrency: string;
   baseAmountStates: Readonly<Record<string, TransactionBaseAmountState>>;
+  mode?: TransactionHistoryDateHeaderMode;
+  stickyTop?: number | string;
 }) {
+  const autoSticky = useAutoStickyDateHeader(mode === 'auto');
+  const isPinned = mode === 'pinned' || (mode === 'auto' && autoSticky.isSticky);
   const dailyNet = buildDailyNetAmountState(
     transactions,
     baseCurrency,
@@ -85,36 +166,58 @@ export function TransactionHistoryDateHeader({
 
   return (
     <div
+      ref={autoSticky.ref}
       data-testid="transaction-history-date-header"
-      className="flex items-center justify-between gap-3 px-3 pb-1 pt-3 text-xs font-semibold text-muted-foreground"
+      data-transaction-history-date-header="true"
+      data-transaction-history-date-key={dateKey}
+      data-sticky-state={isPinned ? 'pinned' : 'resting'}
+      className={cn(
+        'flex h-9 items-center justify-between gap-3 border-b px-3 text-xs font-semibold transition-[background-color,border-color,box-shadow,color] duration-150',
+        mode === 'auto' && 'sticky z-20',
+        isPinned
+          ? 'border-border/70 bg-background/95 text-foreground shadow-sm backdrop-blur-md'
+          : 'border-transparent bg-transparent text-muted-foreground',
+      )}
+      style={mode === 'auto' ? { top: stickyTop } : undefined}
     >
       <span className="min-w-0 truncate">{dateLabel(dateKey, today)}</span>
-      {dailyNet.status === 'loading' ? (
-        <span className="flex min-w-16 shrink-0 justify-end">
-          <Skeleton
-            aria-hidden="true"
-            data-testid="daily-net-amount-loading"
-            className="h-3 w-14"
-          />
-          <span className="sr-only">{accessibleText}</span>
-        </span>
-      ) : (
-        <span
-          aria-label={accessibleText}
-          data-testid="daily-net-amount"
-          className={cn(
-            'shrink-0 whitespace-nowrap tabular-nums',
-            dailyNet.status === 'ready' &&
-              dailyNet.amount > 0 &&
-              'text-emerald-500',
-            dailyNet.status === 'ready' &&
-              dailyNet.amount < 0 &&
-              'text-foreground',
-          )}
-        >
-          {formatDailyNetAmount(dailyNet)}
-        </span>
-      )}
+      <span
+        aria-hidden={isPinned ? undefined : true}
+        className={cn(
+          'flex min-w-16 shrink-0 justify-end transition-opacity duration-150',
+          isPinned ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+      >
+        {dailyNet.status === 'loading' ? (
+          <>
+            <Skeleton
+              aria-hidden="true"
+              data-testid="daily-net-amount-loading"
+              className="h-3 w-14"
+            />
+            <span className="sr-only">{accessibleText}</span>
+          </>
+        ) : (
+          <>
+            <span
+              aria-hidden="true"
+              data-testid="daily-net-amount"
+              className={cn(
+                'whitespace-nowrap tabular-nums',
+                dailyNet.status === 'ready' &&
+                  dailyNet.amount > 0 &&
+                  'text-emerald-500',
+                dailyNet.status === 'ready' &&
+                  dailyNet.amount < 0 &&
+                  'text-foreground',
+              )}
+            >
+              {formatDailyNetAmount(dailyNet)}
+            </span>
+            <span className="sr-only">{accessibleText}</span>
+          </>
+        )}
+      </span>
     </div>
   );
 }
