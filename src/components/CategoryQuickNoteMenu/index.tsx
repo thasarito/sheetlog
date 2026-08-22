@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { DynamicIcon } from '../DynamicIcon';
+import { QuickNoteIcon } from '../QuickNoteIcon';
 import { HapticSelectionButton } from '../ui/HapticSelectionButton';
 import type {
   CategoryQuickNoteMenuBounds,
@@ -349,7 +350,11 @@ export function CategoryQuickNoteMenu({
                       className="category-menu-active-rail absolute bottom-2.5 left-0 top-2.5 w-0.5 rounded-full"
                     />
                     <span className="category-menu-custom-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]">
-                      <DynamicIcon name={note.icon} className="h-4 w-4" />
+                      <QuickNoteIcon
+                        icon={note.icon}
+                        label={note.label}
+                        className="h-4 w-4"
+                      />
                     </span>
                     <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                       {note.label}
@@ -386,8 +391,9 @@ export function CategoryQuickNoteMenu({
                     onClick={() => onSelectNote('default', note.id)}
                   >
                     <span className="category-menu-default-icon">
-                      <DynamicIcon
-                        name={note.icon}
+                      <QuickNoteIcon
+                        icon={note.icon}
+                        label={note.label}
                         className="h-[18px] w-[18px]"
                       />
                     </span>
