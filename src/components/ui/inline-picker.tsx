@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { triggerHapticFeedback } from "../../lib/transactionHaptics";
 import { Picker } from "../Picker";
 import { cn } from "../../lib/utils";
 
@@ -51,6 +52,7 @@ export function InlinePicker({
       if (disabled) {
         return;
       }
+      triggerHapticFeedback("selection");
       onChange(nextValue.selection);
     },
     [disabled, onChange]
