@@ -7,7 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { getQuickNotesForCategory, useQuickNotesQuery } from '../../hooks/useQuickNotes';
+import { useQuickNotesQuery } from '../../hooks/useQuickNotes';
 import {
   DEFAULT_CATEGORY_COLORS,
   DEFAULT_CATEGORY_ICONS,
@@ -15,13 +15,14 @@ import {
   SUGGESTED_CATEGORY_ICONS,
 } from '../../lib/icons';
 import type { CategoryItem, QuickNote, TransactionType } from '../../lib/types';
+import {
+  CategoryQuickNoteMenu,
+  type CategoryQuickNoteMenuAnchor,
+  type CategoryQuickNoteMenuPresentation,
+  useCategoryQuickNoteMenu,
+} from '../CategoryQuickNoteMenu';
 import { CategoryGrid } from '../CategoryGrid';
 import { DateTimeDrawer } from '../DateTimeDrawer';
-import {
-  RadialMenu,
-  type RadialMenuCategoryPresentation,
-} from '../RadialMenu';
-import { useRadialMenu } from '../RadialMenu/useRadialMenu';
 import { TYPE_OPTIONS } from './constants';
 import {
   StepCategoryTypeTabs,
@@ -52,7 +53,7 @@ function resolveCategoryPresentation(
   categoryGroups: Record<TransactionType, CategoryItem[]>,
   transactionType: TransactionType,
   categoryName: string,
-): RadialMenuCategoryPresentation {
+): CategoryQuickNoteMenuPresentation {
   const category = categoryGroups[transactionType]?.find(
     (candidate) => candidate.name === categoryName,
   );
@@ -67,6 +68,35 @@ function resolveCategoryPresentation(
       category?.color ||
       SUGGESTED_CATEGORY_COLORS[categoryName] ||
       DEFAULT_CATEGORY_COLORS[transactionType],
+  };
+}
+
+function normalizeButtonLabel(button: HTMLButtonElement): string {
+  return button.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function findCategoryAnchor(
+  slide: HTMLElement | null,
+  categoryName: string,
+): CategoryQuickNoteMenuAnchor | null {
+  const element = Array.from(
+    slide?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+  ).find((candidate) => normalizeButtonLabel(candidate) === categoryName);
+  if (!element) return null;
+
+  const bounds = element.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return null;
+
+  return {
+    element,
+    bounds: {
+      left: bounds.left,
+      top: bounds.top,
+      right: bounds.right,
+      bottom: bounds.bottom,
+      width: bounds.width,
+      height: bounds.height,
+    },
   };
 }
 
@@ -94,20 +124,17 @@ export function StepCategory({
 
   const { data: quickNotesConfig } = useQuickNotesQuery();
 
-  const {
-    state: radialMenuState,
-    handlers: radialHandlers,
-    menuItems,
-  } = useRadialMenu<QuickNote>({
-    getItems: (category) =>
-      getQuickNotesForCategory(quickNotesConfig, activeType, category),
-    getItemId: (note) => note.id,
-    getItemIcon: (note) => note.icon,
-    getItemLabel: (note) => note.label,
-    getCategoryPresentation: (category) =>
-      resolveCategoryPresentation(categoryGroups, activeType, category),
-    onSelect: (selectedNote, category) => {
-      if (!selectedNote) return;
+  const handleCategorySelect = useCallback(
+    (value: string) => {
+      form.setFieldValue('category', value);
+      form.setFieldValue('dateObject', new Date());
+      setIsDrawerOpen(true);
+    },
+    [form],
+  );
+
+  const handleQuickNoteSelect = useCallback(
+    (selectedNote: QuickNote, category: string) => {
       form.setFieldValue('category', category);
       replaceTransactionNote(form, selectedNote.note ?? '');
       form.setFieldValue('dateObject', new Date());
@@ -125,11 +152,21 @@ export function StepCategory({
       }
       setIsDrawerOpen(true);
     },
-    onDefault: (category) => {
-      form.setFieldValue('category', category);
-      form.setFieldValue('dateObject', new Date());
-      setIsDrawerOpen(true);
-    },
+    [form],
+  );
+
+  const {
+    state: categoryMenuState,
+    handlers: categoryMenuHandlers,
+  } = useCategoryQuickNoteMenu({
+    getCustomNotes: (category) =>
+      quickNotesConfig?.[`${activeType}:${category}`] ?? [],
+    getDefaultNotes: () => quickNotesConfig?.[`default:${activeType}`] ?? [],
+    getCategoryPresentation: (category) =>
+      resolveCategoryPresentation(categoryGroups, activeType, category),
+    onSelectNote: handleQuickNoteSelect,
+    onUseCategory: handleCategorySelect,
+    resetKey: activeType,
   });
 
   const commitTypeIndex = useCallback(
@@ -259,27 +296,9 @@ export function StepCategory({
     [],
   );
 
-  const handleCategorySelect = (value: string) => {
-    form.setFieldValue('category', value);
-    form.setFieldValue('dateObject', new Date());
-    setIsDrawerOpen(true);
-  };
-
   const handleConfirm = () => {
     onConfirm();
   };
-
-  const radialMenu = (
-    <RadialMenu
-      items={menuItems}
-      anchorPosition={radialMenuState?.anchorPosition ?? null}
-      dragPosition={radialMenuState?.dragPosition ?? null}
-      bounds={radialMenuState?.bounds ?? null}
-      categoryPresentation={radialMenuState?.categoryPresentation ?? null}
-      isOpen={radialMenuState?.isOpen ?? false}
-      onCancel={radialHandlers.onCancel}
-    />
-  );
 
   const typeTabs = (
     <StepCategoryTypeTabs
@@ -348,18 +367,20 @@ export function StepCategory({
               categories={categoryGroups[typeOption] ?? []}
               onSelect={handleCategorySelect}
               onLongPress={(category, position) => {
-                const bounds = viewportRef.current?.getBoundingClientRect();
-                if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
-                radialHandlers.onLongPressStart(category, position, {
-                  left: bounds.left,
-                  top: bounds.top,
-                  width: bounds.width,
-                  height: bounds.height,
-                });
+                const anchor = findCategoryAnchor(
+                  slideRefs.current[index],
+                  category,
+                );
+                if (!anchor) return;
+                categoryMenuHandlers.onLongPressStart(
+                  category,
+                  position,
+                  anchor,
+                );
               }}
-              onDrag={radialHandlers.onDrag}
-              onRelease={radialHandlers.onRelease}
-              onCancel={radialHandlers.onCancel}
+              onDrag={categoryMenuHandlers.onDrag}
+              onRelease={categoryMenuHandlers.onRelease}
+              onCancel={categoryMenuHandlers.onCancel}
               transactionType={typeOption}
             />
           </section>
@@ -377,9 +398,12 @@ export function StepCategory({
         onConfirm={handleConfirm}
       />
 
-      {typeof document !== 'undefined'
-        ? createPortal(radialMenu, document.body)
-        : radialMenu}
+      <CategoryQuickNoteMenu
+        state={categoryMenuState}
+        onDismiss={categoryMenuHandlers.onDismiss}
+        onSelectNote={categoryMenuHandlers.onSelectNote}
+        onUseCategory={categoryMenuHandlers.onUseCategory}
+      />
     </section>
   );
 }
