@@ -110,6 +110,13 @@ describe('SettingsQuickNoteEditorDrawer', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('does not offer deletion while creating a Quick Note', () => {
+    renderEditor({ mode: 'create' });
+
+    expect(mocks.stepAmountProps?.onDelete).toBeUndefined();
+    expect(screen.queryByRole('button', { name: 'Delete Quick Note' })).not.toBeInTheDocument();
+  });
+
   it('saves from StepAmount, preserves the visual identity, and dismisses afterward', async () => {
     const user = userEvent.setup();
     const props = renderEditor();
