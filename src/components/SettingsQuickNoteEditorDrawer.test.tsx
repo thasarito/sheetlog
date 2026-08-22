@@ -1,35 +1,60 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QuickNote } from '../lib/types';
 import { SettingsQuickNoteEditorDrawer } from './SettingsQuickNoteEditorDrawer';
 
-vi.mock('./ui/drawer', () => ({
-  DrawerNestedRoot: ({
-    children,
-    open,
-    onOpenChange,
-  }: {
-    children: React.ReactNode;
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-  }) =>
-    open ? (
-      <div data-testid="quick-note-nested-root">
-        {children}
-        <button type="button" onClick={() => onOpenChange(false)}>
-          Simulate swipe dismiss
+type StepAmountHarnessProps = {
+  accounts: string[];
+  customHeader?: React.ReactNode;
+  isSubmitting?: boolean;
+  onBack: () => void;
+  onDelete?: () => void;
+  onSubmit: () => void;
+  optionalAmount?: boolean;
+  submitLabel?: string;
+};
+
+const mocks = vi.hoisted(() => ({
+  stepAmountProps: null as StepAmountHarnessProps | null,
+}));
+
+vi.mock('../hooks/useOnboarding', () => ({
+  useOnboarding: () => ({
+    onboarding: {
+      accounts: [{ name: 'Wallet' }, { name: 'Cash' }],
+    },
+  }),
+}));
+
+vi.mock('./TransactionFlow/StepAmount', () => ({
+  StepAmount: (props: StepAmountHarnessProps) => {
+    mocks.stepAmountProps = props;
+    return (
+      <div data-testid="step-amount">
+        {props.customHeader}
+        <button type="button" onClick={props.onBack}>
+          Back from amount
+        </button>
+        {props.onDelete ? (
+          <button type="button" aria-label="Delete Quick Note" onClick={props.onDelete}>
+            Delete
+          </button>
+        ) : null}
+        <button type="button" onClick={props.onSubmit}>
+          {props.isSubmitting ? 'Saving...' : props.submitLabel}
         </button>
       </div>
-    ) : null,
-  DrawerContent: ({
-    children,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) => (
-    <div role="dialog" {...props}>
-      {children}
-    </div>
+    );
+  },
+}));
+
+vi.mock('./ui/drawer', () => ({
+  DrawerNestedRoot: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
+    open ? <div>{children}</div> : null,
+  DrawerContent: ({ children }: { children: React.ReactNode }) => (
+    <div role="dialog">{children}</div>
   ),
   DrawerHeader: ({ children }: { children: React.ReactNode }) => <header>{children}</header>,
   DrawerTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
@@ -39,10 +64,13 @@ vi.mock('./ui/drawer', () => ({
 const savedNote: QuickNote = {
   id: 'coffee',
   icon: 'Coffee',
+  color: '#123456',
   label: 'Coffee',
   note: 'Morning coffee',
+  amount: '120',
   currency: 'THB',
   account: 'Wallet',
+  forValue: 'Food',
 };
 
 function renderEditor(
@@ -65,91 +93,72 @@ function renderEditor(
 }
 
 describe('SettingsQuickNoteEditorDrawer', () => {
-  it('uses the nested editor and commits text fields on blur', async () => {
+  beforeEach(() => {
+    mocks.stepAmountProps = null;
+  });
+
+  it('opens the WYSIWYG StepAmount flow from Settings', () => {
+    renderEditor();
+
+    expect(screen.getByTestId('step-amount')).toBeInTheDocument();
+    expect(mocks.stepAmountProps).toMatchObject({
+      accounts: ['Wallet', 'Cash'],
+      optionalAmount: true,
+      submitLabel: 'Save Quick Note',
+    });
+    expect(screen.getByPlaceholderText('Label (required)')).toHaveValue('Coffee');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('saves from StepAmount, preserves the visual identity, and dismisses afterward', async () => {
     const user = userEvent.setup();
     const props = renderEditor();
+    const label = screen.getByPlaceholderText('Label (required)');
 
-    expect(screen.getByTestId('quick-note-nested-root')).toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toHaveStyle({ touchAction: 'pan-y' });
-    expect(screen.getByRole('dialog')).toHaveStyle({ touchAction: 'pan-y' });
-    expect(screen.getByRole('heading', { name: 'Edit Quick Note' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Save|Done/ })).not.toBeInTheDocument();
+    await user.clear(label);
+    await user.type(label, 'Client');
+    await user.click(screen.getByRole('button', { name: 'Save Quick Note' }));
 
-    const noteText = screen.getByRole('textbox', { name: 'Quick Note text' });
-    await user.clear(noteText);
-    await user.type(noteText, 'Coffee with client');
-    await user.tab();
     await waitFor(() =>
       expect(props.onCommit).toHaveBeenCalledWith(
-        expect.objectContaining({ note: 'Coffee with client' }),
+        expect.objectContaining({
+          id: 'coffee',
+          icon: 'Coffee',
+          color: '#123456',
+          label: 'Client',
+        }),
       ),
     );
+    expect(props.onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it('saves select changes immediately', async () => {
+  it('keeps StepAmount open when saving fails', async () => {
     const user = userEvent.setup();
-    const props = renderEditor();
-
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Account' }), 'Cash');
-    expect(props.onCommit).toHaveBeenCalledWith(
-      expect.objectContaining({ account: 'Cash' }),
-    );
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Currency' }), 'USD');
-    expect(props.onCommit).toHaveBeenLastCalledWith(
-      expect.objectContaining({ account: 'Cash', currency: 'USD' }),
-    );
-  });
-
-  it('shows an automatic color and saves palette or custom color changes immediately', async () => {
-    const user = userEvent.setup();
-    const props = renderEditor();
-
-    expect(screen.getByRole('heading', { name: 'Color' })).toBeVisible();
-    expect(
-      screen.getAllByRole('button', { pressed: true }).some((button) =>
-        button.getAttribute('aria-label')?.startsWith('Use '),
-      ),
-    ).toBe(true);
-
-    await user.click(screen.getByRole('button', { name: 'Use Orange' }));
-    await waitFor(() =>
-      expect(props.onCommit).toHaveBeenLastCalledWith(
-        expect.objectContaining({ color: '#f97316' }),
-      ),
-    );
-
-    fireEvent.change(screen.getByLabelText('Custom Quick Note color'), {
-      target: { value: '#123456' },
+    const props = renderEditor({
+      onCommit: vi.fn().mockRejectedValue(new Error('save failed')),
     });
-    await waitFor(() =>
-      expect(props.onCommit).toHaveBeenLastCalledWith(
-        expect.objectContaining({ color: '#123456' }),
-      ),
-    );
+
+    await user.click(screen.getByRole('button', { name: 'Save Quick Note' }));
+
+    await waitFor(() => expect(props.onCommit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.stepAmountProps?.isSubmitting).toBe(false));
+    expect(props.onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByTestId('step-amount')).toBeInTheDocument();
   });
 
-  it('blocks dismissal for an empty or overlong label and reverts to the saved label', async () => {
+  it('deletes from StepAmount and dismisses after persistence succeeds', async () => {
     const user = userEvent.setup();
     const props = renderEditor();
-    const label = screen.getByRole('textbox', { name: 'Quick Note label' });
 
-    await user.clear(label);
-    await user.tab();
-    expect(await screen.findByText('Enter a Quick Note label.')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Close' }));
-    expect(props.onDismiss).not.toHaveBeenCalled();
-    await waitFor(() => expect(label).toHaveFocus());
+    await user.click(screen.getByRole('button', { name: 'Delete Quick Note' }));
 
-    await user.click(screen.getByRole('button', { name: 'Revert' }));
-    expect(label).toHaveValue('Coffee');
+    await waitFor(() => expect(props.onDelete).toHaveBeenCalledTimes(1));
+    expect(props.onDismiss).toHaveBeenCalledTimes(1);
+  });
 
-    await user.clear(label);
-    await user.type(label, 'Thirteen chars');
-    await user.tab();
-    expect(
-      await screen.findByText('Keep the Quick Note label to 12 characters or fewer.'),
-    ).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Simulate swipe dismiss' }));
-    expect(props.onDismiss).not.toHaveBeenCalled();
+  it('renders nothing while closed', () => {
+    renderEditor({ open: false });
+
+    expect(screen.queryByTestId('step-amount')).not.toBeInTheDocument();
   });
 });
