@@ -1,7 +1,13 @@
 import { ChevronLeft } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOnboarding } from '../../hooks/useOnboarding';
+import { DEFAULT_ACCOUNT_COLOR } from '../../lib/icons';
 import type { QuickNote, TransactionType } from '../../lib/types';
+import {
+  AppearancePicker,
+  type AppearancePickerSection,
+} from '../AppearancePicker';
+import { DynamicIcon } from '../DynamicIcon';
 import { StepAmount } from '../TransactionFlow/StepAmount';
 import type { TransactionFormApi } from '../TransactionFlow/useTransactionForm';
 import { useQuickNoteForm } from './useQuickNoteForm';
@@ -16,7 +22,11 @@ interface QuickNoteFlowProps {
   isSaving?: boolean;
 }
 
-const DEFAULT_ICON = 'StickyNote';
+const DEFAULT_ICON = 'Tag';
+type QuickNoteAppearanceSection = Exclude<
+  AppearancePickerSection,
+  'appearance'
+>;
 
 export function QuickNoteFlow({
   note,
@@ -30,6 +40,10 @@ export function QuickNoteFlow({
   const { onboarding } = useOnboarding();
   const labelInputRef = useRef<HTMLInputElement>(null);
   const form = useQuickNoteForm({ note, transactionType });
+  const [icon, setIcon] = useState(note?.icon ?? DEFAULT_ICON);
+  const [color, setColor] = useState(note?.color ?? DEFAULT_ACCOUNT_COLOR);
+  const [appearanceSection, setAppearanceSection] =
+    useState<QuickNoteAppearanceSection | null>(null);
 
   const { label } = form.useStore((state) => state.values);
 
@@ -52,8 +66,8 @@ export function QuickNoteFlow({
     const values = form.state.values;
     void onSave({
       id: note?.id,
-      icon: note?.icon ?? DEFAULT_ICON,
-      color: note?.color,
+      icon,
+      color,
       label: values.label.trim(),
       note: values.note.trim() || undefined,
       amount: values.amount || undefined,
@@ -61,15 +75,27 @@ export function QuickNoteFlow({
       account: values.account || undefined,
       forValue: values.forValue || undefined,
     });
-  }, [form.state.values, isSaving, isValid, note, onSave]);
+  }, [color, form.state.values, icon, isSaving, isValid, note?.id, onSave]);
 
   const handleDelete = useCallback(() => {
     if (isSaving) return;
     void onDelete?.();
   }, [isSaving, onDelete]);
 
+  const handleAppearanceSave = useCallback(
+    (nextIcon: string, nextColor: string) => {
+      setIcon(nextIcon);
+      setColor(nextColor);
+      setAppearanceSection(null);
+    },
+    [],
+  );
+
   const customHeader = (
-    <div className="flex items-center gap-3 border-b border-border/20 pb-3 pt-4">
+    <div
+      data-testid="quick-note-identity-row"
+      className="flex items-center gap-2 border-b border-border/20 pb-3 pt-4"
+    >
       <button
         type="button"
         aria-label="Go back"
@@ -79,6 +105,21 @@ export function QuickNoteFlow({
       >
         <ChevronLeft className="h-5 w-5" />
       </button>
+      <button
+        type="button"
+        aria-label="Choose Quick Note icon"
+        aria-haspopup="dialog"
+        onClick={() => setAppearanceSection('icon')}
+        disabled={isSaving}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <DynamicIcon
+          name={icon}
+          fallback={DEFAULT_ICON}
+          className="h-4 w-4"
+          style={{ color }}
+        />
+      </button>
       <input
         type="text"
         ref={labelInputRef}
@@ -87,8 +128,22 @@ export function QuickNoteFlow({
         placeholder="Label (required)"
         maxLength={12}
         disabled={isSaving}
-        className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
+        className="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
       />
+      <button
+        type="button"
+        aria-label="Choose Quick Note color"
+        aria-haspopup="dialog"
+        onClick={() => setAppearanceSection('color')}
+        disabled={isSaving}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <span
+          aria-hidden="true"
+          className="h-5 w-5 rounded-full border border-black/10"
+          style={{ backgroundColor: color }}
+        />
+      </button>
     </div>
   );
 
@@ -104,6 +159,24 @@ export function QuickNoteFlow({
         submitLabel="Save Quick Note"
         customHeader={customHeader}
         optionalAmount
+      />
+
+      <AppearancePicker
+        open={appearanceSection !== null}
+        onOpenChange={(open) => {
+          if (!open) setAppearanceSection(null);
+        }}
+        initialIcon={icon}
+        initialColor={color}
+        onSave={handleAppearanceSave}
+        defaultIcon={DEFAULT_ICON}
+        defaultColor={DEFAULT_ACCOUNT_COLOR}
+        title={
+          appearanceSection === 'icon'
+            ? 'Choose Quick Note Icon'
+            : 'Choose Quick Note Color'
+        }
+        section={appearanceSection ?? 'appearance'}
       />
     </div>
   );
