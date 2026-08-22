@@ -4,15 +4,12 @@ on:
   pull_request:
     branches:
       - main
-  push:
-    branches:
-      - feat/quick-note-identity-row
 
 permissions:
   contents: read
 
 jobs:
-  targeted-tests:
+  verification:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,8 +18,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: >-
-          npm test --
-          src/components/AppearancePicker.test.tsx
-          src/components/SettingsQuickNoteEditorDrawer.test.tsx
-          src/components/QuickNotes/QuickNotesSettings.test.tsx
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npm run lint
