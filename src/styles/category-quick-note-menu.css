@@ -14,7 +14,7 @@
 
 .category-menu-topline-dot {
   background: var(--category-menu-accent);
-  box-shadow: 0 0 0 4px
+  outline: 4px solid
     color-mix(in srgb, var(--category-menu-accent) 8%, transparent);
 }
 
