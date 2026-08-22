@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { TransactionRecord } from '../../lib/types';
@@ -59,6 +59,7 @@ describe('TransactionHistoryItems', () => {
     render(
       <>
         <TransactionHistoryDateHeader
+          mode="static"
           dateKey="2026-08-17"
           today={today}
           transactions={[]}
@@ -66,6 +67,7 @@ describe('TransactionHistoryItems', () => {
           baseAmountStates={baseAmountStates}
         />
         <TransactionHistoryDateHeader
+          mode="static"
           dateKey="2026-08-16"
           today={today}
           transactions={[]}
@@ -73,6 +75,7 @@ describe('TransactionHistoryItems', () => {
           baseAmountStates={baseAmountStates}
         />
         <TransactionHistoryDateHeader
+          mode="static"
           dateKey="2026-08-15"
           today={today}
           transactions={[]}
@@ -87,7 +90,7 @@ describe('TransactionHistoryItems', () => {
     expect(screen.getByText('Saturday, Aug 15')).toBeInTheDocument();
   });
 
-  it('places the base-currency daily net on the right side of the date', () => {
+  it('reserves the daily net slot but reveals it only while pinned', () => {
     const rows = [
       transaction('expense', { amount: 120 }),
       transaction('income', { type: 'income', amount: 500 }),
@@ -95,20 +98,50 @@ describe('TransactionHistoryItems', () => {
     ];
 
     render(
-      <TransactionHistoryDateHeader
-        dateKey="2026-08-17"
-        today={new Date(2026, 7, 17, 12)}
-        transactions={rows}
-        baseCurrency="THB"
-        baseAmountStates={{}}
-      />,
+      <>
+        <div data-testid="resting-date">
+          <TransactionHistoryDateHeader
+            mode="static"
+            dateKey="2026-08-17"
+            today={new Date(2026, 7, 17, 12)}
+            transactions={rows}
+            baseCurrency="THB"
+            baseAmountStates={{}}
+          />
+        </div>
+        <div data-testid="pinned-date">
+          <TransactionHistoryDateHeader
+            mode="pinned"
+            dateKey="2026-08-17"
+            today={new Date(2026, 7, 17, 12)}
+            transactions={rows}
+            baseCurrency="THB"
+            baseAmountStates={{}}
+          />
+        </div>
+      </>,
     );
 
-    const header = screen.getByTestId('transaction-history-date-header');
-    expect(header).toHaveClass('flex', 'items-center', 'justify-between');
+    const resting = within(screen.getByTestId('resting-date'));
+    const restingHeader = resting.getByTestId(
+      'transaction-history-date-header',
+    );
+    const restingAmount = resting.getByTestId('daily-net-amount');
+    expect(restingHeader).toHaveAttribute('data-sticky-state', 'resting');
+    expect(restingAmount.parentElement).toHaveAttribute('aria-hidden', 'true');
+    expect(restingAmount.parentElement).toHaveClass('min-w-16', 'opacity-0');
+
+    const pinned = within(screen.getByTestId('pinned-date'));
+    const pinnedHeader = pinned.getByTestId('transaction-history-date-header');
+    const pinnedAmount = pinned.getByTestId('daily-net-amount');
+    expect(pinnedHeader).toHaveAttribute('data-sticky-state', 'pinned');
+    expect(pinnedHeader).toHaveClass('border-border/70', 'bg-background/95');
+    expect(pinnedAmount.parentElement).not.toHaveAttribute('aria-hidden');
+    expect(pinnedAmount.parentElement).toHaveClass('opacity-100');
+    expect(pinnedAmount).toHaveTextContent('+฿380');
     expect(
-      screen.getByLabelText('Daily net plus 380.00 THB'),
-    ).toHaveTextContent('+฿380');
+      pinned.getByText('Daily net plus 380.00 THB'),
+    ).toBeInTheDocument();
   });
 
   it('shares signed amounts, statuses, editability, and selection behavior', async () => {
@@ -135,7 +168,11 @@ describe('TransactionHistoryItems', () => {
     expect(screen.getByText('Pending')).toBeInTheDocument();
     expect(screen.getByText('Network unavailable')).toBeInTheDocument();
     expect(screen.getByText('Read only')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /expense Category legacy.*Read only/ })).toBeDisabled();
+    expect(
+      screen.getByRole('button', {
+        name: /expense Category legacy.*Read only/,
+      }),
+    ).toBeDisabled();
 
     await user.click(
       screen.getByRole('button', {
