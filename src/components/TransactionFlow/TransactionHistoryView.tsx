@@ -51,11 +51,13 @@ const HISTORY_INITIAL_RECT = { width: 390, height: 560 };
 function TransactionHistoryVirtualList({
   items,
   onEdit,
+  baseCurrency,
   baseAmountStates,
   usesSheetAccessory,
 }: {
   items: TransactionHistoryListItem[];
   onEdit: (transaction: TransactionRecord) => void;
+  baseCurrency: string;
   baseAmountStates: Readonly<Record<string, TransactionBaseAmountState>>;
   usesSheetAccessory: boolean;
 }) {
@@ -173,6 +175,9 @@ function TransactionHistoryVirtualList({
                 <TransactionHistoryDateHeader
                   dateKey={item.dateKey}
                   today={today}
+                  transactions={item.transactions}
+                  baseCurrency={baseCurrency}
+                  baseAmountStates={baseAmountStates}
                 />
               ) : (
                 <TransactionHistoryRow
@@ -303,6 +308,7 @@ export function TransactionHistoryView({
           <TransactionHistoryVirtualList
             items={items}
             onEdit={handleEdit}
+            baseCurrency={baseCurrency}
             baseAmountStates={baseAmounts.states}
             usesSheetAccessory={sheetAccessory.provided}
           />

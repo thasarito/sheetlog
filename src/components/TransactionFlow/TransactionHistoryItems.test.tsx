@@ -46,21 +46,69 @@ describe('TransactionHistoryItems', () => {
       'date:2026-08-16',
       'transaction:old',
     ]);
+    const dateItems = items.filter((item) => item.kind === 'date');
+    expect(dateItems.map((item) => item.transactions.map(({ id }) => id))).toEqual([
+      ['new-a', 'new-b'],
+      ['old'],
+    ]);
   });
 
   it('uses the same relative and calendar day labels in both sheets', () => {
     const today = new Date(2026, 7, 17, 12);
+    const baseAmountStates = {};
     render(
       <>
-        <TransactionHistoryDateHeader dateKey="2026-08-17" today={today} />
-        <TransactionHistoryDateHeader dateKey="2026-08-16" today={today} />
-        <TransactionHistoryDateHeader dateKey="2026-08-15" today={today} />
+        <TransactionHistoryDateHeader
+          dateKey="2026-08-17"
+          today={today}
+          transactions={[]}
+          baseCurrency="THB"
+          baseAmountStates={baseAmountStates}
+        />
+        <TransactionHistoryDateHeader
+          dateKey="2026-08-16"
+          today={today}
+          transactions={[]}
+          baseCurrency="THB"
+          baseAmountStates={baseAmountStates}
+        />
+        <TransactionHistoryDateHeader
+          dateKey="2026-08-15"
+          today={today}
+          transactions={[]}
+          baseCurrency="THB"
+          baseAmountStates={baseAmountStates}
+        />
       </>,
     );
 
     expect(screen.getByText('Today')).toBeInTheDocument();
     expect(screen.getByText('Yesterday')).toBeInTheDocument();
     expect(screen.getByText('Saturday, Aug 15')).toBeInTheDocument();
+  });
+
+  it('places the base-currency daily net on the right side of the date', () => {
+    const rows = [
+      transaction('expense', { amount: 120 }),
+      transaction('income', { type: 'income', amount: 500 }),
+      transaction('transfer', { type: 'transfer', amount: 900 }),
+    ];
+
+    render(
+      <TransactionHistoryDateHeader
+        dateKey="2026-08-17"
+        today={new Date(2026, 7, 17, 12)}
+        transactions={rows}
+        baseCurrency="THB"
+        baseAmountStates={{}}
+      />,
+    );
+
+    const header = screen.getByTestId('transaction-history-date-header');
+    expect(header).toHaveClass('flex', 'items-center', 'justify-between');
+    expect(
+      screen.getByLabelText('Daily net plus 380.00 THB'),
+    ).toHaveTextContent('+฿380');
   });
 
   it('shares signed amounts, statuses, editability, and selection behavior', async () => {

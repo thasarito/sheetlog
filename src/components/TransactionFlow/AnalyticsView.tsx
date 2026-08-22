@@ -464,6 +464,9 @@ export function AnalyticsView({
                         key={item.key}
                         dateKey={item.dateKey}
                         today={now}
+                        transactions={item.transactions}
+                        baseCurrency={transactionBaseCurrency}
+                        baseAmountStates={transactionBaseAmountStates}
                       />
                     ) : (
                       <TransactionHistoryRow
