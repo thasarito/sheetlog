@@ -238,7 +238,7 @@ export async function readSheetSettingsConfig(
     : ({ status: 'ok', present: false, value: emptyCategories() } as const);
   const quickNotes = quickNoteTab
     ? await fetchWithAuth<{ values?: unknown[][] }>(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeA1Range('Quick Note', 'A2:M')}`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeA1Range('Quick Note', 'A2:N')}`,
         accessToken,
       ).then(({ values }) => {
         try {
@@ -294,7 +294,7 @@ export async function replaceSheetSettingsSection<Section extends SettingsSectio
             ),
           )
         : serializeQuickNoteRows(normalizedValue as SheetSettingsConfig['quickNotes']);
-  const readRange = section === 'accounts' ? 'A1:C' : section === 'categories' ? 'A1:D' : 'A1:M';
+  const readRange = section === 'accounts' ? 'A1:C' : section === 'categories' ? 'A1:D' : 'A1:N';
   const rows = [[...headers], ...dataRows].map((row) => ({
     values: row.map((cell) => ({ userEnteredValue: { stringValue: cell } })),
   }));

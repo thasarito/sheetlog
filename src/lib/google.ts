@@ -296,7 +296,7 @@ async function ensureQuickNotesHeaders(
   accessToken: string,
   spreadsheetId: string
 ): Promise<void> {
-  const range = encodeA1Range(QUICK_NOTE_TAB, "A1:M1");
+  const range = encodeA1Range(QUICK_NOTE_TAB, "A1:N1");
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueInputOption=RAW`;
   await fetchWithAuth(url, accessToken, {
     method: "PUT",
