@@ -20,6 +20,7 @@ jobs:
       - run: npm ci
       - run: >-
           npm test --
+          src/components/AdvancedColorPicker.test.tsx
           src/components/AppearancePicker.test.tsx
           src/components/SettingsQuickNoteEditorDrawer.test.tsx
           src/components/QuickNotes/QuickNotesSettings.test.tsx
