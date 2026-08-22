@@ -191,7 +191,7 @@ describe("CategoryStepSheet", () => {
       disablePreventScroll: true,
       repositionInputs: false,
       activeSnapPoint: "520px",
-      snapPoints: ["44px", "520px"],
+      snapPoints: ["60px", "520px"],
     });
     expect(drawerMock.rootProps?.container).toBe(
       screen.getByTestId("category-step-layout"),
@@ -226,9 +226,9 @@ describe("CategoryStepSheet", () => {
     expect(screen.getByRole("button", { name: "Expense" })).toBe(expenseTab);
     expect(expenseTab).toBeVisible();
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
-      "--category-sheet-occlusion": "44px",
+      "--category-sheet-occlusion": "60px",
     });
-    expect(drawerMock.rootProps?.activeSnapPoint).toBe("44px");
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("60px");
     expect(entryRegion).toHaveAttribute("aria-hidden", "true");
     expect(entryRegion?.inert).toBe(true);
   });
@@ -347,7 +347,7 @@ describe("CategoryStepSheet", () => {
       launcherHeight: 64,
     });
 
-    expect(drawerMock.rootProps?.snapPoints).toEqual(["64px", "700px"]);
+    expect(drawerMock.rootProps?.snapPoints).toEqual(["60px", "700px"]);
     expect(drawerMock.rootProps?.activeSnapPoint).toBe("700px");
     expect(screen.getByTestId("category-step-sheet-body")).toHaveStyle({
       height: "700px",
@@ -376,7 +376,7 @@ describe("CategoryStepSheet", () => {
     const launcher = screen.getByTestId("category-step-launcher");
     const entryRegion = screen.getByTestId("entry").parentElement;
     const safeArea = screen.getByTestId("category-step-safe-area");
-    expect(drawerMock.rootProps?.snapPoints).toEqual(["88px", "400px"]);
+    expect(drawerMock.rootProps?.snapPoints).toEqual(["84px", "400px"]);
     expect(screen.getByTestId("category-step-sheet-body")).toHaveClass(
       "relative",
     );
@@ -394,7 +394,7 @@ describe("CategoryStepSheet", () => {
         screen.getByRole("button", { name: "Collapse transaction entry" }),
       );
 
-    expect(drawerMock.rootProps?.activeSnapPoint).toBe("88px");
+    expect(drawerMock.rootProps?.activeSnapPoint).toBe("84px");
     expect(launcher).toHaveClass("order-1");
     expect(safeArea).toHaveClass("order-2");
     expect(safeArea).not.toHaveClass("absolute", "invisible");
@@ -429,7 +429,7 @@ describe("CategoryStepSheet", () => {
     expect(screen.getByTestId("category-step-layout")).toHaveStyle({
       "--transaction-history-dock-height": "60px",
     });
-    expect(drawerMock.rootProps?.snapPoints).toEqual(["44px", "164px"]);
+    expect(drawerMock.rootProps?.snapPoints).toEqual(["60px", "164px"]);
     expect(screen.getByTestId("category-sheet-content").className).not.toMatch(
       /shadow/,
     );
