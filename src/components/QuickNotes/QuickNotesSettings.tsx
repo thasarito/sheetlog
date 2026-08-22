@@ -111,6 +111,7 @@ export function QuickNotesSettings({
     const newNote: QuickNote = {
       id: noteData.id ?? generateId(),
       icon: noteData.icon,
+      color: noteData.color,
       label: noteData.label,
       note: noteData.note,
       amount: noteData.amount,
