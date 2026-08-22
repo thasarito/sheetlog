@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,8 +16,20 @@ type StepAmountHarnessProps = {
   submitLabel?: string;
 };
 
+type AppearancePickerSection = 'appearance' | 'icon' | 'color';
+
+type AppearancePickerHarnessProps = {
+  open: boolean;
+  section?: AppearancePickerSection;
+  initialIcon?: string;
+  initialColor?: string;
+  onOpenChange: (open: boolean) => void;
+  onSave: (icon: string, color: string) => void;
+};
+
 const mocks = vi.hoisted(() => ({
   stepAmountProps: null as StepAmountHarnessProps | null,
+  appearancePickerProps: null as AppearancePickerHarnessProps | null,
 }));
 
 vi.mock('../hooks/useOnboarding', () => ({
@@ -26,6 +38,24 @@ vi.mock('../hooks/useOnboarding', () => ({
       accounts: [{ name: 'Wallet' }, { name: 'Cash' }],
     },
   }),
+}));
+
+vi.mock('./AppearancePicker', () => ({
+  AppearancePicker: (props: AppearancePickerHarnessProps) => {
+    mocks.appearancePickerProps = props;
+    if (!props.open) return null;
+
+    const nextIcon = props.section === 'icon' ? 'Star' : (props.initialIcon ?? 'Tag');
+    const nextColor = props.section === 'color' ? '#abcdef' : (props.initialColor ?? '#6366f1');
+
+    return (
+      <div role="dialog" aria-label={`${props.section ?? 'appearance'} picker`}>
+        <button type="button" onClick={() => props.onSave(nextIcon, nextColor)}>
+          Apply appearance
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('./TransactionFlow/StepAmount', () => ({
@@ -95,6 +125,7 @@ function renderEditor(
 describe('SettingsQuickNoteEditorDrawer', () => {
   beforeEach(() => {
     mocks.stepAmountProps = null;
+    mocks.appearancePickerProps = null;
   });
 
   it('opens the WYSIWYG StepAmount flow from Settings', () => {
@@ -108,6 +139,70 @@ describe('SettingsQuickNoteEditorDrawer', () => {
     });
     expect(screen.getByPlaceholderText('Label (required)')).toHaveValue('Coffee');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('renders a compact icon, label, and color identity row', () => {
+    renderEditor();
+
+    const row = screen.getByTestId('quick-note-identity-row');
+    const iconButton = within(row).getByRole('button', { name: 'Choose Quick Note icon' });
+    const labelInput = within(row).getByPlaceholderText('Label (required)');
+    const colorButton = within(row).getByRole('button', { name: 'Choose Quick Note color' });
+
+    expect(iconButton.nextElementSibling).toBe(labelInput);
+    expect(labelInput.nextElementSibling).toBe(colorButton);
+  });
+
+  it('opens the icon picker and saves the selected icon', async () => {
+    const user = userEvent.setup();
+    const props = renderEditor();
+
+    await user.click(screen.getByRole('button', { name: 'Choose Quick Note icon' }));
+
+    expect(mocks.appearancePickerProps).toMatchObject({
+      open: true,
+      section: 'icon',
+      initialIcon: 'Coffee',
+      initialColor: '#123456',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Apply appearance' }));
+    await user.click(screen.getByRole('button', { name: 'Save Quick Note' }));
+
+    await waitFor(() =>
+      expect(props.onCommit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: 'Star',
+          color: '#123456',
+        }),
+      ),
+    );
+  });
+
+  it('opens the color picker and saves the selected color', async () => {
+    const user = userEvent.setup();
+    const props = renderEditor();
+
+    await user.click(screen.getByRole('button', { name: 'Choose Quick Note color' }));
+
+    expect(mocks.appearancePickerProps).toMatchObject({
+      open: true,
+      section: 'color',
+      initialIcon: 'Coffee',
+      initialColor: '#123456',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Apply appearance' }));
+    await user.click(screen.getByRole('button', { name: 'Save Quick Note' }));
+
+    await waitFor(() =>
+      expect(props.onCommit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: 'Coffee',
+          color: '#abcdef',
+        }),
+      ),
+    );
   });
 
   it('renders above the persistent StepCategory drawer', () => {
