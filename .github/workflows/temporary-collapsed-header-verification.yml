@@ -1,6 +1,9 @@
 name: Temporary collapsed header verification
 
 on:
+  push:
+    branches:
+      - feat/collapsed-category-header-band
   pull_request:
     branches:
       - main
