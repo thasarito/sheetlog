@@ -175,14 +175,16 @@ function TransactionHistoryVirtualList({
         updateStickyDate(scrollTop);
       }}
     >
-      {stickyDateItem ? (
-        <div
-          key={stickyDateItem.key}
-          aria-live="polite"
-          data-testid="transaction-history-sticky-date-header"
-          className="pointer-events-none sticky top-0 z-30 -mb-9 h-9"
-        >
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        data-sticky-date-key={stickyDateItem?.dateKey}
+        data-testid="transaction-history-sticky-date-header"
+        className="pointer-events-none sticky top-0 z-30 -mb-9 h-9"
+      >
+        {stickyDateItem ? (
           <TransactionHistoryDateHeader
+            key={stickyDateItem.key}
             mode="pinned"
             dateKey={stickyDateItem.dateKey}
             today={today}
@@ -190,8 +192,8 @@ function TransactionHistoryVirtualList({
             baseCurrency={baseCurrency}
             baseAmountStates={baseAmountStates}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       <div
         className="relative w-full"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
