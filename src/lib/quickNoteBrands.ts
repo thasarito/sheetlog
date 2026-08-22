@@ -1,4 +1,5 @@
 import { ICON_MAP, type IconName } from './icons';
+import type { QuickNote, QuickNotesConfig } from './types';
 
 export const QUICK_NOTE_BRANDS = [
   { name: 'brand:grab', slug: 'grab', label: 'Grab', color: '#00B14F', aliases: ['grab'] },
@@ -119,6 +120,11 @@ export type QuickNoteBrandSlug = QuickNoteBrand['slug'];
 const QUICK_NOTE_BRAND_BY_NAME = new Map<QuickNoteBrandName, QuickNoteBrand>(
   QUICK_NOTE_BRANDS.map((brand) => [brand.name, brand] as const),
 );
+const STORED_ICON_MARKER = Symbol('quick-note-stored-icon');
+
+type PresentationQuickNote = QuickNote & {
+  [STORED_ICON_MARKER]?: string;
+};
 
 function normalizeLabel(value: string): string {
   return value
@@ -178,4 +184,38 @@ export function resolveQuickNoteIconName(
   if (isQuickNoteBrandName(icon) || isLucideIconName(icon)) return icon;
 
   return resolveQuickNoteBrandName(label) ?? fallback;
+}
+
+export function resolveQuickNoteForPresentation(note: QuickNote): QuickNote {
+  const icon = resolveQuickNoteIconName(note.icon, note.label);
+  if (icon === note.icon) return note;
+
+  const presentationNote: PresentationQuickNote = { ...note, icon };
+  Object.defineProperty(presentationNote, STORED_ICON_MARKER, {
+    value: note.icon,
+    enumerable: false,
+  });
+  return presentationNote;
+}
+
+export function prepareQuickNotesForPersistence(notes: QuickNote[]): QuickNote[] {
+  return notes.map((note) => {
+    if (!Object.prototype.hasOwnProperty.call(note, STORED_ICON_MARKER)) {
+      return note;
+    }
+
+    const storedIcon = (note as PresentationQuickNote)[STORED_ICON_MARKER];
+    return { ...note, icon: storedIcon ?? note.icon };
+  });
+}
+
+export function prepareQuickNotesConfigForPersistence(
+  config: QuickNotesConfig,
+): QuickNotesConfig {
+  return Object.fromEntries(
+    Object.entries(config).map(([key, notes]) => [
+      key,
+      prepareQuickNotesForPersistence(notes),
+    ]),
+  );
 }
