@@ -27,10 +27,12 @@ function renderPicker(section: PickerSection) {
 }
 
 describe('AppearancePicker sections', () => {
-  it('renders as a modal dialog above the full-screen Quick Note editor', () => {
+  it('renders as a modal dialog above the full-screen Quick Note editor', async () => {
     renderPicker('icon');
 
-    const dialog = screen.getByRole('dialog', { name: 'Choose Appearance' });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Choose Appearance',
+    });
     expect(dialog).toHaveAttribute(
       'data-appearance-picker-presentation',
       'dialog',
