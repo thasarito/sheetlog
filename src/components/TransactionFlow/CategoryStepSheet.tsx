@@ -21,6 +21,7 @@ import {
 import { useKeyboardViewportState } from "./useKeyboardViewportState";
 
 const DEFAULT_LAUNCHER_HEIGHT = 44;
+const COLLAPSED_TYPE_TABS_LAUNCHER_HEIGHT = 60;
 const DEFAULT_EXPANDED_HEIGHT = 520;
 const DEFAULT_KEYBOARD_HEIGHT = 300;
 const MIN_LAUNCHER_HEIGHT = 44;
@@ -56,6 +57,7 @@ export function CategoryStepSheet({
 }: CategoryStepSheetProps) {
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
+  const expandedLauncherHeightRef = useRef(DEFAULT_LAUNCHER_HEIGHT);
   const [layoutElement, setLayoutElement] = useState<HTMLDivElement | null>(
     null,
   );
@@ -81,6 +83,10 @@ export function CategoryStepSheet({
     expanded: DEFAULT_EXPANDED_HEIGHT,
   });
   const keyboardViewport = useKeyboardViewportState(layoutHeight);
+  const collapsed = sheetState === "collapsed";
+  const typeTabsVisibleInLauncher = Boolean(typeTabsHostRef);
+  const integratedCollapsedLauncher =
+    collapsed && typeTabsVisibleInLauncher;
 
   const setSheetState = useCallback((nextState: CategoryStepSheetState) => {
     sheetStateRef.current = nextState;
@@ -95,7 +101,7 @@ export function CategoryStepSheet({
           window.innerHeight,
         ),
       );
-      const collapsedHeight = Math.max(
+      const measuredLauncherHeight = Math.max(
         MIN_LAUNCHER_HEIGHT,
         Math.ceil(
           positiveHeight(
@@ -104,6 +110,15 @@ export function CategoryStepSheet({
           ),
         ),
       );
+      if (!integratedCollapsedLauncher) {
+        expandedLauncherHeightRef.current = measuredLauncherHeight;
+      }
+      const expandedLauncherHeight = integratedCollapsedLauncher
+        ? expandedLauncherHeightRef.current
+        : measuredLauncherHeight;
+      const collapsedLauncherHeight = typeTabsVisibleInLauncher
+        ? COLLAPSED_TYPE_TABS_LAUNCHER_HEIGHT
+        : measuredLauncherHeight;
       const measuredSafeAreaHeight =
         safeAreaElement?.getBoundingClientRect().height ?? 0;
       const safeAreaHeight =
@@ -116,11 +131,11 @@ export function CategoryStepSheet({
       const entryHeight = Math.ceil(
         positiveHeight(
           entryContent?.scrollHeight ?? entryElement?.scrollHeight ?? 0,
-          Math.max(1, DEFAULT_EXPANDED_HEIGHT - collapsedHeight),
+          Math.max(1, DEFAULT_EXPANDED_HEIGHT - expandedLauncherHeight),
         ),
       );
-      const collapsedContentHeight = collapsedHeight + safeAreaHeight;
-      const expandedContentHeight = collapsedHeight + entryHeight;
+      const collapsedContentHeight = collapsedLauncherHeight + safeAreaHeight;
+      const expandedContentHeight = expandedLauncherHeight + entryHeight;
 
       const nextHeights = {
         collapsed: collapsedContentHeight,
@@ -147,7 +162,13 @@ export function CategoryStepSheet({
       observer.observe(entryElement.firstElementChild);
     }
     return () => observer.disconnect();
-  }, [entryElement, launcherElement, safeAreaElement]);
+  }, [
+    entryElement,
+    integratedCollapsedLauncher,
+    launcherElement,
+    safeAreaElement,
+    typeTabsVisibleInLauncher,
+  ]);
 
   useLayoutEffect(() => {
     if (keyboardViewport.active) {
@@ -192,7 +213,6 @@ export function CategoryStepSheet({
       : sheetState === "keyboard"
         ? keyboardPoint
         : expandedPoint;
-  const collapsed = sheetState === "collapsed";
   const entryVisible = sheetState === "expanded";
   const keyboardState = sheetState === "keyboard";
   const sheetBodyHeight = entryVisible
@@ -340,7 +360,16 @@ export function CategoryStepSheet({
               <div
                 ref={setLauncherElement}
                 data-testid="category-step-launcher"
-                className="order-1 shrink-0"
+                className={cn(
+                  "order-1 shrink-0",
+                  integratedCollapsedLauncher &&
+                    "grid grid-cols-1 grid-rows-1",
+                )}
+                style={
+                  integratedCollapsedLauncher
+                    ? { height: `${COLLAPSED_TYPE_TABS_LAUNCHER_HEIGHT}px` }
+                    : undefined
+                }
               >
                 <button
                   type="button"
@@ -353,7 +382,12 @@ export function CategoryStepSheet({
                   onClick={() =>
                     setSheetState(collapsed ? "expanded" : "collapsed")
                   }
-                  className="flex min-h-11 w-full items-center justify-center px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
+                  className={cn(
+                    "flex min-h-11 w-full justify-center px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40",
+                    integratedCollapsedLauncher
+                      ? "col-start-1 row-start-1 h-full items-start pt-1"
+                      : "items-center",
+                  )}
                 >
                   <span
                     className="h-1 w-8 rounded-full bg-border"
@@ -366,7 +400,12 @@ export function CategoryStepSheet({
                     aria-label="Transaction type"
                     data-testid="category-step-type-tabs"
                     data-vaul-no-drag
-                    className="m-0 min-w-0 border-0 p-0 pb-3"
+                    className={cn(
+                      "min-w-0 border-0 p-0",
+                      integratedCollapsedLauncher
+                        ? "relative z-10 col-start-1 row-start-1 mx-4 mt-2 self-start"
+                        : "m-0 pb-3",
+                    )}
                   />
                 ) : null}
               </div>
