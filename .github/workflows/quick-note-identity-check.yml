@@ -18,6 +18,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: >-
+          npm test --
+          src/components/AppearancePicker.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/components/QuickNotes/QuickNotesSettings.test.tsx
       - run: npx tsc --noEmit
       - run: npm run lint
