@@ -9,7 +9,7 @@ import {
   useUpdateQuickNotes,
 } from '../../hooks/useQuickNotes';
 import type { QuickNote, TransactionType } from '../../lib/types';
-import { DynamicIcon } from '../DynamicIcon';
+import { QuickNoteIcon } from '../QuickNoteIcon';
 import { SwipeableListItem } from '../SwipeableListItem';
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '../ui/drawer';
 import { QuickNoteFlow } from './QuickNoteFlow';
@@ -191,7 +191,11 @@ export function QuickNotesSettings({
                         >
                           <GripVertical className="h-4 w-4 text-muted-foreground shrink-0 cursor-grab" />
                           <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface shrink-0">
-                            <DynamicIcon name={note.icon} className="h-4 w-4 text-foreground" />
+                            <QuickNoteIcon
+                              icon={note.icon}
+                              label={note.label}
+                              className="h-4 w-4 text-foreground"
+                            />
                           </div>
                           <div className="flex-1 min-w-0">
                             <span className="block text-sm font-medium text-foreground truncate">

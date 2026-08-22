@@ -2,6 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession, useWorkspace } from '../app/providers';
 import { getSessionTokenGeneration } from '../app/providers/session/session.generation';
 import {
+  prepareQuickNotesConfigForPersistence,
+  prepareQuickNotesForPersistence,
+} from '../lib/quickNoteBrands';
+import {
   mutateLegacyQuickNotes,
   mutateLocalQuickNotes,
 } from '../lib/settingsLocalRepository';
@@ -98,11 +102,12 @@ async function persistQuickNotesConfig({
   userId: string | null;
 }): Promise<QuickNotesConfig> {
   const sessionGeneration = getSessionTokenGeneration();
+  const persistedConfig = prepareQuickNotesConfigForPersistence(config);
   if (sheetId && userId) {
     const result = await mutateLocalQuickNotes(
       sheetId,
       userId,
-      () => config,
+      () => persistedConfig,
       { legacyFallbackReadOnly: true },
     );
     const next = result.settings.quickNotes;
@@ -119,7 +124,7 @@ async function persistQuickNotesConfig({
     return next;
   }
 
-  const next = await mutateLegacyQuickNotes(() => config);
+  const next = await mutateLegacyQuickNotes(() => persistedConfig);
   if (getSessionTokenGeneration() === sessionGeneration) {
     queryClient.setQueryData(
       queryKey,
@@ -154,12 +159,13 @@ export function useUpdateQuickNotes() {
     }): Promise<QuickNotesConfig> => {
       const sessionGeneration = getSessionTokenGeneration();
       const key = buildQuickNotesKey(type, categoryName);
+      const persistedNotes = prepareQuickNotesForPersistence(notes);
       const { queryClient, queryKey, sheetId, userId } = context;
       if (sheetId && userId) {
         const result = await mutateLocalQuickNotes(
           sheetId,
           userId,
-          (current) => ({ ...current, [key]: notes }),
+          (current) => ({ ...current, [key]: persistedNotes }),
           { legacyFallbackReadOnly: true },
         );
         const next = result.settings.quickNotes;
@@ -177,7 +183,7 @@ export function useUpdateQuickNotes() {
       }
       const next = await mutateLegacyQuickNotes((current) => ({
         ...current,
-        [key]: notes,
+        [key]: persistedNotes,
       }));
       if (getSessionTokenGeneration() === sessionGeneration) {
         queryClient.setQueryData(
@@ -205,12 +211,13 @@ export function useUpdateDefaultQuickNotes() {
     }): Promise<QuickNotesConfig> => {
       const sessionGeneration = getSessionTokenGeneration();
       const key = buildDefaultQuickNotesKey(type);
+      const persistedNotes = prepareQuickNotesForPersistence(notes);
       const { queryClient, queryKey, sheetId, userId } = context;
       if (sheetId && userId) {
         const result = await mutateLocalQuickNotes(
           sheetId,
           userId,
-          (current) => ({ ...current, [key]: notes }),
+          (current) => ({ ...current, [key]: persistedNotes }),
           { legacyFallbackReadOnly: true },
         );
         const next = result.settings.quickNotes;
@@ -228,7 +235,7 @@ export function useUpdateDefaultQuickNotes() {
       }
       const next = await mutateLegacyQuickNotes((current) => ({
         ...current,
-        [key]: notes,
+        [key]: persistedNotes,
       }));
       if (getSessionTokenGeneration() === sessionGeneration) {
         queryClient.setQueryData(

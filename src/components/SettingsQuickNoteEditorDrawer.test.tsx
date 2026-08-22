@@ -23,6 +23,7 @@ type AppearancePickerHarnessProps = {
   section?: AppearancePickerSection;
   initialIcon?: string;
   initialColor?: string;
+  includeBrandIcons?: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (icon: string, color: string) => void;
 };
@@ -153,7 +154,7 @@ describe('SettingsQuickNoteEditorDrawer', () => {
     expect(labelInput.nextElementSibling).toBe(colorButton);
   });
 
-  it('opens the icon picker and saves the selected icon', async () => {
+  it('opens the icon picker with the Quick Note brand library and saves the selected icon', async () => {
     const user = userEvent.setup();
     const props = renderEditor();
 
@@ -164,6 +165,7 @@ describe('SettingsQuickNoteEditorDrawer', () => {
       section: 'icon',
       initialIcon: 'Coffee',
       initialColor: '#123456',
+      includeBrandIcons: true,
     });
 
     await user.click(screen.getByRole('button', { name: 'Apply appearance' }));
@@ -174,6 +176,35 @@ describe('SettingsQuickNoteEditorDrawer', () => {
         expect.objectContaining({
           icon: 'Star',
           color: '#123456',
+        }),
+      ),
+    );
+  });
+
+  it('resolves a legacy placeholder to a brand before editing or saving', async () => {
+    const user = userEvent.setup();
+    const props = renderEditor({
+      note: {
+        ...savedNote,
+        id: 'grab',
+        icon: 'StickyNote',
+        label: 'grab',
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Choose Quick Note icon' }));
+    expect(mocks.appearancePickerProps).toMatchObject({
+      initialIcon: 'brand:grab',
+      includeBrandIcons: true,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Save Quick Note' }));
+    await waitFor(() =>
+      expect(props.onCommit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'grab',
+          icon: 'brand:grab',
+          label: 'grab',
         }),
       ),
     );
@@ -190,6 +221,7 @@ describe('SettingsQuickNoteEditorDrawer', () => {
       section: 'color',
       initialIcon: 'Coffee',
       initialColor: '#123456',
+      includeBrandIcons: true,
     });
 
     await user.click(screen.getByRole('button', { name: 'Apply appearance' }));
