@@ -30,8 +30,10 @@ import { buildTransactionBaseAmountStates } from './transactionBaseAmounts';
 import {
   flattenTransactionHistory,
   TransactionHistoryDateHeader,
+  type TransactionHistoryListItem,
   TransactionHistoryRow,
 } from './TransactionHistoryItems';
+import { useAnalyticsStickyDate } from './useAnalyticsStickyDate';
 
 export type AnalyticsViewProps = {
   transactions: TransactionRecord[];
@@ -183,6 +185,29 @@ export function AnalyticsView({
     () => flattenTransactionHistory(filteredTransactions),
     [filteredTransactions],
   );
+  const transactionDateItems = useMemo(
+    () =>
+      transactionItems.filter(
+        (
+          item,
+        ): item is Extract<TransactionHistoryListItem, { kind: 'date' }> =>
+          item.kind === 'date',
+      ),
+    [transactionItems],
+  );
+  const transactionDateKeys = useMemo(
+    () => transactionDateItems.map(({ dateKey }) => dateKey),
+    [transactionDateItems],
+  );
+  const {
+    scrollRef: analyticsScrollRef,
+    transactionSectionRef,
+    stickyDateKey,
+    scheduleUpdate: scheduleStickyDateUpdate,
+  } = useAnalyticsStickyDate(transactionDateKeys);
+  const stickyDateItem = transactionDateItems.find(
+    ({ dateKey }) => dateKey === stickyDateKey,
+  );
 
   const selectTransaction = (transaction: TransactionRecord) => {
     clearFilters();
@@ -252,7 +277,7 @@ export function AnalyticsView({
     ) : null;
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-transparent">
+    <section className="relative flex h-full min-h-0 flex-col bg-transparent">
       <header className="sr-only">
         <h2 className="sr-only">Analytics</h2>
         <p>Review spending analytics and filter matching transactions.</p>
@@ -268,6 +293,30 @@ export function AnalyticsView({
       </output>
 
       <div
+        aria-atomic="true"
+        aria-live="polite"
+        data-sticky-date-key={stickyDateItem?.dateKey}
+        data-testid="analytics-transaction-sticky-date-header"
+        className="pointer-events-none absolute inset-x-4 z-30 h-9"
+        style={{
+          top: 'var(--dashboard-header-space, var(--dashboard-header-height, 68px))',
+        }}
+      >
+        {stickyDateItem ? (
+          <TransactionHistoryDateHeader
+            key={stickyDateItem.key}
+            mode="pinned"
+            dateKey={stickyDateItem.dateKey}
+            today={now}
+            transactions={stickyDateItem.transactions}
+            baseCurrency={transactionBaseCurrency}
+            baseAmountStates={transactionBaseAmountStates}
+          />
+        ) : null}
+      </div>
+
+      <div
+        ref={analyticsScrollRef}
         data-testid="analytics-dashboard-scroll"
         data-dashboard-scroll="true"
         data-analytics-motion-reason={motionIntent.reason}
@@ -279,6 +328,7 @@ export function AnalyticsView({
           scrollPaddingTop: 'var(--dashboard-header-height, 68px)',
           scrollPaddingBottom: 'var(--category-sheet-occlusion, env(safe-area-inset-bottom))',
         }}
+        onScroll={scheduleStickyDateUpdate}
       >
         <div className="space-y-7 pb-8">
           <div
@@ -438,7 +488,10 @@ export function AnalyticsView({
                 </div>
               </section>
 
-              <section aria-labelledby="analytics-transactions">
+              <section
+                ref={transactionSectionRef}
+                aria-labelledby="analytics-transactions"
+              >
                 <div className="flex min-h-11 items-center justify-between">
                   <h3
                     id="analytics-transactions"
@@ -462,6 +515,7 @@ export function AnalyticsView({
                     item.kind === 'date' ? (
                       <TransactionHistoryDateHeader
                         key={item.key}
+                        mode="static"
                         dateKey={item.dateKey}
                         today={now}
                         transactions={item.transactions}

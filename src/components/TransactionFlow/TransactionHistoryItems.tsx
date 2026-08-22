@@ -14,7 +14,6 @@ import {
   formatDailyNetAmount,
   getDailyNetAccessibleText,
 } from './transactionDailyNet';
-import { useAutoStickyDateHeader } from './useAutoStickyDateHeader';
 
 export type TransactionHistoryListItem =
   | {
@@ -25,7 +24,7 @@ export type TransactionHistoryListItem =
     }
   | { key: string; kind: 'transaction'; transaction: TransactionRecord };
 
-export type TransactionHistoryDateHeaderMode = 'auto' | 'static' | 'pinned';
+export type TransactionHistoryDateHeaderMode = 'static' | 'pinned';
 
 export function flattenTransactionHistory(
   transactions: readonly TransactionRecord[],
@@ -72,7 +71,7 @@ export function TransactionHistoryDateHeader({
   transactions,
   baseCurrency,
   baseAmountStates,
-  mode = 'auto',
+  mode = 'static',
 }: {
   dateKey: string;
   today: Date;
@@ -81,9 +80,7 @@ export function TransactionHistoryDateHeader({
   baseAmountStates: Readonly<Record<string, TransactionBaseAmountState>>;
   mode?: TransactionHistoryDateHeaderMode;
 }) {
-  const autoSticky = useAutoStickyDateHeader(mode === 'auto');
-  const isPinned =
-    mode === 'pinned' || (mode === 'auto' && autoSticky.isSticky);
+  const isPinned = mode === 'pinned';
   const dailyNet = buildDailyNetAmountState(
     transactions,
     baseCurrency,
@@ -93,24 +90,16 @@ export function TransactionHistoryDateHeader({
 
   return (
     <div
-      ref={autoSticky.ref}
       data-testid="transaction-history-date-header"
       data-transaction-history-date-header="true"
-      data-auto-sticky-date-header={mode === 'auto' ? 'true' : undefined}
       data-transaction-history-date-key={dateKey}
       data-sticky-state={isPinned ? 'pinned' : 'resting'}
       className={cn(
         'flex h-9 items-center justify-between gap-3 border-b px-3 text-xs font-semibold transition-[background-color,border-color,box-shadow,color] duration-150',
-        mode === 'auto' && 'sticky z-20',
         isPinned
-          ? 'border-border/70 bg-background/95 text-foreground shadow-sm backdrop-blur-md'
+          ? 'border-border/70 bg-background text-foreground shadow-sm'
           : 'border-transparent bg-transparent text-muted-foreground',
       )}
-      style={
-        mode === 'auto'
-          ? { top: 'var(--dashboard-header-height, 68px)' }
-          : undefined
-      }
     >
       <span className="min-w-0 truncate">{dateLabel(dateKey, today)}</span>
       <span
