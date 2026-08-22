@@ -55,4 +55,16 @@ describe('Quick Note brand resolution', () => {
       'brand:grab',
     );
   });
+
+  it('does not materialize a genuinely missing stored icon during reorder', () => {
+    const storedNote = {
+      id: 'grab-without-icon',
+      label: 'grab',
+    } as QuickNote;
+    const presentationNote = resolveQuickNoteForPresentation(storedNote);
+    const [persistedNote] = prepareQuickNotesForPersistence([presentationNote]);
+
+    expect(presentationNote.icon).toBe('brand:grab');
+    expect(Object.prototype.hasOwnProperty.call(persistedNote, 'icon')).toBe(false);
+  });
 });
