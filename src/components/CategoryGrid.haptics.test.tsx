@@ -24,6 +24,34 @@ afterEach(() => {
 });
 
 describe("CategoryGrid haptics", () => {
+  it("uses a real sibling switch as the direct category tap target", () => {
+    const onSelect = vi.fn();
+    render(
+      <CategoryGrid
+        categories={categories}
+        transactionType="expense"
+        onSelect={onSelect}
+        onLongPress={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Food" });
+    const hapticSwitch =
+      button.parentElement?.querySelector<HTMLInputElement>(
+        'input[type="checkbox"][data-category-haptic-switch]',
+      ) ?? null;
+
+    expect(hapticSwitch).not.toBeNull();
+    expect(button.contains(hapticSwitch)).toBe(false);
+    expect(hapticSwitch).toHaveAttribute("switch", "");
+
+    fireEvent.click(hapticSwitch as HTMLInputElement);
+
+    expect(haptics.triggerHapticFeedback).toHaveBeenCalledOnce();
+    expect(haptics.triggerHapticFeedback).toHaveBeenCalledWith("selection");
+    expect(onSelect).toHaveBeenCalledWith("Food");
+  });
+
   it("uses selection feedback for an ordinary category choice", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

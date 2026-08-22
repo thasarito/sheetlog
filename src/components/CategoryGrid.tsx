@@ -9,7 +9,6 @@ import {
 import { triggerHapticFeedback } from "../lib/transactionHaptics";
 import type { CategoryItem, TransactionType } from "../lib/types";
 import { DynamicIcon } from "./DynamicIcon";
-import { HapticSelectionButton } from "./ui/HapticSelectionButton";
 
 const springTransition = { type: "spring", stiffness: 400, damping: 30 } as const;
 
@@ -86,6 +85,7 @@ function CategoryButton({
 
   const [isHovered, setIsHovered] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const hapticSwitchRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clickResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
@@ -110,6 +110,11 @@ function CategoryButton({
     onRelease,
     onCancel,
   };
+
+  const setHapticSwitch = useCallback((element: HTMLInputElement | null) => {
+    hapticSwitchRef.current = element;
+    element?.setAttribute("switch", "");
+  }, []);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -183,7 +188,7 @@ function CategoryButton({
     (
       owner: Exclude<GestureOwner, null>,
       position: GesturePosition,
-      pointerTarget?: HTMLButtonElement,
+      pointerTarget?: HTMLElement,
       pointerId?: number,
     ) => {
       clearTimer();
@@ -226,7 +231,9 @@ function CategoryButton({
 
   useEffect(() => {
     const button = buttonRef.current;
-    if (!button) return;
+    const hapticSwitch = hapticSwitchRef.current;
+    if (!button || !hapticSwitch) return;
+    const touchTargets: HTMLElement[] = [button, hapticSwitch];
 
     const handleTouchStart = (event: TouchEvent) => {
       if (!latestRef.current.onLongPress) return;
@@ -380,20 +387,27 @@ function CategoryButton({
       beginLongPress("touch", position);
     };
 
-    button.addEventListener("touchstart", handleTouchStart, { passive: true });
+    for (const target of touchTargets) {
+      target.addEventListener("touchstart", handleTouchStart, { passive: true });
+    }
     return () => {
-      button.removeEventListener("touchstart", handleTouchStart);
+      for (const target of touchTargets) {
+        target.removeEventListener("touchstart", handleTouchStart);
+      }
 
       const wasActive = isLongPressRef.current;
       const cancel = latestRef.current.onCancel;
       const pointerId = pointerIdRef.current;
-      if (
-        pointerId !== null &&
-        typeof button.hasPointerCapture === "function" &&
-        typeof button.releasePointerCapture === "function" &&
-        button.hasPointerCapture(pointerId)
-      ) {
-        button.releasePointerCapture(pointerId);
+      if (pointerId !== null) {
+        for (const target of touchTargets) {
+          if (
+            typeof target.hasPointerCapture === "function" &&
+            typeof target.releasePointerCapture === "function" &&
+            target.hasPointerCapture(pointerId)
+          ) {
+            target.releasePointerCapture(pointerId);
+          }
+        }
       }
 
       clearTimer();
@@ -419,9 +433,7 @@ function CategoryButton({
     scheduleClickReset,
   ]);
 
-  const handlePointerDown = (
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => {
+  const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (
       event.pointerType === "touch" ||
       !latestRef.current.onLongPress ||
@@ -439,7 +451,7 @@ function CategoryButton({
     );
   };
 
-  const releasePointer = (event: React.PointerEvent<HTMLButtonElement>) => {
+  const releasePointer = (event: React.PointerEvent<HTMLElement>) => {
     if (
       typeof event.currentTarget.hasPointerCapture === "function" &&
       typeof event.currentTarget.releasePointerCapture === "function" &&
@@ -449,7 +461,7 @@ function CategoryButton({
     }
   };
 
-  const handlePointerMove = (event: React.PointerEvent) => {
+  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
     if (
       event.pointerType === "touch" ||
       ownerRef.current !== "pointer" ||
@@ -471,7 +483,7 @@ function CategoryButton({
     }
   };
 
-  const handlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePointerUp = (event: React.PointerEvent<HTMLElement>) => {
     if (
       event.pointerType === "touch" ||
       ownerRef.current !== "pointer" ||
@@ -484,9 +496,7 @@ function CategoryButton({
     finishGesture("release", { x: event.clientX, y: event.clientY });
   };
 
-  const handlePointerCancel = (
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => {
+  const handlePointerCancel = (event: React.PointerEvent<HTMLElement>) => {
     if (
       event.pointerType === "touch" ||
       ownerRef.current !== "pointer" ||
@@ -499,9 +509,7 @@ function CategoryButton({
     finishGesture(isLongPressRef.current ? "cancel" : "abandon");
   };
 
-  const handlePointerLeave = (
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => {
+  const handlePointerLeave = (event: React.PointerEvent<HTMLElement>) => {
     setIsHovered(false);
     if (
       event.pointerType === "touch" ||
@@ -526,37 +534,61 @@ function CategoryButton({
   };
 
   return (
-    <HapticSelectionButton
-      ref={buttonRef}
-      type="button"
-      changesValue
-      className="grid aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      onClick={handleClick}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-      onPointerEnter={() => setIsHovered(true)}
-      onPointerLeave={handlePointerLeave}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <motion.span
-        className="flex h-full w-full items-center justify-center"
-        animate={{ scale: isHovered ? 1.08 : 1 }}
-        transition={springTransition}
+    <div className="group relative aspect-square min-w-0">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="grid h-full w-full aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none group-hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerEnter={() => setIsHovered(true)}
+        onPointerLeave={handlePointerLeave}
+        onContextMenu={(event) => event.preventDefault()}
       >
-        <DynamicIcon
-          name={icon}
-          className="h-4 w-4 translate-y-2.5 min-[360px]:h-5 min-[360px]:w-5"
-          style={{ color: displayColor }}
-        />
-      </motion.span>
-      <span className="flex h-full w-full min-w-0 items-center justify-center px-1.5">
-        <span className="line-clamp-2 min-w-0 break-words text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
-          {category.name}
+        <motion.span
+          className="flex h-full w-full items-center justify-center"
+          animate={{ scale: isHovered ? 1.08 : 1 }}
+          transition={springTransition}
+        >
+          <DynamicIcon
+            name={icon}
+            className="h-4 w-4 translate-y-2.5 min-[360px]:h-5 min-[360px]:w-5"
+            style={{ color: displayColor }}
+          />
+        </motion.span>
+        <span className="flex h-full w-full min-w-0 items-center justify-center px-1.5">
+          <span className="line-clamp-2 min-w-0 break-words text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
+            {category.name}
+          </span>
         </span>
-      </span>
-    </HapticSelectionButton>
+      </button>
+      {/* iOS 26.5+ only preserves the system tick for a direct tap on this native switch. */}
+      <input
+        ref={setHapticSwitch}
+        type="checkbox"
+        data-category-haptic-switch
+        data-haptic-trigger
+        aria-hidden="true"
+        tabIndex={-1}
+        className="absolute inset-0 z-10 m-0 h-full w-full cursor-pointer opacity-0"
+        style={{
+          clipPath: "inset(0 round 1rem)",
+          touchAction: "pan-x pan-y",
+          WebkitTapHighlightColor: "transparent",
+        }}
+        onChange={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerEnter={() => setIsHovered(true)}
+        onPointerLeave={handlePointerLeave}
+        onContextMenu={(event) => event.preventDefault()}
+      />
+    </div>
   );
 }
 
