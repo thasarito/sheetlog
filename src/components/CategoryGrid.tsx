@@ -65,7 +65,7 @@ interface CategoryButtonProps {
   transactionType: TransactionType;
   onSelect: (category: string) => void;
   onLongPress?: (category: string, position: { x: number; y: number }) => void;
-  onDrag?: (position: { x: number, y: number }) => void;
+  onDrag?: (position: { x: number; y: number }) => void;
   onRelease?: (position: { x: number; y: number }) => void;
   onCancel?: () => void;
 }
@@ -565,6 +565,7 @@ function CategoryButton({
           </span>
         </span>
       </button>
+      {/* iOS 26.5+ only preserves the system tick for a direct tap on this native switch. */}
       <input
         ref={setHapticSwitch}
         type="checkbox"
