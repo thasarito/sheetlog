@@ -32,7 +32,7 @@ jobs:
           src/lib/transactionHaptics.test.ts
           src/components/ui/HapticSelectionButton.test.tsx
           src/components/ui/AnimatedTabs.haptics.test.tsx
-          src/components/Picker.haptics.test.tsx
+          src/components/ui/inline-picker.haptics.test.tsx
           src/components/CategoryGrid.haptics.test.tsx
           src/components/CategoryQuickNoteMenu/useCategoryQuickNoteMenu.haptics.test.tsx
           src/components/DateScroller.haptics.test.tsx
