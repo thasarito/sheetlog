@@ -1,3 +1,4 @@
+import { resolveQuickNoteIconName } from './quickNoteBrands';
 import type {
   CategoryConfigWithMeta,
   QuickNote,
@@ -31,6 +32,13 @@ function indefiniteArticle(noun: string): 'a' | 'an' {
 
 function capitalize(value: string): string {
   return value.length > 0 ? `${value[0]?.toUpperCase()}${value.slice(1)}` : value;
+}
+
+function resolveQuickNotesForPresentation(notes: QuickNote[]): QuickNote[] {
+  return notes.map((note) => {
+    const icon = resolveQuickNoteIconName(note.icon, note.label);
+    return icon === note.icon ? note : { ...note, icon };
+  });
 }
 
 export function validateSettingsName(
@@ -120,7 +128,7 @@ export function buildQuickNotesGroups(
       kind: 'default',
       type,
       label: `${TRANSACTION_TYPE_LABELS[type]} defaults`,
-      notes: defaultNotes,
+      notes: resolveQuickNotesForPresentation(defaultNotes),
       configuredCount: defaultNotes.length,
       inheritsDefaults: false,
       inheritedCount: 0,
@@ -136,7 +144,7 @@ export function buildQuickNotesGroups(
         type,
         categoryName: category.name,
         label: category.name,
-        notes,
+        notes: resolveQuickNotesForPresentation(notes),
         configuredCount: notes.length,
         inheritsDefaults: !hasCustomConfig && defaultNotes.length > 0,
         inheritedCount: !hasCustomConfig ? defaultNotes.length : 0,
