@@ -148,12 +148,15 @@ describe('SettingsQuickNoteEditorDrawer', () => {
 
   it('deletes from StepAmount and dismisses after persistence succeeds', async () => {
     const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const props = renderEditor();
 
     await user.click(screen.getByRole('button', { name: 'Delete Quick Note' }));
 
+    expect(confirm).toHaveBeenCalledWith('Delete this Quick Note?');
     await waitFor(() => expect(props.onDelete).toHaveBeenCalledTimes(1));
     expect(props.onDismiss).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
   });
 
   it('renders nothing while closed', () => {
