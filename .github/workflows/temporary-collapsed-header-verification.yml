@@ -25,5 +25,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run collapsed header regression
-        run: npm test -- src/components/TransactionFlow/CategoryStepSheet.collapsed-header.test.tsx
+      - name: Run category sheet regression tests
+        run: >-
+          npm test --
+          src/components/TransactionFlow/CategoryStepSheet.collapsed-header.test.tsx
+          src/components/TransactionFlow/CategoryStepSheet.test.tsx
+          src/components/TransactionFlow/CategoryStepSheet.safe-area.test.tsx
+          src/components/TransactionFlow/CategoryStepSheet.keyboardClearance.test.tsx
