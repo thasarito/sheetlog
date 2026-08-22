@@ -93,7 +93,7 @@ export function QuickNoteFlow({
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-background">
+    <div className="fixed inset-0 z-[60] bg-background pt-safe">
       <StepAmount
         form={form as unknown as TransactionFormApi}
         accounts={accountNames}

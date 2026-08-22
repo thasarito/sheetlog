@@ -110,6 +110,18 @@ describe('SettingsQuickNoteEditorDrawer', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('renders above the persistent StepCategory drawer', () => {
+    renderEditor();
+
+    expect(screen.getByTestId('step-amount').parentElement).toHaveClass('z-[60]');
+  });
+
+  it('pads the full-screen flow below the top safe area', () => {
+    renderEditor();
+
+    expect(screen.getByTestId('step-amount').parentElement).toHaveClass('pt-safe');
+  });
+
   it('does not offer deletion while creating a Quick Note', () => {
     renderEditor({ mode: 'create' });
 
