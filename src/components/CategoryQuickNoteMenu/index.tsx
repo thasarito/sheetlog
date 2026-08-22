@@ -30,6 +30,7 @@ const VIEWPORT_MARGIN = 12;
 const CARD_GAP = 34;
 const CARD_WIDTH = 320;
 const CONNECTOR_EDGE_INSET = 38;
+const TOP_ROW_SIDE_BIAS = 72;
 
 type MenuPlacement = 'above' | 'below';
 
@@ -79,11 +80,6 @@ function resolveMenuPosition(
   const viewportHeight =
     typeof window === 'undefined' ? 812 : Math.max(1, window.innerHeight);
   const anchorCenter = anchor.left + anchor.width / 2;
-  const left = clamp(
-    anchorCenter - cardWidth / 2,
-    VIEWPORT_MARGIN,
-    viewportWidth - cardWidth - VIEWPORT_MARGIN,
-  );
   const aboveTop = anchor.top - CARD_GAP - cardHeight;
   const belowTop = anchor.bottom + CARD_GAP;
   const fitsAbove = aboveTop >= VIEWPORT_MARGIN;
@@ -93,6 +89,17 @@ function resolveMenuPosition(
     fitsAbove || (!fitsBelow && anchor.top > viewportHeight - anchor.bottom)
       ? 'above'
       : 'below';
+  const sideBias =
+    placement === 'below'
+      ? anchorCenter < viewportWidth / 2
+        ? TOP_ROW_SIDE_BIAS
+        : -TOP_ROW_SIDE_BIAS
+      : 0;
+  const left = clamp(
+    anchorCenter - cardWidth / 2 + sideBias,
+    VIEWPORT_MARGIN,
+    viewportWidth - cardWidth - VIEWPORT_MARGIN,
+  );
   const rawTop = placement === 'above' ? aboveTop : belowTop;
   const top = clamp(
     rawTop,
