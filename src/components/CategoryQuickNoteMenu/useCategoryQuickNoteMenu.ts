@@ -333,15 +333,7 @@ export function useCategoryQuickNoteMenu(
         }
       }
 
-      setAnchorReturnTarget(current.anchor, false);
-      const next: CategoryQuickNoteMenuState = {
-        ...resolvedState,
-        isGestureActive: false,
-        dragPosition: null,
-        activeTarget: null,
-      };
-      stateRef.current = next;
-      setState(next);
+      close(false);
     },
     [close],
   );
