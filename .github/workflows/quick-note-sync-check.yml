@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  targeted-test:
+  verification:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,4 +21,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test -- src/lib/googleSettings.quickNoteColorRange.test.ts
+      - run: >-
+          npm test --
+          src/lib/googleSettings.quickNoteColorRange.test.ts
+          src/lib/googleSettings.test.ts
