@@ -8,7 +8,56 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  focused-tests:
+    name: focused / ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: daily-net-unit
+            file: src/components/TransactionFlow/transactionDailyNet.test.ts
+          - label: shared-history-items
+            file: src/components/TransactionFlow/TransactionHistoryItems.test.tsx
+          - label: analytics-view
+            file: src/components/TransactionFlow/AnalyticsView.test.tsx
+          - label: transaction-history-view
+            file: src/components/TransactionFlow/TransactionHistoryView.test.tsx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run ${{ matrix.file }}
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
+  full-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -19,5 +68,3 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npx tsc --noEmit
-      - run: npm run lint
