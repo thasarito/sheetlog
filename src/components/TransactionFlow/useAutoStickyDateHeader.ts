@@ -42,7 +42,7 @@ function createAutoStickyDateRegistry(
       if (typeof document.elementFromPoint === 'function') {
         const x = Math.min(
           rootRect.right - 1,
-          Math.max(rootRect.left + 1, rootRect.right - 16),
+          Math.max(rootRect.left + 1, firstRect.right - 8),
         );
         const y = Math.min(
           rootRect.bottom - 1,
