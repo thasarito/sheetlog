@@ -69,56 +69,71 @@ type CategoryQuickNoteMenuHandlers = {
 
 const MAX_CUSTOM_NOTES = 4;
 const MAX_DEFAULT_NOTES = 4;
+const ANCHOR_ACCENT_PROPERTY = '--category-quick-note-anchor-accent';
+const OPEN_ATTRIBUTE = 'data-category-quick-note-open';
+const RETURN_TARGET_ATTRIBUTE = 'data-category-quick-note-return-target';
 
 type AnchorPresentationSnapshot = {
   ariaHasPopup: string | null;
   ariaExpanded: string | null;
-  borderColor: string;
-  backgroundColor: string;
-  outline: string;
-  outlineOffset: string;
+  open: string | null;
+  returnTarget: string | null;
+  accent: string;
 };
+
+function restoreAttribute(
+  element: HTMLElement,
+  name: string,
+  value: string | null,
+) {
+  if (value === null) {
+    element.removeAttribute(name);
+  } else {
+    element.setAttribute(name, value);
+  }
+}
 
 function activateAnchorPresentation(
   anchor: CategoryQuickNoteMenuAnchor,
+  accent: string,
 ): () => void {
   const { element } = anchor;
   const snapshot: AnchorPresentationSnapshot = {
     ariaHasPopup: element.getAttribute('aria-haspopup'),
     ariaExpanded: element.getAttribute('aria-expanded'),
-    borderColor: element.style.borderColor,
-    backgroundColor: element.style.backgroundColor,
-    outline: element.style.outline,
-    outlineOffset: element.style.outlineOffset,
+    open: element.getAttribute(OPEN_ATTRIBUTE),
+    returnTarget: element.getAttribute(RETURN_TARGET_ATTRIBUTE),
+    accent: element.style.getPropertyValue(ANCHOR_ACCENT_PROPERTY),
   };
 
   element.setAttribute('aria-haspopup', 'dialog');
   element.setAttribute('aria-expanded', 'true');
-  element.dataset.categoryQuickNoteOpen = 'true';
-  element.style.borderColor = 'hsl(var(--primary))';
-  element.style.backgroundColor =
-    'color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--card)))';
-  element.style.outline =
-    '2px solid color-mix(in srgb, hsl(var(--primary)) 34%, transparent)';
-  element.style.outlineOffset = '2px';
+  element.setAttribute(OPEN_ATTRIBUTE, 'true');
+  element.removeAttribute(RETURN_TARGET_ATTRIBUTE);
+  element.style.setProperty(ANCHOR_ACCENT_PROPERTY, accent);
 
   return () => {
-    if (snapshot.ariaHasPopup === null) {
-      element.removeAttribute('aria-haspopup');
+    restoreAttribute(element, 'aria-haspopup', snapshot.ariaHasPopup);
+    restoreAttribute(element, 'aria-expanded', snapshot.ariaExpanded);
+    restoreAttribute(element, OPEN_ATTRIBUTE, snapshot.open);
+    restoreAttribute(element, RETURN_TARGET_ATTRIBUTE, snapshot.returnTarget);
+    if (snapshot.accent) {
+      element.style.setProperty(ANCHOR_ACCENT_PROPERTY, snapshot.accent);
     } else {
-      element.setAttribute('aria-haspopup', snapshot.ariaHasPopup);
+      element.style.removeProperty(ANCHOR_ACCENT_PROPERTY);
     }
-    if (snapshot.ariaExpanded === null) {
-      element.removeAttribute('aria-expanded');
-    } else {
-      element.setAttribute('aria-expanded', snapshot.ariaExpanded);
-    }
-    delete element.dataset.categoryQuickNoteOpen;
-    element.style.borderColor = snapshot.borderColor;
-    element.style.backgroundColor = snapshot.backgroundColor;
-    element.style.outline = snapshot.outline;
-    element.style.outlineOffset = snapshot.outlineOffset;
   };
+}
+
+function setAnchorReturnTarget(
+  anchor: CategoryQuickNoteMenuAnchor,
+  active: boolean,
+) {
+  if (active) {
+    anchor.element.setAttribute(RETURN_TARGET_ATTRIBUTE, 'true');
+  } else {
+    anchor.element.removeAttribute(RETURN_TARGET_ATTRIBUTE);
+  }
 }
 
 function pointInsideBounds(
@@ -222,11 +237,15 @@ export function useCategoryQuickNoteMenu(
       anchor: CategoryQuickNoteMenuAnchor,
     ) => {
       clearAnchorPresentation();
-      anchorCleanupRef.current = activateAnchorPresentation(anchor);
+      const presentation =
+        optionsRef.current.getCategoryPresentation(category);
+      anchorCleanupRef.current = activateAnchorPresentation(
+        anchor,
+        presentation.color,
+      );
       const next: CategoryQuickNoteMenuState = {
         category,
-        presentation:
-          optionsRef.current.getCategoryPresentation(category),
+        presentation,
         anchor,
         customNotes: optionsRef.current
           .getCustomNotes(category)
@@ -257,6 +276,10 @@ export function useCategoryQuickNoteMenu(
           hasLeftAnchor,
         };
         const activeTarget = resolveActiveTarget(candidate, position);
+        setAnchorReturnTarget(
+          previous.anchor,
+          activeTarget?.type === 'category',
+        );
         if (
           activeTarget?.type === 'category' &&
           previous.activeTarget?.type !== 'category'
@@ -304,6 +327,7 @@ export function useCategoryQuickNoteMenu(
         }
       }
 
+      setAnchorReturnTarget(current.anchor, false);
       const next: CategoryQuickNoteMenuState = {
         ...resolvedState,
         isGestureActive: false,
