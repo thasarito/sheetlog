@@ -8,10 +8,12 @@ import { useQuickNoteForm } from './useQuickNoteForm';
 
 interface QuickNoteFlowProps {
   note: QuickNote | null;
-  onSave: (note: Omit<QuickNote, 'id'> & { id?: string }) => void;
+  onSave: (note: Omit<QuickNote, 'id'> & { id?: string }) => void | Promise<void>;
   onCancel: () => void;
-  onDelete?: () => void;
+  onDelete?: () => void | Promise<void>;
   transactionType: TransactionType;
+  accounts?: string[];
+  isSaving?: boolean;
 }
 
 const DEFAULT_ICON = 'StickyNote';
@@ -22,6 +24,8 @@ export function QuickNoteFlow({
   onCancel,
   onDelete,
   transactionType,
+  accounts,
+  isSaving = false,
 }: QuickNoteFlowProps) {
   const { onboarding } = useOnboarding();
   const labelInputRef = useRef<HTMLInputElement>(null);
@@ -33,18 +37,23 @@ export function QuickNoteFlow({
     requestAnimationFrame(() => labelInputRef.current?.focus());
   }, []);
 
-  const accountNames = useMemo(() => onboarding.accounts.map((a) => a.name), [onboarding.accounts]);
+  const onboardingAccountNames = useMemo(
+    () => onboarding.accounts.map((account) => account.name),
+    [onboarding.accounts],
+  );
+  const accountNames = accounts ?? onboardingAccountNames;
 
-  const isEditing = note !== null;
+  const canDelete = note !== null && onDelete !== undefined;
   const isValid = label.trim().length > 0;
 
   const handleSubmit = useCallback(() => {
-    if (!isValid) return;
+    if (!isValid || isSaving) return;
 
     const values = form.state.values;
-    onSave({
+    void onSave({
       id: note?.id,
-      icon: DEFAULT_ICON,
+      icon: note?.icon ?? DEFAULT_ICON,
+      color: note?.color,
       label: values.label.trim(),
       note: values.note.trim() || undefined,
       amount: values.amount || undefined,
@@ -52,19 +61,21 @@ export function QuickNoteFlow({
       account: values.account || undefined,
       forValue: values.forValue || undefined,
     });
-  }, [form.state.values, isValid, note?.id, onSave]);
+  }, [form.state.values, isSaving, isValid, note, onSave]);
 
   const handleDelete = useCallback(() => {
-    onDelete?.();
-  }, [onDelete]);
+    if (isSaving) return;
+    void onDelete?.();
+  }, [isSaving, onDelete]);
 
   const customHeader = (
-    <div className="flex items-center gap-3 border-b border-border/20 pt-4 pb-3">
+    <div className="flex items-center gap-3 border-b border-border/20 pb-3 pt-4">
       <button
         type="button"
         aria-label="Go back"
-        className="rounded-full p-2 hover:bg-muted transition-colors -ml-2"
+        className="-ml-2 rounded-full p-2 transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
         onClick={onCancel}
+        disabled={isSaving}
       >
         <ChevronLeft className="h-5 w-5" />
       </button>
@@ -72,10 +83,11 @@ export function QuickNoteFlow({
         type="text"
         ref={labelInputRef}
         value={label}
-        onChange={(e) => form.setFieldValue('label', e.target.value)}
+        onChange={(event) => form.setFieldValue('label', event.target.value)}
         placeholder="Label (required)"
         maxLength={12}
-        className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none"
+        disabled={isSaving}
+        className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
       />
     </div>
   );
@@ -87,7 +99,8 @@ export function QuickNoteFlow({
         accounts={accountNames}
         onBack={onCancel}
         onSubmit={handleSubmit}
-        onDelete={isEditing ? handleDelete : undefined}
+        isSubmitting={isSaving}
+        onDelete={canDelete ? handleDelete : undefined}
         submitLabel="Save Quick Note"
         customHeader={customHeader}
         optionalAmount
