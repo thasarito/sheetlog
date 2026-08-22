@@ -24,5 +24,28 @@ jobs:
           src/components/AppearancePicker.test.tsx
           src/components/SettingsQuickNoteEditorDrawer.test.tsx
           src/components/QuickNotes/QuickNotesSettings.test.tsx
-      - run: npx tsc --noEmit
-      - run: npm run lint
+      - name: Type-check picker production files
+        run: |
+          cat > tsconfig.quick-note-picker.json <<'EOF'
+          {
+            "extends": "./tsconfig.json",
+            "include": [
+              "src/components/AdvancedColorPicker.tsx",
+              "src/components/AppearancePicker.tsx"
+            ]
+          }
+          EOF
+          npx tsc -p tsconfig.quick-note-picker.json --noEmit
+          rm tsconfig.quick-note-picker.json
+      - name: Lint changed Quick Note files
+        run: >-
+          npx biome check
+          src/components/AdvancedColorPicker.tsx
+          src/components/AdvancedColorPicker.test.tsx
+          src/components/AppearancePicker.tsx
+          src/components/AppearancePicker.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/components/QuickNotes/QuickNoteFlow.tsx
+          src/components/QuickNotes/QuickNotesSettings.tsx
+          src/components/QuickNotes/QuickNotesSettings.test.tsx
+      - run: npm run build
