@@ -65,7 +65,7 @@ interface CategoryButtonProps {
   transactionType: TransactionType;
   onSelect: (category: string) => void;
   onLongPress?: (category: string, position: { x: number; y: number }) => void;
-  onDrag?: (position: { x: number; y: number }) => void;
+  onDrag?: (position: { x: number, y: number }) => void;
   onRelease?: (position: { x: number; y: number }) => void;
   onCancel?: () => void;
 }
@@ -534,11 +534,11 @@ function CategoryButton({
   };
 
   return (
-    <div className="relative aspect-square min-w-0">
+    <div className="group relative aspect-square min-w-0">
       <button
         ref={buttonRef}
         type="button"
-        className="pointer-events-none grid h-full w-full aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="grid h-full w-full aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none group-hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         onClick={handleClick}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
