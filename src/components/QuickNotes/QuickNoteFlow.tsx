@@ -43,7 +43,7 @@ export function QuickNoteFlow({
   );
   const accountNames = accounts ?? onboardingAccountNames;
 
-  const isEditing = note !== null;
+  const canDelete = note !== null && onDelete !== undefined;
   const isValid = label.trim().length > 0;
 
   const handleSubmit = useCallback(() => {
@@ -100,7 +100,7 @@ export function QuickNoteFlow({
         onBack={onCancel}
         onSubmit={handleSubmit}
         isSubmitting={isSaving}
-        onDelete={isEditing ? handleDelete : undefined}
+        onDelete={canDelete ? handleDelete : undefined}
         submitLabel="Save Quick Note"
         customHeader={customHeader}
         optionalAmount
