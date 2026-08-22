@@ -23,6 +23,7 @@ function bounds() {
 
 afterEach(() => {
   haptics.triggerHapticFeedback.mockReset();
+  Reflect.deleteProperty(document, "elementFromPoint");
   vi.restoreAllMocks();
 });
 
@@ -35,9 +36,11 @@ describe("useCategoryQuickNoteMenu haptics", () => {
     const lunch = document.createElement("button");
     lunch.dataset.categoryQuickNoteSource = "custom";
     lunch.dataset.categoryQuickNoteId = "lunch";
-    const elementFromPoint = vi
-      .spyOn(document, "elementFromPoint")
-      .mockReturnValue(coffee);
+    const elementFromPoint = vi.fn((): Element | null => coffee);
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: elementFromPoint,
+    });
 
     const { result } = renderHook(() =>
       useCategoryQuickNoteMenu({
