@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { DynamicIcon } from '../DynamicIcon';
+import { HapticSelectionButton } from '../ui/HapticSelectionButton';
 import type {
   CategoryQuickNoteMenuBounds,
   CategoryQuickNoteMenuNoteSource,
@@ -300,8 +301,9 @@ export function CategoryQuickNoteMenu({
             <span>Quick actions</span>
           </div>
 
-          <button
+          <HapticSelectionButton
             type="button"
+            changesValue
             data-category-menu-autofocus
             data-active={categorySelected ? 'true' : 'false'}
             aria-label={`Use ${state.presentation.label} category`}
@@ -320,7 +322,7 @@ export function CategoryQuickNoteMenu({
             <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">
               Use category
             </span>
-          </button>
+          </HapticSelectionButton>
 
           {state.customNotes.length > 0 ? (
             <div className="category-menu-custom-list border-t border-border/50 px-2 py-1">
@@ -329,9 +331,10 @@ export function CategoryQuickNoteMenu({
                   activeNote?.source === 'custom' && activeNote.id === note.id;
                 const color = note.color ?? state.presentation.color;
                 return (
-                  <button
+                  <HapticSelectionButton
                     key={`custom:${note.id}`}
                     type="button"
+                    changesValue
                     data-category-menu-row="custom"
                     data-active={selected ? 'true' : 'false'}
                     data-category-quick-note-source="custom"
@@ -351,7 +354,7 @@ export function CategoryQuickNoteMenu({
                     <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                       {note.label}
                     </span>
-                  </button>
+                  </HapticSelectionButton>
                 );
               })}
             </div>
@@ -369,9 +372,10 @@ export function CategoryQuickNoteMenu({
                   activeNote?.source === 'default' && activeNote.id === note.id;
                 const color = note.color ?? state.presentation.color;
                 return (
-                  <button
+                  <HapticSelectionButton
                     key={`default:${note.id}`}
                     type="button"
+                    changesValue
                     data-category-menu-default-action="true"
                     data-active={selected ? 'true' : 'false'}
                     data-category-quick-note-source="default"
@@ -391,7 +395,7 @@ export function CategoryQuickNoteMenu({
                       {note.label}
                     </span>
                     <span className="category-menu-default-indicator absolute inset-x-2 bottom-0 h-0.5 rounded-full" />
-                  </button>
+                  </HapticSelectionButton>
                 );
               })}
             </div>

@@ -2,13 +2,27 @@
  * The iOS selection attachment below is adapted from tijnjh/ios-haptics
  * (https://github.com/tijnjh/ios-haptics), distributed under the MIT License.
  *
+ * MIT License
+ *
  * Copyright (c) 2025 tijnjh
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the conditions of the MIT License.
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
 
 export type HapticFeedbackKind =
@@ -47,11 +61,17 @@ function currentVibrationTarget(): VibrationTarget | undefined {
   return typeof navigator === "undefined" ? undefined : navigator;
 }
 
+function isDocumentHidden(): boolean {
+  return (
+    typeof document !== "undefined" && document.visibilityState === "hidden"
+  );
+}
+
 export function triggerHapticFeedback(
   kind: HapticFeedbackKind,
   target: VibrationTarget | undefined = currentVibrationTarget(),
 ): boolean {
-  if (typeof target?.vibrate !== "function") return false;
+  if (isDocumentHidden() || typeof target?.vibrate !== "function") return false;
 
   try {
     return target.vibrate(HAPTIC_VIBRATION_PATTERNS[kind]);
