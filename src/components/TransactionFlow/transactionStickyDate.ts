@@ -1,5 +1,22 @@
 import type { TransactionHistoryListItem } from './TransactionHistoryItems';
 
+export function findStickyDatePositionFromOffsets(
+  offsets: readonly number[],
+  scrollTop: number,
+  topOffset: number,
+): number | null {
+  if (scrollTop <= 0.5 || offsets.length === 0) return null;
+
+  const stickyLine = scrollTop + topOffset + 0.5;
+  let activePosition: number | null = null;
+  for (let position = 0; position < offsets.length; position += 1) {
+    const offset = offsets[position];
+    if (offset === undefined || offset > stickyLine) break;
+    activePosition = position;
+  }
+  return activePosition;
+}
+
 export function findStickyTransactionDateIndex(
   items: readonly TransactionHistoryListItem[],
   firstVisibleIndex: number | undefined,
