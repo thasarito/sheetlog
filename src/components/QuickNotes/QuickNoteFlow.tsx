@@ -2,12 +2,13 @@ import { ChevronLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { DEFAULT_ACCOUNT_COLOR } from '../../lib/icons';
+import { resolveQuickNoteIconName } from '../../lib/quickNoteBrands';
 import type { QuickNote, TransactionType } from '../../lib/types';
 import {
   AppearancePicker,
   type AppearancePickerSection,
 } from '../AppearancePicker';
-import { DynamicIcon } from '../DynamicIcon';
+import { QuickNoteIcon } from '../QuickNoteIcon';
 import { StepAmount } from '../TransactionFlow/StepAmount';
 import type { TransactionFormApi } from '../TransactionFlow/useTransactionForm';
 import { useQuickNoteForm } from './useQuickNoteForm';
@@ -40,7 +41,11 @@ export function QuickNoteFlow({
   const { onboarding } = useOnboarding();
   const labelInputRef = useRef<HTMLInputElement>(null);
   const form = useQuickNoteForm({ note, transactionType });
-  const [icon, setIcon] = useState(note?.icon ?? DEFAULT_ICON);
+  const [icon, setIcon] = useState(() =>
+    note
+      ? resolveQuickNoteIconName(note.icon, note.label, DEFAULT_ICON)
+      : DEFAULT_ICON,
+  );
   const [color, setColor] = useState(note?.color ?? DEFAULT_ACCOUNT_COLOR);
   const [appearanceSection, setAppearanceSection] =
     useState<QuickNoteAppearanceSection | null>(null);
@@ -113,8 +118,9 @@ export function QuickNoteFlow({
         disabled={isSaving}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <DynamicIcon
-          name={icon}
+        <QuickNoteIcon
+          icon={icon}
+          label={label}
           fallback={DEFAULT_ICON}
           className="h-4 w-4"
           style={{ color }}
@@ -177,6 +183,7 @@ export function QuickNoteFlow({
             : 'Choose Quick Note Color'
         }
         section={appearanceSection ?? 'appearance'}
+        includeBrandIcons
       />
     </div>
   );
