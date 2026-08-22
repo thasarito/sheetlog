@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import { findStickyDatePositionFromOffsets } from './transactionStickyDate';
 
 type AutoStickyDateEntry = {
   element: HTMLDivElement;
@@ -17,6 +18,23 @@ const autoStickyDateRegistries = new WeakMap<
   AutoStickyDateRegistry
 >();
 
+function getDocumentOffsetTop(element: HTMLElement): number {
+  let offset = 0;
+  let current: HTMLElement | null = element;
+  while (current) {
+    offset += current.offsetTop;
+    current = current.offsetParent as HTMLElement | null;
+  }
+  return offset;
+}
+
+function getOffsetWithinScrollRoot(
+  scrollRoot: HTMLElement,
+  element: HTMLElement,
+): number {
+  return getDocumentOffsetTop(element) - getDocumentOffsetTop(scrollRoot);
+}
+
 function createAutoStickyDateRegistry(
   scrollRoot: HTMLElement,
 ): AutoStickyDateRegistry {
@@ -25,45 +43,26 @@ function createAutoStickyDateRegistry(
 
   const update = () => {
     frame = null;
-    const firstEntry = entries.values().next().value as
-      | AutoStickyDateEntry
-      | undefined;
-    let activeHeader: HTMLDivElement | null = null;
-
-    if (firstEntry && scrollRoot.scrollTop > 0.5) {
-      const rootRect = scrollRoot.getBoundingClientRect();
-      const firstRect = firstEntry.element.getBoundingClientRect();
-      const computedTop = Number.parseFloat(
-        window.getComputedStyle(firstEntry.element).top,
-      );
-      const topOffset = Number.isFinite(computedTop) ? computedTop : 0;
-      const stickyLine = rootRect.top + topOffset + 1;
-
-      if (typeof document.elementFromPoint === 'function') {
-        const x = Math.min(
-          rootRect.right - 1,
-          Math.max(rootRect.left + 1, firstRect.right - 8),
-        );
-        const y = Math.min(
-          rootRect.bottom - 1,
-          stickyLine + Math.min(firstRect.height / 2, 16),
-        );
-        const topElement = document.elementFromPoint(x, y);
-        const candidate = topElement?.closest<HTMLDivElement>(
-          '[data-auto-sticky-date-header="true"]',
-        );
-        if (candidate && entries.has(candidate)) activeHeader = candidate;
-      }
-
-      if (!activeHeader) {
-        for (const entry of entries.values()) {
-          const rect = entry.element.getBoundingClientRect();
-          if (rect.top <= stickyLine && rect.bottom > stickyLine) {
-            activeHeader = entry.element;
-          }
-        }
-      }
-    }
+    const orderedEntries = Array.from(entries.values())
+      .map((entry) => ({
+        entry,
+        offset: getOffsetWithinScrollRoot(scrollRoot, entry.element),
+      }))
+      .sort((left, right) => left.offset - right.offset);
+    const firstEntry = orderedEntries[0]?.entry;
+    const computedTop = firstEntry
+      ? Number.parseFloat(window.getComputedStyle(firstEntry.element).top)
+      : Number.NaN;
+    const topOffset = Number.isFinite(computedTop) ? computedTop : 0;
+    const activePosition = findStickyDatePositionFromOffsets(
+      orderedEntries.map(({ offset }) => offset),
+      scrollRoot.scrollTop,
+      topOffset,
+    );
+    const activeHeader =
+      activePosition === null
+        ? null
+        : orderedEntries[activePosition]?.entry.element ?? null;
 
     for (const entry of entries.values()) {
       const nextSticky = entry.element === activeHeader;
