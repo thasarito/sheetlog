@@ -1,4 +1,4 @@
-import { Monitor, Moon, Palette, Sun } from "lucide-react";
+import { Monitor, Moon, Palette, Sun, Zap } from "lucide-react";
 import { useTheme, type ThemeId, type ThemeModePreference } from "../theme";
 import { SettingsIconBadge } from "./SettingsIconBadge";
 
@@ -11,6 +11,8 @@ const MODE_OPTIONS: {
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
 ];
+
+const WEBKIT_SWITCH_ATTRIBUTE = { switch: "" } as const;
 
 export function ThemeSetting() {
   const { themes, themeId, mode, setThemeId, setMode } = useTheme();
@@ -80,6 +82,26 @@ export function ThemeSetting() {
             );
           })}
         </div>
+      </div>
+
+      <div className="flex min-h-14 items-center gap-3 px-4 py-3">
+        <SettingsIconBadge>
+          <Zap className="h-[18px] w-[18px]" strokeWidth={2.25} />
+        </SettingsIconBadge>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-medium text-foreground">
+            Native haptic test
+          </span>
+          <span className="block text-[12px] text-muted-foreground">
+            Tap the switch itself on iPhone
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          {...WEBKIT_SWITCH_ATTRIBUTE}
+          aria-label="Test native iPhone haptic"
+          className="shrink-0"
+        />
       </div>
     </div>
   );

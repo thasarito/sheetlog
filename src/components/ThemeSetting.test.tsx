@@ -73,4 +73,21 @@ describe("ThemeSetting", () => {
       }),
     );
   });
+
+  it("renders a visible WebKit switch that the user taps directly", () => {
+    renderSetting();
+
+    const hapticSwitch = screen.getByRole("checkbox", {
+      name: "Test native iPhone haptic",
+    });
+
+    expect(hapticSwitch).toHaveAttribute("switch", "");
+    expect(hapticSwitch).not.toHaveAttribute("data-haptic-trigger");
+    expect(hapticSwitch.closest("label")).toBeNull();
+    expect(hapticSwitch).toBeVisible();
+
+    fireEvent.click(hapticSwitch);
+
+    expect(hapticSwitch).toBeChecked();
+  });
 });
