@@ -1,0 +1,46 @@
+name: Verify Settings Quick Note Layer
+
+on:
+  push:
+    branches:
+      - fix/settings-quicknote-layer-safe-area
+
+permissions:
+  contents: read
+
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run focused regression tests
+        run: npm test -- src/components/SettingsQuickNoteEditorDrawer.test.tsx
+      - name: Typecheck changed Quick Note files
+        shell: bash
+        run: |
+          cat > tsconfig.quicknote-layer.json <<'JSON'
+          {
+            "extends": "./tsconfig.json",
+            "include": [
+              "src/components/QuickNotes/QuickNoteFlow.tsx",
+              "src/components/SettingsQuickNoteEditorDrawer.tsx",
+              "src/components/SettingsQuickNoteEditorDrawer.test.tsx",
+              "vite-env.d.ts",
+              "global.d.ts"
+            ],
+            "exclude": ["node_modules"]
+          }
+          JSON
+          npx tsc --project tsconfig.quicknote-layer.json --noEmit
+          rm tsconfig.quicknote-layer.json
+      - name: Lint changed files
+        run: >-
+          npx biome check
+          src/components/QuickNotes/QuickNoteFlow.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
