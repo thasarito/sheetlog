@@ -225,7 +225,15 @@ describe('Google settings Sheet reads', () => {
   it('round-trips structured Quick Note rows and preserves empty targets', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(settingsMetadata({ sheetId: 13, title: 'Quick Note' })))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          settingsMetadata({
+            sheetId: 13,
+            title: 'Quick Note',
+            columnCount: QUICK_NOTE_HEADERS.length,
+          }),
+        ),
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           values: [
@@ -243,6 +251,7 @@ describe('Google settings Sheet reads', () => {
               'THB',
               'Cash',
               'Me',
+              '#123456',
             ],
             ['category', 'transfer', 'Savings', 'empty'],
           ],
@@ -266,13 +275,14 @@ describe('Google settings Sheet reads', () => {
             currency: 'THB',
             account: 'Cash',
             forValue: 'Me',
+            color: '#123456',
           },
         ],
         'transfer:Savings': [],
       },
     });
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A2%3AM",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A2%3AN",
     );
   });
 
@@ -284,7 +294,11 @@ describe('Google settings Sheet reads', () => {
           settingsMetadata(
             { sheetId: 11, title: 'Account' },
             { sheetId: 12, title: 'Category' },
-            { sheetId: 13, title: 'Quick Note' },
+            {
+              sheetId: 13,
+              title: 'Quick Note',
+              columnCount: QUICK_NOTE_HEADERS.length,
+            },
           ),
         ),
       )
@@ -316,7 +330,11 @@ describe('Google settings Sheet reads', () => {
           settingsMetadata(
             { sheetId: 11, title: 'Account' },
             { sheetId: 12, title: 'Category' },
-            { sheetId: 13, title: 'Quick Note' },
+            {
+              sheetId: 13,
+              title: 'Quick Note',
+              columnCount: QUICK_NOTE_HEADERS.length,
+            },
           ),
         ),
       )
@@ -337,7 +355,7 @@ describe('Google settings Sheet reads', () => {
     expect(fetchMock.mock.calls.slice(1).map(([url]) => url)).toEqual([
       'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Account!A2%3AC',
       'https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/Category!A2%3AD',
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A2%3AM",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A2%3AN",
     ]);
   });
 
@@ -436,7 +454,7 @@ describe('Google settings Sheet creation', () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
     const [quickNoteUrl, quickNoteInit] = requestAt(fetchMock, 4);
     expect(quickNoteUrl).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A1%3AM1?valueInputOption=RAW",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A1%3AN1?valueInputOption=RAW",
     );
     expect(JSON.parse(String(quickNoteInit.body))).toEqual({ values: [QUICK_NOTE_HEADERS] });
     const [settingsUrl, settingsInit] = requestAt(fetchMock, 5);
@@ -765,6 +783,7 @@ describe('Google settings Sheet replacement', () => {
           currency: 'THB',
           account: 'Cash',
           forValue: 'Me',
+          color: '#123456',
         },
       ],
       'transfer:Savings': [],
@@ -785,8 +804,24 @@ describe('Google settings Sheet replacement', () => {
         'THB',
         'Cash',
         'Me',
+        '#123456',
       ],
-      ['category', 'transfer', 'Savings', 'empty', '', '', '', '', '', '', '', '', ''],
+      [
+        'category',
+        'transfer',
+        'Savings',
+        'empty',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ],
     ];
     const fetchMock = vi
       .fn()
@@ -817,7 +852,7 @@ describe('Google settings Sheet replacement', () => {
         properties: {
           sheetId: 1,
           title: 'Quick Note',
-          gridProperties: { rowCount: 3, columnCount: 13 },
+          gridProperties: { rowCount: 3, columnCount: QUICK_NOTE_HEADERS.length },
         },
       },
     });
@@ -827,7 +862,7 @@ describe('Google settings Sheet replacement', () => {
       startRowIndex: 0,
       endRowIndex: 3,
       startColumnIndex: 0,
-      endColumnIndex: 13,
+      endColumnIndex: QUICK_NOTE_HEADERS.length,
     });
     expect(updateCells.rows[0].values).toEqual(
       QUICK_NOTE_HEADERS.map((stringValue) => ({ userEnteredValue: { stringValue } })),
@@ -838,9 +873,12 @@ describe('Google settings Sheet replacement', () => {
     expect(updateCells.rows[1].values[8]).toEqual({
       userEnteredValue: { stringValue: '=SUM(A1:A2)' },
     });
+    expect(updateCells.rows[1].values[13]).toEqual({
+      userEnteredValue: { stringValue: '#123456' },
+    });
     expect(String(requestAt(fetchMock, 1)[1].body)).not.toContain('formulaValue');
     expect(requestAt(fetchMock, 2)[0]).toBe(
-      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A1%3AM",
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-id/values/'Quick%20Note'!A1%3AN",
     );
   });
 
@@ -902,7 +940,10 @@ describe('Google settings Sheet replacement', () => {
                     sheetId: 2,
                     title: 'Quick Note',
                     sheetType: 'GRID',
-                    gridProperties: { rowCount: 1, columnCount: 13 },
+                    gridProperties: {
+                      rowCount: 1,
+                      columnCount: QUICK_NOTE_HEADERS.length,
+                    },
                   },
                 },
               },
