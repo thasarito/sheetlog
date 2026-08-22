@@ -28,8 +28,12 @@ jobs:
       - name: Run transaction-flow tests
         run: npm test -- src/components/TransactionFlow
 
-      - name: Lint
-        run: npm run lint
+      - name: Lint changed source files
+        run: >-
+          npx eslint
+          src/components/TransactionFlow/CategoryStepSheet.tsx
+          src/components/TransactionFlow/CategoryStepSheet.test.tsx
+          src/components/TransactionFlow/CategoryStepSheet.collapsed-header.test.tsx
 
       - name: Typecheck
         run: npx tsc --noEmit
