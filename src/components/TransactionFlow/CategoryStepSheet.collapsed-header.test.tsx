@@ -135,7 +135,7 @@ describe("CategoryStepSheet collapsed header band", () => {
       "col-start-1",
       "row-start-1",
       "h-full",
-      "min-h-0",
+      "min-h-11",
       "items-start",
       "pt-1",
     );
