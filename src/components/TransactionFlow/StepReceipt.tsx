@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
 import { Check, Loader2, XCircle } from "lucide-react";
+import {
+  resolveReceiptHapticFeedback,
+  triggerHapticFeedback,
+  type ReceiptHapticSnapshot,
+} from "../../lib/transactionHaptics";
 import type { TransactionStatus, TransactionType } from "../../lib/types";
 import {
   CircleCheckIcon,
@@ -244,12 +249,36 @@ export function StepReceipt({
   const accountLabel = type === "transfer" ? "From" : "Account";
   const forLabel = type === "transfer" ? "To" : "For";
   const checkIconRef = useRef<CircleCheckIconHandle | null>(null);
+  const previousHapticSnapshotRef = useRef<ReceiptHapticSnapshot | null>(null);
 
   useEffect(() => {
     if (isStatusSuccess) {
       checkIconRef.current?.startAnimation();
     }
   }, [isStatusSuccess]);
+
+  useEffect(() => {
+    const nextSnapshot: ReceiptHapticSnapshot = {
+      isPending,
+      isSuccess,
+      isError,
+      syncStatus: resolvedSyncStatus,
+      undoOutcome: isReimbursement ? undoOutcome : undefined,
+    };
+    const feedback = resolveReceiptHapticFeedback(
+      previousHapticSnapshotRef.current,
+      nextSnapshot,
+    );
+    previousHapticSnapshotRef.current = nextSnapshot;
+    if (feedback) triggerHapticFeedback(feedback);
+  }, [
+    isError,
+    isPending,
+    isReimbursement,
+    isSuccess,
+    resolvedSyncStatus,
+    undoOutcome,
+  ]);
 
   const timelineSteps = useMemo<TimelineStep[]>(() => {
     if (isUndoPending || isUndoError) {
