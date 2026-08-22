@@ -9,9 +9,19 @@ import {
   getTransactionBaseAmountAccessibleText,
   type TransactionBaseAmountState,
 } from './transactionBaseAmounts';
+import {
+  buildDailyNetAmountState,
+  formatDailyNetAmount,
+  getDailyNetAccessibleText,
+} from './transactionDailyNet';
 
 export type TransactionHistoryListItem =
-  | { key: string; kind: 'date'; dateKey: string }
+  | {
+      key: string;
+      kind: 'date';
+      dateKey: string;
+      transactions: TransactionRecord[];
+    }
   | { key: string; kind: 'transaction'; transaction: TransactionRecord };
 
 export function flattenTransactionHistory(
@@ -19,12 +29,24 @@ export function flattenTransactionHistory(
 ): TransactionHistoryListItem[] {
   const items: TransactionHistoryListItem[] = [];
   let previousDate = '';
+  let currentDateItem: Extract<
+    TransactionHistoryListItem,
+    { kind: 'date' }
+  > | null = null;
+
   for (const transaction of transactions) {
     const dateKey = format(parseDate(transaction.date), 'yyyy-MM-dd');
     if (dateKey !== previousDate) {
-      items.push({ key: `date:${dateKey}`, kind: 'date', dateKey });
+      currentDateItem = {
+        key: `date:${dateKey}`,
+        kind: 'date',
+        dateKey,
+        transactions: [],
+      };
+      items.push(currentDateItem);
       previousDate = dateKey;
     }
+    currentDateItem?.transactions.push(transaction);
     items.push({
       key: `transaction:${transaction.id}`,
       kind: 'transaction',
@@ -44,13 +66,55 @@ function dateLabel(dateKey: string, today: Date): string {
 export function TransactionHistoryDateHeader({
   dateKey,
   today,
+  transactions,
+  baseCurrency,
+  baseAmountStates,
 }: {
   dateKey: string;
   today: Date;
+  transactions: readonly TransactionRecord[];
+  baseCurrency: string;
+  baseAmountStates: Readonly<Record<string, TransactionBaseAmountState>>;
 }) {
+  const dailyNet = buildDailyNetAmountState(
+    transactions,
+    baseCurrency,
+    baseAmountStates,
+  );
+  const accessibleText = getDailyNetAccessibleText(dailyNet);
+
   return (
-    <div className="px-3 pb-1 pt-3 text-xs font-semibold text-muted-foreground">
-      {dateLabel(dateKey, today)}
+    <div
+      data-testid="transaction-history-date-header"
+      className="flex items-center justify-between gap-3 px-3 pb-1 pt-3 text-xs font-semibold text-muted-foreground"
+    >
+      <span className="min-w-0 truncate">{dateLabel(dateKey, today)}</span>
+      {dailyNet.status === 'loading' ? (
+        <span className="flex min-w-16 shrink-0 justify-end">
+          <Skeleton
+            aria-hidden="true"
+            data-testid="daily-net-amount-loading"
+            className="h-3 w-14"
+          />
+          <span className="sr-only">{accessibleText}</span>
+        </span>
+      ) : (
+        <span
+          aria-label={accessibleText}
+          data-testid="daily-net-amount"
+          className={cn(
+            'shrink-0 whitespace-nowrap tabular-nums',
+            dailyNet.status === 'ready' &&
+              dailyNet.amount > 0 &&
+              'text-emerald-500',
+            dailyNet.status === 'ready' &&
+              dailyNet.amount < 0 &&
+              'text-foreground',
+          )}
+        >
+          {formatDailyNetAmount(dailyNet)}
+        </span>
+      )}
     </div>
   );
 }
