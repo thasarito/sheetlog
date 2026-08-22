@@ -1,7 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useId } from 'react';
 import { cn } from '../../lib/utils';
-import { HapticSelectionButton } from '../ui/HapticSelectionButton';
 import type { AnalyticsRange } from './analytics';
 
 type AnalyticsRangeToggleProps = {
@@ -39,12 +38,11 @@ export function AnalyticsRangeToggle({ value, onChange }: AnalyticsRangeTogglePr
       {OPTIONS.map((option) => {
         const selected = value === option.value;
         return (
-          <HapticSelectionButton
+          <button
             key={option.value}
             type="button"
             aria-label={option.label}
             aria-pressed={selected}
-            changesValue={!selected && option.value !== 'custom'}
             onClick={(event) => onChange(option.value, event.currentTarget)}
             className={cn(
               'relative isolate overflow-hidden rounded-lg text-xs font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
@@ -63,7 +61,7 @@ export function AnalyticsRangeToggle({ value, onChange }: AnalyticsRangeTogglePr
               />
             ) : null}
             <span className="relative z-10">{option.short}</span>
-          </HapticSelectionButton>
+          </button>
         );
       })}
     </fieldset>
