@@ -1,4 +1,4 @@
-import { resolveQuickNoteIconName } from './quickNoteBrands';
+import { resolveQuickNoteForPresentation } from './quickNoteBrands';
 import type {
   CategoryConfigWithMeta,
   QuickNote,
@@ -35,10 +35,7 @@ function capitalize(value: string): string {
 }
 
 function resolveQuickNotesForPresentation(notes: QuickNote[]): QuickNote[] {
-  return notes.map((note) => {
-    const icon = resolveQuickNoteIconName(note.icon, note.label);
-    return icon === note.icon ? note : { ...note, icon };
-  });
+  return notes.map(resolveQuickNoteForPresentation);
 }
 
 export function validateSettingsName(
