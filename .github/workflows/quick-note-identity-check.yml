@@ -1,0 +1,25 @@
+name: Quick Note identity verification
+
+on:
+  push:
+    branches:
+      - feat/quick-note-identity-row
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: >-
+          npm test --
+          src/components/AppearancePicker.test.tsx
+          src/components/SettingsQuickNoteEditorDrawer.test.tsx
+          src/components/QuickNotes/QuickNotesSettings.test.tsx
