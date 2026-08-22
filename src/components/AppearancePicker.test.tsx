@@ -3,20 +3,6 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('./ui/drawer', () => ({
-  Drawer: ({
-    children,
-    open,
-  }: {
-    children: React.ReactNode;
-    open: boolean;
-  }) => (open ? <div>{children}</div> : null),
-  DrawerContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DrawerHeader: ({ children }: { children: React.ReactNode }) => <header>{children}</header>,
-  DrawerTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
-  DrawerFooter: ({ children }: { children: React.ReactNode }) => <footer>{children}</footer>,
-}));
-
 vi.mock('./AdvancedColorPicker', () => ({
   AdvancedColorPicker: ({ open }: { open: boolean }) =>
     open ? <div>Advanced color picker</div> : null,
@@ -41,6 +27,17 @@ function renderPicker(section: PickerSection) {
 }
 
 describe('AppearancePicker sections', () => {
+  it('renders as a modal dialog above the full-screen Quick Note editor', () => {
+    renderPicker('icon');
+
+    const dialog = screen.getByRole('dialog', { name: 'Choose Appearance' });
+    expect(dialog).toHaveAttribute(
+      'data-appearance-picker-presentation',
+      'dialog',
+    );
+    expect(dialog).toHaveClass('relative', 'z-[80]');
+  });
+
   it('shows only the existing icon picker when opened from an icon button', async () => {
     const user = userEvent.setup();
     const props = renderPicker('icon');
