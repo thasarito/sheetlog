@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
+import { HapticSelectionButton } from '../ui/HapticSelectionButton';
 import {
   formatAnalyticsAmount,
   type AnalyticsCategory,
@@ -33,6 +34,7 @@ type AnalyticsCategorySceneProps = {
 
 const TRACK_SEGMENTS = 16;
 const CALM_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const MotionHapticSelectionButton = motion(HapticSelectionButton);
 
 function getSeriesSignature(series: AnalyticsSeries[]): string {
   return series.map((item) => `${item.label}\u0000${item.tone}`).join('\u0001');
@@ -86,12 +88,13 @@ function AnalyticsCategoryRow({
     : { duration: 0.2, ease: CALM_EASE };
 
   return (
-    <motion.button
+    <MotionHapticSelectionButton
       layout="position"
       type="button"
       aria-label={`${item.label}, ${formatAnalyticsAmount(item.amount, currency)}, ${item.share}%`}
       aria-pressed={selected}
       disabled={!interactive}
+      changesValue={interactive}
       tabIndex={interactive ? undefined : -1}
       data-series-key={item.key}
       data-semantic-key={item.label}
@@ -156,7 +159,7 @@ function AnalyticsCategoryRow({
           ))}
         </motion.span>
       </span>
-    </motion.button>
+    </MotionHapticSelectionButton>
   );
 }
 
