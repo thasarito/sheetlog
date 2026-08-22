@@ -26,16 +26,25 @@ export type {
 } from './useCategoryQuickNoteMenu';
 
 const VIEWPORT_MARGIN = 12;
-const CARD_GAP = 12;
-const CARD_WIDTH = 288;
+const CARD_GAP = 34;
+const CARD_WIDTH = 320;
+const CONNECTOR_EDGE_INSET = 38;
 
 type MenuPlacement = 'above' | 'below';
 
 type MenuPosition = {
   left: number;
   top: number;
-  arrowX: number;
+  connectorX: number;
   placement: MenuPlacement;
+  width: number;
+  height: number;
+};
+
+type TetherGeometry = {
+  path: string;
+  dotX: number;
+  dotY: number;
 };
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -44,12 +53,19 @@ function clamp(value: number, minimum: number, maximum: number): number {
 }
 
 function estimateCardHeight(state: CategoryQuickNoteMenuState): number {
+  const toplineHeight = 32;
   const headerHeight = 58;
-  const customHeight = state.customNotes.length * 48;
-  const defaultHeight = state.defaultNotes.length > 0 ? 76 : 0;
+  const customHeight = state.customNotes.length * 46;
+  const defaultHeight = state.defaultNotes.length > 0 ? 66 : 0;
   const dividerHeight =
-    state.customNotes.length > 0 && state.defaultNotes.length > 0 ? 1 : 0;
-  return headerHeight + customHeight + defaultHeight + dividerHeight;
+    Number(state.customNotes.length > 0) + Number(state.defaultNotes.length > 0);
+  return (
+    toplineHeight +
+    headerHeight +
+    customHeight +
+    defaultHeight +
+    dividerHeight
+  );
 }
 
 function resolveMenuPosition(
@@ -82,23 +98,47 @@ function resolveMenuPosition(
     VIEWPORT_MARGIN,
     viewportHeight - cardHeight - VIEWPORT_MARGIN,
   );
-  const arrowX = clamp(
+  const connectorX = clamp(
     anchorCenter - left,
-    18,
-    Math.max(18, cardWidth - 18),
+    CONNECTOR_EDGE_INSET,
+    Math.max(CONNECTOR_EDGE_INSET, cardWidth - CONNECTOR_EDGE_INSET),
   );
-  return { left, top, arrowX, placement };
+  return {
+    left,
+    top,
+    connectorX,
+    placement,
+    width: cardWidth,
+    height: cardHeight,
+  };
 }
 
-function noteStyle(
-  color: string,
-  selected: boolean,
-): Pick<CSSProperties, 'backgroundColor' | 'borderColor' | 'color'> {
+function resolveTetherGeometry(
+  position: MenuPosition,
+  anchor: CategoryQuickNoteMenuBounds,
+): TetherGeometry {
+  const sourceX = position.left + position.connectorX;
+  const sourceY =
+    position.placement === 'above'
+      ? position.top + position.height
+      : position.top;
+  const dotX = anchor.left + anchor.width / 2;
+  const dotY =
+    position.placement === 'above' ? anchor.top + 4 : anchor.bottom - 4;
+  const direction = position.placement === 'above' ? 1 : -1;
+  const bend = clamp(Math.abs(dotY - sourceY) * 0.45, 18, 30);
+  const firstControlY = sourceY + direction * bend;
+  const secondControlY = dotY - direction * bend;
+
   return {
-    color,
-    borderColor: `color-mix(in srgb, ${color} ${selected ? 72 : 28}%, hsl(var(--border)))`,
-    backgroundColor: `color-mix(in srgb, ${color} ${selected ? 20 : 8}%, hsl(var(--card)))`,
+    path: `M ${sourceX} ${sourceY} C ${sourceX} ${firstControlY}, ${dotX} ${secondControlY}, ${dotX} ${dotY}`,
+    dotX,
+    dotY,
   };
+}
+
+function itemAccentStyle(color: string): CSSProperties {
+  return { '--category-menu-item-accent': color } as CSSProperties;
 }
 
 type CategoryQuickNoteMenuProps = {
@@ -138,8 +178,12 @@ export function CategoryQuickNoteMenu({
   const updatePosition = useCallback(() => {
     if (!state || !cardRef.current) return;
     const cardBounds = cardRef.current.getBoundingClientRect();
-    const width = cardBounds.width || estimatedWidth;
-    const height = cardBounds.height || estimateCardHeight(state);
+    const width =
+      cardRef.current.offsetWidth || cardBounds.width || estimatedWidth;
+    const height =
+      cardRef.current.offsetHeight ||
+      cardBounds.height ||
+      estimateCardHeight(state);
     setMeasuredPosition(resolveMenuPosition(state.anchor.bounds, width, height));
   }, [estimatedWidth, state]);
 
@@ -175,155 +219,184 @@ export function CategoryQuickNoteMenu({
   }, [state]);
 
   const position = measuredPosition ?? estimatedPosition;
-  const activeNote = state?.activeTarget?.type === 'note'
-    ? state.activeTarget
-    : null;
+  const tether =
+    state && position
+      ? resolveTetherGeometry(position, state.anchor.bounds)
+      : null;
+  const activeNote =
+    state?.activeTarget?.type === 'note' ? state.activeTarget : null;
   const categorySelected = state?.activeTarget?.type === 'category';
 
   const layer =
-    state && position ? (
-        <motion.div
-          key={`category-quick-note-${state.category}`}
-          className="fixed inset-0 z-[70]"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: reducedMotion ? 0.08 : 0.16 }}
+    state && position && tether ? (
+      <motion.div
+        key={`category-quick-note-${state.category}`}
+        className="fixed inset-0 z-[70]"
+        style={
+          {
+            '--category-menu-accent': state.presentation.color,
+          } as CSSProperties
+        }
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: reducedMotion ? 0.08 : 0.16 }}
+      >
+        <button
+          type="button"
+          data-testid="category-menu-backdrop"
+          aria-label={`Dismiss ${state.presentation.label} quick notes`}
+          className="absolute inset-0 h-full w-full cursor-default border-0 bg-overlay/20 p-0 backdrop-blur-[1px]"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            onDismiss();
+          }}
+          onClick={onDismiss}
+        />
+
+        <svg
+          data-testid="category-menu-tether"
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-[71] h-full w-full overflow-visible"
         >
+          <path className="category-menu-tether-path" d={tether.path} />
+          <circle
+            className="category-menu-tether-dot"
+            cx={tether.dotX}
+            cy={tether.dotY}
+            r="4"
+          />
+        </svg>
+
+        <motion.div
+          ref={cardRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${state.presentation.label} quick notes`}
+          data-placement={position.placement}
+          data-gesture-active={state.isGestureActive ? 'true' : 'false'}
+          className="category-quick-note-card fixed z-[72] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-[20px] border border-border bg-card text-card-foreground"
+          style={{ left: position.left, top: position.top }}
+          initial={
+            reducedMotion
+              ? { opacity: 0 }
+              : {
+                  opacity: 0,
+                  scale: 0.97,
+                  y: position.placement === 'above' ? 5 : -5,
+                }
+          }
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: reducedMotion ? 1 : 0.985 }}
+          transition={
+            reducedMotion
+              ? { duration: 0.08 }
+              : { type: 'spring', stiffness: 420, damping: 34 }
+          }
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div className="category-menu-topline flex min-h-8 items-center gap-2 border-b border-border/50 px-3 text-[10px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
+            <span className="category-menu-topline-dot h-1.5 w-1.5 rounded-full" />
+            <span>Quick actions</span>
+          </div>
+
           <button
             type="button"
-            aria-label={`Dismiss ${state.presentation.label} quick notes`}
-            className="absolute inset-0 h-full w-full cursor-default border-0 bg-overlay/45 p-0 backdrop-blur-[2px]"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              onDismiss();
-            }}
-            onClick={onDismiss}
-          />
-
-          <motion.div
-            ref={cardRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${state.presentation.label} quick notes`}
-            data-placement={position.placement}
-            data-gesture-active={state.isGestureActive ? 'true' : 'false'}
-            className="fixed z-[72] w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-[22px] border border-border bg-card text-card-foreground"
-            style={{ left: position.left, top: position.top }}
-            initial={
-              reducedMotion
-                ? { opacity: 0 }
-                : {
-                    opacity: 0,
-                    scale: 0.96,
-                    y: position.placement === 'above' ? 6 : -6,
-                  }
-            }
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: reducedMotion ? 1 : 0.98 }}
-            transition={
-              reducedMotion
-                ? { duration: 0.08 }
-                : { type: 'spring', stiffness: 420, damping: 32 }
-            }
-            onContextMenu={(event) => event.preventDefault()}
+            data-category-menu-autofocus
+            data-active={categorySelected ? 'true' : 'false'}
+            aria-label={`Use ${state.presentation.label} category`}
+            className="category-menu-header relative flex min-h-[3.625rem] w-full items-center gap-3 border-0 bg-transparent px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
+            onClick={onUseCategory}
           >
+            <span className="category-menu-header-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <DynamicIcon
+                name={state.presentation.icon}
+                className="h-[18px] w-[18px]"
+              />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+              {state.presentation.label}
+            </span>
+            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">
+              Use category
+            </span>
+          </button>
+
+          {state.customNotes.length > 0 ? (
+            <div className="category-menu-custom-list border-t border-border/50 px-2 py-1">
+              {state.customNotes.map((note) => {
+                const selected =
+                  activeNote?.source === 'custom' && activeNote.id === note.id;
+                const color = note.color ?? state.presentation.color;
+                return (
+                  <button
+                    key={`custom:${note.id}`}
+                    type="button"
+                    data-category-menu-row="custom"
+                    data-active={selected ? 'true' : 'false'}
+                    data-category-quick-note-source="custom"
+                    data-category-quick-note-id={note.id}
+                    className="category-menu-custom-row relative flex min-h-11 w-full items-center gap-2.5 rounded-[10px] border-0 bg-transparent px-2.5 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                    style={itemAccentStyle(color)}
+                    title={note.label}
+                    onClick={() => onSelectNote('custom', note.id)}
+                  >
+                    <span
+                      data-category-menu-active-rail
+                      className="category-menu-active-rail absolute bottom-2.5 left-0 top-2.5 w-0.5 rounded-full"
+                    />
+                    <span className="category-menu-custom-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]">
+                      <DynamicIcon name={note.icon} className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                      {note.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {state.defaultNotes.length > 0 ? (
             <div
-              aria-hidden="true"
-              className="absolute h-3 w-3 rotate-45 border border-border bg-card"
+              className="category-menu-default-dock grid gap-1 border-t border-border/50 px-2 pb-2 pt-1.5"
               style={{
-                left: position.arrowX,
-                transform: 'translateX(-50%) rotate(45deg)',
-                ...(position.placement === 'above'
-                  ? { bottom: -7 }
-                  : { top: -7 }),
+                gridTemplateColumns: `repeat(${state.defaultNotes.length}, minmax(0, 1fr))`,
               }}
-            />
-
-            <button
-              type="button"
-              data-category-menu-autofocus
-              aria-label={`Use ${state.presentation.label} category`}
-              className={`relative flex w-full items-center gap-3 border-0 px-4 py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring ${
-                categorySelected ? 'bg-primary/12' : 'bg-card'
-              }`}
-              onClick={onUseCategory}
             >
-              <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border"
-                style={noteStyle(state.presentation.color, categorySelected)}
-              >
-                <DynamicIcon
-                  name={state.presentation.icon}
-                  className="h-[18px] w-[18px]"
-                />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                {state.presentation.label}
-              </span>
-            </button>
-
-            {state.customNotes.length > 0 ? (
-              <div className="border-t border-border/70 px-2 py-1.5">
-                {state.customNotes.map((note) => {
-                  const selected =
-                    activeNote?.source === 'custom' && activeNote.id === note.id;
-                  const color = note.color ?? state.presentation.color;
-                  return (
-                    <button
-                      key={`custom:${note.id}`}
-                      type="button"
-                      data-category-quick-note-source="custom"
-                      data-category-quick-note-id={note.id}
-                      className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-transparent px-2.5 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                      style={noteStyle(color, selected)}
-                      title={note.label}
-                      onClick={() => onSelectNote('custom', note.id)}
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
-                        <DynamicIcon name={note.icon} className="h-4 w-4" />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
-                        {note.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {state.defaultNotes.length > 0 ? (
-              <div
-                className="grid gap-1 border-t border-border/70 px-2 pb-2 pt-1.5"
-                style={{
-                  gridTemplateColumns: `repeat(${state.defaultNotes.length}, minmax(0, 1fr))`,
-                }}
-              >
-                {state.defaultNotes.map((note) => {
-                  const selected =
-                    activeNote?.source === 'default' && activeNote.id === note.id;
-                  const color = note.color ?? state.presentation.color;
-                  return (
-                    <button
-                      key={`default:${note.id}`}
-                      type="button"
-                      data-category-quick-note-source="default"
-                      data-category-quick-note-id={note.id}
-                      className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-transparent px-1 py-2 text-center focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                      style={noteStyle(color, selected)}
-                      title={note.label}
-                      onClick={() => onSelectNote('default', note.id)}
-                    >
-                      <DynamicIcon name={note.icon} className="h-[18px] w-[18px]" />
-                      <span className="w-full truncate text-[10px] font-semibold leading-tight text-foreground">
-                        {note.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </motion.div>
+              {state.defaultNotes.map((note) => {
+                const selected =
+                  activeNote?.source === 'default' && activeNote.id === note.id;
+                const color = note.color ?? state.presentation.color;
+                return (
+                  <button
+                    key={`default:${note.id}`}
+                    type="button"
+                    data-category-menu-default-action="true"
+                    data-active={selected ? 'true' : 'false'}
+                    data-category-quick-note-source="default"
+                    data-category-quick-note-id={note.id}
+                    className="category-menu-default-action relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-[10px] border-0 bg-transparent px-1 py-2 text-center focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                    style={itemAccentStyle(color)}
+                    title={note.label}
+                    onClick={() => onSelectNote('default', note.id)}
+                  >
+                    <span className="category-menu-default-icon">
+                      <DynamicIcon
+                        name={note.icon}
+                        className="h-[18px] w-[18px]"
+                      />
+                    </span>
+                    <span className="w-full truncate text-[10px] font-semibold leading-tight">
+                      {note.label}
+                    </span>
+                    <span className="category-menu-default-indicator absolute inset-x-2 bottom-0 h-0.5 rounded-full" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </motion.div>
       </motion.div>
     ) : null;
 
