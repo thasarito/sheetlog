@@ -35,7 +35,13 @@ export const QUICK_NOTE_BRANDS = [
   },
   { name: 'brand:ais', slug: 'ais', label: 'AIS', color: '#8DC63F', aliases: ['ais'] },
   { name: 'brand:ptt', slug: 'ptt', label: 'PTT', color: '#0054A6', aliases: ['ptt'] },
-  { name: 'brand:tops', slug: 'tops', label: 'Tops', color: '#E31837', aliases: ['tops', 'tops daily', 'top at'] },
+  {
+    name: 'brand:tops',
+    slug: 'tops',
+    label: 'Tops',
+    color: '#E31837',
+    aliases: ['tops', 'tops daily', 'top at'],
+  },
   {
     name: 'brand:lotus',
     slug: 'lotus',
@@ -122,8 +128,13 @@ const QUICK_NOTE_BRAND_BY_NAME = new Map<QuickNoteBrandName, QuickNoteBrand>(
 );
 const STORED_ICON_MARKER = Symbol('quick-note-stored-icon');
 
+type StoredIconState = {
+  hasOwnIcon: boolean;
+  icon: string | undefined;
+};
+
 type PresentationQuickNote = QuickNote & {
-  [STORED_ICON_MARKER]?: string;
+  [STORED_ICON_MARKER]?: StoredIconState;
 };
 
 function normalizeLabel(value: string): string {
@@ -192,7 +203,10 @@ export function resolveQuickNoteForPresentation(note: QuickNote): QuickNote {
 
   const presentationNote: PresentationQuickNote = { ...note, icon };
   Object.defineProperty(presentationNote, STORED_ICON_MARKER, {
-    value: note.icon,
+    value: {
+      hasOwnIcon: Object.prototype.hasOwnProperty.call(note, 'icon'),
+      icon: note.icon,
+    } satisfies StoredIconState,
     enumerable: false,
   });
   return presentationNote;
@@ -204,8 +218,18 @@ export function prepareQuickNotesForPersistence(notes: QuickNote[]): QuickNote[]
       return note;
     }
 
-    const storedIcon = (note as PresentationQuickNote)[STORED_ICON_MARKER];
-    return { ...note, icon: storedIcon ?? note.icon };
+    const stored = (note as PresentationQuickNote)[STORED_ICON_MARKER];
+    if (!stored) return note;
+
+    const restored = { ...note } as Omit<QuickNote, 'icon'> & {
+      icon?: string | undefined;
+    };
+    if (stored.hasOwnIcon) {
+      restored.icon = stored.icon;
+    } else {
+      delete restored.icon;
+    }
+    return restored as QuickNote;
   });
 }
 
