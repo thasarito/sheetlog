@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { QuickNote } from './types';
 import {
+  prepareQuickNotesForPersistence,
   resolveQuickNoteBrandName,
+  resolveQuickNoteForPresentation,
   resolveQuickNoteIconName,
 } from './quickNoteBrands';
 
@@ -32,5 +35,24 @@ describe('Quick Note brand resolution', () => {
   it('uses the requested fallback when no safe brand match exists', () => {
     expect(resolveQuickNoteIconName('StickyNote', 'unknown merchant', 'Tag')).toBe('Tag');
     expect(resolveQuickNoteIconName(undefined, '', 'Wallet')).toBe('Wallet');
+  });
+
+  it('restores a presentation-only match before reorder persistence', () => {
+    const storedNote: QuickNote = {
+      id: 'grab',
+      icon: 'StickyNote',
+      label: 'grab',
+    };
+    const presentationNote = resolveQuickNoteForPresentation(storedNote);
+
+    expect(presentationNote.icon).toBe('brand:grab');
+    expect(prepareQuickNotesForPersistence([presentationNote])[0]?.icon).toBe(
+      'StickyNote',
+    );
+
+    const explicitlySavedNote = { ...presentationNote };
+    expect(prepareQuickNotesForPersistence([explicitlySavedNote])[0]?.icon).toBe(
+      'brand:grab',
+    );
   });
 });
