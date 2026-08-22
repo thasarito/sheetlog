@@ -66,6 +66,117 @@ function dateLabel(dateKey: string, today: Date): string {
   return format(date, 'EEEE, MMM d');
 }
 
+type AutoStickyDateEntry = {
+  element: HTMLDivElement;
+  isSticky: boolean;
+  setSticky: (isSticky: boolean) => void;
+};
+
+type AutoStickyDateRegistry = {
+  entries: Map<HTMLDivElement, AutoStickyDateEntry>;
+  scheduleUpdate: () => void;
+  dispose: () => void;
+};
+
+const autoStickyDateRegistries = new WeakMap<
+  HTMLElement,
+  AutoStickyDateRegistry
+>();
+
+function createAutoStickyDateRegistry(
+  scrollRoot: HTMLElement,
+): AutoStickyDateRegistry {
+  const entries = new Map<HTMLDivElement, AutoStickyDateEntry>();
+  let frame: number | null = null;
+
+  const update = () => {
+    frame = null;
+    const firstEntry = entries.values().next().value as
+      | AutoStickyDateEntry
+      | undefined;
+    let activeHeader: HTMLDivElement | null = null;
+
+    if (firstEntry && scrollRoot.scrollTop > 0.5) {
+      const rootRect = scrollRoot.getBoundingClientRect();
+      const firstRect = firstEntry.element.getBoundingClientRect();
+      const computedTop = Number.parseFloat(
+        window.getComputedStyle(firstEntry.element).top,
+      );
+      const topOffset = Number.isFinite(computedTop) ? computedTop : 0;
+      const stickyLine = rootRect.top + topOffset + 1;
+
+      if (typeof document.elementFromPoint === 'function') {
+        const x = Math.min(
+          rootRect.right - 1,
+          Math.max(rootRect.left + 1, rootRect.right - 16),
+        );
+        const y = Math.min(
+          rootRect.bottom - 1,
+          stickyLine + Math.min(firstRect.height / 2, 16),
+        );
+        const topElement = document.elementFromPoint(x, y);
+        const candidate = topElement?.closest<HTMLDivElement>(
+          '[data-auto-sticky-date-header="true"]',
+        );
+        if (candidate && entries.has(candidate)) activeHeader = candidate;
+      }
+
+      if (!activeHeader) {
+        for (const entry of entries.values()) {
+          const rect = entry.element.getBoundingClientRect();
+          if (rect.top <= stickyLine && rect.bottom > stickyLine) {
+            activeHeader = entry.element;
+          }
+        }
+      }
+    }
+
+    for (const entry of entries.values()) {
+      const nextSticky = entry.element === activeHeader;
+      if (entry.isSticky === nextSticky) continue;
+      entry.isSticky = nextSticky;
+      entry.setSticky(nextSticky);
+    }
+  };
+  const scheduleUpdate = () => {
+    if (frame !== null) return;
+    frame = window.requestAnimationFrame(update);
+  };
+  const dispose = () => {
+    scrollRoot.removeEventListener('scroll', scheduleUpdate);
+    window.removeEventListener('resize', scheduleUpdate);
+    if (frame !== null) window.cancelAnimationFrame(frame);
+  };
+
+  scrollRoot.addEventListener('scroll', scheduleUpdate, { passive: true });
+  window.addEventListener('resize', scheduleUpdate);
+  return { entries, scheduleUpdate, dispose };
+}
+
+function registerAutoStickyDateHeader(
+  scrollRoot: HTMLElement,
+  element: HTMLDivElement,
+  setSticky: (isSticky: boolean) => void,
+) {
+  let registry = autoStickyDateRegistries.get(scrollRoot);
+  if (!registry) {
+    registry = createAutoStickyDateRegistry(scrollRoot);
+    autoStickyDateRegistries.set(scrollRoot, registry);
+  }
+
+  registry.entries.set(element, { element, isSticky: false, setSticky });
+  registry.scheduleUpdate();
+  return () => {
+    registry?.entries.delete(element);
+    if (registry?.entries.size === 0) {
+      registry.dispose();
+      autoStickyDateRegistries.delete(scrollRoot);
+      return;
+    }
+    registry?.scheduleUpdate();
+  };
+}
+
 function useAutoStickyDateHeader(enabled: boolean) {
   const ref = useRef<HTMLDivElement>(null);
   const [isSticky, setIsSticky] = useState(false);
@@ -85,54 +196,7 @@ function useAutoStickyDateHeader(enabled: boolean) {
       return;
     }
 
-    let frame: number | null = null;
-    const update = () => {
-      frame = null;
-      const headerRect = header.getBoundingClientRect();
-      const rootRect = scrollRoot.getBoundingClientRect();
-      const computedTop = Number.parseFloat(
-        window.getComputedStyle(header).top,
-      );
-      const topOffset = Number.isFinite(computedTop) ? computedTop : 0;
-      const pinned =
-        scrollRoot.scrollTop > 0.5 &&
-        headerRect.top <= rootRect.top + topOffset + 1;
-
-      let isTopmostPinnedHeader = pinned;
-      if (pinned && typeof document.elementFromPoint === 'function') {
-        const x = Math.min(
-          rootRect.right - 1,
-          Math.max(rootRect.left + 1, headerRect.right - 16),
-        );
-        const y = Math.min(
-          rootRect.bottom - 1,
-          rootRect.top + topOffset + Math.min(headerRect.height / 2, 16),
-        );
-        const topElement = document.elementFromPoint(x, y);
-        if (topElement) {
-          isTopmostPinnedHeader =
-            topElement.closest('[data-transaction-history-date-header]') ===
-            header;
-        }
-      }
-
-      setIsSticky((current) =>
-        current === isTopmostPinnedHeader ? current : isTopmostPinnedHeader,
-      );
-    };
-    const scheduleUpdate = () => {
-      if (frame !== null) return;
-      frame = window.requestAnimationFrame(update);
-    };
-
-    update();
-    scrollRoot.addEventListener('scroll', scheduleUpdate, { passive: true });
-    window.addEventListener('resize', scheduleUpdate);
-    return () => {
-      scrollRoot.removeEventListener('scroll', scheduleUpdate);
-      window.removeEventListener('resize', scheduleUpdate);
-      if (frame !== null) window.cancelAnimationFrame(frame);
-    };
+    return registerAutoStickyDateHeader(scrollRoot, header, setIsSticky);
   }, [enabled]);
 
   return { ref, isSticky };
@@ -169,6 +233,7 @@ export function TransactionHistoryDateHeader({
       ref={autoSticky.ref}
       data-testid="transaction-history-date-header"
       data-transaction-history-date-header="true"
+      data-auto-sticky-date-header={mode === 'auto' ? 'true' : undefined}
       data-transaction-history-date-key={dateKey}
       data-sticky-state={isPinned ? 'pinned' : 'resting'}
       className={cn(
