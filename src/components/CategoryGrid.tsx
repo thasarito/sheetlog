@@ -6,8 +6,10 @@ import {
   SUGGESTED_CATEGORY_COLORS,
   SUGGESTED_CATEGORY_ICONS,
 } from "../lib/icons";
+import { triggerHapticFeedback } from "../lib/transactionHaptics";
 import type { CategoryItem, TransactionType } from "../lib/types";
 import { DynamicIcon } from "./DynamicIcon";
+import { HapticSelectionButton } from "./ui/HapticSelectionButton";
 
 const springTransition = { type: "spring", stiffness: 400, damping: 30 } as const;
 
@@ -57,12 +59,6 @@ function findTouch(touches: TouchList, identifier: number): Touch | undefined {
 
 function touchPosition(touch: Touch): GesturePosition {
   return { x: touch.clientX, y: touch.clientY };
-}
-
-function triggerHaptic() {
-  if ("vibrate" in navigator) {
-    navigator.vibrate(10);
-  }
 }
 
 interface CategoryButtonProps {
@@ -221,7 +217,7 @@ function CategoryButton({
         ) {
           pointerTarget.setPointerCapture(pointerId);
         }
-        triggerHaptic();
+        triggerHapticFeedback("impact");
         activate(categoryName, position);
       }, LONG_PRESS_THRESHOLD);
     },
@@ -525,13 +521,15 @@ function CategoryButton({
       clearClickResetTimer();
       return;
     }
+    triggerHapticFeedback("selection");
     onSelect(category.name);
   };
 
   return (
-    <button
+    <HapticSelectionButton
       ref={buttonRef}
       type="button"
+      changesValue
       className="grid aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
@@ -558,7 +556,7 @@ function CategoryButton({
           {category.name}
         </span>
       </span>
-    </button>
+    </HapticSelectionButton>
   );
 }
 
