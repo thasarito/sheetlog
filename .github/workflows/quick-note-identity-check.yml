@@ -1,6 +1,9 @@
 name: Quick Note identity verification
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - feat/quick-note-identity-row
