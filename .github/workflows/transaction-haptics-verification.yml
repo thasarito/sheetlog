@@ -4,12 +4,15 @@ on:
   push:
     branches:
       - feature/transaction-flow-semantic-haptics
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: transaction-haptics-${{ github.ref }}
+  group: transaction-haptics-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
