@@ -37,10 +37,13 @@ describe('Quick Note vendored brand icons', () => {
     const bts = readVendoredAsset('bts.svg');
     const mFlow = readVendoredAsset('m-flow.svg');
     const grab = readVendoredAsset('grab.svg');
+    const ais = readVendoredAsset('ais.svg');
+    const ptt = readVendoredAsset('ptt.svg');
     const uob = readVendoredAsset('uob.svg');
     const applePay = readVendoredAsset('apple-pay.svg');
     const promptPay = readVendoredAsset('promptpay.svg');
     const aws = readVendoredAsset('aws.svg');
+    const figma = readVendoredAsset('figma.svg');
 
     expect(bts).toContain('#005b96');
     expect(bts).toContain('#c81518');
@@ -53,6 +56,14 @@ describe('Quick Note vendored brand icons', () => {
     expect(grab).toContain('#00b14f');
     expect(grab).toContain('fill="#fff"');
     expect(grab).toContain('<rect');
+
+    expect(ais).toContain('#a6a8aa');
+    expect(ais).toContain('#333991');
+    expect(ais).not.toContain('<text');
+
+    expect(ptt).toContain('#00aeef');
+    expect(ptt).toContain('#1b1464');
+    expect(ptt).toContain('#ed1d24');
 
     expect(uob).toContain('#e1091d');
     expect(uob).toContain('#002469');
@@ -67,6 +78,10 @@ describe('Quick Note vendored brand icons', () => {
 
     expect(aws).toContain('M180.4 203');
     expect(aws).not.toContain('<text');
+
+    expect(figma).toContain('M64 384');
+    expect(figma).toContain('#1ABCFE');
+    expect(figma).not.toContain('<circle');
   });
 
   it('renders a local asset after it loads', () => {
