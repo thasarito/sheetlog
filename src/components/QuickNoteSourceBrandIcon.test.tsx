@@ -1,0 +1,72 @@
+import { fireEvent, render } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { QUICK_NOTE_BRANDS } from '../lib/quickNoteBrands';
+import { DynamicIcon } from './DynamicIcon';
+import {
+  getQuickNoteSourceBrandUrl,
+  QUICK_NOTE_SOURCE_BRANDS,
+} from './QuickNoteSourceBrandIcon';
+
+describe('Quick Note vendored brand icons', () => {
+  it('maps every curated brand to a repository-local asset', () => {
+    expect(Object.keys(QUICK_NOTE_SOURCE_BRANDS)).toEqual(
+      QUICK_NOTE_BRANDS.map((brand) => brand.name),
+    );
+
+    for (const brand of QUICK_NOTE_BRANDS) {
+      const asset = QUICK_NOTE_SOURCE_BRANDS[brand.name];
+      const url = getQuickNoteSourceBrandUrl(brand.name);
+
+      expect(asset.file).toBe(`${brand.slug}.svg`);
+      expect(url).toMatch(/quick-note-brands\/.+\.svg$/);
+      expect(url).not.toMatch(/^https?:\/\//);
+      expect(asset.scale).toBeGreaterThan(0);
+      expect(asset.scale).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('renders a local asset after it loads', () => {
+    const { container } = render(
+      <DynamicIcon name="brand:grab" className="h-6 w-6" />,
+    );
+    const wrapper = container.querySelector(
+      '[data-quick-note-brand="grab"]',
+    );
+    const image = wrapper?.querySelector('img');
+
+    expect(wrapper).toHaveAttribute('data-quick-note-brand-source', 'vendored');
+    expect(wrapper).toHaveAttribute('data-source-status', 'loading');
+    expect(wrapper?.querySelector('svg')).toBeInTheDocument();
+    expect(image?.getAttribute('src')).toMatch(
+      /quick-note-brands\/grab\.svg$/,
+    );
+
+    if (!image) throw new Error('Expected vendored brand image');
+    fireEvent.load(image);
+
+    expect(wrapper).toHaveAttribute('data-source-status', 'loaded');
+    expect(wrapper?.querySelector('svg')).not.toBeInTheDocument();
+    expect(image).toHaveStyle({
+      objectFit: 'contain',
+      opacity: '1',
+      transform: 'scale(1)',
+    });
+  });
+
+  it('keeps the compact fallback when a local asset cannot load', () => {
+    const { container } = render(
+      <DynamicIcon name="brand:jetts" className="h-6 w-6" />,
+    );
+    const wrapper = container.querySelector(
+      '[data-quick-note-brand="jetts"]',
+    );
+    const image = wrapper?.querySelector('img');
+
+    if (!image) throw new Error('Expected vendored brand image');
+    fireEvent.error(image);
+
+    expect(wrapper).toHaveAttribute('data-source-status', 'failed');
+    expect(wrapper?.querySelector('img')).not.toBeInTheDocument();
+    expect(wrapper?.querySelector('svg')).toBeInTheDocument();
+  });
+});

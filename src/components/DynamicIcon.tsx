@@ -2,6 +2,10 @@ import type React from 'react';
 import { DEFAULT_ACCOUNT_ICON, ICON_MAP, type IconName } from '../lib/icons';
 import { isQuickNoteBrandName } from '../lib/quickNoteBrands';
 import { QuickNoteBrandIcon } from './QuickNoteBrandIcon';
+import {
+  isQuickNoteSourceBrandName,
+  QuickNoteSourceBrandIcon,
+} from './QuickNoteSourceBrandIcon';
 
 export type DynamicIconProps = {
   name: string | undefined;
@@ -18,6 +22,16 @@ export function DynamicIcon({
 }: DynamicIconProps) {
   const resolvedName = name || fallback;
 
+  if (isQuickNoteSourceBrandName(resolvedName)) {
+    return (
+      <QuickNoteSourceBrandIcon
+        name={resolvedName}
+        className={className}
+        style={style}
+      />
+    );
+  }
+
   if (isQuickNoteBrandName(resolvedName)) {
     return (
       <QuickNoteBrandIcon
@@ -30,6 +44,16 @@ export function DynamicIcon({
 
   const Icon = ICON_MAP[resolvedName as IconName];
   if (Icon) return <Icon className={className} style={style} />;
+
+  if (isQuickNoteSourceBrandName(fallback)) {
+    return (
+      <QuickNoteSourceBrandIcon
+        name={fallback}
+        className={className}
+        style={style}
+      />
+    );
+  }
 
   if (isQuickNoteBrandName(fallback)) {
     return (
