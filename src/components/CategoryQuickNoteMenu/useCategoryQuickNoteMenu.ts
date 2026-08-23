@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { triggerHapticFeedback } from '../../lib/transactionHaptics';
 import type { QuickNote } from '../../lib/types';
 
 export type CategoryQuickNoteMenuPoint = { x: number; y: number };
@@ -179,17 +178,6 @@ function resolveActiveTarget(
   return resolveDomTarget(position);
 }
 
-function activeTargetsEqual(first: ActiveTarget, second: ActiveTarget): boolean {
-  if (first === null || second === null) return first === second;
-  if (first.type !== second.type) return false;
-  if (first.type === 'category') return true;
-  return (
-    second.type === 'note' &&
-    first.source === second.source &&
-    first.id === second.id
-  );
-}
-
 export function useCategoryQuickNoteMenu(
   options: UseCategoryQuickNoteMenuOptions,
 ): {
@@ -286,12 +274,6 @@ export function useCategoryQuickNoteMenu(
           previous.anchor,
           activeTarget?.type === 'category',
         );
-        if (
-          activeTarget !== null &&
-          !activeTargetsEqual(activeTarget, previous.activeTarget)
-        ) {
-          triggerHapticFeedback('selection');
-        }
         return {
           ...candidate,
           dragPosition: position,
@@ -347,7 +329,6 @@ export function useCategoryQuickNoteMenu(
       const note = notes.find((candidate) => candidate.id === id);
       if (!note) return;
       const category = current.category;
-      triggerHapticFeedback('selection');
       close(false);
       optionsRef.current.onSelectNote(note, category);
     },
@@ -357,7 +338,6 @@ export function useCategoryQuickNoteMenu(
   const handleUseCategory = useCallback(() => {
     const category = stateRef.current?.category;
     if (!category) return;
-    triggerHapticFeedback('selection');
     close(false);
     optionsRef.current.onUseCategory(category);
   }, [close]);

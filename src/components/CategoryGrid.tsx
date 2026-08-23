@@ -6,10 +6,8 @@ import {
   SUGGESTED_CATEGORY_COLORS,
   SUGGESTED_CATEGORY_ICONS,
 } from "../lib/icons";
-import { triggerHapticFeedback } from "../lib/transactionHaptics";
 import type { CategoryItem, TransactionType } from "../lib/types";
 import { DynamicIcon } from "./DynamicIcon";
-import { HapticSelectionButton } from "./ui/HapticSelectionButton";
 
 const springTransition = { type: "spring", stiffness: 400, damping: 30 } as const;
 
@@ -198,7 +196,6 @@ function CategoryButton({
         ) {
           pointerTarget.setPointerCapture(pointerId);
         }
-        triggerHapticFeedback("impact");
         activate(categoryName, position);
       }, LONG_PRESS_THRESHOLD);
     },
@@ -500,15 +497,13 @@ function CategoryButton({
 
   const handleClick = () => {
     if (wasLongPressRef.current) return;
-    triggerHapticFeedback("selection");
     onSelect(category.name);
   };
 
   return (
-    <HapticSelectionButton
+    <button
       ref={buttonRef}
       type="button"
-      changesValue
       className="grid aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onClick={handleClick}
       onKeyDown={handleKeyDown}
@@ -536,7 +531,7 @@ function CategoryButton({
           {category.name}
         </span>
       </span>
-    </HapticSelectionButton>
+    </button>
   );
 }
 
