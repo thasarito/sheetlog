@@ -34,4 +34,4 @@ The vendored files are normalized, Sheetlog-ready SVG snapshots. Their compact i
 
 The BTS, Apple Pay, UOB, and PromptPay files retain source vector geometry rather than the compact fallback drawings. Grab retains the Simple Icons wordmark geometry but adds a green square treatment so it remains legible at Quick Note sizes. M-Flow is a compact vector trace of the current official application icon because no first-party downloadable SVG was available.
 
-Simple Icons source files are released under CC0-1.0. The OpenAI path is adapted from Font Awesome Free under CC BY 4.0. Other entries retain the licensing and trademark terms of their upstream providers.
+Simple Icons source files are released under CC0-1.0. The OpenAI and AWS paths from Font Awesome Free are available under CC BY 4.0. Other entries retain the licensing and trademark terms of their upstream providers.
