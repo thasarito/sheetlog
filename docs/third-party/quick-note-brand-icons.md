@@ -8,9 +8,9 @@ The vendored files are normalized, Sheetlog-ready SVG snapshots. Their compact i
 | --- | --- | --- |
 | `brand:grab` | `public/quick-note-brands/grab.svg` | Simple Icons — Grab geometry, normalized on the official green tile |
 | `brand:chatgpt` | `public/quick-note-brands/chatgpt.svg` | Font Awesome — OpenAI |
-| `brand:pea` | `public/quick-note-brands/pea.svg` | Wikimedia Commons — PEA |
+| `brand:pea` | `public/quick-note-brands/pea.svg` | Source-derived compact trace of the official PEA emblem |
 | `brand:spotify` | `public/quick-note-brands/spotify.svg` | Simple Icons — Spotify |
-| `brand:7-eleven` | `public/quick-note-brands/7-eleven.svg` | Wikimedia Commons — 7-Eleven |
+| `brand:7-eleven` | `public/quick-note-brands/7-eleven.svg` | Public 7-Eleven source vector geometry |
 | `brand:bts` | `public/quick-note-brands/bts.svg` | Wikimedia Commons — Bangkok Mass Transit System source geometry |
 | `brand:m-flow` | `public/quick-note-brands/m-flow.svg` | Source-derived compact trace of the current official MFlowThai application icon |
 | `brand:ais` | `public/quick-note-brands/ais.svg` | Public AIS vector source geometry |
@@ -32,6 +32,6 @@ The vendored files are normalized, Sheetlog-ready SVG snapshots. Their compact i
 | `brand:jetts` | `public/quick-note-brands/jetts.svg` | Supplied Jetts source reference |
 | `brand:rbsc` | `public/quick-note-brands/rbsc.svg` | Supplied RBSC application icon reference |
 
-The BTS, AIS, PTT, Apple Pay, UOB, AWS, Figma, and PromptPay files retain source vector geometry rather than the compact fallback drawings. Grab retains the Simple Icons wordmark geometry but adds a green square treatment so it remains legible at Quick Note sizes. M-Flow is a compact vector trace of the current official application icon because no first-party downloadable SVG was available.
+The BTS, 7-Eleven, AIS, PTT, Apple Pay, UOB, AWS, Figma, and PromptPay files retain source vector geometry rather than the compact fallback drawings. Grab retains the Simple Icons wordmark geometry but adds a green square treatment so it remains legible at Quick Note sizes. PEA and M-Flow use compact source-derived traces where a suitable first-party downloadable SVG was not available.
 
 Simple Icons source files are released under CC0-1.0. The OpenAI and AWS paths from Font Awesome Free are available under CC BY 4.0. Other entries retain the licensing and trademark terms of their upstream providers.
