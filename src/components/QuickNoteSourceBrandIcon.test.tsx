@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { QUICK_NOTE_BRANDS } from '../lib/quickNoteBrands';
@@ -6,6 +7,13 @@ import {
   getQuickNoteSourceBrandUrl,
   QUICK_NOTE_SOURCE_BRANDS,
 } from './QuickNoteSourceBrandIcon';
+
+function readVendoredAsset(file: string): string {
+  return readFileSync(
+    new URL(`../../public/quick-note-brands/${file}`, import.meta.url),
+    'utf8',
+  );
+}
 
 describe('Quick Note vendored brand icons', () => {
   it('maps every curated brand to a repository-local asset', () => {
@@ -23,6 +31,38 @@ describe('Quick Note vendored brand icons', () => {
       expect(asset.scale).toBeGreaterThan(0);
       expect(asset.scale).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('vendors source-derived artwork instead of compact fallback copies', () => {
+    const bts = readVendoredAsset('bts.svg');
+    const mFlow = readVendoredAsset('m-flow.svg');
+    const grab = readVendoredAsset('grab.svg');
+    const uob = readVendoredAsset('uob.svg');
+    const applePay = readVendoredAsset('apple-pay.svg');
+    const promptPay = readVendoredAsset('promptpay.svg');
+
+    expect(bts).toContain('#005b96');
+    expect(bts).toContain('#c81518');
+    expect(bts).not.toContain('<circle');
+
+    expect(mFlow).toContain('#003b7a');
+    expect(mFlow).toContain('#f0442e');
+    expect(mFlow).not.toContain('#D5007F');
+
+    expect(grab).toContain('#00b14f');
+    expect(grab).toContain('fill="#fff"');
+    expect(grab).toContain('<rect');
+
+    expect(uob).toContain('#e1091d');
+    expect(uob).toContain('#002469');
+    expect(uob).not.toContain('<text');
+
+    expect(applePay).toContain('M2.15 4.318');
+    expect(applePay).not.toContain('<text');
+
+    expect(promptPay).toContain('#00A796');
+    expect(promptPay).toContain('M127 75');
+    expect(promptPay).not.toContain('<circle');
   });
 
   it('renders a local asset after it loads', () => {
