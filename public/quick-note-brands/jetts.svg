@@ -1,1 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect fill="#E31837" height="22" rx="5" width="22" x="1" y="1"></rect><text dominant-baseline="middle" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="14" font-weight="800" text-anchor="middle" x="12" y="12.5">J</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#ed1234"/>
+  <text x="12" y="11.5" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="8.2" font-style="italic" font-weight="900" letter-spacing="-.7" text-anchor="middle">jetts</text>
+  <text x="12" y="15.9" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="3.3" font-style="italic" font-weight="700" letter-spacing="-.12" text-anchor="middle">24 hour fitness</text>
+</svg>
