@@ -1,1 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" fill="#006B54" r="11"></circle><path d="M7 8h10l-1 3H8L7 8zm2-2 1.5 2L12 5l1.5 3L15 6l2 2H7l2-2z" fill="#D4AF37"></path><text fill="#FFFFFF" font-size="5.3" font-weight="800" text-anchor="middle" x="12" y="16.7">RBSC</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#fff"/>
+  <g font-family="Georgia, 'Times New Roman', serif" font-weight="700" text-anchor="middle">
+    <text x="7.4" y="15.8" fill="#214f9a" font-size="13">R</text>
+    <text x="11.7" y="17.2" fill="#d8ad16" font-size="14">B</text>
+    <text x="13.3" y="13.5" fill="#214f9a" font-size="13" transform="rotate(-8 13.3 13.5)">S</text>
+    <text x="17.1" y="15.7" fill="#214f9a" font-size="12">C</text>
+  </g>
+</svg>
