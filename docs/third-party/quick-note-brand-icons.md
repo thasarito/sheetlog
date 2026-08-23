@@ -24,7 +24,7 @@ The vendored files are normalized, Sheetlog-ready SVG snapshots. Their compact i
 | `brand:apple-pay` | `public/quick-note-brands/apple-pay.svg` | Simple Icons — Apple Pay source geometry |
 | `brand:icloud` | `public/quick-note-brands/icloud.svg` | Simple Icons — iCloud |
 | `brand:apple` | `public/quick-note-brands/apple.svg` | Simple Icons — Apple |
-| `brand:aws` | `public/quick-note-brands/aws.svg` | Simple Icons — AWS |
+| `brand:aws` | `public/quick-note-brands/aws.svg` | Font Awesome — AWS source geometry, normalized on the official dark tile |
 | `brand:figma` | `public/quick-note-brands/figma.svg` | Wikimedia Commons — Figma |
 | `brand:steam` | `public/quick-note-brands/steam.svg` | Simple Icons — Steam |
 | `brand:starbucks` | `public/quick-note-brands/starbucks.svg` | Simple Icons — Starbucks |
@@ -32,6 +32,6 @@ The vendored files are normalized, Sheetlog-ready SVG snapshots. Their compact i
 | `brand:jetts` | `public/quick-note-brands/jetts.svg` | Supplied Jetts source reference |
 | `brand:rbsc` | `public/quick-note-brands/rbsc.svg` | Supplied RBSC application icon reference |
 
-The BTS, Apple Pay, UOB, and PromptPay files retain source vector geometry rather than the compact fallback drawings. Grab retains the Simple Icons wordmark geometry but adds a green square treatment so it remains legible at Quick Note sizes. M-Flow is a compact vector trace of the current official application icon because no first-party downloadable SVG was available.
+The BTS, Apple Pay, UOB, AWS, and PromptPay files retain source vector geometry rather than the compact fallback drawings. Grab retains the Simple Icons wordmark geometry but adds a green square treatment so it remains legible at Quick Note sizes. M-Flow is a compact vector trace of the current official application icon because no first-party downloadable SVG was available.
 
 Simple Icons source files are released under CC0-1.0. The OpenAI and AWS paths from Font Awesome Free are available under CC BY 4.0. Other entries retain the licensing and trademark terms of their upstream providers.
