@@ -47,7 +47,6 @@ function resolveCategoryColor(
 
 const LONG_PRESS_THRESHOLD = 400;
 const MOVEMENT_TOLERANCE = 10;
-const LONG_PRESS_CLICK_SUPPRESSION_MS = 1000;
 
 type GesturePosition = { x: number; y: number };
 type GestureOwner = "touch" | "pointer" | null;
@@ -87,7 +86,6 @@ function CategoryButton({
   const [isHovered, setIsHovered] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clickResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
   const wasLongPressRef = useRef(false);
   const isCancelledTouchRef = useRef(false);
@@ -118,26 +116,11 @@ function CategoryButton({
     }
   }, []);
 
-  const clearClickResetTimer = useCallback(() => {
-    if (clickResetTimerRef.current) {
-      clearTimeout(clickResetTimerRef.current);
-      clickResetTimerRef.current = null;
-    }
-  }, []);
-
   const removeTouchListeners = useCallback(() => {
     const remove = removeTouchListenersRef.current;
     removeTouchListenersRef.current = null;
     remove?.();
   }, []);
-
-  const scheduleClickReset = useCallback(() => {
-    clearClickResetTimer();
-    clickResetTimerRef.current = setTimeout(() => {
-      wasLongPressRef.current = false;
-      clickResetTimerRef.current = null;
-    }, LONG_PRESS_CLICK_SUPPRESSION_MS);
-  }, [clearClickResetTimer]);
 
   const finishGesture = useCallback(
     (outcome: GestureOutcome, position?: GesturePosition) => {
@@ -155,14 +138,13 @@ function CategoryButton({
 
       if (!wasActive) return;
 
-      scheduleClickReset();
       if (outcome === "release" && position) {
         release?.(position);
       } else if (outcome === "cancel") {
         cancel?.();
       }
     },
-    [clearTimer, removeTouchListeners, scheduleClickReset],
+    [clearTimer, removeTouchListeners],
   );
 
   const cancelTouchUntilTerminal = useCallback(() => {
@@ -187,7 +169,6 @@ function CategoryButton({
       pointerId?: number,
     ) => {
       clearTimer();
-      clearClickResetTimer();
       wasLongPressRef.current = false;
       isLongPressRef.current = false;
       isCancelledTouchRef.current = false;
@@ -221,7 +202,7 @@ function CategoryButton({
         activate(categoryName, position);
       }, LONG_PRESS_THRESHOLD);
     },
-    [clearClickResetTimer, clearTimer, finishGesture],
+    [clearTimer, finishGesture],
   );
 
   useEffect(() => {
@@ -253,7 +234,6 @@ function CategoryButton({
           terminalEvent.preventDefault();
         }
         finishGesture("abandon");
-        if (shouldSuppressClick) scheduleClickReset();
       };
 
       const handleDocumentTouchStart = (touchEvent: TouchEvent) => {
@@ -397,7 +377,6 @@ function CategoryButton({
       }
 
       clearTimer();
-      clearClickResetTimer();
       removeTouchListeners();
       isLongPressRef.current = false;
       wasLongPressRef.current = false;
@@ -412,11 +391,9 @@ function CategoryButton({
   }, [
     beginLongPress,
     cancelTouchUntilTerminal,
-    clearClickResetTimer,
     clearTimer,
     finishGesture,
     removeTouchListeners,
-    scheduleClickReset,
   ]);
 
   const handlePointerDown = (
@@ -515,12 +492,14 @@ function CategoryButton({
     finishGesture("abandon");
   };
 
-  const handleClick = () => {
-    if (wasLongPressRef.current) {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
       wasLongPressRef.current = false;
-      clearClickResetTimer();
-      return;
     }
+  };
+
+  const handleClick = () => {
+    if (wasLongPressRef.current) return;
     triggerHapticFeedback("selection");
     onSelect(category.name);
   };
@@ -532,6 +511,7 @@ function CategoryButton({
       changesValue
       className="grid aspect-square min-w-0 grid-rows-2 overflow-hidden rounded-2xl border border-transparent bg-surface-2 p-0 text-center transition [touch-action:pan-x_pan-y] select-none hover:border-primary/50 focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
