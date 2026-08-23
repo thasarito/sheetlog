@@ -9,7 +9,6 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { DynamicIcon } from '../DynamicIcon';
 import { QuickNoteIcon } from '../QuickNoteIcon';
 import { HapticSelectionButton } from '../ui/HapticSelectionButton';
 import type {
@@ -55,19 +54,12 @@ function clamp(value: number, minimum: number, maximum: number): number {
 }
 
 function estimateCardHeight(state: CategoryQuickNoteMenuState): number {
-  const toplineHeight = 32;
-  const headerHeight = 58;
   const customHeight = state.customNotes.length * 46;
   const defaultHeight = state.defaultNotes.length > 0 ? 66 : 0;
-  const dividerHeight =
-    Number(state.customNotes.length > 0) + Number(state.defaultNotes.length > 0);
-  return (
-    toplineHeight +
-    headerHeight +
-    customHeight +
-    defaultHeight +
-    dividerHeight
+  const dividerHeight = Number(
+    state.customNotes.length > 0 && state.defaultNotes.length > 0,
   );
+  return customHeight + defaultHeight + dividerHeight;
 }
 
 function resolveMenuPosition(
@@ -154,7 +146,6 @@ export function CategoryQuickNoteMenu({
   state,
   onDismiss,
   onSelectNote,
-  onUseCategory,
 }: CategoryQuickNoteMenuProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useReducedMotion() ?? false;
@@ -227,7 +218,6 @@ export function CategoryQuickNoteMenu({
       : null;
   const activeNote =
     state?.activeTarget?.type === 'note' ? state.activeTarget : null;
-  const categorySelected = state?.activeTarget?.type === 'category';
 
   const layer =
     state && position && tether ? (
@@ -297,37 +287,9 @@ export function CategoryQuickNoteMenu({
           }
           onContextMenu={(event) => event.preventDefault()}
         >
-          <div className="category-menu-topline flex min-h-8 items-center gap-2 border-b border-border/50 px-3 text-[10px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">
-            <span className="category-menu-topline-dot h-1.5 w-1.5 rounded-full" />
-            <span>Quick actions</span>
-          </div>
-
-          <HapticSelectionButton
-            type="button"
-            changesValue
-            data-category-menu-autofocus
-            data-active={categorySelected ? 'true' : 'false'}
-            aria-label={`Use ${state.presentation.label} category`}
-            className="category-menu-header relative flex min-h-[3.625rem] w-full items-center gap-3 border-0 bg-transparent px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-ring"
-            onClick={onUseCategory}
-          >
-            <span className="category-menu-header-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <DynamicIcon
-                name={state.presentation.icon}
-                className="h-[18px] w-[18px]"
-              />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-              {state.presentation.label}
-            </span>
-            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">
-              Use category
-            </span>
-          </HapticSelectionButton>
-
           {state.customNotes.length > 0 ? (
-            <div className="category-menu-custom-list border-t border-border/50 px-2 py-1">
-              {state.customNotes.map((note) => {
+            <div className="category-menu-custom-list px-2 py-1">
+              {state.customNotes.map((note, index) => {
                 const selected =
                   activeNote?.source === 'custom' && activeNote.id === note.id;
                 const color = note.color ?? state.presentation.color;
@@ -336,6 +298,9 @@ export function CategoryQuickNoteMenu({
                     key={`custom:${note.id}`}
                     type="button"
                     changesValue
+                    data-category-menu-autofocus={
+                      index === 0 ? 'true' : undefined
+                    }
                     data-category-menu-row="custom"
                     data-active={selected ? 'true' : 'false'}
                     data-category-quick-note-source="custom"
@@ -367,12 +332,16 @@ export function CategoryQuickNoteMenu({
 
           {state.defaultNotes.length > 0 ? (
             <div
-              className="category-menu-default-dock grid gap-1 border-t border-border/50 px-2 pb-2 pt-1.5"
+              className={`category-menu-default-dock grid gap-1 px-2 pb-2 pt-1.5 ${
+                state.customNotes.length > 0
+                  ? 'border-t border-border/50'
+                  : ''
+              }`}
               style={{
                 gridTemplateColumns: `repeat(${state.defaultNotes.length}, minmax(0, 1fr))`,
               }}
             >
-              {state.defaultNotes.map((note) => {
+              {state.defaultNotes.map((note, index) => {
                 const selected =
                   activeNote?.source === 'default' && activeNote.id === note.id;
                 const color = note.color ?? state.presentation.color;
@@ -381,6 +350,11 @@ export function CategoryQuickNoteMenu({
                     key={`default:${note.id}`}
                     type="button"
                     changesValue
+                    data-category-menu-autofocus={
+                      state.customNotes.length === 0 && index === 0
+                        ? 'true'
+                        : undefined
+                    }
                     data-category-menu-default-action="true"
                     data-active={selected ? 'true' : 'false'}
                     data-category-quick-note-source="default"
