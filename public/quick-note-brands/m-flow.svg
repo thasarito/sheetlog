@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect fill="#D5007F" height="22" rx="5" width="22" x="1" y="1"></rect><text dominant-baseline="middle" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="13" font-weight="800" text-anchor="middle" x="12" y="12.5">M</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#fff"/>
+  <path fill="#003b7a" d="M4.1 15.8 7.45 7.7h3.2L7.3 15.8H4.1zm4.65 0 3.35-8.1h3.2l-3.35 8.1h-3.2zm4.55 0 3.35-8.1h3.15l-3.35 8.1H13.3z"/>
+  <path fill="#003b7a" d="m13.15 15.8 2.82-6.8h5.93l-.88 2.08h-2.94l-.42 1.02h2.62l-.84 2h-2.61l-.71 1.7h-2.97z"/>
+  <path fill="#f0442e" d="M7.38 5.65h8.83l.86 2.05H6.54l.84-2.05zm9.46 1.28h6.05l-.86 2.07h-6.06l.87-2.07z"/>
+</svg>
