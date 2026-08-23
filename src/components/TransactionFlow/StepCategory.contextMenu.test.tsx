@@ -110,6 +110,8 @@ beforeEach(() => {
       { id: 'custom-3', icon: 'Soup', label: 'Custom three', note: 'custom three' },
       { id: 'custom-4', icon: 'Sandwich', label: 'Custom four', note: 'custom four' },
       { id: 'custom-5', icon: 'Cake', label: 'Custom five', note: 'custom five' },
+      { id: 'custom-6', icon: 'Star', label: 'Custom six', note: 'custom six' },
+      { id: 'custom-7', icon: 'Heart', label: 'Custom seven', note: 'custom seven' },
     ],
     'default:expense': [
       { id: 'default-1', icon: 'House', label: 'Default one', note: 'default one' },
@@ -126,7 +128,7 @@ afterEach(() => {
 });
 
 describe('StepCategory drag-only context menu', () => {
-  it('shows four ordered custom notes and four type defaults while held', async () => {
+  it('shows six ordered custom notes and four type defaults while held', async () => {
     render(<Harness />);
     const tile = prepareTile();
     await beginFoodLongPress(tile);
@@ -134,15 +136,23 @@ describe('StepCategory drag-only context menu', () => {
 
     expect(tile).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('form-category')).toHaveTextContent('empty');
+    expect(within(dialog).queryByText('Quick actions')).not.toBeInTheDocument();
     expect(
-      within(dialog).getByRole('button', { name: 'Use Food category' }),
-    ).toBeInTheDocument();
+      within(dialog).queryByRole('button', { name: 'Use Food category' }),
+    ).not.toBeInTheDocument();
 
-    for (const label of ['Custom one', 'Custom two', 'Custom three', 'Custom four']) {
+    for (const label of [
+      'Custom one',
+      'Custom two',
+      'Custom three',
+      'Custom four',
+      'Custom five',
+      'Custom six',
+    ]) {
       expect(within(dialog).getByRole('button', { name: label })).toBeInTheDocument();
     }
     expect(
-      within(dialog).queryByRole('button', { name: 'Custom five' }),
+      within(dialog).queryByRole('button', { name: 'Custom seven' }),
     ).not.toBeInTheDocument();
 
     for (const label of ['Default one', 'Default two', 'Default three', 'Default four']) {
@@ -242,7 +252,7 @@ describe('StepCategory drag-only context menu', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows only the category header and defaults when there are no custom notes', async () => {
+  it('shows defaults directly when there are no category notes', async () => {
     quickNotesMock.config = {
       'default:expense': quickNotesMock.config['default:expense'],
     };
@@ -253,6 +263,9 @@ describe('StepCategory drag-only context menu', () => {
 
     expect(
       within(dialog).queryByRole('button', { name: 'Custom one' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Use Food category' }),
     ).not.toBeInTheDocument();
     expect(
       within(dialog).getByRole('button', { name: 'Default one' }),
