@@ -37,13 +37,22 @@ describe('Quick Note vendored brand icons', () => {
     const bts = readVendoredAsset('bts.svg');
     const mFlow = readVendoredAsset('m-flow.svg');
     const grab = readVendoredAsset('grab.svg');
+    const pea = readVendoredAsset('pea.svg');
+    const sevenEleven = readVendoredAsset('7-eleven.svg');
     const ais = readVendoredAsset('ais.svg');
     const ptt = readVendoredAsset('ptt.svg');
+    const tops = readVendoredAsset('tops.svg');
+    const lotus = readVendoredAsset('lotus.svg');
+    const bigC = readVendoredAsset('big-c.svg');
     const uob = readVendoredAsset('uob.svg');
     const applePay = readVendoredAsset('apple-pay.svg');
     const promptPay = readVendoredAsset('promptpay.svg');
     const aws = readVendoredAsset('aws.svg');
     const figma = readVendoredAsset('figma.svg');
+    const starbucks = readVendoredAsset('starbucks.svg');
+    const cafeAmazon = readVendoredAsset('cafe-amazon.svg');
+    const jetts = readVendoredAsset('jetts.svg');
+    const rbsc = readVendoredAsset('rbsc.svg');
 
     expect(bts).toContain('#005b96');
     expect(bts).toContain('#c81518');
@@ -57,6 +66,15 @@ describe('Quick Note vendored brand icons', () => {
     expect(grab).toContain('fill="#fff"');
     expect(grab).toContain('<rect');
 
+    expect(pea).toContain('#6a2c91');
+    expect(pea).toContain('#b58e00');
+    expect(pea).not.toContain('>PEA<');
+
+    expect(sevenEleven).toContain('#577884');
+    expect(sevenEleven).toContain('#bb3c44');
+    expect(sevenEleven).toContain('#d6983b');
+    expect(sevenEleven).not.toContain('<text');
+
     expect(ais).toContain('#a6a8aa');
     expect(ais).toContain('#333991');
     expect(ais).not.toContain('<text');
@@ -64,6 +82,17 @@ describe('Quick Note vendored brand icons', () => {
     expect(ptt).toContain('#00aeef');
     expect(ptt).toContain('#1b1464');
     expect(ptt).toContain('#ed1d24');
+
+    expect(tops).toContain('#ff3b20');
+    expect(tops).not.toContain('>t<');
+
+    expect(lotus).toContain('#00b9b5');
+    expect(lotus).toContain('#ffd200');
+    expect(lotus).not.toContain('>L<');
+
+    expect(bigC).toContain('#8bd600');
+    expect(bigC).toContain('#ed1b2e');
+    expect(bigC).not.toContain('>C<');
 
     expect(uob).toContain('#e1091d');
     expect(uob).toContain('#002469');
@@ -82,6 +111,20 @@ describe('Quick Note vendored brand icons', () => {
     expect(figma).toContain('M64 384');
     expect(figma).toContain('#1ABCFE');
     expect(figma).not.toContain('<circle');
+
+    expect(starbucks).toContain('M9 10.15');
+    expect(starbucks).not.toContain('m12 6.5 1.4 3');
+
+    expect(cafeAmazon).toContain('#092f1f');
+    expect(cafeAmazon).toContain('#f7b719');
+    expect(cafeAmazon).not.toContain('M6 16 12 5');
+
+    expect(jetts).toContain('24 hour fitness');
+    expect(jetts).not.toContain('>J<');
+
+    expect(rbsc).toContain('#214f9a');
+    expect(rbsc).toContain('#d8ad16');
+    expect(rbsc).not.toContain('>RBSC<');
   });
 
   it('renders a local asset after it loads', () => {
