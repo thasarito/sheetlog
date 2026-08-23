@@ -75,6 +75,30 @@ function renderMenu(state = createState()) {
 }
 
 describe('CategoryQuickNoteMenu tethered presentation', () => {
+  it('starts directly with Quick Notes and focuses the first available action', () => {
+    renderMenu();
+
+    const dialog = screen.getByRole('dialog', { name: 'Food quick notes' });
+    expect(within(dialog).queryByText('Quick actions')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Use Food category' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: 'Custom one' }),
+    ).toHaveAttribute('data-category-menu-autofocus', 'true');
+  });
+
+  it('focuses the first default note when there are no category notes', () => {
+    const state = createState();
+    state.customNotes = [];
+    renderMenu(state);
+
+    const dialog = screen.getByRole('dialog', { name: 'Food quick notes' });
+    expect(
+      within(dialog).getByRole('button', { name: 'Default one' }),
+    ).toHaveAttribute('data-category-menu-autofocus', 'true');
+  });
+
   it('uses a curved tether instead of an arrow tip and keeps action surfaces neutral', () => {
     renderMenu();
 
