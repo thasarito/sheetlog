@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { QuickNoteBrandIcon } from './QuickNoteBrandIcon';
 
 const QUICK_NOTE_SOURCE_BRANDS = {
@@ -15,6 +15,7 @@ const QUICK_NOTE_SOURCE_BRANDS = {
 } as const;
 
 export type QuickNoteSourceBrandName = keyof typeof QUICK_NOTE_SOURCE_BRANDS;
+type SourceStatus = 'loading' | 'loaded' | 'failed';
 
 type QuickNoteSourceBrandIconProps = {
   name: string | undefined;
@@ -36,19 +37,21 @@ export function QuickNoteSourceBrandIcon({
   className,
   style,
 }: QuickNoteSourceBrandIconProps) {
-  const [failed, setFailed] = useState(false);
+  const [sourceState, setSourceState] = useState<{
+    name: string | undefined;
+    status: SourceStatus;
+  }>({ name, status: 'loading' });
 
-  useEffect(() => setFailed(false), [name]);
-
-  if (!isQuickNoteSourceBrandName(name) || failed) {
+  if (!isQuickNoteSourceBrandName(name)) {
     return (
       <QuickNoteBrandIcon name={name} className={className} style={style} />
     );
   }
 
   const asset = QUICK_NOTE_SOURCE_BRANDS[name];
+  const status = sourceState.name === name ? sourceState.status : 'loading';
   const wrapperClassName = [
-    'inline-flex shrink-0 items-center justify-center overflow-hidden',
+    'relative inline-flex shrink-0 items-center justify-center overflow-hidden',
     className,
   ]
     .filter(Boolean)
@@ -61,21 +64,32 @@ export function QuickNoteSourceBrandIcon({
       style={{ ...style, lineHeight: 0 }}
       data-quick-note-brand={asset.slug}
       data-quick-note-brand-source="source"
+      data-source-status={status}
     >
-      <img
-        src={asset.src}
-        alt=""
-        draggable={false}
-        decoding="async"
-        referrerPolicy="no-referrer"
-        className="block h-full w-full"
-        style={{
-          objectFit: 'contain',
-          transform: `scale(${asset.scale})`,
-          transformOrigin: 'center',
-        }}
-        onError={() => setFailed(true)}
-      />
+      {status !== 'loaded' ? (
+        <QuickNoteBrandIcon
+          name={name}
+          className="h-full w-full"
+        />
+      ) : null}
+      {status !== 'failed' ? (
+        <img
+          src={asset.src}
+          alt=""
+          draggable={false}
+          decoding="async"
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 block h-full w-full"
+          style={{
+            objectFit: 'contain',
+            opacity: status === 'loaded' ? 1 : 0,
+            transform: `scale(${asset.scale})`,
+            transformOrigin: 'center',
+          }}
+          onLoad={() => setSourceState({ name, status: 'loaded' })}
+          onError={() => setSourceState({ name, status: 'failed' })}
+        />
+      ) : null}
     </span>
   );
 }
