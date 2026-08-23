@@ -40,6 +40,7 @@ describe('Quick Note vendored brand icons', () => {
     const uob = readVendoredAsset('uob.svg');
     const applePay = readVendoredAsset('apple-pay.svg');
     const promptPay = readVendoredAsset('promptpay.svg');
+    const aws = readVendoredAsset('aws.svg');
 
     expect(bts).toContain('#005b96');
     expect(bts).toContain('#c81518');
@@ -63,6 +64,9 @@ describe('Quick Note vendored brand icons', () => {
     expect(promptPay).toContain('#00A796');
     expect(promptPay).toContain('M127 75');
     expect(promptPay).not.toContain('<circle');
+
+    expect(aws).toContain('M180.4 203');
+    expect(aws).not.toContain('<text');
   });
 
   it('renders a local asset after it loads', () => {
