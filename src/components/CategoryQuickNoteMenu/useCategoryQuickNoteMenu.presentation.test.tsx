@@ -53,4 +53,44 @@ describe('useCategoryQuickNoteMenu anchor presentation', () => {
       anchor.style.getPropertyValue('--category-quick-note-anchor-accent'),
     ).toBe('');
   });
+
+  it('keeps the first six category Quick Notes in their configured order', () => {
+    const anchor = document.createElement('button');
+    const customNotes = Array.from({ length: 7 }, (_, index) => ({
+      id: `custom-${index + 1}`,
+      icon: 'StickyNote',
+      label: `Custom ${index + 1}`,
+      note: `custom ${index + 1}`,
+    }));
+    const { result } = renderHook(() =>
+      useCategoryQuickNoteMenu({
+        getCustomNotes: () => customNotes,
+        getDefaultNotes: () => [],
+        getCategoryPresentation: () => ({
+          label: 'Food',
+          icon: 'Utensils',
+          color: '#f97316',
+        }),
+        onSelectNote: vi.fn(),
+        onUseCategory: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.handlers.onLongPressStart(
+        'Food',
+        { x: 80, y: 560 },
+        { element: anchor, bounds: anchorBounds() },
+      );
+    });
+
+    expect(result.current.state?.customNotes.map((note) => note.id)).toEqual([
+      'custom-1',
+      'custom-2',
+      'custom-3',
+      'custom-4',
+      'custom-5',
+      'custom-6',
+    ]);
+  });
 });

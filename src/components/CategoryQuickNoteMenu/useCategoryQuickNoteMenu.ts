@@ -68,7 +68,7 @@ type CategoryQuickNoteMenuHandlers = {
   onUseCategory: () => void;
 };
 
-const MAX_CUSTOM_NOTES = 4;
+const MAX_CUSTOM_NOTES = 6;
 const MAX_DEFAULT_NOTES = 4;
 const ANCHOR_ACCENT_PROPERTY = '--category-quick-note-anchor-accent';
 const OPEN_ATTRIBUTE = 'data-category-quick-note-open';
