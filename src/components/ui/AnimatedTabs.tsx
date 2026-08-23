@@ -1,7 +1,6 @@
 import type React from "react";
 import { motion } from "framer-motion";
 import { cn } from "../../lib/utils";
-import { HapticSelectionButton } from "./HapticSelectionButton";
 
 type Tab<T extends string> = {
   value: T;
@@ -18,7 +17,6 @@ type AnimatedTabsProps<T extends string> = {
   className?: string;
   disabled?: boolean;
   visualProgress?: number;
-  selectionHaptics?: boolean;
 };
 
 const springTransition = { type: "spring", stiffness: 380, damping: 30 };
@@ -32,7 +30,6 @@ export function AnimatedTabs<T extends string>({
   className,
   disabled,
   visualProgress,
-  selectionHaptics = false,
 }: AnimatedTabsProps<T>) {
   if (variant === "pill") {
     return (
@@ -40,10 +37,9 @@ export function AnimatedTabs<T extends string>({
         {tabs.map((tab) => {
           const isSelected = tab.value === value;
           return (
-            <HapticSelectionButton
+            <button
               key={tab.value}
               type="button"
-              changesValue={selectionHaptics && !isSelected}
               onClick={() => onChange(tab.value)}
               className={cn(
                 "relative rounded-full px-3 py-1.5 text-xs font-medium",
@@ -66,7 +62,7 @@ export function AnimatedTabs<T extends string>({
               >
                 {tab.label}
               </span>
-            </HapticSelectionButton>
+            </button>
           );
         })}
       </div>
@@ -110,11 +106,10 @@ export function AnimatedTabs<T extends string>({
           const isVisuallySelected = index === visualIndex;
           const Icon = tab.icon;
           return (
-            <HapticSelectionButton
+            <button
               key={tab.value}
               type="button"
               aria-pressed={isSelected}
-              changesValue={selectionHaptics && !isSelected}
               onClick={() => onChange(tab.value)}
               className={cn(
                 "relative flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-[11px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
@@ -133,16 +128,16 @@ export function AnimatedTabs<T extends string>({
                 />
               ) : null}
               <span
-                className={cn(
-                  "relative z-10",
-                  isVisuallySelected
-                    ? "text-foreground"
-                    : "text-muted-foreground",
-                )}
+                  className={cn(
+                    "relative z-10",
+                    isVisuallySelected
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
               >
                 {tab.label}
               </span>
-            </HapticSelectionButton>
+            </button>
           );
         })}
       </div>
@@ -155,10 +150,9 @@ export function AnimatedTabs<T extends string>({
         {tabs.map((tab) => {
           const isSelected = tab.value === value;
           return (
-            <HapticSelectionButton
+            <button
               key={tab.value}
               type="button"
-              changesValue={selectionHaptics && !isSelected}
               onClick={() => onChange(tab.value)}
               className={cn(
                 "relative flex-1 rounded-lg py-2 text-sm font-medium",
@@ -181,7 +175,7 @@ export function AnimatedTabs<T extends string>({
               >
                 {tab.label}
               </span>
-            </HapticSelectionButton>
+            </button>
           );
         })}
       </div>
@@ -200,10 +194,9 @@ export function AnimatedTabs<T extends string>({
         const isSelected = tab.value === value;
         const Icon = tab.icon;
         return (
-          <HapticSelectionButton
+          <button
             key={tab.value}
             type="button"
-            changesValue={selectionHaptics && !isSelected}
             onClick={() => onChange(tab.value)}
             className={cn(
               "relative flex flex-1 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-semibold",
@@ -238,7 +231,7 @@ export function AnimatedTabs<T extends string>({
             >
               {tab.label}
             </span>
-          </HapticSelectionButton>
+          </button>
         );
       })}
     </div>

@@ -1,6 +1,5 @@
 import { ArrowDownRight, ArrowLeftRight, ArrowUpRight } from "lucide-react";
 import type React from "react";
-import { triggerHapticFeedback } from "../../lib/transactionHaptics";
 import type { TransactionType } from "../../lib/types";
 import { AnimatedTabs } from "../ui/AnimatedTabs";
 import { TYPE_OPTIONS } from "./constants";
@@ -38,7 +37,6 @@ export function updateTransactionType(
   nextType: TransactionType,
 ) {
   if (nextType === currentType) return;
-  triggerHapticFeedback("selection");
   form.setFieldValue("type", nextType);
   if (nextType !== "expense") clearTransactionPlace(form);
   form.setFieldValue("category", "");
@@ -68,7 +66,6 @@ export function StepCategoryTypeTabs({
       layoutId={layoutId}
       variant="compact"
       visualProgress={visualProgress}
-      selectionHaptics
     />
   );
 }

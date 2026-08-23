@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { triggerHapticFeedback } from "../lib/transactionHaptics";
 import { Picker } from "./Picker";
 
 interface TimePickerProps {
@@ -47,7 +46,6 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
     (nextValue: TimePickerValue) => {
       const nextHour = Number(nextValue.hour);
       const nextMinute = Number(nextValue.minute);
-      triggerHapticFeedback("selection");
       setTime(nextHour, nextMinute);
     },
     [setTime]

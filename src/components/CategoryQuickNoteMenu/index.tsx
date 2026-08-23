@@ -10,7 +10,6 @@ import {
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { QuickNoteIcon } from '../QuickNoteIcon';
-import { HapticSelectionButton } from '../ui/HapticSelectionButton';
 import type {
   CategoryQuickNoteMenuBounds,
   CategoryQuickNoteMenuNoteSource,
@@ -294,10 +293,9 @@ export function CategoryQuickNoteMenu({
                   activeNote?.source === 'custom' && activeNote.id === note.id;
                 const color = note.color ?? state.presentation.color;
                 return (
-                  <HapticSelectionButton
+                  <button
                     key={`custom:${note.id}`}
                     type="button"
-                    changesValue
                     data-category-menu-autofocus={
                       index === 0 ? 'true' : undefined
                     }
@@ -324,7 +322,7 @@ export function CategoryQuickNoteMenu({
                     <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                       {note.label}
                     </span>
-                  </HapticSelectionButton>
+                  </button>
                 );
               })}
             </div>
@@ -346,10 +344,9 @@ export function CategoryQuickNoteMenu({
                   activeNote?.source === 'default' && activeNote.id === note.id;
                 const color = note.color ?? state.presentation.color;
                 return (
-                  <HapticSelectionButton
+                  <button
                     key={`default:${note.id}`}
                     type="button"
-                    changesValue
                     data-category-menu-autofocus={
                       state.customNotes.length === 0 && index === 0
                         ? 'true'
@@ -375,7 +372,7 @@ export function CategoryQuickNoteMenu({
                       {note.label}
                     </span>
                     <span className="category-menu-default-indicator absolute inset-x-2 bottom-0 h-0.5 rounded-full" />
-                  </HapticSelectionButton>
+                  </button>
                 );
               })}
             </div>
