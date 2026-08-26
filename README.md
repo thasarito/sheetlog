@@ -63,8 +63,8 @@ npm install
 npm run dev
 ```
 
-Landing page: `/`  
-App: `/app`
+Onboarding and app: `/`  
+Legacy app entry: `/app`
 
 `npm run dev` chooses a stable port based on the git worktree path (so multiple
 worktrees can run side-by-side). Override with `SHEETLOG_DEV_PORT`, or adjust

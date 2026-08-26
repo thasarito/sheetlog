@@ -5,7 +5,6 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { HomePage } from "./routes/HomePage";
-import { LandingPage } from "./routes/LandingPage";
 import { OAuthCallbackPage } from "./routes/OAuthCallbackPage";
 import { PrivacyPolicyPage } from "./routes/PrivacyPolicyPage";
 import { TermsPage } from "./routes/TermsPage";
@@ -14,13 +13,13 @@ const rootRoute = createRootRoute({
   component: AppShell,
 });
 
-const landingRoute = createRoute({
+const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: LandingPage,
+  component: HomePage,
 });
 
-const appRoute = createRoute({
+const legacyAppRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/app",
   component: HomePage,
@@ -45,8 +44,8 @@ const termsRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  landingRoute,
-  appRoute,
+  homeRoute,
+  legacyAppRoute,
   callbackRoute,
   privacyRoute,
   termsRoute,
