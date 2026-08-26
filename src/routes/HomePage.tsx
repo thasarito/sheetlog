@@ -27,6 +27,7 @@ import {
   type ImportedBootstrapReceipt as ImportedBootstrapReceiptValue,
   readImportedBootstrapReceipt,
 } from "../lib/bootstrapImport";
+import type { BootstrapPayload } from "../lib/bootstrapPayload";
 import type { Currency } from "../lib/currencies";
 import { isStandaloneMode } from "../lib/pwa";
 import { getSheetlogApp } from "../lib/sheetlogApps";
@@ -91,6 +92,7 @@ export function HomePage() {
   const standaloneBootstrapPromiseRef = useRef<
     Promise<StandaloneBootstrapResult> | null
   >(null);
+  const consumedStandaloneBootstrapRef = useRef<BootstrapPayload | null>(null);
   const [importedReceipt, setImportedReceipt] =
     useState<ImportedBootstrapReceiptValue | null>(null);
   const [hasLoadedImportedReceipt, setHasLoadedImportedReceipt] =
@@ -115,8 +117,11 @@ export function HomePage() {
 
     if (!standaloneBootstrapPromiseRef.current) {
       standaloneBootstrapPromiseRef.current = (async () => {
-        const payload = await consumeBootstrap();
+        const payload =
+          consumedStandaloneBootstrapRef.current ??
+          (await consumeBootstrap());
         if (!payload) return "missing" as const;
+        consumedStandaloneBootstrapRef.current = payload;
         await importBootstrapPayload(payload);
         window.location.reload();
         return "imported" as const;
@@ -226,6 +231,13 @@ export function HomePage() {
     setStandaloneBootstrapRetry((current) => current + 1);
   };
 
+  const startFreshStandalone = () => {
+    standaloneBootstrapPromiseRef.current = null;
+    consumedStandaloneBootstrapRef.current = null;
+    setStandaloneBootstrapError(null);
+    setStandaloneBootstrapStatus("missing");
+  };
+
   const dismissImportedReceipt = async () => {
     try {
       await clearImportedBootstrapReceipt();
@@ -270,7 +282,7 @@ export function HomePage() {
           </button>
           <button
             type="button"
-            onClick={() => setStandaloneBootstrapStatus("missing")}
+            onClick={startFreshStandalone}
             className="mt-3 h-12 w-full rounded-[16px] border border-border bg-card px-5 text-[12px] font-bold"
           >
             Start fresh in this app
