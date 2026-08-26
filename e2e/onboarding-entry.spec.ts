@@ -11,8 +11,9 @@ test.describe("Application entry", () => {
     ).toBeVisible();
     await expect(page.getByTestId("featured-bank")).toHaveCount(8);
     await expect(page.getByRole("button", { name: /KBank/ })).toBeVisible();
+    await expect(page.getByText("No sign-in needed")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Sign in with Google" }),
+      page.getByRole("heading", { name: "Let's get started" }),
     ).not.toBeVisible();
   });
 
