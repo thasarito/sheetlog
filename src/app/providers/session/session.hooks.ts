@@ -17,7 +17,8 @@ export function useSessionWithStatus() {
   return {
     ...session,
     statusMessage: SESSION_STATUS_MESSAGES[session.status],
-    isReady: session.status === "authenticated" && !!session.accessToken,
+    isReady:
+      session.status === "local" ||
+      (session.status === "authenticated" && !!session.accessToken),
   };
 }
-

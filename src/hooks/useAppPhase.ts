@@ -62,7 +62,11 @@ export function useAppPhase() {
       };
     }
 
-    if (session.status !== "authenticated" || !session.accessToken) {
+    const isLocal = session.status === "local";
+    if (
+      !isLocal &&
+      (session.status !== "authenticated" || !session.accessToken)
+    ) {
       return {
         phase: "needs_auth" as const,
         accountsReady,
@@ -72,9 +76,12 @@ export function useAppPhase() {
 
     if (!workspace.sheetId) {
       return {
-        phase: "needs_sheet" as const,
+        phase: isLocal ? ("error" as const) : ("needs_sheet" as const),
         accountsReady,
         categoriesReady,
+        ...(isLocal
+          ? { error: new Error("Local workspace is unavailable") }
+          : {}),
       };
     }
 
