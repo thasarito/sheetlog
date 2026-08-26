@@ -1,4 +1,5 @@
 import "./playful.css";
+import { SheetLogLogo } from "./SheetLogLogo";
 
 type MascotMode = "bank" | "install";
 
@@ -27,10 +28,12 @@ export function PlayfulMascot({
         <span className="tiny-win-mascot-arm tiny-win-mascot-arm--right" />
         {mode === "install" ? (
           <span className="tiny-win-mascot-phone">
-            <span>S</span>
+            <SheetLogLogo className="tiny-win-mascot-logo" />
           </span>
         ) : (
-          <span className="tiny-win-mascot-card">S</span>
+          <span className="tiny-win-mascot-card">
+            <SheetLogLogo className="tiny-win-mascot-logo" />
+          </span>
         )}
       </div>
       {mode === "install" ? (
@@ -72,7 +75,9 @@ export function PlayfulSuccessArt() {
         ))}
       </div>
       <span className="tiny-win-success-ring">✓</span>
-      <span className="tiny-win-success-icon">S</span>
+      <span className="tiny-win-success-icon">
+        <SheetLogLogo className="tiny-win-success-logo" />
+      </span>
       <span className="tiny-win-success-spark tiny-win-success-spark--one">✦</span>
       <span className="tiny-win-success-spark tiny-win-success-spark--two">●</span>
       <span className="tiny-win-success-spark tiny-win-success-spark--three">＋</span>

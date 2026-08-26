@@ -9,6 +9,7 @@ import {
 } from "../../lib/bankCatalog";
 import type { Currency } from "../../lib/currencies";
 import { PlayfulMascot } from "./PlayfulMascot";
+import { SheetLogLogo } from "./SheetLogLogo";
 
 const CASH_ACCOUNT: BankInstitution = {
   id: "cash",
@@ -105,9 +106,7 @@ export function BankPickerScreen({
       <div className="tiny-win-playful-screen">
         <header className="tiny-win-topbar">
           <div className="tiny-win-brand">
-            <span className="tiny-win-brand-mark" aria-hidden="true">
-              S
-            </span>
+            <SheetLogLogo className="tiny-win-brand-logo" />
             <span>SheetLog</span>
           </div>
           {onSignIn ? (

@@ -20,6 +20,7 @@ describe("InstallGateScreen", () => {
   it("uses the playful install layout while keeping the hard gate", () => {
     render(<InstallGateScreen transaction={transaction} />);
 
+    expect(screen.getAllByTestId("sheetlog-logo").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByTestId("tiny-win-mascot")).toBeVisible();
     expect(
       screen.getByRole("heading", {
@@ -36,6 +37,16 @@ describe("InstallGateScreen", () => {
     expect(
       screen.getByText(/No transaction has been stored in this browser/),
     ).toBeVisible();
+  });
+
+  it("presents the captured expense as a pending log instead of an app price", () => {
+    render(<InstallGateScreen transaction={transaction} />);
+
+    expect(screen.getByLabelText("Pending first transaction")).toBeVisible();
+    expect(screen.getByText("Your first transaction")).toBeVisible();
+    expect(screen.getByText("Pending import")).toBeVisible();
+    expect(screen.getByText(/−.*120/)).toBeVisible();
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
   });
 
   it("lets the user switch platform instructions", () => {

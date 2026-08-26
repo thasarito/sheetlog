@@ -1,8 +1,9 @@
 import "@khmyznikov/pwa-install";
-import { Download } from "lucide-react";
+import { Download, ReceiptText } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { TransactionRecord } from "../../lib/types";
+import type { TransactionRecord, TransactionType } from "../../lib/types";
 import { PlayfulMascot } from "./PlayfulMascot";
+import { SheetLogLogo } from "./SheetLogLogo";
 
 type PWAInstallElement = HTMLElement & {
   showDialog: (open?: boolean) => void;
@@ -86,6 +87,19 @@ function amountLabel(transaction: TransactionRecord): string {
   }
 }
 
+function signedAmountLabel(transaction: TransactionRecord): string {
+  const amount = amountLabel(transaction);
+  if (transaction.type === "expense") return `−${amount}`;
+  if (transaction.type === "income") return `+${amount}`;
+  return amount;
+}
+
+function transactionTypeLabel(type: TransactionType): string {
+  if (type === "expense") return "Expense";
+  if (type === "income") return "Income";
+  return "Transfer";
+}
+
 export function InstallGateScreen({
   transaction,
 }: {
@@ -107,9 +121,7 @@ export function InstallGateScreen({
       <div className="tiny-win-playful-screen">
         <header className="tiny-win-topbar">
           <div className="tiny-win-brand">
-            <span className="tiny-win-brand-mark" aria-hidden="true">
-              S
-            </span>
+            <SheetLogLogo className="tiny-win-brand-logo" />
             <span>SheetLog</span>
           </div>
           <span className="tiny-win-eyebrow">Step 2 of 2</span>
@@ -129,21 +141,40 @@ export function InstallGateScreen({
         </section>
 
         <section
-          aria-label="First transaction ready to import"
-          className="tiny-win-transaction-card"
+          aria-label="Pending first transaction"
+          className="tiny-win-log-preview"
+          data-visual-role="pending-log"
         >
-          <div className="tiny-win-transaction-meta">
-            <span className="min-w-0">
+          <div className="tiny-win-log-preview-header">
+            <span className="tiny-win-log-preview-icon" aria-hidden="true">
+              <ReceiptText />
+            </span>
+            <span className="tiny-win-log-preview-heading">
+              <small>Your first transaction</small>
+              <strong>Waiting for the installed app</strong>
+            </span>
+            <span className="tiny-win-pending-pill">Pending import</span>
+          </div>
+
+          <div className="tiny-win-log-preview-divider" />
+
+          <div className="tiny-win-log-preview-row">
+            <span className="tiny-win-log-preview-details">
               <strong>{transaction.category}</strong>
               <small>
-                {transaction.account} · {transaction.type}
+                {transaction.account} · {transactionTypeLabel(transaction.type)}
               </small>
             </span>
-            <span className="tiny-win-ready-pill">Ready</span>
+            <strong
+              className={`tiny-win-log-preview-amount tiny-win-log-preview-amount--${transaction.type}`}
+            >
+              {signedAmountLabel(transaction)}
+            </strong>
           </div>
-          <p className="tiny-win-transaction-amount">
-            {amountLabel(transaction)}
-          </p>
+
+          {transaction.note ? (
+            <p className="tiny-win-log-preview-note">{transaction.note}</p>
+          ) : null}
         </section>
 
         <div
