@@ -1,0 +1,201 @@
+.tiny-win-brand-logo {
+  width: 2.15rem;
+  height: 2.15rem;
+  flex: none;
+  border: 2px solid var(--tiny-ink);
+  border-radius: 0.75rem;
+  background: var(--tiny-card);
+  padding: 0.08rem;
+  transform: rotate(-4deg);
+}
+
+.tiny-win-mascot-logo {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.tiny-win-mascot-phone .tiny-win-mascot-logo {
+  position: relative;
+  z-index: 1;
+  width: 2rem;
+  height: 2rem;
+}
+
+.tiny-win-success-icon {
+  overflow: hidden;
+  background: var(--tiny-card);
+  padding: 0.18rem;
+}
+
+.tiny-win-success-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.tiny-win-log-preview {
+  position: relative;
+  margin-top: 1.25rem;
+  border: 1px solid var(--tiny-line);
+  border-radius: 1.35rem;
+  background: var(--tiny-card);
+  padding: 0.9rem;
+}
+
+.tiny-win-log-preview::before,
+.tiny-win-log-preview::after {
+  position: absolute;
+  top: 3.55rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid var(--tiny-line);
+  border-radius: 999px;
+  background: var(--tiny-bg);
+  content: "";
+}
+
+.tiny-win-log-preview::before {
+  left: -0.44rem;
+}
+
+.tiny-win-log-preview::after {
+  right: -0.44rem;
+}
+
+.tiny-win-log-preview-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.tiny-win-log-preview-icon {
+  display: grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  place-items: center;
+  border-radius: 0.8rem;
+  background: var(--tiny-green-soft);
+  color: var(--tiny-green);
+}
+
+.tiny-win-log-preview-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.tiny-win-log-preview-heading {
+  min-width: 0;
+}
+
+.tiny-win-log-preview-heading small,
+.tiny-win-log-preview-heading strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tiny-win-log-preview-heading small {
+  color: var(--tiny-green);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tiny-win-log-preview-heading strong {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.tiny-win-pending-pill {
+  border: 1px solid color-mix(in srgb, var(--tiny-yellow-depth) 48%, var(--tiny-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tiny-yellow) 28%, var(--tiny-card));
+  color: var(--tiny-ink);
+  padding: 0.34rem 0.5rem;
+  font-size: 0.56rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.tiny-win-log-preview-divider {
+  margin: 0.85rem -0.9rem 0;
+  border-top: 1px dashed var(--tiny-line);
+}
+
+.tiny-win-log-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.85rem;
+}
+
+.tiny-win-log-preview-details {
+  min-width: 0;
+}
+
+.tiny-win-log-preview-details strong,
+.tiny-win-log-preview-details small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tiny-win-log-preview-details strong {
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.tiny-win-log-preview-details small {
+  margin-top: 0.2rem;
+  color: var(--tiny-muted);
+  font-size: 0.62rem;
+}
+
+.tiny-win-log-preview-amount {
+  flex: none;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tiny-win-log-preview-amount--expense {
+  color: var(--tiny-coral);
+}
+
+.tiny-win-log-preview-amount--income {
+  color: var(--tiny-green);
+}
+
+.tiny-win-log-preview-note {
+  margin: 0.7rem 0 0;
+  overflow: hidden;
+  color: var(--tiny-muted);
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 22rem) {
+  .tiny-win-pending-pill {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tiny-win-brand-logo {
+    transform: none;
+  }
+}
