@@ -76,7 +76,7 @@ describe("playful Tiny Win presentation", () => {
     const css = readFileSync(new URL("./playful.css", import.meta.url), "utf8");
 
     expect(css).not.toMatch(/box-shadow/i);
-    expect(css).toContain("prefers-reduced-motion: reduce");
+    expect(css).toMatch(/prefers-reduced-motion\s*:\s*reduce/);
     expect(css).toContain(".tiny-win-playful");
   });
 });
