@@ -1,14 +1,5 @@
-import {
-  ChevronRight,
-  Landmark,
-  Loader2,
-  LogIn,
-  Search,
-  Sparkles,
-  WalletCards,
-  X,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { Landmark, Loader2, LogIn, Search, X } from "lucide-react";
+import { type ChangeEvent, type CSSProperties, useMemo, useState } from "react";
 import {
   type BankInstitution,
   getCountryCatalog,
@@ -17,12 +8,13 @@ import {
   SUPPORTED_CURRENCIES,
 } from "../../lib/bankCatalog";
 import type { Currency } from "../../lib/currencies";
+import { PlayfulMascot } from "./PlayfulMascot";
 
 const CASH_ACCOUNT: BankInstitution = {
   id: "cash",
   name: "Cash",
-  mark: "C",
-  color: "#16a34a",
+  mark: "¤",
+  color: "#2f8f4e",
   aliases: [],
 };
 
@@ -41,8 +33,8 @@ function BankMark({ bank }: { bank: BankInstitution }) {
   return (
     <span
       aria-hidden="true"
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] border border-current/10 bg-background/80 px-1 text-center text-[11px] font-black tracking-[-0.04em]"
-      style={{ color: bank.color }}
+      className="tiny-win-bank-mark"
+      style={{ "--bank-color": bank.color } as CSSProperties}
     >
       {bank.mark}
     </span>
@@ -66,20 +58,19 @@ function BankTile({
     <button
       type="button"
       data-testid={testId}
+      data-playful-pressable="true"
       disabled={disabled}
       onClick={onClick}
-      className="group flex min-h-[78px] min-w-0 items-center gap-3 rounded-[21px] border border-border/75 bg-card px-3 py-3 text-left transition active:scale-[0.985] active:bg-surface-2 disabled:pointer-events-none disabled:opacity-55"
+      className="tiny-win-bank-tile"
     >
       <BankMark bank={bank} />
-      <span className="min-w-0 flex-1">
-        <strong className="block truncate text-[13px] font-bold text-foreground">
-          {bank.name}
-        </strong>
-        <small className="mt-1 block truncate text-[10px] font-medium text-muted-foreground">
-          {subtitle}
-        </small>
+      <span className="tiny-win-bank-copy">
+        <strong>{bank.name}</strong>
+        <small>{subtitle}</small>
       </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60 transition group-active:translate-x-0.5" />
+      <span className="tiny-win-bank-arrow" aria-hidden="true">
+        →
+      </span>
     </button>
   );
 }
@@ -102,6 +93,7 @@ export function BankPickerScreen({
     () => searchBankCatalog(query, countryCode),
     [countryCode, query],
   );
+  const disabled = isSelecting || isConnecting;
 
   const selectCountry = (nextCountryCode: string) => {
     onCountryChange(nextCountryCode);
@@ -109,256 +101,258 @@ export function BankPickerScreen({
   };
 
   return (
-    <main className="relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-y-auto bg-background px-5 pb-safe-offset-6 pt-safe-offset-5 text-foreground">
-      <div className="pointer-events-none absolute -right-24 -top-28 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
-      <header className="relative z-10 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-[15px] bg-primary text-primary-foreground">
-            <Sparkles className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-[15px] font-black tracking-[-0.035em]">SheetLog</p>
-            <p className="text-[10px] font-semibold text-muted-foreground">
-              One tiny win to begin
-            </p>
+    <main className="tiny-win-playful">
+      <div className="tiny-win-playful-screen">
+        <header className="tiny-win-topbar">
+          <div className="tiny-win-brand">
+            <span className="tiny-win-brand-mark" aria-hidden="true">
+              S
+            </span>
+            <span>SheetLog</span>
           </div>
-        </div>
-        <span className="rounded-full border border-border/75 bg-card px-3 py-1.5 text-[10px] font-bold text-muted-foreground">
-          No sign-in needed
-        </span>
-      </header>
+          {onSignIn ? (
+            <button
+              type="button"
+              aria-label="Already use SheetLog? Sign in with Google"
+              disabled={disabled}
+              onClick={onSignIn}
+              className="tiny-win-sign-in"
+            >
+              {isConnecting ? (
+                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <LogIn aria-hidden="true" className="h-3.5 w-3.5" />
+                  Sign in
+                </span>
+              )}
+            </button>
+          ) : null}
+        </header>
 
-      <section className="relative z-10 mt-9">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary">
-          Start in one tap
-        </p>
-        <h1 className="mt-2 max-w-[330px] text-[clamp(2rem,9vw,2.65rem)] font-black leading-[0.98] tracking-[-0.06em]">
-          What do you usually pay with?
-        </h1>
-        <p className="mt-3 max-w-sm text-[13px] leading-5 text-muted-foreground">
-          Pick one primary account. You can add every other account after your first log.
-        </p>
-      </section>
+        <PlayfulMascot />
 
-      <section className="relative z-10 mt-6">
+        <section className="tiny-win-copy">
+          <p className="tiny-win-eyebrow">Step 1 of 2 · Make it yours</p>
+          <h1 className="tiny-win-title">Which account is your everyday one?</h1>
+          <p className="tiny-win-lead">
+            Pick it once. SheetLog will remember the rest.
+          </p>
+        </section>
+
         <button
           type="button"
           aria-expanded={showLocaleControls}
-          onClick={() => setShowLocaleControls((current) => !current)}
-          className="flex w-full items-center gap-3 rounded-[20px] border border-border/75 bg-surface px-3.5 py-3 text-left active:bg-surface-2"
+          aria-haspopup="dialog"
+          onClick={() => setShowLocaleControls(true)}
+          className="tiny-win-locale-button"
         >
-          <span className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-primary/10 text-primary">
-            <Landmark className="h-5 w-5" />
+          <span className="tiny-win-locale-icon" aria-hidden="true">
+            <Landmark className="h-4 w-4" />
           </span>
-          <span className="min-w-0 flex-1">
-            <strong className="block truncate text-[13px] font-bold">
+          <span className="min-w-0">
+            <strong>
               {catalog.name} · {currency}
             </strong>
-            <small className="mt-0.5 block text-[10px] font-medium text-muted-foreground">
-              Suggested from your device language and timezone
-            </small>
+            <small>{currency} default currency</small>
           </span>
-          <span className="text-[11px] font-bold text-primary">Change</span>
+          <span className="tiny-win-locale-change">Change</span>
         </button>
 
-        {showLocaleControls ? (
-          <div className="mt-2 grid grid-cols-2 gap-2 rounded-[20px] border border-border/75 bg-card p-3">
-            <label className="min-w-0 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Country
-              <select
-                aria-label="Country"
-                value={catalog.code}
-                onChange={(event) => selectCountry(event.target.value)}
-                className="mt-1.5 h-11 w-full rounded-[13px] border border-border bg-background px-3 text-[13px] font-semibold text-foreground"
-              >
-                {SUPPORTED_COUNTRY_CODES.map((code) => {
-                  const option = getCountryCatalog(code);
-                  return (
-                    <option key={code} value={code}>
-                      {option.name}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-            <label className="min-w-0 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Currency
-              <select
-                aria-label="Currency"
-                value={currency}
-                onChange={(event) =>
-                  onCurrencyChange(event.target.value as Currency)
-                }
-                className="mt-1.5 h-11 w-full rounded-[13px] border border-border bg-background px-3 text-[13px] font-semibold text-foreground"
-              >
-                {SUPPORTED_CURRENCIES.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="col-span-2 px-1 text-[10px] leading-4 text-muted-foreground">
-              Country controls featured banks. Currency controls transaction defaults, so they can stay different.
-            </p>
+        <section>
+          <div className="tiny-win-section-heading">
+            <strong>Popular near you</strong>
+            <span>Tap one to continue</span>
           </div>
-        ) : null}
-      </section>
+          <div className="tiny-win-bank-grid">
+            {catalog.banks.slice(0, 8).map((bank) => (
+              <BankTile
+                key={bank.id}
+                bank={bank}
+                subtitle="Tap to pick"
+                testId="featured-bank"
+                disabled={disabled}
+                onClick={() => onSelectBank(bank, catalog.code)}
+              />
+            ))}
+          </div>
 
-      <section className="relative z-10 mt-6">
-        <div className="mb-3 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-[12px] font-black">Popular near you</p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">
-              Tap your everyday account
-            </p>
-          </div>
-          <span className="text-[10px] font-bold text-muted-foreground">
-            8 banks
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          {catalog.banks.slice(0, 8).map((bank) => (
+          <div className="tiny-win-secondary-grid">
             <BankTile
-              key={bank.id}
-              bank={bank}
-              subtitle="Primary account"
-              testId="featured-bank"
-              disabled={isSelecting || isConnecting}
-              onClick={() => onSelectBank(bank, catalog.code)}
+              bank={CASH_ACCOUNT}
+              subtitle="Notes and coins"
+              disabled={disabled}
+              onClick={() => onSelectBank(CASH_ACCOUNT, catalog.code)}
             />
-          ))}
-        </div>
+            <button
+              type="button"
+              data-playful-pressable="true"
+              disabled={disabled}
+              onClick={() => setShowSearch(true)}
+              className="tiny-win-secondary-tile"
+            >
+              <span
+                className="tiny-win-bank-mark"
+                style={{ "--bank-color": "#2f8f4e" } as CSSProperties}
+                aria-hidden="true"
+              >
+                ⌕
+              </span>
+              <span className="tiny-win-bank-copy">
+                <strong>Other bank</strong>
+                <small>Search the catalog</small>
+              </span>
+              <span className="tiny-win-bank-arrow" aria-hidden="true">
+                →
+              </span>
+            </button>
+          </div>
+        </section>
 
-        <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-          <BankTile
-            bank={CASH_ACCOUNT}
-            subtitle="Notes & coins"
-            disabled={isSelecting || isConnecting}
-            onClick={() => onSelectBank(CASH_ACCOUNT, catalog.code)}
-          />
-          <button
-            type="button"
-            disabled={isSelecting || isConnecting}
-            onClick={() => setShowSearch(true)}
-            className="flex min-h-[78px] min-w-0 items-center gap-3 rounded-[21px] border border-dashed border-border bg-transparent px-3 py-3 text-left transition active:scale-[0.985] active:bg-surface-2 disabled:opacity-55"
-          >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] bg-primary/10 text-primary">
-              <Search className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <strong className="block truncate text-[13px] font-bold">
-                Other bank
-              </strong>
-              <small className="mt-1 block truncate text-[10px] font-medium text-muted-foreground">
-                Search globally
-              </small>
-            </span>
-          </button>
-        </div>
-      </section>
-
-      <div className="relative z-10 mt-auto pb-1 pt-7 text-center">
-        <div className="flex items-center justify-center gap-2 text-[10px] leading-4 text-muted-foreground">
-          <WalletCards className="h-4 w-4 shrink-0 text-primary" />
-          <span>
-            Nothing connects to your bank. This only names your SheetLog account.
-          </span>
-        </div>
-        {onSignIn ? (
-          <button
-            type="button"
-            disabled={isSelecting || isConnecting}
-            onClick={onSignIn}
-            className="mt-3 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-3 text-[11px] font-bold text-muted-foreground transition active:bg-surface-2 active:text-foreground disabled:opacity-55"
-          >
-            {isConnecting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <LogIn className="h-3.5 w-3.5" />
-            )}
-            Already use SheetLog? Sign in with Google
-          </button>
-        ) : null}
+        <p className="tiny-win-trust">
+          No account connection. This only names your first SheetLog account.
+        </p>
       </div>
 
-      {showSearch ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-overlay/60 p-3 backdrop-blur-sm sm:items-center">
+      {showLocaleControls ? (
+        <div className="tiny-win-sheet-backdrop" role="presentation">
           <section
             role="dialog"
             aria-modal="true"
-            aria-label="Search every bank"
-            className="flex max-h-[82dvh] w-full max-w-md flex-col overflow-hidden rounded-[28px] border border-border bg-background pb-safe"
+            aria-label="Country and currency"
+            className="tiny-win-sheet"
           >
-            <header className="flex items-center gap-3 border-b border-border/75 px-4 py-4">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-primary/10 text-primary">
-                <Search className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-[15px] font-black tracking-[-0.03em]">
-                  Find your bank
-                </h2>
-                <p className="text-[10px] text-muted-foreground">
-                  Names, abbreviations, and local aliases work
-                </p>
+            <header className="tiny-win-sheet-header">
+              <div>
+                <p className="tiny-win-eyebrow">Detection settings</p>
+                <h2>Country and currency</h2>
               </div>
               <button
                 type="button"
-                aria-label="Close bank search"
-                onClick={() => {
-                  setShowSearch(false);
-                  setQuery("");
-                }}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card"
+                aria-label="Close country and currency"
+                className="tiny-win-sheet-close"
+                onClick={() => setShowLocaleControls(false)}
               >
                 <X className="h-4 w-4" />
               </button>
             </header>
-            <div className="p-4">
-              <div className="relative block">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  aria-label="Search every bank"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search every bank"
-                  className="h-12 w-full rounded-[16px] border border-border bg-surface pl-10 pr-4 text-[14px] font-semibold placeholder:font-medium placeholder:text-muted-foreground"
-                />
-              </div>
+            <p className="tiny-win-lead text-left">
+              Country ranks nearby banks. Currency controls transaction defaults.
+            </p>
+            <div className="tiny-win-field-grid">
+              <label className="tiny-win-field">
+                Bank country
+                <select
+                  aria-label="Country"
+                  value={catalog.code}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                    selectCountry(event.target.value)
+                  }
+                >
+                  {SUPPORTED_COUNTRY_CODES.map((code) => {
+                    const option = getCountryCatalog(code);
+                    return (
+                      <option key={code} value={code}>
+                        {option.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <label className="tiny-win-field">
+                Default currency
+                <select
+                  aria-label="Currency"
+                  value={currency}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                    onCurrencyChange(event.target.value as Currency)
+                  }
+                >
+                  {SUPPORTED_CURRENCIES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-              {query.trim() && results.length === 0 ? (
-                <div className="rounded-[20px] border border-dashed border-border p-6 text-center">
-                  <p className="text-[13px] font-bold">No matching bank yet</p>
-                  <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                    Use Cash for now, then rename or add an account from Settings.
-                  </p>
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                {results.map((result) => (
-                  <button
-                    key={`${result.countryCode}:${result.bank.id}`}
-                    type="button"
-                    disabled={isSelecting || isConnecting}
-                    onClick={() =>
-                      onSelectBank(result.bank, result.countryCode)
-                    }
-                    className="flex w-full items-center gap-3 rounded-[18px] border border-border/75 bg-card p-3 text-left active:bg-surface-2 disabled:opacity-55"
-                  >
-                    <BankMark bank={result.bank} />
-                    <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-[13px] font-bold">
-                        {result.bank.name}
-                      </strong>
-                      <small className="mt-1 block truncate text-[10px] text-muted-foreground">
-                        {result.countryName} · {result.currency}
-                      </small>
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground/60" />
-                  </button>
-                ))}
+            <button
+              type="button"
+              className="tiny-win-primary-button"
+              onClick={() => setShowLocaleControls(false)}
+            >
+              Use these settings
+            </button>
+          </section>
+        </div>
+      ) : null}
+
+      {showSearch ? (
+        <div className="tiny-win-sheet-backdrop" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Search every bank"
+            className="tiny-win-sheet"
+          >
+            <header className="tiny-win-sheet-header">
+              <div>
+                <p className="tiny-win-eyebrow">Global catalog</p>
+                <h2>Find another bank</h2>
               </div>
+              <button
+                type="button"
+                aria-label="Close bank search"
+                className="tiny-win-sheet-close"
+                onClick={() => {
+                  setShowSearch(false);
+                  setQuery("");
+                }}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+            <div className="tiny-win-search-wrap">
+              <Search aria-hidden="true" />
+              <input
+                aria-label="Search every bank"
+                value={query}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setQuery(event.target.value)
+                }
+                placeholder="Search every bank"
+                className="tiny-win-search-field"
+              />
+            </div>
+            {query.trim() && results.length === 0 ? (
+              <p className="tiny-win-trust">
+                No match yet. Try the bank’s full name or an abbreviation.
+              </p>
+            ) : null}
+            <div className="tiny-win-search-results">
+              {results.map((result) => (
+                <button
+                  key={`${result.countryCode}:${result.bank.id}`}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() =>
+                    onSelectBank(result.bank, result.countryCode)
+                  }
+                  className="tiny-win-search-result"
+                  aria-label={`${result.bank.name}, ${result.countryName}`}
+                >
+                  <BankMark bank={result.bank} />
+                  <span className="tiny-win-bank-copy">
+                    <strong>{result.bank.name}</strong>
+                    <small>
+                      {result.countryName} · {result.currency}
+                    </small>
+                  </span>
+                  <span className="tiny-win-bank-arrow" aria-hidden="true">
+                    →
+                  </span>
+                </button>
+              ))}
             </div>
           </section>
         </div>
