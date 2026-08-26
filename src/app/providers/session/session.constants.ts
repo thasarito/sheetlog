@@ -15,8 +15,9 @@ export const USER_PROFILE_QUERY_KEY = ["userProfile"] as const;
 /** User-friendly status messages for each auth state */
 export const SESSION_STATUS_MESSAGES: Record<SessionStatus, string> = {
   initializing: "Checking authentication...",
-  unauthenticated: "Please sign in with Google to continue",
+  unauthenticated: "Ready to start locally",
   authenticating: "Connecting to Google...",
+  local: "Saved on this device",
   authenticated: "Connected",
   error: "Authentication failed. Please try signing in again.",
 };
