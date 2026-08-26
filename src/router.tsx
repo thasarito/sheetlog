@@ -5,7 +5,6 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { HomePage } from "./routes/HomePage";
-import { LandingPage } from "./routes/LandingPage";
 import { OAuthCallbackPage } from "./routes/OAuthCallbackPage";
 import { PrivacyPolicyPage } from "./routes/PrivacyPolicyPage";
 import { TermsPage } from "./routes/TermsPage";
@@ -14,21 +13,21 @@ const rootRoute = createRootRoute({
   component: AppShell,
 });
 
-const landingRoute = createRoute({
+const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: LandingPage,
+  component: HomePage,
 });
 
-const appRoute = createRoute({
+const legacyAppRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/app",
   component: HomePage,
 });
 
-const callbackRoute = createRoute({
+const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/callback",
+  path: "/oauth/callback",
   component: OAuthCallbackPage,
 });
 
@@ -45,18 +44,16 @@ const termsRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  landingRoute,
-  appRoute,
-  callbackRoute,
+  homeRoute,
+  legacyAppRoute,
+  oauthCallbackRoute,
   privacyRoute,
   termsRoute,
 ]);
-const baseUrl = import.meta.env.BASE_URL;
-const basepath = baseUrl === "/" ? "/" : baseUrl.replace(/\/$/, "");
 
 export const router = createRouter({
   routeTree,
-  basepath,
+  basepath: import.meta.env.BASE_URL,
 });
 
 declare module "@tanstack/react-router" {
