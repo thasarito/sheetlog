@@ -7,7 +7,10 @@ import {
 } from "../../lib/bankCatalog";
 import { consumeBootstrap } from "../../lib/bootstrapClient";
 import { importBootstrapPayload } from "../../lib/bootstrapImport";
-import type { BootstrapSetup } from "../../lib/bootstrapPayload";
+import type {
+  BootstrapPayload,
+  BootstrapSetup,
+} from "../../lib/bootstrapPayload";
 import { DEFAULT_CATEGORIES } from "../../lib/categories";
 import { STORAGE_KEYS } from "../../lib/constants";
 import type { Currency } from "../../lib/currencies";
@@ -50,6 +53,9 @@ export function TinyWinActivation({
   const [standaloneError, setStandaloneError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const transitionTimerRef = useRef<number | null>(null);
+  const selectingBankRef = useRef(false);
+  const importingRef = useRef(false);
+  const consumedBootstrapRef = useRef<BootstrapPayload | null>(null);
 
   const cancelPendingTransition = useCallback(() => {
     if (transitionTimerRef.current !== null) {
@@ -58,19 +64,27 @@ export function TinyWinActivation({
     }
   }, []);
 
-  useEffect(() => cancelPendingTransition, [cancelPendingTransition]);
+  useEffect(
+    () => () => {
+      cancelPendingTransition();
+    },
+    [cancelPendingTransition],
+  );
 
   const importIntoStandaloneApp = useCallback(async () => {
-    if (isImporting) return;
+    if (importingRef.current) return;
+    importingRef.current = true;
     setIsImporting(true);
     setStandaloneError(null);
     try {
-      const payload = await consumeBootstrap();
+      const payload =
+        consumedBootstrapRef.current ?? (await consumeBootstrap());
       if (!payload) {
         throw new Error(
           "The first-transaction handoff is missing or expired. Return to SheetLog in your browser and complete the first log again.",
         );
       }
+      consumedBootstrapRef.current = payload;
       await importBootstrapPayload(payload);
       window.location.reload();
     } catch (error) {
@@ -81,13 +95,15 @@ export function TinyWinActivation({
       setStandaloneError(message);
       onToast(message);
     } finally {
+      importingRef.current = false;
       setIsImporting(false);
     }
-  }, [isImporting, onToast]);
+  }, [onToast]);
 
   const handleCaptured = useCallback(
     (record: TransactionRecord) => {
       cancelPendingTransition();
+      consumedBootstrapRef.current = null;
       setCapturedTransaction(record);
       setStandaloneError(null);
       transitionTimerRef.current = window.setTimeout(() => {
@@ -104,6 +120,7 @@ export function TinyWinActivation({
 
   const handleCleared = useCallback(() => {
     cancelPendingTransition();
+    consumedBootstrapRef.current = null;
     setCapturedTransaction(null);
     setShowInstallGate(false);
     setStandaloneError(null);
@@ -111,7 +128,8 @@ export function TinyWinActivation({
 
   const selectBank = useCallback(
     async (bank: BankInstitution, bankCountryCode: string) => {
-      if (isSelectingBank) return;
+      if (selectingBankRef.current) return;
+      selectingBankRef.current = true;
       setIsSelectingBank(true);
       const selectedAt = new Date().toISOString();
       const nextSetup: BootstrapSetup = {
@@ -150,11 +168,21 @@ export function TinyWinActivation({
             : "Could not prepare your first SheetLog account.",
         );
       } finally {
+        selectingBankRef.current = false;
         setIsSelectingBank(false);
       }
     },
-    [currency, isSelectingBank, onToast, updateOnboarding],
+    [currency, onToast, updateOnboarding],
   );
+
+  const startFresh = () => {
+    cancelPendingTransition();
+    consumedBootstrapRef.current = null;
+    setStandaloneError(null);
+    setCapturedTransaction(null);
+    setShowInstallGate(false);
+    setSetup(null);
+  };
 
   if (standaloneError && capturedTransaction) {
     return (
@@ -172,7 +200,7 @@ export function TinyWinActivation({
           type="button"
           disabled={isImporting}
           onClick={() => void importIntoStandaloneApp()}
-          className="mt-6 flex h-13 w-full items-center justify-center gap-2 rounded-[18px] bg-primary px-5 text-[13px] font-black text-primary-foreground disabled:opacity-60"
+          className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-[18px] bg-primary px-5 text-[13px] font-black text-primary-foreground disabled:opacity-60"
         >
           {isImporting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -180,6 +208,14 @@ export function TinyWinActivation({
             <RotateCcw className="h-4 w-4" />
           )}
           Retry activation
+        </button>
+        <button
+          type="button"
+          disabled={isImporting}
+          onClick={startFresh}
+          className="mt-3 h-12 w-full rounded-[16px] border border-border bg-card px-5 text-[12px] font-bold disabled:opacity-60"
+        >
+          Start a fresh local workspace
         </button>
       </main>
     );
