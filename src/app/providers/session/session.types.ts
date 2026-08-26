@@ -2,11 +2,12 @@ export type SessionStatus =
   | "initializing"
   | "unauthenticated"
   | "authenticating"
+  | "local"
   | "authenticated"
   | "error";
 
 export type UserProfile = {
-  /** Stable Google account subject (`sub`), used to isolate local queues. */
+  /** Stable Google subject or synthetic local ID used to isolate local queues. */
   id: string | null;
   name: string;
   picture: string | null;
