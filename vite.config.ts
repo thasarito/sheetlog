@@ -68,7 +68,7 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: "SheetLog",
           short_name: "SheetLog",
-          start_url: `${normalizedBase}app`,
+          start_url: normalizedBase,
           display: "standalone",
           orientation: "portrait",
           background_color: DEFAULT_PWA_COLOR,
