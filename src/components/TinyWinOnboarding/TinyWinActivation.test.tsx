@@ -102,6 +102,6 @@ describe("TinyWinActivation", () => {
     );
 
     await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
-    expect(screen.getByTestId("featured-bank")).toBeVisible();
+    expect(screen.getAllByTestId("featured-bank")).toHaveLength(8);
   });
 });
