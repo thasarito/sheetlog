@@ -19,7 +19,7 @@ import type { Currency } from "../../lib/currencies";
 const CASH_ACCOUNT: BankInstitution = {
   id: "cash",
   name: "Cash",
-  mark: "฿",
+  mark: "C",
   color: "#16a34a",
   aliases: [],
 };
@@ -112,7 +112,9 @@ export function BankPickerScreen({
           </span>
           <div>
             <p className="text-[15px] font-black tracking-[-0.035em]">SheetLog</p>
-            <p className="text-[10px] font-semibold text-muted-foreground">One tiny win to begin</p>
+            <p className="text-[10px] font-semibold text-muted-foreground">
+              One tiny win to begin
+            </p>
           </div>
         </div>
         <span className="rounded-full border border-border/75 bg-card px-3 py-1.5 text-[10px] font-bold text-muted-foreground">
@@ -201,9 +203,13 @@ export function BankPickerScreen({
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
             <p className="text-[12px] font-black">Popular near you</p>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">Tap your everyday account</p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              Tap your everyday account
+            </p>
           </div>
-          <span className="text-[10px] font-bold text-muted-foreground">8 banks</span>
+          <span className="text-[10px] font-bold text-muted-foreground">
+            8 banks
+          </span>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
           {catalog.banks.slice(0, 8).map((bank) => (
@@ -235,7 +241,9 @@ export function BankPickerScreen({
               <Search className="h-5 w-5" />
             </span>
             <span className="min-w-0 flex-1">
-              <strong className="block truncate text-[13px] font-bold">Other bank</strong>
+              <strong className="block truncate text-[13px] font-bold">
+                Other bank
+              </strong>
               <small className="mt-1 block truncate text-[10px] font-medium text-muted-foreground">
                 Search globally
               </small>
@@ -246,7 +254,9 @@ export function BankPickerScreen({
 
       <div className="relative z-10 mt-auto flex items-center justify-center gap-2 pb-1 pt-7 text-center text-[10px] leading-4 text-muted-foreground">
         <WalletCards className="h-4 w-4 shrink-0 text-primary" />
-        <span>Nothing connects to your bank. This only names your SheetLog account.</span>
+        <span>
+          Nothing connects to your bank. This only names your SheetLog account.
+        </span>
       </div>
 
       {showSearch ? (
@@ -262,8 +272,12 @@ export function BankPickerScreen({
                 <Search className="h-5 w-5" />
               </span>
               <div className="min-w-0 flex-1">
-                <h2 className="text-[15px] font-black tracking-[-0.03em]">Find your bank</h2>
-                <p className="text-[10px] text-muted-foreground">Names, abbreviations, and local aliases work</p>
+                <h2 className="text-[15px] font-black tracking-[-0.03em]">
+                  Find your bank
+                </h2>
+                <p className="text-[10px] text-muted-foreground">
+                  Names, abbreviations, and local aliases work
+                </p>
               </div>
               <button
                 type="button"
@@ -278,16 +292,16 @@ export function BankPickerScreen({
               </button>
             </header>
             <div className="p-4">
-              <label className="relative block">
+              <div className="relative block">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  autoFocus
+                  aria-label="Search every bank"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search every bank"
                   className="h-12 w-full rounded-[16px] border border-border bg-surface pl-10 pr-4 text-[14px] font-semibold placeholder:font-medium placeholder:text-muted-foreground"
                 />
-              </label>
+              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
               {query.trim() && results.length === 0 ? (
@@ -304,12 +318,16 @@ export function BankPickerScreen({
                     key={`${result.countryCode}:${result.bank.id}`}
                     type="button"
                     disabled={isSelecting}
-                    onClick={() => onSelectBank(result.bank, result.countryCode)}
+                    onClick={() =>
+                      onSelectBank(result.bank, result.countryCode)
+                    }
                     className="flex w-full items-center gap-3 rounded-[18px] border border-border/75 bg-card p-3 text-left active:bg-surface-2"
                   >
                     <BankMark bank={result.bank} />
                     <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-[13px] font-bold">{result.bank.name}</strong>
+                      <strong className="block truncate text-[13px] font-bold">
+                        {result.bank.name}
+                      </strong>
                       <small className="mt-1 block truncate text-[10px] text-muted-foreground">
                         {result.countryName} · {result.currency}
                       </small>
