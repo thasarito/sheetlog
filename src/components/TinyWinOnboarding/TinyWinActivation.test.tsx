@@ -1,9 +1,17 @@
 import type React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TinyWinActivation } from "./TinyWinActivation";
 
 const updateOnboarding = vi.fn().mockResolvedValue(undefined);
+const connect = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("../../app/providers", () => ({
+  useSession: () => ({
+    connect,
+    isConnecting: false,
+  }),
+}));
 
 vi.mock("../../hooks/useOnboarding", () => ({
   useOnboarding: () => ({ updateOnboarding }),
@@ -22,6 +30,11 @@ vi.mock("./BootstrapTransactionsProvider", () => ({
 }));
 
 describe("TinyWinActivation", () => {
+  beforeEach(() => {
+    connect.mockClear();
+    updateOnboarding.mockClear();
+  });
+
   it("shows eight local banks and enters the real flow with one bank tap", async () => {
     render(
       <TinyWinActivation
@@ -71,5 +84,24 @@ describe("TinyWinActivation", () => {
     expect(
       screen.getByRole("button", { name: /KBank.*Thailand/ }),
     ).toBeVisible();
+  });
+
+  it("lets a returning user sign in without making Google the primary action", async () => {
+    render(
+      <TinyWinActivation
+        initialCountryCode="TH"
+        initialCurrency="THB"
+        onToast={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Already use SheetLog? Sign in with Google",
+      }),
+    );
+
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("featured-bank")).toBeVisible();
   });
 });
