@@ -88,7 +88,6 @@ export function HomePage() {
   const [standaloneBootstrapError, setStandaloneBootstrapError] = useState<
     string | null
   >(null);
-  const [standaloneBootstrapRetry, setStandaloneBootstrapRetry] = useState(0);
   const standaloneBootstrapPromiseRef = useRef<
     Promise<StandaloneBootstrapResult> | null
   >(null);
@@ -111,8 +110,13 @@ export function HomePage() {
   );
 
   useEffect(() => {
-    if (!standalone || phase !== "needs_auth") return;
-    setStandaloneBootstrapStatus("checking");
+    if (
+      !standalone ||
+      phase !== "needs_auth" ||
+      standaloneBootstrapStatus !== "checking"
+    ) {
+      return;
+    }
     setStandaloneBootstrapError(null);
 
     if (!standaloneBootstrapPromiseRef.current) {
@@ -149,7 +153,7 @@ export function HomePage() {
     return () => {
       active = false;
     };
-  }, [onToast, phase, standalone, standaloneBootstrapRetry]);
+  }, [onToast, phase, standalone, standaloneBootstrapStatus]);
 
   useEffect(() => {
     if (phase !== "ready" || session.status !== "local") {
@@ -228,7 +232,7 @@ export function HomePage() {
 
   const retryStandaloneBootstrap = () => {
     standaloneBootstrapPromiseRef.current = null;
-    setStandaloneBootstrapRetry((current) => current + 1);
+    setStandaloneBootstrapStatus("checking");
   };
 
   const startFreshStandalone = () => {
