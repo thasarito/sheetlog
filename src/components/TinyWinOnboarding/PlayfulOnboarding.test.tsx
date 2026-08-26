@@ -18,6 +18,14 @@ const receipt = {
   },
 };
 
+function expectRealSheetLogLogos(minimumCount: number) {
+  const logos = screen.getAllByTestId("sheetlog-logo");
+  expect(logos.length).toBeGreaterThanOrEqual(minimumCount);
+  for (const logo of logos) {
+    expect(logo.getAttribute("src")).toContain("icon.svg");
+  }
+}
+
 describe("playful Tiny Win presentation", () => {
   it("matches the playful bank-picker hierarchy while keeping the real actions", () => {
     const onSignIn = vi.fn();
@@ -32,6 +40,7 @@ describe("playful Tiny Win presentation", () => {
       />,
     );
 
+    expectRealSheetLogLogos(2);
     expect(screen.getByTestId("tiny-win-mascot")).toBeVisible();
     expect(
       screen.getByRole("heading", {
@@ -61,6 +70,7 @@ describe("playful Tiny Win presentation", () => {
   it("celebrates the imported transaction with a playful completion summary", () => {
     render(<ImportedReceipt receipt={receipt} onContinue={vi.fn()} />);
 
+    expectRealSheetLogLogos(1);
     expect(screen.getByTestId("tiny-win-success-art")).toBeVisible();
     expect(
       screen.getByRole("heading", {
