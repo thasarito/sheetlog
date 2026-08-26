@@ -1,12 +1,22 @@
 import type React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TinyWinActivation } from "./TinyWinActivation";
 
-const updateOnboarding = vi.fn().mockResolvedValue(undefined);
+const mocks = vi.hoisted(() => ({
+  updateOnboarding: vi.fn().mockResolvedValue(undefined),
+  connect: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../app/providers", () => ({
+  useSession: () => ({
+    connect: mocks.connect,
+    isConnecting: false,
+  }),
+}));
 
 vi.mock("../../hooks/useOnboarding", () => ({
-  useOnboarding: () => ({ updateOnboarding }),
+  useOnboarding: () => ({ updateOnboarding: mocks.updateOnboarding }),
 }));
 
 vi.mock("../TransactionFlow", () => ({
@@ -22,6 +32,11 @@ vi.mock("./BootstrapTransactionsProvider", () => ({
 }));
 
 describe("TinyWinActivation", () => {
+  beforeEach(() => {
+    mocks.connect.mockClear();
+    mocks.updateOnboarding.mockClear();
+  });
+
   it("shows eight local banks and enters the real flow with one bank tap", async () => {
     render(
       <TinyWinActivation
@@ -35,7 +50,7 @@ describe("TinyWinActivation", () => {
     await waitFor(() =>
       expect(screen.getByText("Real transaction flow")).toBeInTheDocument(),
     );
-    expect(updateOnboarding).toHaveBeenCalledWith(
+    expect(mocks.updateOnboarding).toHaveBeenCalledWith(
       expect.objectContaining({
         accounts: [expect.objectContaining({ name: "KBank" })],
         accountsConfirmed: true,
@@ -71,5 +86,24 @@ describe("TinyWinActivation", () => {
     expect(
       screen.getByRole("button", { name: /KBank.*Thailand/ }),
     ).toBeVisible();
+  });
+
+  it("lets a returning user sign in without making Google the primary action", async () => {
+    render(
+      <TinyWinActivation
+        initialCountryCode="TH"
+        initialCurrency="THB"
+        onToast={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Already use SheetLog? Sign in with Google",
+      }),
+    );
+
+    await waitFor(() => expect(mocks.connect).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByTestId("featured-bank")).toHaveLength(8);
   });
 });

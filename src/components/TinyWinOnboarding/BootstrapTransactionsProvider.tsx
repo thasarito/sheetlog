@@ -22,10 +22,12 @@ const EMPTY_RECENTS = { expense: [], income: [], transfer: [] };
 export function BootstrapTransactionsProvider({
   setup,
   onCaptured,
+  onCleared,
   children,
 }: {
   setup: BootstrapSetup;
   onCaptured: (record: TransactionRecord) => void;
+  onCleared?: () => void;
   children: React.ReactNode;
 }) {
   const upstream = useTransactions();
@@ -59,12 +61,13 @@ export function BootstrapTransactionsProvider({
     }
     await cancelBootstrap();
     capturedRef.current = null;
+    onCleared?.();
     return {
       ok: true,
       outcome: "deleted",
       message: "Staged transaction removed.",
     };
-  }, []);
+  }, [onCleared]);
 
   const updateTransaction = useCallback(
     async (
