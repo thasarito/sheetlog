@@ -1,6 +1,8 @@
 import {
   ChevronRight,
   Landmark,
+  Loader2,
+  LogIn,
   Search,
   Sparkles,
   WalletCards,
@@ -28,9 +30,11 @@ type BankPickerScreenProps = {
   countryCode: string;
   currency: Currency;
   isSelecting?: boolean;
+  isConnecting?: boolean;
   onCountryChange: (countryCode: string) => void;
   onCurrencyChange: (currency: Currency) => void;
   onSelectBank: (bank: BankInstitution, countryCode: string) => void;
+  onSignIn?: () => void;
 };
 
 function BankMark({ bank }: { bank: BankInstitution }) {
@@ -84,9 +88,11 @@ export function BankPickerScreen({
   countryCode,
   currency,
   isSelecting = false,
+  isConnecting = false,
   onCountryChange,
   onCurrencyChange,
   onSelectBank,
+  onSignIn,
 }: BankPickerScreenProps) {
   const [showLocaleControls, setShowLocaleControls] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -118,7 +124,7 @@ export function BankPickerScreen({
           </div>
         </div>
         <span className="rounded-full border border-border/75 bg-card px-3 py-1.5 text-[10px] font-bold text-muted-foreground">
-          No sign-in
+          No sign-in needed
         </span>
       </header>
 
@@ -218,7 +224,7 @@ export function BankPickerScreen({
               bank={bank}
               subtitle="Primary account"
               testId="featured-bank"
-              disabled={isSelecting}
+              disabled={isSelecting || isConnecting}
               onClick={() => onSelectBank(bank, catalog.code)}
             />
           ))}
@@ -228,12 +234,12 @@ export function BankPickerScreen({
           <BankTile
             bank={CASH_ACCOUNT}
             subtitle="Notes & coins"
-            disabled={isSelecting}
+            disabled={isSelecting || isConnecting}
             onClick={() => onSelectBank(CASH_ACCOUNT, catalog.code)}
           />
           <button
             type="button"
-            disabled={isSelecting}
+            disabled={isSelecting || isConnecting}
             onClick={() => setShowSearch(true)}
             className="flex min-h-[78px] min-w-0 items-center gap-3 rounded-[21px] border border-dashed border-border bg-transparent px-3 py-3 text-left transition active:scale-[0.985] active:bg-surface-2 disabled:opacity-55"
           >
@@ -252,11 +258,28 @@ export function BankPickerScreen({
         </div>
       </section>
 
-      <div className="relative z-10 mt-auto flex items-center justify-center gap-2 pb-1 pt-7 text-center text-[10px] leading-4 text-muted-foreground">
-        <WalletCards className="h-4 w-4 shrink-0 text-primary" />
-        <span>
-          Nothing connects to your bank. This only names your SheetLog account.
-        </span>
+      <div className="relative z-10 mt-auto pb-1 pt-7 text-center">
+        <div className="flex items-center justify-center gap-2 text-[10px] leading-4 text-muted-foreground">
+          <WalletCards className="h-4 w-4 shrink-0 text-primary" />
+          <span>
+            Nothing connects to your bank. This only names your SheetLog account.
+          </span>
+        </div>
+        {onSignIn ? (
+          <button
+            type="button"
+            disabled={isSelecting || isConnecting}
+            onClick={onSignIn}
+            className="mt-3 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-3 text-[11px] font-bold text-muted-foreground transition active:bg-surface-2 active:text-foreground disabled:opacity-55"
+          >
+            {isConnecting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <LogIn className="h-3.5 w-3.5" />
+            )}
+            Already use SheetLog? Sign in with Google
+          </button>
+        ) : null}
       </div>
 
       {showSearch ? (
@@ -317,11 +340,11 @@ export function BankPickerScreen({
                   <button
                     key={`${result.countryCode}:${result.bank.id}`}
                     type="button"
-                    disabled={isSelecting}
+                    disabled={isSelecting || isConnecting}
                     onClick={() =>
                       onSelectBank(result.bank, result.countryCode)
                     }
-                    className="flex w-full items-center gap-3 rounded-[18px] border border-border/75 bg-card p-3 text-left active:bg-surface-2"
+                    className="flex w-full items-center gap-3 rounded-[18px] border border-border/75 bg-card p-3 text-left active:bg-surface-2 disabled:opacity-55"
                   >
                     <BankMark bank={result.bank} />
                     <span className="min-w-0 flex-1">
