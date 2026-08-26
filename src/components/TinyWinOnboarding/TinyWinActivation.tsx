@@ -1,5 +1,6 @@
 import { AlertCircle, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSession } from "../../app/providers";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import {
   type BankInstitution,
@@ -42,6 +43,7 @@ export function TinyWinActivation({
   initialCurrency,
   onToast,
 }: TinyWinActivationProps) {
+  const { connect, isConnecting } = useSession();
   const { updateOnboarding } = useOnboarding();
   const [countryCode, setCountryCode] = useState(initialCountryCode);
   const [currency, setCurrency] = useState(initialCurrency);
@@ -175,6 +177,19 @@ export function TinyWinActivation({
     [currency, onToast, updateOnboarding],
   );
 
+  const signInExistingUser = useCallback(async () => {
+    if (isConnecting || isSelectingBank || isImporting) return;
+    try {
+      await connect();
+    } catch (error) {
+      onToast(
+        error instanceof Error
+          ? error.message
+          : "Could not start Google sign in.",
+      );
+    }
+  }, [connect, isConnecting, isImporting, isSelectingBank, onToast]);
+
   const startFresh = () => {
     cancelPendingTransition();
     consumedBootstrapRef.current = null;
@@ -243,11 +258,13 @@ export function TinyWinActivation({
       countryCode={safeCatalog.code}
       currency={currency}
       isSelecting={isSelectingBank}
+      isConnecting={isConnecting}
       onCountryChange={setCountryCode}
       onCurrencyChange={setCurrency}
       onSelectBank={(bank, selectedCountryCode) =>
         void selectBank(bank, selectedCountryCode)
       }
+      onSignIn={() => void signInExistingUser()}
     />
   );
 }
