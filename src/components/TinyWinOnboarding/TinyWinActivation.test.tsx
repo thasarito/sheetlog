@@ -3,18 +3,20 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TinyWinActivation } from "./TinyWinActivation";
 
-const updateOnboarding = vi.fn().mockResolvedValue(undefined);
-const connect = vi.fn().mockResolvedValue(undefined);
+const mocks = vi.hoisted(() => ({
+  updateOnboarding: vi.fn().mockResolvedValue(undefined),
+  connect: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("../../app/providers", () => ({
   useSession: () => ({
-    connect,
+    connect: mocks.connect,
     isConnecting: false,
   }),
 }));
 
 vi.mock("../../hooks/useOnboarding", () => ({
-  useOnboarding: () => ({ updateOnboarding }),
+  useOnboarding: () => ({ updateOnboarding: mocks.updateOnboarding }),
 }));
 
 vi.mock("../TransactionFlow", () => ({
@@ -31,8 +33,8 @@ vi.mock("./BootstrapTransactionsProvider", () => ({
 
 describe("TinyWinActivation", () => {
   beforeEach(() => {
-    connect.mockClear();
-    updateOnboarding.mockClear();
+    mocks.connect.mockClear();
+    mocks.updateOnboarding.mockClear();
   });
 
   it("shows eight local banks and enters the real flow with one bank tap", async () => {
@@ -48,7 +50,7 @@ describe("TinyWinActivation", () => {
     await waitFor(() =>
       expect(screen.getByText("Real transaction flow")).toBeInTheDocument(),
     );
-    expect(updateOnboarding).toHaveBeenCalledWith(
+    expect(mocks.updateOnboarding).toHaveBeenCalledWith(
       expect.objectContaining({
         accounts: [expect.objectContaining({ name: "KBank" })],
         accountsConfirmed: true,
@@ -101,7 +103,7 @@ describe("TinyWinActivation", () => {
       }),
     );
 
-    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.connect).toHaveBeenCalledTimes(1));
     expect(screen.getAllByTestId("featured-bank")).toHaveLength(8);
   });
 });
