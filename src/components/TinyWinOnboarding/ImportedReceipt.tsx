@@ -1,6 +1,6 @@
-import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { ImportedBootstrapReceipt } from "../../lib/bootstrapImport";
+import { PlayfulSuccessArt } from "./PlayfulMascot";
 
 function amountLabel(receipt: ImportedBootstrapReceipt): string {
   const { transaction } = receipt;
@@ -36,52 +36,62 @@ export function ImportedReceipt({
   };
 
   return (
-    <main className="relative mx-auto flex h-dvh w-full max-w-md flex-col overflow-y-auto bg-background px-5 pb-safe-offset-6 pt-safe-offset-5 text-foreground">
-      <div className="pointer-events-none absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
-      <section className="relative z-10 my-auto text-center">
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-primary text-primary-foreground">
-          <Check className="h-9 w-9" strokeWidth={3} />
-        </div>
-        <p className="mt-7 text-[10px] font-black uppercase tracking-[0.18em] text-primary">Imported safely</p>
-        <h1 className="mx-auto mt-2 max-w-[330px] text-[clamp(2.1rem,10vw,2.9rem)] font-black leading-[0.98] tracking-[-0.06em]">
-          Your first transaction is saved.
-        </h1>
-        <p className="mx-auto mt-3 max-w-sm text-[13px] leading-5 text-muted-foreground">
-          SheetLog created your local workspace and skipped the rest of onboarding.
-        </p>
+    <main className="tiny-win-playful">
+      <div className="tiny-win-playful-screen tiny-win-success-layout">
+        <PlayfulSuccessArt />
+
+        <section className="tiny-win-copy">
+          <p className="tiny-win-eyebrow">Installed workspace</p>
+          <h1 className="tiny-win-title">Nice. Your logging home is ready!</h1>
+          <p className="tiny-win-lead">
+            Your first transaction is saved in this installed SheetLog. The
+            rest of onboarding is already complete.
+          </p>
+        </section>
 
         <section
           aria-label="Imported transaction"
-          className="mt-7 overflow-hidden rounded-[28px] border border-border bg-card p-5 text-left"
+          className="tiny-win-transaction-card text-left"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-[14px] font-black">{transaction.category}</p>
-              <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                {transaction.account} · {transaction.type === "expense" ? "Expense" : transaction.type}
-              </p>
-            </div>
-            <span className="flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 text-[10px] font-black text-success">
-              <Sparkles className="h-3 w-3" /> Saved
+          <div className="tiny-win-transaction-meta">
+            <span className="min-w-0">
+              <strong>{transaction.category}</strong>
+              <small>
+                {transaction.account} · {transaction.type}
+              </small>
             </span>
+            <span className="tiny-win-ready-pill">Saved</span>
           </div>
-          <p className="mt-7 text-[clamp(2.6rem,13vw,3.4rem)] font-black leading-none tracking-[-0.065em] tabular-nums">
+          <p className="tiny-win-transaction-amount">
             {amountLabel(receipt)}
           </p>
-          {transaction.note ? (
-            <p className="mt-4 truncate text-[11px] text-muted-foreground">{transaction.note}</p>
-          ) : null}
         </section>
+
+        <div className="tiny-win-summary-grid">
+          <div className="tiny-win-summary-card">
+            <span>Account</span>
+            <strong>{transaction.account}</strong>
+          </div>
+          <div className="tiny-win-summary-card">
+            <span>Currency</span>
+            <strong>{transaction.currency}</strong>
+          </div>
+          <div className="tiny-win-summary-card">
+            <span>Category</span>
+            <strong>{transaction.category}</strong>
+          </div>
+        </div>
 
         <button
           type="button"
+          data-playful-pressable="true"
           disabled={isContinuing}
           onClick={() => void continueLogging()}
-          className="mt-5 h-14 w-full rounded-[19px] bg-primary px-5 text-[14px] font-black text-primary-foreground transition active:scale-[0.985] disabled:opacity-60"
+          className="tiny-win-primary-button"
         >
-          {isContinuing ? "Opening SheetLog…" : "Continue logging"}
+          {isContinuing ? "Opening SheetLog…" : "Continue logging →"}
         </button>
-      </section>
+      </div>
     </main>
   );
 }
