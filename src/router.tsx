@@ -25,9 +25,9 @@ const legacyAppRoute = createRoute({
   component: HomePage,
 });
 
-const oauthCallbackRoute = createRoute({
+const callbackRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/oauth/callback",
+  path: "/callback",
   component: OAuthCallbackPage,
 });
 
@@ -46,14 +46,16 @@ const termsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   homeRoute,
   legacyAppRoute,
-  oauthCallbackRoute,
+  callbackRoute,
   privacyRoute,
   termsRoute,
 ]);
+const baseUrl = import.meta.env.BASE_URL;
+const basepath = baseUrl === "/" ? "/" : baseUrl.replace(/\/$/, "");
 
 export const router = createRouter({
   routeTree,
-  basepath: import.meta.env.BASE_URL,
+  basepath,
 });
 
 declare module "@tanstack/react-router" {
