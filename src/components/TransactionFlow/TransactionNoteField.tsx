@@ -8,7 +8,11 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import type { Coordinates, PlaceSuggestion } from "../../lib/googlePlaces";
+import {
+  type Coordinates,
+  type PlaceSuggestion,
+  formatPlaceDistance,
+} from "../../lib/googlePlaces";
 import { cn } from "../../lib/utils";
 import { NearbyPlaceChips } from "./NearbyPlaceChips";
 import { createPlaceSessionId } from "./placeSessionId";
@@ -58,7 +62,14 @@ export function TransactionNoteField({
   const [sessionId, setSessionId] = useState(createPlaceSessionId);
   const sessionIdRef = useRef(sessionId);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const previousQueryContextRef = useRef({ value, sessionId });
+  const locationLat = places?.locationBias?.lat;
+  const locationLng = places?.locationBias?.lng;
+  const previousQueryContextRef = useRef({
+    value,
+    sessionId,
+    locationLat,
+    locationLng,
+  });
   const generationRef = useRef(0);
   const listboxId = useId();
   const optionId = (index: number) => `${listboxId}-option-${index}`;
@@ -193,12 +204,19 @@ export function TransactionNoteField({
     const previousQueryContext = previousQueryContextRef.current;
     if (
       previousQueryContext.value !== value ||
-      previousQueryContext.sessionId !== sessionId
+      previousQueryContext.sessionId !== sessionId ||
+      previousQueryContext.locationLat !== locationLat ||
+      previousQueryContext.locationLng !== locationLng
     ) {
-      previousQueryContextRef.current = { value, sessionId };
+      previousQueryContextRef.current = {
+        value,
+        sessionId,
+        locationLat,
+        locationLng,
+      };
       setActiveIndex(-1);
     }
-  }, [value, sessionId]);
+  }, [value, sessionId, locationLat, locationLng]);
 
   useEffect(() => {
     setActiveIndex((index) =>
@@ -280,36 +298,48 @@ export function TransactionNoteField({
     liveStatus = `${autocomplete.suggestions.length} places found`;
   }
 
-  const renderedOptions = autocomplete.suggestions.map((suggestion, index) => (
-    <button
-      key={suggestion.placeId}
-      id={optionId(index)}
-      type="button"
-      role="option"
-      tabIndex={-1}
-      aria-selected={index === activeIndex}
-      className={cn(
-        "pointer-events-auto flex min-h-14 w-full items-center gap-3 border-b border-border/15 px-2 py-2.5 text-left text-sm first:border-t first:border-border/15",
-        index === activeIndex && "bg-muted text-foreground",
-      )}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={() => void selectOption(suggestion, true)}
-    >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-foreground/[0.03] text-muted-foreground">
-        <MapPin className="h-4 w-4" aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-foreground">
-          {suggestion.name}
+  const renderedOptions = autocomplete.suggestions.map((suggestion, index) => {
+    const distanceLabel = formatPlaceDistance(suggestion.distanceMeters);
+    return (
+      <button
+        key={suggestion.placeId}
+        id={optionId(index)}
+        type="button"
+        role="option"
+        tabIndex={-1}
+        aria-selected={index === activeIndex}
+        className={cn(
+          "pointer-events-auto flex min-h-14 w-full items-center gap-3 border-b border-border/15 px-2 py-2.5 text-left text-sm first:border-t first:border-border/15",
+          index === activeIndex && "bg-muted text-foreground",
+        )}
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={() => void selectOption(suggestion, true)}
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-foreground/[0.03] text-muted-foreground">
+          <MapPin className="h-4 w-4" aria-hidden="true" />
         </span>
-        {suggestion.secondaryText ? (
-          <span className="block truncate text-xs text-muted-foreground">
-            {suggestion.secondaryText}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground">
+            {suggestion.name}
+          </span>
+          {suggestion.secondaryText ? (
+            <span className="block truncate text-xs text-muted-foreground">
+              {suggestion.secondaryText}
+            </span>
+          ) : null}
+        </span>
+        {distanceLabel !== null ? (
+          <span
+            className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+            title="Straight-line distance"
+            aria-label={`${distanceLabel} away, straight-line distance`}
+          >
+            {distanceLabel}
           </span>
         ) : null}
-      </span>
-    </button>
-  ));
+      </button>
+    );
+  });
 
   const renderedPopupState = autocomplete.isLoading ? (
     <p className="pointer-events-auto flex min-h-20 items-center px-2 py-3 text-sm text-muted-foreground">
