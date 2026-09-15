@@ -8,6 +8,7 @@ type NearbyPlaceChipsProps = {
   isLoading: boolean;
   onSelect: (suggestion: PlaceSuggestion) => void;
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
+  onRequestLocation?: () => void;
 };
 
 export function NearbyPlaceChips({
@@ -15,6 +16,7 @@ export function NearbyPlaceChips({
   isLoading,
   onSelect,
   onPointerDown,
+  onRequestLocation,
 }: NearbyPlaceChipsProps) {
   const [showLoading, setShowLoading] = useState(false);
   const visibleSuggestions = suggestions.slice(0, 5);
@@ -29,6 +31,23 @@ export function NearbyPlaceChips({
     const timeoutId = window.setTimeout(() => setShowLoading(true), 300);
     return () => window.clearTimeout(timeoutId);
   }, [isLoading]);
+
+  if (!isLoading && !hasChipContent && onRequestLocation) {
+    return (
+      <div className="min-h-[42px] pt-2">
+        <button
+          type="button"
+          aria-label="Use location for nearby places"
+          className="flex min-h-8 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-xs font-medium text-foreground transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          onPointerDown={onPointerDown}
+          onClick={onRequestLocation}
+        >
+          <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+          Use location
+        </button>
+      </div>
+    );
+  }
 
   if ((!isLoading || !showLoading) && !hasChipContent) {
     return null;

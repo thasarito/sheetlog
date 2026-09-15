@@ -1230,6 +1230,9 @@ export function TransactionFlow() {
                   nearbySuggestions: nearbyPlaces.suggestions,
                   isNearbyLoading: nearbyPlaces.isLoading,
                   locationBias: nearbyPlaces.coordinates,
+                  onRequestLocation: nearbyPlaces.canRequestLocation
+                    ? nearbyPlaces.requestLocation
+                    : undefined,
                 }
               : undefined
           }

@@ -20,6 +20,7 @@ export type PlaceNoteOptions = {
   nearbySuggestions: PlaceSuggestion[];
   isNearbyLoading: boolean;
   locationBias?: Coordinates;
+  onRequestLocation?: () => void;
 };
 
 type TransactionNoteFieldProps = {
@@ -456,6 +457,7 @@ export function TransactionNoteField({
               isLoading={places?.isNearbyLoading ?? false}
               onPointerDown={(event) => event.preventDefault()}
               onSelect={handleNearbySelect}
+              onRequestLocation={places?.onRequestLocation}
             />
           ) : null}
         </div>

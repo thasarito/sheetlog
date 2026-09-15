@@ -52,9 +52,28 @@ export function hasGoogleMapsApiKey(explicitApiKey?: string) {
   return Boolean(explicitApiKey ?? import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 }
 
-export function getCurrentCoordinates(): Promise<Coordinates> {
+// Interactive callers may prompt. Automatic lookups must pass allowPrompt: false.
+export async function getCurrentCoordinates({
+  allowPrompt = true,
+}: { allowPrompt?: boolean } = {}): Promise<Coordinates> {
   if (typeof navigator === "undefined" || !navigator.geolocation) {
     return Promise.reject(new Error("Geolocation is not available"));
+  }
+
+  if (!allowPrompt) {
+    let permission: PermissionState | undefined;
+    try {
+      permission = (
+        await navigator.permissions?.query({ name: "geolocation" })
+      )?.state;
+    } catch {
+      // Unsupported Permissions APIs are not evidence of a grant.
+    }
+    // Grants can expire between transactions. Never cache an earlier grant or
+    // probe with getCurrentPosition: that probe itself can display a prompt.
+    if (permission !== "granted") {
+      throw new Error("Location permission requires a user action");
+    }
   }
 
   return new Promise((resolve, reject) => {

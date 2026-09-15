@@ -22,6 +22,7 @@ type SessionCleanupTimer = ReturnType<typeof globalThis.setTimeout>;
 type NearbySessionScope = {
   active: boolean;
   cleanupTimer?: SessionCleanupTimer;
+  requestedCoordinates?: Promise<Coordinates>;
 };
 
 const nearbySessionScopes = new WeakMap<
@@ -49,6 +50,7 @@ function retireSessionScope(
   scope: NearbySessionScope,
 ) {
   scope.active = false;
+  scope.requestedCoordinates = undefined;
   const scopes = nearbySessionScopes.get(queryClient);
   if (scopes?.get(sessionId) === scope) {
     scopes.delete(sessionId);
@@ -122,9 +124,14 @@ export function useNearbyPlaceSuggestions({
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     queryFn: async () => {
+      // A tap contributes one already-started request, never reusable consent.
+      const requestedCoordinates = sessionScope.requestedCoordinates;
+      sessionScope.requestedCoordinates = undefined;
       let coordinates: Coordinates;
       try {
-        coordinates = await getCurrentCoordinates();
+        coordinates = await (
+          requestedCoordinates ?? getCurrentCoordinates({ allowPrompt: false })
+        );
       } catch {
         assertSessionActive(sessionScope, queryClient, sessionId);
         return { coordinates: undefined, suggestions: [] };
@@ -164,10 +171,40 @@ export function useNearbyPlaceSuggestions({
   const data: { suggestions: PlaceSuggestion[]; coordinates?: Coordinates } =
     canSearch ? (query.data ?? { suggestions: [] }) : { suggestions: [] };
 
+  const requestLocation = () => {
+    const currentQuery = queryClient.getQueryCache().find({
+      queryKey: nearbyPlaceSuggestionKeys.session(sessionId),
+      exact: true,
+    });
+    if (
+      !canSearch ||
+      !sessionScope.active ||
+      !currentQuery?.isActive() ||
+      currentQuery.state.fetchStatus !== "idle"
+    ) {
+      return;
+    }
+
+    // Start in the click handler, not in a retry/reconnect or deferred query.
+    const requestedCoordinates = getCurrentCoordinates({ allowPrompt: true });
+    sessionScope.requestedCoordinates = requestedCoordinates;
+    // The session can close before its query consumes this promise.
+    void requestedCoordinates.catch(() => undefined);
+    void query.refetch({ cancelRefetch: false });
+  };
+
   return {
     suggestions: data.suggestions,
     coordinates: data.coordinates,
     isLoading: canSearch && (query.isLoading || query.isFetching),
     canSearch,
+    canRequestLocation:
+      canSearch &&
+      !query.isLoading &&
+      !query.isFetching &&
+      !data.coordinates &&
+      typeof navigator !== "undefined" &&
+      Boolean(navigator.geolocation),
+    requestLocation,
   };
 }
