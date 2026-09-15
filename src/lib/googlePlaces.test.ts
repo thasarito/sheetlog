@@ -341,6 +341,7 @@ describe("Google Places browser client", () => {
     expect(fetchAutocompleteSuggestions).toHaveBeenCalledWith({
       input: "cafe",
       sessionToken: session.token,
+      origin: { lat: 13.7563, lng: 100.5018 },
       locationBias: {
         center: { lat: 13.7563, lng: 100.5018 },
         radius: 5000,

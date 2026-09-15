@@ -16,6 +16,7 @@ declare global {
     text?: GooglePlaceDisplayName;
     mainText?: GooglePlaceDisplayName;
     secondaryText?: GooglePlaceDisplayName;
+    distanceMeters?: number;
     types: string[];
     toPlace?: () => GooglePlace;
   };
@@ -52,6 +53,7 @@ declare global {
       fetchAutocompleteSuggestions: (request: {
         input: string;
         sessionToken: GoogleAutocompleteSessionToken;
+        origin?: { lat: number; lng: number };
         locationBias?: {
           center: { lat: number; lng: number };
           radius: number;

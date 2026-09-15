@@ -75,8 +75,11 @@ export type UsePlaceAutocompleteResult = {
 export const placeAutocompleteKeys = {
   session: (sessionId: string) =>
     ['placeAutocompleteSession', sessionId] as const,
-  suggestions: (sessionId: string, input: string) =>
-    ['placeAutocomplete', sessionId, 'suggestions', input] as const,
+  suggestions: (sessionId: string, input: string, locationBias?: Coordinates) =>
+    [
+      'placeAutocomplete', sessionId, 'suggestions', input,
+      ...(locationBias ? [locationBias.lat, locationBias.lng] : []),
+    ] as const,
   suggestionsForSession: (sessionId: string) =>
     ['placeAutocomplete', sessionId, 'suggestions'] as const,
 };
@@ -211,7 +214,11 @@ export function usePlaceAutocomplete({
   });
 
   const suggestionQuery = useQuery({
-    queryKey: placeAutocompleteKeys.suggestions(sessionId, debouncedValue),
+    queryKey: placeAutocompleteKeys.suggestions(
+      sessionId,
+      debouncedValue,
+      locationBias,
+    ),
     enabled: canSearch && Boolean(sessionQuery.data),
     retry: false,
     refetchOnWindowFocus: false,

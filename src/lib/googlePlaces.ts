@@ -7,6 +7,7 @@ export type PlaceSuggestion = {
   placeId: string;
   name: string;
   secondaryText?: string;
+  distanceMeters?: number;
 };
 
 export type PlaceAutocompleteSession = {
@@ -199,10 +200,29 @@ function normalizeDisplayName(displayName: unknown) {
   return "";
 }
 
+function normalizeDistanceMeters(distanceMeters: unknown): number | undefined {
+  return typeof distanceMeters === "number" &&
+    Number.isFinite(distanceMeters) &&
+    distanceMeters >= 0
+    ? distanceMeters
+    : undefined;
+}
+
+export function formatPlaceDistance(distanceMeters?: number): string | null {
+  const distance = normalizeDistanceMeters(distanceMeters);
+  if (distance === undefined) return null;
+
+  const roundedMeters = Math.round(distance);
+  return roundedMeters < 1000
+    ? `${roundedMeters} m`
+    : `${(distance / 1000).toFixed(1)} km`;
+}
+
 function createPlaceSuggestion(
   placeId: unknown,
   displayName: unknown,
-  secondaryText?: unknown
+  secondaryText?: unknown,
+  distanceMeters?: unknown
 ): PlaceSuggestion | null {
   if (typeof placeId !== "string" || placeId.trim().length === 0) {
     return null;
@@ -214,10 +234,12 @@ function createPlaceSuggestion(
   }
 
   const secondary = normalizeDisplayName(secondaryText);
+  const distance = normalizeDistanceMeters(distanceMeters);
   return {
     placeId,
     name,
     ...(secondary ? { secondaryText: secondary } : {}),
+    ...(distance !== undefined ? { distanceMeters: distance } : {}),
   };
 }
 
@@ -335,6 +357,7 @@ export async function searchPlaceSuggestions(
     sessionToken: session.token,
     ...(locationBias
       ? {
+          origin: locationBias,
           locationBias: {
             center: locationBias,
             radius: 5000,
@@ -350,7 +373,8 @@ export async function searchPlaceSuggestions(
     const suggestion = createPlaceSuggestion(
       prediction?.placeId,
       prediction?.mainText ?? prediction?.text,
-      prediction?.secondaryText
+      prediction?.secondaryText,
+      locationBias ? prediction?.distanceMeters : undefined
     );
     if (
       !prediction ||
@@ -365,6 +389,16 @@ export async function searchPlaceSuggestions(
     suggestions.push(suggestion);
   }
 
+  if (locationBias) {
+    // Preserve Google's ordering for ties and results without a distance.
+    suggestions.sort((a, b) => {
+      if (a.distanceMeters === undefined) {
+        return b.distanceMeters === undefined ? 0 : 1;
+      }
+      if (b.distanceMeters === undefined) return -1;
+      return a.distanceMeters - b.distanceMeters;
+    });
+  }
   return suggestions;
 }
 
