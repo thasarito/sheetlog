@@ -1,0 +1,216 @@
+main[data-testid="transaction-canvas"] {
+  container: transaction / inline-size;
+}
+
+.duo-navigation {
+  display: none;
+}
+
+.amount-layout {
+  container: amount / inline-size;
+}
+
+.receipt-layout {
+  container: receipt / inline-size;
+}
+
+@media (max-height: 700px) {
+  [data-testid="step-amount"] {
+    overflow-y: auto;
+  }
+
+  [data-step-amount-fields] {
+    min-height: 340px;
+    flex: 1 0 auto;
+    overflow: visible;
+  }
+
+  [data-testid="amount-keypad"] {
+    gap: 4px;
+  }
+
+  [data-testid="amount-keypad"] button {
+    height: 44px;
+  }
+}
+
+@container amount (min-width: 700px) {
+  [data-testid="step-amount"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 0.8fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-items: stretch;
+    column-gap: 32px;
+  }
+
+  [data-step-amount-fields] {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .amount-warning {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .amount-actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    justify-content: end;
+  }
+}
+
+@container receipt (min-width: 700px) {
+  .receipt-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    gap: 12px 24px;
+    align-content: start;
+    align-items: start;
+  }
+
+  .receipt-progress {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin-top: 0;
+  }
+
+  .receipt-details {
+    grid-column: 1;
+    margin-top: 0;
+  }
+
+  .receipt-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .receipt-actions > button {
+    flex: 1;
+    margin: 0;
+  }
+}
+
+@media (min-width: 600px) {
+  main[data-testid="transaction-canvas"] {
+    padding-inline: 0;
+  }
+}
+
+[data-duo-full-screen="true"] > [data-vaul-overlay],
+[data-duo-wide="true"] > [data-vaul-overlay] {
+  display: none;
+}
+
+[data-duo-full-screen="true"] > [data-vaul-drawer] {
+  top: 0;
+  margin: 0;
+  height: 100% !important;
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  transform: none !important;
+}
+
+[data-duo-full-screen="true"] [data-testid="category-step-launcher"] {
+  display: none;
+}
+
+[data-duo-full-screen="true"] [data-testid="category-step-entry"] {
+  overflow: visible;
+}
+
+@container transaction (min-width: 600px) {
+  .transaction-shell > header {
+    display: none;
+  }
+
+  .transaction-shell {
+    max-width: none;
+  }
+
+  .duo-dashboard {
+    display: flex;
+  }
+
+  .duo-dashboard-viewport {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .duo-navigation {
+    z-index: 35;
+    display: flex;
+    flex: 0 0 72px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 6px;
+    border-right: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+  }
+
+  .duo-navigation-item {
+    display: flex;
+    min-height: 56px;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-radius: 12px;
+    color: hsl(var(--muted-foreground));
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .duo-navigation-item[aria-current="page"] {
+    background: hsl(var(--surface-2));
+    color: hsl(var(--foreground));
+  }
+
+  .duo-navigation-item:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: -2px;
+  }
+}
+
+@container transaction (min-width: 768px) {
+  .transaction-shell > header + div {
+    padding-bottom: 0;
+  }
+
+  [data-duo-wide="true"] {
+    --dashboard-header-height: 0px;
+    --dashboard-header-space: 0px;
+  }
+
+  [data-duo-wide="true"] .duo-dashboard-panel {
+    width: calc(50% - 12px);
+  }
+
+  [data-duo-wide="true"] > [data-vaul-drawer] {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: calc(50% + 12px);
+    width: calc(50% - 12px);
+    max-width: none;
+    height: 100% !important;
+    margin: 0;
+    overflow: hidden;
+    border-radius: 20px;
+    transform: none !important;
+    touch-action: auto;
+  }
+
+  [data-duo-wide="true"] [data-testid="category-step-launcher"] > button {
+    display: none;
+  }
+
+  [data-duo-wide="true"] [data-testid="category-step-entry"] {
+    overflow-y: auto;
+  }
+}

@@ -13,14 +13,14 @@ export function SettingsView(props: SettingsViewProps) {
   const [themeOpen, setThemeOpen] = useState(false);
 
   return (
-    <div className="settings-view-shell relative h-full min-h-0">
+    <div className="settings-view-shell relative mx-auto h-full min-h-0 w-full max-w-[720px]">
       <SettingsViewContent {...props} />
       <div
         data-home-carousel-swipe-lock="true"
         className="absolute bottom-4 right-4 z-40"
       >
         {themeOpen ? (
-          <div className="absolute bottom-12 right-0 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-[14px] border border-border/70 bg-card">
+          <div className="settings-theme-popup absolute bottom-12 right-0 overflow-hidden rounded-[14px] border border-border/70 bg-card">
             <ThemeSetting />
           </div>
         ) : null}

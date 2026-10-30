@@ -70,7 +70,7 @@ export default defineConfig(({ mode }) => {
           short_name: "SheetLog",
           start_url: normalizedBase,
           display: "standalone",
-          orientation: "portrait",
+          orientation: "any",
           background_color: DEFAULT_PWA_COLOR,
           theme_color: DEFAULT_PWA_COLOR,
           icons: [

@@ -9,3 +9,10 @@
   border-color: transparent;
   color: hsl(var(--primary));
 }
+.settings-view-shell {
+  container-type: inline-size;
+}
+
+.settings-theme-popup {
+  width: min(22rem, calc(100cqw - 2rem));
+}

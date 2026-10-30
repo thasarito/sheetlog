@@ -527,7 +527,7 @@ function CategoryButton({
         />
       </motion.span>
       <span className="flex h-full w-full min-w-0 items-center justify-center px-1.5">
-        <span className="line-clamp-2 min-w-0 break-words text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
+        <span className="line-clamp-3 min-w-0 break-words text-[9px] font-semibold leading-[1.15] text-foreground min-[360px]:text-[10px]">
           {category.name}
         </span>
       </span>

@@ -36,6 +36,7 @@ type CategoryStepSheetProps = {
   entry: React.ReactNode;
   layoutHeight: number;
   typeTabsHostRef?: React.Ref<HTMLFieldSetElement>;
+  fullScreen?: boolean;
 };
 
 function positiveHeight(value: number, fallback: number): number {
@@ -53,17 +54,20 @@ export function CategoryStepSheet({
   entry,
   layoutHeight,
   typeTabsHostRef,
+  fullScreen = false,
 }: CategoryStepSheetProps) {
   const layoutRef = useRef<HTMLDivElement | null>(null);
+  const dashboardRef = useRef<HTMLDivElement | null>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
   const [layoutElement, setLayoutElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const [wide, setWide] = useState(false);
   const [launcherElement, setLauncherElement] =
     useState<HTMLDivElement | null>(null);
   const [safeAreaElement, setSafeAreaElement] =
     useState<HTMLDivElement | null>(null);
-  const [entryElement, setEntryElement] = useState<HTMLDivElement | null>(null);
+  const [entryElement, setEntryElement] = useState<HTMLElement | null>(null);
   const [accessoryHost, setAccessoryHost] = useState<HTMLDivElement | null>(
     null,
   );
@@ -89,6 +93,7 @@ export function CategoryStepSheet({
 
   useLayoutEffect(() => {
     const measure = () => {
+      setWide((layoutRef.current?.clientWidth ?? 0) >= 768);
       const measuredLayoutHeight = Math.floor(
         positiveHeight(
           layoutRef.current?.getBoundingClientRect().height ?? 0,
@@ -193,9 +198,9 @@ export function CategoryStepSheet({
         ? keyboardPoint
         : expandedPoint;
   const collapsed = sheetState === "collapsed";
-  const entryVisible = sheetState === "expanded";
+  const entryVisible = wide || fullScreen || sheetState === "expanded";
   const keyboardState = sheetState === "keyboard";
-  const sheetBodyHeight = entryVisible
+  const sheetBodyHeight = wide || fullScreen ? "100%" : entryVisible
     ? `calc(${expandedPoint} + var(--category-sheet-safe-area))`
     : expandedPoint;
 
@@ -230,8 +235,8 @@ export function CategoryStepSheet({
   }, [keyboardViewport.active, setSheetState]);
   const accessoryContext = useMemo(
     () => ({
-      provided: true,
-      host: accessoryHost,
+      provided: !wide,
+      host: wide ? null : accessoryHost,
       reportHeight: reportAccessoryHeight,
       requestExpanded,
       requestKeyboard,
@@ -239,6 +244,7 @@ export function CategoryStepSheet({
     }),
     [
       accessoryHost,
+      wide,
       releaseKeyboard,
       reportAccessoryHeight,
       requestExpanded,
@@ -248,24 +254,27 @@ export function CategoryStepSheet({
 
   useLayoutEffect(() => {
     if (entryElement) entryElement.inert = !entryVisible;
-    if (sheetBodyRef.current) sheetBodyRef.current.inert = keyboardState;
-  }, [entryElement, entryVisible, keyboardState]);
+    if (sheetBodyRef.current) sheetBodyRef.current.inert = keyboardState && !wide && !fullScreen;
+    if (dashboardRef.current) dashboardRef.current.inert = fullScreen && !wide;
+  }, [entryElement, entryVisible, keyboardState, wide, fullScreen]);
 
   return (
     <CategoryStepSheetAccessoryProvider value={accessoryContext}>
       <div
         ref={setLayoutHost}
         data-testid="category-step-layout"
-        data-category-sheet-state={sheetState}
+        data-category-sheet-state={wide ? "collapsed" : sheetState}
+        data-duo-wide={wide ? "true" : "false"}
+        data-duo-full-screen={fullScreen ? "true" : "false"}
         className="relative h-full min-h-0"
         style={
           {
-            "--category-sheet-occlusion": activePoint,
+            "--category-sheet-occlusion": wide ? "0px" : activePoint,
             "--transaction-history-dock-height": `${DEFAULT_TRANSACTION_HISTORY_DOCK_HEIGHT}px`,
           } as React.CSSProperties
         }
       >
-        <div className="h-full min-h-0">{children}</div>
+        <div ref={dashboardRef} aria-hidden={fullScreen && !wide} className="duo-dashboard-panel h-full min-h-0">{children}</div>
         <Drawer
           container={layoutElement}
           open
@@ -300,7 +309,7 @@ export function CategoryStepSheet({
             showHandle={false}
             data-category-sheet-state={sheetState}
             onClick={() => {
-              if (collapsed) setSheetState("expanded");
+              if (collapsed && !wide && !fullScreen) setSheetState("expanded");
             }}
             className={cn(
               "overflow-visible motion-reduce:![transition:none] sm:mx-auto sm:max-w-md",
@@ -370,20 +379,21 @@ export function CategoryStepSheet({
                   />
                 ) : null}
               </div>
-              <div
+              <section
                 ref={setEntryElement}
                 aria-hidden={!entryVisible}
+                aria-label="Transaction entry workspace"
                 data-testid="category-step-entry"
                 data-vaul-no-drag
                 className={`${collapsed ? "order-3" : "order-2"} min-h-0 flex-1 overflow-y-auto`}
                 style={{
-                  transform: collapsed
+                  transform: collapsed && !wide && !fullScreen
                     ? "translateY(calc(-1 * var(--category-sheet-safe-area)))"
                     : "translateY(0)",
                 }}
               >
                 {entry}
-              </div>
+              </section>
               <div
                 ref={setSafeAreaElement}
                 aria-hidden="true"

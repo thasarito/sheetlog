@@ -27,7 +27,7 @@ export function OnboardingLayout({
   return (
     <div className={cn("flex h-full w-full flex-col bg-background", className)}>
       {/* Header */}
-      <header className="flex items-center gap-4 px-6 pt-12 pb-4">
+      <header className="mx-auto flex w-full max-w-[720px] items-center gap-4 px-6 pt-12 pb-4">
         <div className="flex-none">
           {onBack ? (
             <button
@@ -48,7 +48,7 @@ export function OnboardingLayout({
       </header>
 
       {/* Content */}
-      <main className="flex-1 flex flex-col px-8 py-6 overflow-y-auto">
+      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col overflow-y-auto px-8 py-6">
         <div className="mb-8 text-center space-y-3">
           {/* Illustration placeholder or slot could go here */}
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
@@ -59,7 +59,7 @@ export function OnboardingLayout({
       </main>
 
       {/* Footer */}
-      {footer && <div className="p-6 pt-2">{footer}</div>}
+      {footer && <div className="mx-auto w-full max-w-[720px] p-6 pt-2">{footer}</div>}
     </div>
   );
 }

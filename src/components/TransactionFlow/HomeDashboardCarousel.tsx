@@ -1,4 +1,5 @@
 import { endOfDay, startOfMonth } from "date-fns";
+import { BarChart3, List, Settings } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -35,6 +36,7 @@ type HomeDashboardCarouselProps = {
 };
 
 const SLIDES = DASHBOARD_SLIDES;
+const NAVIGATION_ICONS = [BarChart3, List, Settings] as const;
 const HEADER_COLLAPSE_DISTANCE = 68;
 const SCROLL_SETTLE_DELAY_MS = 150;
 const SNAP_TOLERANCE_PX = 1.25;
@@ -487,14 +489,41 @@ export function HomeDashboardCarousel({
     setNoBigSpending((current) => !current);
   };
 
+  const navigateTo = (index: number) => {
+    const viewport = viewportRef.current;
+    if (navigationLocked || !viewport || viewport.clientWidth <= 0) return;
+    clearSettleTimer();
+    touchActiveRef.current = false;
+    viewport.scrollTo({ left: index * viewport.clientWidth, behavior: "auto" });
+    commitActiveIndex(index);
+  };
+
   return (
     <section
-      className="h-full min-h-0"
+      className="duo-dashboard h-full min-h-0"
       aria-roledescription="carousel"
       aria-label="Home activity"
       onKeyDown={handleKeyDown}
       onScrollCapture={handleContentScroll}
     >
+      <nav className="duo-navigation" aria-label="Tracker navigation">
+        {SLIDES.map((label, index) => {
+          const Icon = NAVIGATION_ICONS[index];
+          return (
+            <button
+              key={label}
+              type="button"
+              className="duo-navigation-item"
+              aria-current={activeIndex === index ? "page" : undefined}
+              disabled={navigationLocked}
+              onClick={() => navigateTo(index)}
+            >
+              <Icon aria-hidden="true" size={21} />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </nav>
       <div
         ref={viewportRef}
         data-testid="home-carousel-viewport"
@@ -512,7 +541,7 @@ export function HomeDashboardCarousel({
         onTouchStart={handleTouchStart}
         onTouchEnd={releaseTouch}
         onTouchCancel={releaseTouch}
-        className={`h-full min-h-0 snap-x snap-mandatory overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden ${
+        className={`duo-dashboard-viewport h-full min-h-0 snap-x snap-mandatory overflow-y-hidden overscroll-x-auto scroll-smooth [scrollbar-width:none] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden ${
           navigationLocked
             ? "overflow-x-hidden [touch-action:pan-y]"
             : "overflow-x-auto [touch-action:pan-x_pan-y]"

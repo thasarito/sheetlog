@@ -109,14 +109,15 @@ export function StepAmount({
   }, [account, accounts, hasTransferAccounts, isTransfer]);
 
   return (
+    <div className="amount-layout h-full min-h-0 w-full">
     <div
       data-testid="step-amount"
       data-transaction-step="amount"
-      className="flex h-full min-h-0 flex-col gap-5 overflow-x-hidden overflow-y-hidden px-4"
+      className="mx-auto flex h-full min-h-0 w-full max-w-[640px] flex-col gap-5 overflow-x-hidden overflow-y-hidden px-4"
     >
       <div
         data-step-amount-fields
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
         {customHeader ? (
           <div className="shrink-0">{customHeader}</div>
@@ -166,7 +167,7 @@ export function StepAmount({
         >
           <div
             data-testid="place-search-stage"
-            className="relative min-h-0 flex-1"
+            className="relative min-h-[160px] flex-1"
           >
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex min-h-[72px] flex-1 items-center justify-between px-4 py-3 text-4xl font-semibold text-foreground">
@@ -234,12 +235,12 @@ export function StepAmount({
       </div>
 
       {isTransfer && !hasTransferAccounts ? (
-        <p className="shrink-0 text-xs text-muted-foreground">
+        <p className="amount-warning shrink-0 text-xs text-muted-foreground">
           Add another account in onboarding to log transfers.
         </p>
       ) : null}
 
-      <div className="flex shrink-0 flex-col gap-5 pb-safe-offset-6">
+      <div className="amount-actions flex shrink-0 flex-col gap-5 pb-safe-offset-6">
         <Keypad
           value={amount}
           onChange={(value) => form.setFieldValue("amount", value)}
@@ -277,6 +278,7 @@ export function StepAmount({
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 }

@@ -72,6 +72,7 @@ import {
   replaceTransactionNote,
 } from "./transactionNoteForm";
 import { useStableTransactionHeight } from "./useStableTransactionHeight";
+import "./duo-layout.css";
 
 type ToastAction = { label: string; onClick: () => void };
 type StepDefinition = {
@@ -1357,7 +1358,7 @@ export function TransactionFlow() {
       style={{ height: `${stableTransactionHeight}px` }}
       className="h-full shrink-0 from-surface via-background to-surface p-0 font-['SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',system-ui] text-foreground antialiased sm:px-6"
     >
-      <div className="relative mx-auto flex h-full w-full max-w-md flex-col">
+      <div className="transaction-shell relative mx-auto flex h-full w-full max-w-md flex-col">
         {/* Header with settings drawer */}
         <Header
           ref={dashboardHeaderMotionRef}
@@ -1369,11 +1370,19 @@ export function TransactionFlow() {
 
         {/* Main content - full height */}
         <div className={step === 0 ? "flex-1 min-h-0" : "flex-1 min-h-0 pb-6"}>
-          {step === 0 ? (
             <CategoryStepSheet
-              entry={activeStep.content}
+              entry={step === 0 ? activeStep.content : (
+                <StepCard
+                  animationKey={activeStep.key}
+                  className={activeStep.className}
+                  containerClassName="h-full"
+                >
+                  {activeStep.content}
+                </StepCard>
+              )}
               layoutHeight={stableTransactionHeight}
               typeTabsHostRef={setCategoryTypeTabsContainer}
+              fullScreen={step !== 0}
             >
               <HomeDashboardCarousel
                 baseCurrency={onboarding.analyticsBaseCurrency}
@@ -1384,15 +1393,6 @@ export function TransactionFlow() {
                 onEditTransaction={handleEditTransaction}
               />
             </CategoryStepSheet>
-          ) : (
-            <StepCard
-              animationKey={activeStep.key}
-              className={activeStep.className}
-              containerClassName="h-full"
-            >
-              {activeStep.content}
-            </StepCard>
-          )}
         </div>
       </div>
 
