@@ -92,7 +92,7 @@ describe("CategoryGrid", () => {
       "items-center",
       "justify-center",
     );
-    expect(label).toHaveClass("line-clamp-2");
+    expect(label).toHaveClass("line-clamp-3");
   });
 
   it("constrains extreme custom colors to a contrast-safe foreground mix", () => {

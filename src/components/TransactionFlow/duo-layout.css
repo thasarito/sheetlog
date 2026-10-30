@@ -6,6 +6,94 @@ main[data-testid="transaction-canvas"] {
   display: none;
 }
 
+.amount-layout {
+  container: amount / inline-size;
+}
+
+.receipt-layout {
+  container: receipt / inline-size;
+}
+
+@media (max-height: 700px) {
+  [data-testid="step-amount"] {
+    overflow-y: auto;
+  }
+
+  [data-step-amount-fields] {
+    min-height: 340px;
+    flex: 1 0 auto;
+    overflow: visible;
+  }
+
+  [data-testid="amount-keypad"] {
+    gap: 4px;
+  }
+
+  [data-testid="amount-keypad"] button {
+    height: 44px;
+  }
+}
+
+@container amount (min-width: 700px) {
+  [data-testid="step-amount"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 0.8fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-items: stretch;
+    column-gap: 32px;
+  }
+
+  [data-step-amount-fields] {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .amount-warning {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .amount-actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    justify-content: end;
+  }
+}
+
+@container receipt (min-width: 700px) {
+  .receipt-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    gap: 12px 24px;
+    align-content: start;
+    align-items: start;
+  }
+
+  .receipt-progress {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin-top: 0;
+  }
+
+  .receipt-details {
+    grid-column: 1;
+    margin-top: 0;
+  }
+
+  .receipt-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .receipt-actions > button {
+    flex: 1;
+    margin: 0;
+  }
+}
+
 @media (min-width: 600px) {
   main[data-testid="transaction-canvas"] {
     padding-inline: 0;

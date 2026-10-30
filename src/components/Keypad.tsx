@@ -31,6 +31,7 @@ export function Keypad({ value, onChange, disabled = false }: KeypadProps) {
 
   return (
     <fieldset
+      data-testid="amount-keypad"
       className="m-0 grid grid-cols-3 gap-3 border-0 p-0"
       disabled={disabled}
     >

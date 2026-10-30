@@ -344,12 +344,13 @@ export function StepReceipt({
       : "border-success/25 bg-success/5 text-success";
 
   return (
+    <div className="receipt-layout h-full min-h-0 w-full">
     <div
       data-testid="step-receipt"
       data-transaction-step="receipt"
-      className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-4 pb-safe-offset-6"
+      className="mx-auto flex h-full min-h-0 w-full max-w-[900px] flex-col gap-4 overflow-hidden px-4 pb-safe-offset-6"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+      <div className="receipt-content min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
         <section
           data-testid="receipt-amount-card"
           aria-label="Transaction summary"
@@ -403,7 +404,7 @@ export function StepReceipt({
           </dl>
         </section>
 
-        <section className="mt-6" aria-label="Entry progress">
+        <section className="receipt-progress mt-6" aria-label="Entry progress">
           <div className="flex items-end justify-between gap-4">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               Entry progress
@@ -450,7 +451,7 @@ export function StepReceipt({
 
         <section
           aria-label="Additional transaction details"
-          className="mt-2 border-y border-border"
+          className="receipt-details mt-2 border-y border-border"
         >
           <div className="grid grid-cols-[1fr_minmax(0,2fr)] gap-4 py-3">
             <span className="text-xs text-muted-foreground">Note</span>
@@ -466,7 +467,7 @@ export function StepReceipt({
       </div>
 
       {hasSuccessfulReceipt ? (
-        <div className="shrink-0 space-y-3">
+        <div className="receipt-actions shrink-0 space-y-3">
           <button
             type="button"
             className="relative flex min-h-12 w-full items-center justify-center overflow-hidden rounded-2xl bg-success px-4 text-sm font-semibold text-success-foreground disabled:cursor-not-allowed disabled:opacity-60"
@@ -497,6 +498,7 @@ export function StepReceipt({
           )}
         </div>
       ) : null}
+    </div>
     </div>
   );
 }
