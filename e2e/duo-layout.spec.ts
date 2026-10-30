@@ -4,7 +4,7 @@ test.use({ baseURL: process.env.DUO_TEST_BASE_URL ?? "http://127.0.0.1:5174" });
 
 test("the wide workspace keeps transaction entry beside the selected page", async ({ page }) => {
   await page.setViewportSize({ width: 951, height: 669 });
-  await page.goto("/");
+  await page.goto("/e2e/duo-fixtures.html?screen=entry");
 
   const navigation = page.getByRole("navigation", { name: "Tracker navigation" });
   const entry = page.getByRole("region", { name: "Transaction entry workspace" });
@@ -12,7 +12,7 @@ test("the wide workspace keeps transaction entry beside the selected page", asyn
   await expect(entry).toBeVisible();
 
   await navigation.getByRole("button", { name: "Transactions", exact: true }).click();
-  await expect(page.getByText("No transactions yet.")).toBeVisible();
+  await expect(page.getByRole("region", { name: /Transactions, slide 2 of 3/ })).toBeVisible();
   await expect(entry).toBeVisible();
 
   await navigation.getByRole("button", { name: "Settings", exact: true }).click();
@@ -22,7 +22,7 @@ test("the wide workspace keeps transaction entry beside the selected page", asyn
 
 test("a draft transaction survives changing between wide and compact layouts", async ({ page }) => {
   await page.setViewportSize({ width: 951, height: 669 });
-  await page.goto("/");
+  await page.goto("/e2e/duo-fixtures.html?screen=entry");
 
   const entry = page.getByRole("region", { name: "Transaction entry workspace" });
   await expect(entry).toBeVisible();
@@ -51,7 +51,7 @@ test("setup content remains readable on the open display", async ({ page }) => {
 
 test("navigation and the second pane appear at their intended breakpoints", async ({ page }) => {
   await page.setViewportSize({ width: 599, height: 800 });
-  await page.goto("/");
+  await page.goto("/e2e/duo-fixtures.html?screen=entry");
   const navigation = page.getByRole("navigation", { name: "Tracker navigation" });
   const layout = page.getByTestId("category-step-layout");
   await expect(navigation).toBeHidden();
