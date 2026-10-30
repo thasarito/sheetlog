@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5174',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5174',
     trace: 'on-first-retry',
   },
   projects: [
@@ -19,6 +19,11 @@ export default defineConfig({
     {
       name: 'Mobile Chrome',
       use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'Duo WebKit',
+      testMatch: 'duo-layout.spec.ts',
+      use: { ...devices['Desktop Safari'] },
     },
   ],
   webServer: {

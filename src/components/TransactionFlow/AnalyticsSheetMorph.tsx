@@ -277,6 +277,10 @@ function useCategorySheetMorph(rootRef: RefObject<HTMLElement>) {
     const measureProgress = () => {
       elements = findSheetElements(layout);
       const state = categorySheetState(layout);
+      if (layout.dataset.duoWide === "true") {
+        setProgressVariables(root, 0);
+        return 0;
+      }
       const layoutRect = layout.getBoundingClientRect();
       const drawerRect = elements.drawer?.getBoundingClientRect();
       const launcherHeight =
