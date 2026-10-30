@@ -36,6 +36,10 @@ main[data-testid="transaction-canvas"] {
 }
 
 @container transaction (min-width: 600px) {
+  .transaction-shell > header {
+    display: none;
+  }
+
   .transaction-shell {
     max-width: none;
   }
@@ -86,10 +90,6 @@ main[data-testid="transaction-canvas"] {
 }
 
 @container transaction (min-width: 768px) {
-  .transaction-shell > header {
-    display: none;
-  }
-
   .transaction-shell > header + div {
     padding-bottom: 0;
   }
