@@ -404,7 +404,8 @@ export function TransactionNoteField({
               <div
                 id={listboxId}
                 role="listbox"
-                className="pointer-events-none min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                data-vaul-no-drag
+                className="pointer-events-auto min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2 [touch-action:pan-y] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               >
                 {renderedPopupState}
               </div>

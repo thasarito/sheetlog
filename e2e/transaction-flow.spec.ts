@@ -655,6 +655,71 @@ test.describe("Transaction flow - settings sync", () => {
 });
 
 test.describe("Transaction flow - Places", () => {
+  test("scrolls place search results with a trackpad or mouse wheel", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedTransactions(page, []);
+    await installGoogleMapsStub(page);
+    await page.goto("/app");
+    await page.getByRole("button", { name: "Dining Out" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
+    await page.getByLabel("Transaction note").fill("central");
+    const list = page.getByRole("listbox");
+    await expect(list.getByRole("option")).toHaveCount(6);
+    const box = await list.boundingBox();
+    if (!box) throw new Error("Place results are not visible");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 200);
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await list.getByRole("option", { name: /Central Park Cafe/ }).click();
+    await expect(page.getByLabel("Transaction note")).toHaveValue("Central Park Cafe");
+  });
+
+  test("scrolls place search results with a touch gesture and selects a later result", async ({ page }, testInfo) => {
+    test.skip(!testInfo.project.use.hasTouch, "requires a touch-enabled browser");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedTransactions(page, []);
+    await installGoogleMapsStub(page);
+    await page.goto("/app");
+    await page.getByRole("button", { name: "Dining Out" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
+    const note = page.getByLabel("Transaction note");
+    await note.fill("central");
+    const list = page.getByRole("listbox");
+    await expect(list.getByRole("option")).toHaveCount(6);
+    await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    const listReceivesPaddingTouches = await list.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.bottom - 2);
+      return target !== null && element.contains(target);
+    });
+    expect(listReceivesPaddingTouches).toBe(true);
+    const initialBottom = await list.evaluate((element) => element.scrollTop);
+    const bottomBox = await list.boundingBox();
+    if (!bottomBox) throw new Error("Place results are not visible");
+    const client = await page.context().newCDPSession(page);
+    const bottomX = bottomBox.x + bottomBox.width / 2;
+    const bottomY = bottomBox.y + bottomBox.height - 2;
+    await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: bottomX, y: bottomY }] });
+    for (let step = 1; step <= 8; step++) {
+      await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: bottomX, y: bottomY + step * 14 }] });
+    }
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeLessThan(initialBottom);
+    await list.evaluate((element) => { element.scrollTop = 0; });
+    const box = await list.boundingBox();
+    if (!box) throw new Error("Place results are not visible");
+    const x = box.x + box.width / 2;
+    const startY = box.y + box.height - 15;
+    await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: startY }] });
+    for (let step = 1; step <= 8; step++) {
+      await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: startY - step * 14 }] });
+    }
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await list.getByRole("option", { name: /Central Park Cafe/ }).click();
+    await expect(note).toHaveValue("Central Park Cafe");
+  });
+
   test("renders inline note results over the keypad and preserves selected metadata", async ({
     context,
     page,
